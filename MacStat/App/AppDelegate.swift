@@ -1,12 +1,14 @@
 import Cocoa
+import SwiftUI
 import MacStatKit
 import SystemMetricsKit
 
 @main
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem?
-    private var snapshotTask: Task<Void, Never>?
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
+    // MARK: - Collection layer
+    //
     // Collectors must be persistent instances, not constructed fresh per
     // call — several are stateful delta trackers (CPU, Disk, Network) that
     // only produce correct rates when the same instance is called
@@ -34,18 +36,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         aneProvider: aneCollector.collect
     )
 
-    // Opens (or creates) ~/Library/Application Support/MacStat/history.sqlite
-    // at construction (plan §14.3) — never fails loudly, degrades to a no-op
-    // store if the disk write fails (P5).
+    // MARK: - Storage
+
+    private let settingsStore = SettingsStore()
     private let historyStore = HistoryStore()
     private lazy var rollupJob = RollupJob(dbQueue: historyStore.databaseQueue)
 
-    private var batteryItem: NSMenuItem?
-    private var cpuItem: NSMenuItem?
-    private var memoryItem: NSMenuItem?
-    private var gpuItem: NSMenuItem?
+    // MARK: - UI
 
-    static func main() {
+    private var statusItemController: StatusItemController?
+    private let dropdownViewModel = DropdownViewModel()
+    private let popover = NSPopover()
+    private lazy var settingsWindowController = SettingsWindowController(settingsStore: settingsStore)
+
+    private var snapshotTask: Task<Void, Never>?
+    private var settingsObservation: Task<Void, Never>?
+
+    /// Only a theme change requires rebuilding the dropdown's SwiftUI tree.
+    /// Tracked so unrelated settings edits (a retention slider drag emits a
+    /// value per frame) don't tear down and rebuild an `NSHostingController`
+    /// each time — and can't stomp an open popover.
+    private var lastAppliedTheme: Theme?
+
+    nonisolated static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -54,75 +67,136 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(
-            systemSymbolName: "bolt.fill",
-            accessibilityDescription: "MacStat"
+        let settings = settingsStore.settings
+        let theme = settingsStore.resolvedTheme()
+
+        let controller = StatusItemController(layout: settings.menuBarLayout, theme: theme)
+        controller.onClick = { [weak self] in self?.togglePopover() }
+        statusItemController = controller
+
+        configurePopover(theme: theme)
+
+        // Apply persisted settings before anything starts polling, so a saved
+        // refresh interval / retention window takes effect on the first tick
+        // rather than only after the user next touches a control.
+        coordinator.setBaseInterval(settings.globalRefreshInterval)
+        coordinator.adaptiveThrottlingEnabled = settings.adaptiveThrottlingEnabled
+        rollupJob.setRetention(
+            rawHours: settings.rawRetentionHours,
+            hourlyDays: settings.hourlyRetentionDays
         )
-
-        let menu = NSMenu()
-        let battery = NSMenuItem(title: "Battery: —", action: nil, keyEquivalent: "")
-        let cpu = NSMenuItem(title: "CPU: —", action: nil, keyEquivalent: "")
-        let memory = NSMenuItem(title: "Memory: —", action: nil, keyEquivalent: "")
-        let gpu = NSMenuItem(title: "GPU: —", action: nil, keyEquivalent: "")
-        for menuItem in [battery, cpu, memory, gpu] {
-            menuItem.isEnabled = false
-            menu.addItem(menuItem)
-        }
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit MacStat", action: #selector(quit), keyEquivalent: "q")
-        item.menu = menu
-
-        statusItem = item
-        batteryItem = battery
-        cpuItem = cpu
-        memoryItem = memory
-        gpuItem = gpu
-
         rollupJob.start()
 
         // StatsCoordinator's AsyncStream is the single source every consumer
-        // reads (plan §3.2 P3) — the menu bar and the history store are two
-        // independent consumers of the exact same stream, neither aware of
-        // the other, per P3's whole point.
+        // reads (plan §3.2 P3) — the menu bar, the dropdown, and the history
+        // store are three independent consumers of the same stream, none of
+        // them aware of the others.
         snapshotTask = Task { [weak self] in
             guard let self else { return }
             for await snapshot in self.coordinator.snapshots() {
                 self.historyStore.record(snapshot)
-                await MainActor.run { self.update(with: snapshot) }
+                self.statusItemController?.update(snapshot)
+                self.dropdownViewModel.ingest(snapshot)
+            }
+        }
+
+        // Live-apply theme/layout changes made in Settings without a restart.
+        settingsObservation = Task { [weak self] in
+            guard let self else { return }
+            for await newSettings in self.settingsStore.$settings.values {
+                self.applySettings(newSettings)
             }
         }
     }
 
-    @MainActor
-    private func update(with snapshot: SystemSnapshot) {
-        if let battery = snapshot.battery {
-            let chargingSuffix = battery.isCharging ? " (charging)" : ""
-            batteryItem?.title = "Battery: \(Int(battery.chargePercent))%\(chargingSuffix)"
-            statusItem?.button?.title = " \(Int(battery.chargePercent))%"
-        }
-        if let cpu = snapshot.cpu {
-            cpuItem?.title = "CPU: \(String(format: "%.0f", cpu.totalPercent))%"
-        }
-        if let memory = snapshot.memory {
-            let usedGB = Double(memory.usedBytes) / 1_073_741_824
-            let totalGB = Double(memory.totalBytes) / 1_073_741_824
-            memoryItem?.title = "Memory: \(String(format: "%.1f", usedGB))/\(String(format: "%.0f", totalGB)) GB"
-        }
-        if let gpu = snapshot.gpu {
-            let util = gpu.utilizationPercent.map { String(format: "%.0f%%", $0) } ?? "—"
-            let power = gpu.powerWatts.map { " · \(String(format: "%.2f", $0))W" } ?? ""
-            gpuItem?.title = "GPU: \(util)\(power)"
+    func applicationWillTerminate(_ notification: Notification) {
+        // Both stores buffer/debounce writes, so quitting without an explicit
+        // flush would drop whatever accumulated since the last interval.
+        historyStore.flush()
+        settingsStore.save()
+    }
+
+    // MARK: - Popover
+
+    private func configurePopover(theme: Theme) {
+        popover.behavior = .transient
+        popover.animates = true
+        // `.transient` closes on an outside click without ever calling
+        // `togglePopover`, so the throttling flag has to come from the
+        // delegate callbacks or it latches to "open" after the first
+        // dismissal and silently disables §8.4 throttling for the rest of
+        // the run.
+        popover.delegate = self
+        lastAppliedTheme = theme
+        popover.contentViewController = NSHostingController(
+            rootView: DropdownView(
+                viewModel: dropdownViewModel,
+                theme: theme,
+                onOpenSettings: { [weak self] in self?.openSettings() },
+                onOpenHistory: { [weak self] in self?.openSettings() },
+                onQuit: { NSApplication.shared.terminate(nil) }
+            )
+        )
+    }
+
+    private func togglePopover() {
+        guard let button = statusItemController?.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
+            // An accessory app's popover opens behind other windows otherwise.
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
-    @objc private func quit() {
-        // HistoryStore's own doc comment calls this out explicitly: app
-        // quit is one of the cases that needs a guaranteed write rather
-        // than waiting for the next 30s auto-flush. Called from the main
-        // thread (menu action), never from HistoryStore's own private
-        // queue, so no deadlock risk (see flush()'s doc comment).
-        historyStore.flush()
-        NSApplication.shared.terminate(nil)
+    private func openSettings() {
+        popover.performClose(nil)
+        settingsWindowController.show()
+    }
+
+    // MARK: - NSPopoverDelegate
+
+    // Feed the coordinator's adaptive throttling (plan §8.4): polling slows
+    // down while nobody is looking at the charts. These fire for *every*
+    // close path, including the outside-click dismissal that a `.transient`
+    // popover uses and that never goes through `togglePopover`.
+
+    func popoverDidShow(_ notification: Notification) {
+        coordinator.popoverIsClosed = false
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        coordinator.popoverIsClosed = true
+    }
+
+    // MARK: - Settings changes
+
+    private func applySettings(_ settings: AppSettings) {
+        // Resolve from the delivered value rather than re-reading the store:
+        // `@Published` emits in `willSet`, so `settingsStore.settings` is
+        // still the *old* value at emission time. It happens to work today
+        // only because the async hop lands after the assignment — not
+        // something a theme switch should depend on.
+        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .terminal
+
+        statusItemController?.apply(layout: settings.menuBarLayout)
+        statusItemController?.apply(theme: theme)
+
+        // Settings that must actually reach the services behind them —
+        // these sliders/toggles were previously wired to nothing.
+        coordinator.setBaseInterval(settings.globalRefreshInterval)
+        coordinator.adaptiveThrottlingEnabled = settings.adaptiveThrottlingEnabled
+        rollupJob.setRetention(
+            rawHours: settings.rawRetentionHours,
+            hourlyDays: settings.hourlyRetentionDays
+        )
+
+        // Rebuilding the hosting controller is how a new theme reaches an
+        // already-constructed SwiftUI tree, but it's expensive and discards
+        // scroll state — so only on an actual theme change, and never while
+        // the user is looking at the popover.
+        guard theme != lastAppliedTheme, !popover.isShown else { return }
+        configurePopover(theme: theme)
     }
 }

@@ -24,6 +24,30 @@ public final class RollupJob: @unchecked Sendable {
     private var hourlyTimer: DispatchSourceTimer?
     private let defaults: UserDefaults
 
+    // User-configurable per plan §6.3 ("Make all three retention windows
+    // user-configurable"). Guarded by a lock rather than `queue`, because
+    // the run methods that read these already execute *on* `queue` — a
+    // `queue.sync` there would deadlock on itself.
+    private let retentionLock = NSLock()
+    private var rawRetentionHoursStorage: Int = 48
+    private var hourlyRetentionDaysStorage: Int = 90
+
+    private var rawRetentionHours: Int {
+        retentionLock.lock(); defer { retentionLock.unlock() }
+        return rawRetentionHoursStorage
+    }
+
+    private var hourlyRetentionDays: Int {
+        retentionLock.lock(); defer { retentionLock.unlock() }
+        return hourlyRetentionDaysStorage
+    }
+
+    public func setRetention(rawHours: Int, hourlyDays: Int) {
+        retentionLock.lock(); defer { retentionLock.unlock() }
+        rawRetentionHoursStorage = max(rawHours, 1)
+        hourlyRetentionDaysStorage = max(hourlyDays, 1)
+    }
+
     private static let lastDailyRollupKey = "dev.malekswilam.macstat.rollupjob.lastDailyRollup"
     private static let lastVacuumKey = "dev.malekswilam.macstat.rollupjob.lastVacuum"
 
@@ -128,7 +152,7 @@ public final class RollupJob: @unchecked Sendable {
         guard let dbQueue else { return }
 
         let currentHourStart = (now.timeIntervalSince1970 / 3600).rounded(.down) * 3600
-        let rawCutoff = now.timeIntervalSince1970 - 48 * 3600
+        let rawCutoff = now.timeIntervalSince1970 - Double(rawRetentionHours) * 3600
 
         do {
             try dbQueue.write { db in
@@ -171,7 +195,7 @@ public final class RollupJob: @unchecked Sendable {
         guard let dbQueue else { return }
 
         let currentDayStart = (now.timeIntervalSince1970 / 86400).rounded(.down) * 86400
-        let hourlyCutoff = now.timeIntervalSince1970 - 90 * 86400
+        let hourlyCutoff = now.timeIntervalSince1970 - Double(hourlyRetentionDays) * 86400
 
         do {
             try dbQueue.write { db in

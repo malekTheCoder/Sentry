@@ -126,9 +126,32 @@ public final class StatsCoordinator: @unchecked Sendable {
 
     // MARK: - Scheduling configuration
 
-    private let fastInterval: TimeInterval
-    private let mediumInterval: TimeInterval
-    private let slowInterval: TimeInterval
+    // Live-adjustable so the §8.4 settings slider actually takes effect
+    // without an app restart. Queue-confined like all other mutable state.
+    private var fastInterval: TimeInterval
+    private var mediumInterval: TimeInterval
+    private var slowInterval: TimeInterval
+    private var adaptiveThrottlingEnabledStorage = true
+
+    /// Master switch for the §8.4 throttling multipliers. Off means every
+    /// tier polls at its configured base interval regardless of power state.
+    public var adaptiveThrottlingEnabled: Bool {
+        get { queue.sync { adaptiveThrottlingEnabledStorage } }
+        set { queue.async { [weak self] in self?.adaptiveThrottlingEnabledStorage = newValue } }
+    }
+
+    /// Rescales all three tiers from a single user-facing "fast" interval,
+    /// keeping the plan's 1x/1.67x/10x tier ratios. Takes effect on each
+    /// tier's next self-reschedule.
+    public func setBaseInterval(_ fast: TimeInterval) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let clamped = min(max(fast, 0.5), 30)
+            self.fastInterval = clamped
+            self.mediumInterval = clamped * (5.0 / 3.0)
+            self.slowInterval = clamped * 10
+        }
+    }
 
     /// Hard ceiling from the plan's `effectiveInterval` example (§8.4).
     private static let maxInterval: TimeInterval = 60
@@ -326,6 +349,7 @@ public final class StatsCoordinator: @unchecked Sendable {
     /// wire up yet — left as a later-phase TODO rather than guessed at.
     private func effectiveInterval(for tier: Tier) -> TimeInterval {
         var interval = baseInterval(for: tier)
+        guard adaptiveThrottlingEnabledStorage else { return min(interval, Self.maxInterval) }
         if isOnBattery { interval *= 2 }
         if popoverIsClosedStorage { interval *= 2 }
         if ProcessInfo.processInfo.isLowPowerModeEnabled { interval *= 3 }

@@ -1,16 +1,6 @@
 import Foundation
 import CoreGraphics
 
-// MARK: - MetricID
-
-/// Dotted, stable metric identifiers ("cpu.total_percent", "battery.charge_percent", …)
-/// as defined in the implementation plan's Appendix A. No `MetricID` type exists
-/// elsewhere in the codebase yet, so `metricColors` keys on the raw `String` form
-/// of those identifiers rather than inventing a dedicated enum here — the type that
-/// eventually parses/validates Appendix A's id strings belongs with whatever
-/// collector/consumer owns that convention, not with theming.
-public typealias MetricID = String
-
 // MARK: - Supporting tokens
 
 /// Typeface choice for bar-item and dropdown text. `.custom` carries a PostScript
@@ -123,7 +113,7 @@ public struct Theme: Codable, Identifiable, Equatable, Sendable {
     public var separator: ThemeColor
 
     // Per-metric colors so users can make CPU cyan and GPU magenta
-    public var metricColors: [MetricID: ThemeColor]
+    public var metricColors: [String: ThemeColor]
 
     // Typography
     public var fontFamily: FontChoice       // .system / .systemMono / .rounded / custom
@@ -162,7 +152,7 @@ public struct Theme: Codable, Identifiable, Equatable, Sendable {
         chartGrid: ThemeColor,
         chartFill: [ThemeColor],
         separator: ThemeColor,
-        metricColors: [MetricID: ThemeColor],
+        metricColors: [String: ThemeColor],
         fontFamily: FontChoice,
         barFontSize: CGFloat,
         barFontWeight: FontWeightToken,
@@ -501,4 +491,17 @@ extension Theme {
     public static let builtInPresets: [Theme] = [
         .terminal, .nocturne, .system, .paper, .neon, .monochrome,
     ]
+}
+
+// MARK: - Typed metric-color lookup
+
+extension Theme {
+    /// `metricColors` is keyed by Appendix A's raw dotted strings (rather than
+    /// `MetricID` directly) so a `.macstattheme` file stays a plain readable
+    /// JSON object — `JSONEncoder` only emits dictionaries as objects for
+    /// String/Int keys, and would otherwise write an alternating key/value
+    /// array. This accessor gives call sites the type safety anyway.
+    public func metricColor(for metric: MetricID) -> ThemeColor? {
+        metricColors[metric.rawValue]
+    }
 }
