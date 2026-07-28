@@ -52,11 +52,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var snapshotTask: Task<Void, Never>?
     private var settingsObservation: Task<Void, Never>?
 
-    /// Only a theme change requires rebuilding the dropdown's SwiftUI tree.
-    /// Tracked so unrelated settings edits (a retention slider drag emits a
-    /// value per frame) don't tear down and rebuild an `NSHostingController`
-    /// each time — and can't stomp an open popover.
+    /// Only a theme or enabled-modules change requires rebuilding the
+    /// dropdown's SwiftUI tree. Tracked so unrelated settings edits (a
+    /// retention slider drag emits a value per frame) don't tear down and
+    /// rebuild an `NSHostingController` each time — and can't stomp an open
+    /// popover.
     private var lastAppliedTheme: Theme?
+    private var lastAppliedModules: Set<MetricModule>?
 
     nonisolated static func main() {
         let app = NSApplication.shared
@@ -74,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         controller.onClick = { [weak self] in self?.togglePopover() }
         statusItemController = controller
 
-        configurePopover(theme: theme)
+        configurePopover(theme: theme, enabledModules: settings.enabledModules)
 
         // Apply persisted settings before anything starts polling, so a saved
         // refresh interval / retention window takes effect on the first tick
@@ -118,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Popover
 
-    private func configurePopover(theme: Theme) {
+    private func configurePopover(theme: Theme, enabledModules: Set<MetricModule>) {
         popover.behavior = .transient
         popover.animates = true
         // `.transient` closes on an outside click without ever calling
@@ -128,10 +130,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the run.
         popover.delegate = self
         lastAppliedTheme = theme
+        lastAppliedModules = enabledModules
         popover.contentViewController = NSHostingController(
             rootView: DropdownView(
                 viewModel: dropdownViewModel,
                 theme: theme,
+                enabledModules: enabledModules,
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onOpenHistory: { [weak self] in self?.openSettings() },
                 onQuit: { NSApplication.shared.terminate(nil) }
@@ -192,11 +196,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             hourlyDays: settings.hourlyRetentionDays
         )
 
-        // Rebuilding the hosting controller is how a new theme reaches an
-        // already-constructed SwiftUI tree, but it's expensive and discards
-        // scroll state — so only on an actual theme change, and never while
-        // the user is looking at the popover.
-        guard theme != lastAppliedTheme, !popover.isShown else { return }
-        configurePopover(theme: theme)
+        // Rebuilding the hosting controller is how a new theme or module
+        // selection reaches an already-constructed SwiftUI tree, but it's
+        // expensive and discards scroll state — so only on an actual
+        // change, and never while the user is looking at the popover.
+        guard theme != lastAppliedTheme || settings.enabledModules != lastAppliedModules,
+              !popover.isShown
+        else { return }
+        configurePopover(theme: theme, enabledModules: settings.enabledModules)
     }
 }

@@ -9,13 +9,18 @@ struct ModuleCardStack: View {
 
     let snapshot: SystemSnapshot?
     let history: [ChartMetric: MetricSeries]
+    /// Which modules the user turned on in the Modules settings pane.
+    /// Without this filter, toggling a module off in Settings had no
+    /// observable effect anywhere in the app — the toggle existed but
+    /// nothing downstream ever read it.
+    let enabledModules: Set<MetricModule>
 
     /// Card order follows the plan's module listing.
     private static let order: [ChartMetric] = [.cpu, .gpu, .ane, .memory, .disk, .network, .thermal]
 
     var body: some View {
         VStack(spacing: palette.spacing) {
-            ForEach(Self.order) { metric in
+            ForEach(Self.order.filter { enabledModules.contains($0.module) }) { metric in
                 card(for: metric)
             }
         }

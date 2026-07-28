@@ -11,6 +11,7 @@ struct DropdownView: View {
     @Environment(\.colorScheme) private var systemColorScheme
 
     private let theme: Theme
+    private let enabledModules: Set<MetricModule>
     private let onOpenSettings: () -> Void
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
@@ -18,12 +19,14 @@ struct DropdownView: View {
     init(
         viewModel: DropdownViewModel,
         theme: Theme = .terminal,
+        enabledModules: Set<MetricModule> = Set(MetricModule.allCases),
         onOpenSettings: @escaping () -> Void,
         onOpenHistory: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.theme = theme
+        self.enabledModules = enabledModules
         self.onOpenSettings = onOpenSettings
         self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
@@ -41,8 +44,12 @@ struct DropdownView: View {
                 powerSeries: viewModel.series(for: .power)
             )
             ScrollView(.vertical, showsIndicators: false) {
-                ModuleCardStack(snapshot: viewModel.snapshot, history: viewModel.history)
-                    .padding(.bottom, 2)
+                ModuleCardStack(
+                    snapshot: viewModel.snapshot,
+                    history: viewModel.history,
+                    enabledModules: enabledModules
+                )
+                .padding(.bottom, 2)
             }
             .frame(maxHeight: 420)
             DropdownFooter(
