@@ -13,14 +13,14 @@ public extension SystemSnapshot {
         case .batteryChargingWatts: return battery?.chargingWatts
         case .batterySystemPowerWatts: return battery?.systemPowerInWatts
         case .batteryHealthPercent: return battery?.healthPercent
-        case .batteryCycleCount: return battery?.cycleCount.map(Double.init)
+        case .batteryCycleCount: return battery?.cycleCount.map { Double($0) }
         case .batteryTemperatureC: return battery?.temperatureCelsius
-        case .batteryAdapterWatts: return battery?.adapterRatedWatts.map(Double.init)
-        case .batteryVoltageMV: return battery?.voltageMV.map(Double.init)
-        case .batteryAmperageMA: return battery?.amperageMA.map(Double.init)
-        case .batteryTimeToFullMin: return battery?.timeToFullMinutes.map(Double.init)
-        case .batteryTimeToEmptyMin: return battery?.timeToEmptyMinutes.map(Double.init)
-        case .batteryFullChargeCapacityMAh: return battery?.fullChargeCapacityMAh.map(Double.init)
+        case .batteryAdapterWatts: return battery?.adapterRatedWatts.map { Double($0) }
+        case .batteryVoltageMV: return battery?.voltageMV.map { Double($0) }
+        case .batteryAmperageMA: return battery?.amperageMA.map { Double($0) }
+        case .batteryTimeToFullMin: return battery?.timeToFullMinutes.map { Double($0) }
+        case .batteryTimeToEmptyMin: return battery?.timeToEmptyMinutes.map { Double($0) }
+        case .batteryFullChargeCapacityMAh: return battery?.fullChargeCapacityMAh.map { Double($0) }
 
         case .cpuTotalPercent: return cpu?.totalPercent
         case .cpuEcorePercent: return cpu?.ecorePercent
@@ -38,7 +38,7 @@ public extension SystemSnapshot {
         case .gpuTilerPercent: return gpu?.tilerPercent
         case .gpuFrequencyMHz: return gpu?.frequencyMHz
         case .gpuPowerWatts: return gpu?.powerWatts
-        case .gpuVramUsedBytes: return gpu?.vramUsedBytes.map(Double.init)
+        case .gpuVramUsedBytes: return gpu?.vramUsedBytes.map { Double($0) }
 
         case .anePowerWatts: return ane?.powerWatts
         case .aneActive: return ane?.isActive.map { $0 ? 1 : 0 }
@@ -47,7 +47,7 @@ public extension SystemSnapshot {
         case .memoryWiredBytes: return memory.map { Double($0.wiredBytes) }
         case .memoryCompressedBytes: return memory.map { Double($0.compressedBytes) }
         case .memoryCachedBytes: return memory.map { Double($0.cachedBytes) }
-        case .memorySwapUsedBytes: return memory?.swapUsedBytes.map(Double.init)
+        case .memorySwapUsedBytes: return memory?.swapUsedBytes.map { Double($0) }
         // Derived: the collector reports a 3-level pressure enum, not a
         // percent. Map it onto a rough percent so a bar/arc has something
         // sensible to fill, rather than dropping the metric entirely.
@@ -73,7 +73,7 @@ public extension SystemSnapshot {
         case .networkTxBytesPerSec: return network?.txBytesPerSec
         case .networkRxTotalBytes: return network.map { Double($0.rxSessionTotalBytes) }
         case .networkTxTotalBytes: return network.map { Double($0.txSessionTotalBytes) }
-        case .networkWifiRSSIdBm: return network?.wifiRSSIdBm.map(Double.init)
+        case .networkWifiRSSIdBm: return network?.wifiRSSIdBm.map { Double($0) }
         case .networkWifiTxRateMbps: return network?.wifiTxRateMbps
 
         case .thermalSocTempC: return thermal?.socTemperatureCelsius
@@ -95,7 +95,7 @@ public extension SystemSnapshot {
         // iPhone's uptime labelled as the Mac's. Needs to become a captured
         // field on the snapshot before it can be reported honestly.
         case .systemUptimeSeconds: return nil
-        case .systemProcessCount: return cpu?.processCount.map(Double.init)
+        case .systemProcessCount: return cpu?.processCount.map { Double($0) }
         case .systemAwakeAssertionActive:
             guard let sleepAssertion else { return nil }
             if case .active = sleepAssertion { return 1 }

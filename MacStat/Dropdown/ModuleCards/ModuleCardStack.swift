@@ -77,7 +77,7 @@ struct ModuleCardStack: View {
                 MetricDetailRow(label: "Session ↓", value: MetricFormatting.bytes(snapshot?.network?.rxSessionTotalBytes))
                 MetricDetailRow(label: "Session ↑", value: MetricFormatting.bytes(snapshot?.network?.txSessionTotalBytes))
                 MetricDetailRow(label: "IP", value: snapshot?.network?.localIPAddress ?? MetricFormatting.placeholder)
-                MetricDetailRow(label: "Signal", value: MetricFormatting.value(snapshot?.network?.wifiRSSIdBm.map(Double.init), metric: .networkWifiRSSIdBm))
+                MetricDetailRow(label: "Signal", value: MetricFormatting.value(snapshot?.network?.wifiRSSIdBm.map { Double($0) }, metric: .networkWifiRSSIdBm))
                 MetricDetailRow(label: "Link rate", value: MetricFormatting.value(snapshot?.network?.wifiTxRateMbps, metric: .networkWifiTxRateMbps))
             }
         case .thermal:

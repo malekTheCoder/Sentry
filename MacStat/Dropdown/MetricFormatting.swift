@@ -41,19 +41,19 @@ enum MetricFormatting {
     }
 
     static func volts(_ millivolts: Int?) -> String {
-        value(millivolts.map(Double.init), unit: .millivolts)
+        value(millivolts.map { Double($0) }, unit: .millivolts)
     }
 
     static func amps(_ milliamps: Int?) -> String {
-        value(milliamps.map(Double.init), unit: .milliamps)
+        value(milliamps.map { Double($0) }, unit: .milliamps)
     }
 
     static func integer(_ value: Int?) -> String {
-        self.value(value.map(Double.init), unit: .count)
+        self.value(value.map { Double($0) }, unit: .count)
     }
 
     static func bytes(_ value: UInt64?) -> String {
-        self.value(value.map(Double.init), unit: .bytes)
+        self.value(value.map { Double($0) }, unit: .bytes)
     }
 
     static func bytesPerSecond(_ value: Double?) -> String {
