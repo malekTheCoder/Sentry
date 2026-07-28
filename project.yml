@@ -1,0 +1,162 @@
+name: MacStat
+options:
+  bundleIdPrefix: dev.malekswilam.macstat
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    from: 6.29.0
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle.git
+    from: 2.6.0
+
+targets:
+  SystemMetricsKit:
+    type: framework
+    platform: macOS
+    sources:
+      - path: SystemMetricsKit
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.systemmetricskit
+
+  MacStatKit_macOS:
+    type: framework
+    platform: macOS
+    sources:
+      - path: MacStatKit
+    dependencies:
+      - package: GRDB
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
+      PRODUCT_NAME: MacStatKit
+      PRODUCT_MODULE_NAME: MacStatKit
+
+  MacStatKit_iOS:
+    type: framework
+    platform: iOS
+    sources:
+      - path: MacStatKit
+    dependencies:
+      - package: GRDB
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
+      PRODUCT_NAME: MacStatKit
+      PRODUCT_MODULE_NAME: MacStatKit
+
+  MacStat:
+    type: application
+    platform: macOS
+    sources:
+      - path: MacStat
+    dependencies:
+      - target: MacStatKit_macOS
+        embed: true
+      - target: SystemMetricsKit
+        embed: true
+      - package: Sparkle
+        embed: false
+        link: false
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
+      MARKETING_VERSION: "0.1.0"
+      CURRENT_PROJECT_VERSION: "1"
+      ENABLE_HARDENED_RUNTIME: YES
+      APP_SANDBOX: NO
+    info:
+      path: MacStat/Resources/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: MacStat
+        NSHumanReadableCopyright: "Malek Swilam"
+
+  MacStatMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: MacStatMobile
+    dependencies:
+      - target: MacStatKit_iOS
+        embed: true
+      - target: MacStatWidgetExtension
+        embed: true
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile
+    info:
+      path: MacStatMobile/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+  MacStatWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MacStatWidget
+    dependencies:
+      - target: MacStatKit_iOS
+        embed: true
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile.widget
+      PRODUCT_NAME: MacStatWidget
+    info:
+      path: MacStatWidget/Info.plist
+      properties:
+        CFBundleDisplayName: MacStat Widget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  MacStatMCP:
+    type: tool
+    platform: macOS
+    sources:
+      - path: MacStatMCP
+    dependencies:
+      - target: MacStatKit_macOS
+        embed: false
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mcp
+
+  MacStatTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: MacStatTests
+    dependencies:
+      - target: MacStat
+      - target: MacStatKit_macOS
+      - target: SystemMetricsKit
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.tests
+
+schemes:
+  MacStat:
+    build:
+      targets:
+        MacStat: all
+        MacStatTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - MacStatTests
