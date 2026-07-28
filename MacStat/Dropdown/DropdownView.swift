@@ -12,6 +12,7 @@ struct DropdownView: View {
 
     private let theme: Theme
     private let enabledModules: Set<MetricModule>
+    private let cardListMaxHeight: CGFloat
     private let onOpenSettings: () -> Void
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
@@ -20,6 +21,12 @@ struct DropdownView: View {
         viewModel: DropdownViewModel,
         theme: Theme = .terminal,
         enabledModules: Set<MetricModule> = Set(MetricModule.allCases),
+        // Callers pass the actual anchor screen's height so this scales with
+        // the display the status item lives on rather than a guess — a
+        // fixed 420pt looked fine on paper but read as "half the cards are
+        // missing and there's no way to see them" in practice (small popover
+        // window against a much taller screen).
+        cardListMaxHeight: CGFloat = 480,
         onOpenSettings: @escaping () -> Void,
         onOpenHistory: @escaping () -> Void,
         onQuit: @escaping () -> Void
@@ -27,6 +34,7 @@ struct DropdownView: View {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.theme = theme
         self.enabledModules = enabledModules
+        self.cardListMaxHeight = cardListMaxHeight
         self.onOpenSettings = onOpenSettings
         self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
@@ -51,7 +59,7 @@ struct DropdownView: View {
                 )
                 .padding(.bottom, 2)
             }
-            .frame(maxHeight: 420)
+            .frame(maxHeight: cardListMaxHeight)
             DropdownFooter(
                 onOpenSettings: onOpenSettings,
                 onOpenHistory: onOpenHistory,

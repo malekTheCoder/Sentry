@@ -160,9 +160,16 @@ struct BatteryHeroCard: View {
     /// The plan's example line is "Charging at 45.8 W — 20 V / 2.3 A via 100 W
     /// adapter"; each clause is dropped independently when its field is nil
     /// rather than substituting zeros.
+    /// `BatteryStats.notChargingReasonText` already reads e.g. "Paused (code
+    /// 4194305)" or "Paused — Optimized Battery Charging" — it's a full,
+    /// human sentence, not a bare reason fragment, so this must not prepend
+    /// its own "Paused —" on top (that produced "Paused — Paused (code …)").
+    /// It can also legitimately read "Charging normally" when the reason
+    /// code is present but zero, which is not a pause at all and must fall
+    /// through to the ordinary charging/discharging text below.
     private func diagnosticsText(for battery: BatteryStats) -> String {
-        if let reason = battery.notChargingReasonText, !reason.isEmpty {
-            return "Paused — \(reason)"
+        if let reason = battery.notChargingReasonText, Self.isPauseReason(reason) {
+            return reason
         }
         if battery.isThermallyLimited {
             return "Paused — battery temperature"
@@ -190,16 +197,20 @@ struct BatteryHeroCard: View {
     }
 
     private func diagnosticsColor(for battery: BatteryStats) -> Color {
-        if battery.notChargingReasonText?.isEmpty == false || battery.isThermallyLimited {
+        if battery.notChargingReasonText.map(Self.isPauseReason) == true || battery.isThermallyLimited {
             return palette.warning
         }
         return battery.isCharging ? palette.success : palette.textSecondary
     }
 
     private func diagnosticsSymbol(for battery: BatteryStats) -> String {
-        if battery.notChargingReasonText?.isEmpty == false || battery.isThermallyLimited {
+        if battery.notChargingReasonText.map(Self.isPauseReason) == true || battery.isThermallyLimited {
             return "exclamationmark.triangle.fill"
         }
         return battery.isCharging ? "bolt.fill" : "battery.50"
+    }
+
+    private static func isPauseReason(_ text: String) -> Bool {
+        !text.isEmpty && text != "Charging normally"
     }
 }

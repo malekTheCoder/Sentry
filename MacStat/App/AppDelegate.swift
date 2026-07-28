@@ -131,16 +131,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         lastAppliedTheme = theme
         lastAppliedModules = enabledModules
-        popover.contentViewController = NSHostingController(
+        let hostingController = NSHostingController(
             rootView: DropdownView(
                 viewModel: dropdownViewModel,
                 theme: theme,
                 enabledModules: enabledModules,
+                cardListMaxHeight: cardListMaxHeight(),
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onOpenHistory: { [weak self] in self?.openSettings() },
                 onQuit: { NSApplication.shared.terminate(nil) }
             )
         )
+        // Without this, NSHostingController's `preferredContentSize` never
+        // updates to match what SwiftUI actually renders, so the popover's
+        // frame drifts from its real content — cards get clipped and the
+        // mismatched region shows the desktop behind it instead of the
+        // theme background. `.preferredContentSize` keeps it in sync as the
+        // dropdown's content changes (more/fewer cards, expand/collapse).
+        hostingController.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = hostingController
+    }
+
+    /// Sized against the screen the status item button actually lives on —
+    /// this Mac's status item can end up on any of several displays (menu
+    /// bar management tools, "displays have separate menu bars"), so
+    /// `NSScreen.main` isn't reliable here. Falls back to a sane constant
+    /// if the button has no window/screen yet (first launch, before the
+    /// popover has ever been shown).
+    private func cardListMaxHeight() -> CGFloat {
+        guard let screenHeight = statusItemController?.button?.window?.screen?.visibleFrame.height else {
+            return 480
+        }
+        return max(360, screenHeight * 0.55)
     }
 
     private func togglePopover() {
@@ -148,6 +170,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // The button's `.window?.screen` usually isn't resolvable until
+            // the status item has actually appeared once, so the height
+            // computed at launch-time `configurePopover` can be stale (the
+            // generic 480pt fallback rather than this display's real one).
+            // Cheap to redo here since it's a plain frame-height read, no
+            // SwiftUI tree rebuild.
+            if let theme = lastAppliedTheme, let modules = lastAppliedModules {
+                configurePopover(theme: theme, enabledModules: modules)
+            }
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
             // An accessory app's popover opens behind other windows otherwise.
             NSApp.activate(ignoringOtherApps: true)
