@@ -26,13 +26,22 @@ public struct Capabilities: Codable, Sendable {
 }
 
 /// Runs once at launch (and on macOS version change) to determine which
-/// private-API-backed modules are usable on this Mac. Real probing (dlopen
-/// IOReport, enumerate HID services) lands in Phase 1 — this is the skeleton
-/// every UI surface will query before rendering a module.
+/// private-API-backed modules are usable on this Mac. `hasIOReport` reflects
+/// a real probe (dlopen succeeded and at least one "Energy Model" channel
+/// enumerated, via `IOReportBridge`/`ChannelResolver`); HID sensors and GPU
+/// stats probing land separately — this is still the skeleton every UI
+/// surface will query before rendering a module.
 public enum CapabilityProbe {
     public static func run() -> Capabilities {
-        Capabilities(
-            hasIOReport: false,
+        // A fresh ChannelResolver enumerates "Energy Model" channels as
+        // part of its init — cheap (no subscription/sampling), and exactly
+        // what `hasIOReport` needs to answer: did dlopen succeed AND does
+        // this Mac actually expose at least one channel we can read.
+        let ioReportAvailable = IOReportBridge.shared.isAvailable
+            && ChannelResolver(bridge: IOReportBridge.shared).hasAnyChannel
+
+        return Capabilities(
+            hasIOReport: ioReportAvailable,
             hasHIDSensors: false,
             hasGPUStats: false,
             chipName: "unknown",
