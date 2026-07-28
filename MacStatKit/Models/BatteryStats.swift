@@ -9,12 +9,17 @@ public struct BatteryStats: Codable, Sendable {
     public var adapterRatedWatts: Int?
     public var adapterDescription: String?
     public var adapterCount: Int
-    public var voltageMV: Int
-    public var amperageMA: Int
-    public var cycleCount: Int
-    public var designCapacityMAh: Int
-    public var fullChargeCapacityMAh: Int
-    public var healthPercent: Double
+    /// nil when the AppleSmartBattery IORegistry read failed (transient
+    /// IOKit hiccup, or a Mac with no smart battery controller) — a real
+    /// zero reading and "no data" must stay distinguishable, since a
+    /// dashboard/alert rule reading "0%" or "0 mV" as literal would be
+    /// actively misleading rather than merely incomplete.
+    public var voltageMV: Int?
+    public var amperageMA: Int?
+    public var cycleCount: Int?
+    public var designCapacityMAh: Int?
+    public var fullChargeCapacityMAh: Int?
+    public var healthPercent: Double?
     public var temperatureCelsius: Double?
     public var cellVoltagesMV: [Int]
     public var timeToFullMinutes: Int?
@@ -32,12 +37,12 @@ public struct BatteryStats: Codable, Sendable {
         adapterRatedWatts: Int? = nil,
         adapterDescription: String? = nil,
         adapterCount: Int = 0,
-        voltageMV: Int = 0,
-        amperageMA: Int = 0,
-        cycleCount: Int = 0,
-        designCapacityMAh: Int = 0,
-        fullChargeCapacityMAh: Int = 0,
-        healthPercent: Double = 0,
+        voltageMV: Int? = nil,
+        amperageMA: Int? = nil,
+        cycleCount: Int? = nil,
+        designCapacityMAh: Int? = nil,
+        fullChargeCapacityMAh: Int? = nil,
+        healthPercent: Double? = nil,
         temperatureCelsius: Double? = nil,
         cellVoltagesMV: [Int] = [],
         timeToFullMinutes: Int? = nil,

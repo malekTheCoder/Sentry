@@ -1,6 +1,8 @@
 import Foundation
 
-/// Phase 0 skeleton — fields fleshed out in Phase 1 per plan §5.6.
+/// Volume capacity plus throughput/IOPS deltas across all IOBlockStorageDriver
+/// devices. Rate fields are nil on a collector's first sample (no prior
+/// reading to diff against) — see plan §5.6.
 public struct DiskStats: Codable, Sendable {
     public var freeBytes: UInt64
     public var totalBytes: UInt64

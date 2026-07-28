@@ -1,6 +1,9 @@
 import Foundation
 
-/// Phase 0 skeleton — fields fleshed out in Phase 1 per plan §5.2.
+/// `totalPercent`/`perCorePercent`/`ecorePercent`/`pcorePercent`/
+/// `loadAverage1m`/`processCount` are populated by `CPUCollector` (plan
+/// §5.2). `effectiveFrequencyMHz`/`packagePowerWatts` require the IOReport
+/// bridge and stay nil until that lands.
 public struct CPUStats: Codable, Sendable {
     public var totalPercent: Double
     public var perCorePercent: [Double]

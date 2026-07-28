@@ -33,6 +33,9 @@ targets:
     platform: macOS
     sources:
       - path: SystemMetricsKit
+    dependencies:
+      - target: MacStatKit_macOS
+        embed: false
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.systemmetricskit
 
