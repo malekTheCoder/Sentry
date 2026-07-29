@@ -292,6 +292,8 @@ public final class AlertEngine {
                 guard snapshot.battery?.isCharging == false else { return false }
             case .charging:
                 guard snapshot.battery?.isCharging == true else { return false }
+            case .pluggedIn:
+                guard snapshot.battery?.isPluggedIn == true else { return false }
             case .displayAsleep:
                 // No display-sleep signal exists anywhere in this codebase
                 // yet — always false. See the doc comment on this case.
@@ -442,7 +444,14 @@ public final class AlertEngine {
             metric: rule.metric.rawValue,
             value: value,
             at: now,
-            delivered: withinRateCap,
+            // `didDeliver`, not `withinRateCap`: the latter only says the cap
+            // *allowed* a delivery, so a rule whose only action is `.logOnly`
+            // (which by definition shows the user nothing) would be recorded
+            // as delivered and render in the history pane with a bell icon
+            // reading "Delivered". The log is the one place a user checks to
+            // find out what actually reached them, so it has to distinguish
+            // "we showed you something" from "nothing stopped us."
+            delivered: didDeliver,
             suppressed: !withinRateCap
         )
     }
@@ -556,7 +565,16 @@ extension AlertEngine {
                 threshold: 100,
                 sustainedFor: 60,
                 cooldown: cooldown,
-                onlyWhen: [.charging],
+                // NOT `[.charging]`, which is the intuitive reading of plan
+                // §11.2's "charge ≥ 100%, charging" but makes the rule
+                // unfireable in practice: macOS stops reporting
+                // `isCharging` once the battery reaches full, so the two
+                // conditions are never simultaneously true and the
+                // sustained 60s window can never complete. `.pluggedIn`
+                // expresses the actual intent — "you're on power and topped
+                // up" — and, unlike `.onBattery`, doesn't also fire at 100%
+                // while running unplugged.
+                onlyWhen: [.pluggedIn],
                 actions: [
                     .notification(title: "Fully Charged", body: "Battery is fully charged.", sound: false)
                 ]

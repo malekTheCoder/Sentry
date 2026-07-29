@@ -172,6 +172,18 @@ extension AlertRule {
         case onBattery
         /// True when `BatteryStats.isCharging` is `true`.
         case charging
+        /// True when `BatteryStats.isPluggedIn` is `true`, regardless of
+        /// whether current is actually flowing into the battery.
+        ///
+        /// Distinct from `charging` for a reason that is easy to get wrong:
+        /// macOS stops reporting `isCharging` once the battery reaches
+        /// 100%, so a rule about a *full* battery gated on `charging` can
+        /// never fire — the two conditions are never simultaneously true.
+        /// It's also the honest precondition for "plugged in but not taking
+        /// charge" situations (thermal pause, Optimized Battery Charging,
+        /// a low-power/data-only source). `nil` battery fails it, same as
+        /// the other cases.
+        case pluggedIn
         /// Always evaluates `false` — there is no display-sleep signal
         /// anywhere in this codebase yet (`StatsCoordinator`'s own doc
         /// comment calls out the same gap for adaptive-throttling

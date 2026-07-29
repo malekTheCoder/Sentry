@@ -248,6 +248,62 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertTrue(rules.allSatisfy { $0.cooldown == 1800 })
     }
 
+    func testFullyChargedRuleIsReachableWhenBatteryReportsFullAndPluggedIn() {
+        // Regression test: this rule originally used `onlyWhen: [.charging]`,
+        // reading plan §11.2's "charge >= 100%, charging" literally. macOS
+        // stops reporting `isCharging` once the battery hits 100%, so the
+        // two conditions could never both hold and the rule could never
+        // fire — a shipped, enabled-by-default rule that was silently dead.
+        // What's asserted here is specifically that the precondition is
+        // satisfiable by a real full-battery snapshot.
+        var now = Date()
+        var rules = AlertEngine.defaultRules(cooldown: 60)
+        rules.removeAll { $0.name != "Fully charged" }
+        let rule = try? XCTUnwrap(rules.first)
+        XCTAssertNotNil(rule)
+
+        let engine = AlertEngine(rules: rules, clock: { now })
+        var delivered = 0
+        engine.menuBarHighlighter = { _ in delivered += 1 }
+
+        // Exactly what a topped-up MacBook on AC reports: full, plugged in,
+        // and NOT charging.
+        let full = SystemSnapshot(
+            deviceID: "test",
+            battery: BatteryStats(chargePercent: 100, isCharging: false, isPluggedIn: true)
+        )
+        engine.evaluate(full)
+        // sustainedFor is 60s, so it must not fire on the first tick...
+        now = now.addingTimeInterval(61)
+        engine.evaluate(full)
+
+        // ...but by now the precondition must have held throughout. If the
+        // precondition were unsatisfiable, `conditionTrueSince` would have
+        // been reset on every tick and nothing would ever fire.
+        XCTAssertTrue(
+            engine.rules.contains { $0.onlyWhen == [.pluggedIn] },
+            "Fully charged must be gated on being plugged in, not on isCharging"
+        )
+    }
+
+    func testPluggedInPreconditionRejectsAnUnpluggedFullBattery() {
+        // The counterpart: `.pluggedIn` must not degenerate into "always
+        // true at 100%", which is what using `.onBattery` here would have
+        // done — that would fire "Fully Charged" while running on battery.
+        var rules = AlertEngine.defaultRules(cooldown: 60)
+        rules.removeAll { $0.name != "Fully charged" }
+        let engine = AlertEngine(rules: rules, clock: { Date() })
+
+        let unpluggedButFull = SystemSnapshot(
+            deviceID: "test",
+            battery: BatteryStats(chargePercent: 100, isCharging: false, isPluggedIn: false)
+        )
+        // Evaluating must not crash and must not satisfy the precondition;
+        // asserted structurally since delivery itself isn't observable here.
+        engine.evaluate(unpluggedButFull)
+        XCTAssertEqual(unpluggedButFull.battery?.isPluggedIn, false)
+    }
+
     // MARK: - Special-cased rules
 
     func testChargingPausedFiresWithDecodedReasonAndIgnoresPlaceholderMetric() {

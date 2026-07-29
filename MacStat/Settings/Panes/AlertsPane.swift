@@ -513,9 +513,23 @@ struct AlertsPane: View {
 
     // MARK: - History (plan §11.3)
 
+    /// Whether history can actually be read — which is *not* the same as
+    /// "a `HistoryStore` was injected."
+    ///
+    /// `HistoryStore` is deliberately failure-tolerant: if the database can't
+    /// be opened it keeps working with a nil `databaseQueue` and every read
+    /// returns `[]` rather than throwing. So checking `historyStore == nil`
+    /// alone (the app always injects one) meant a genuinely broken database
+    /// rendered as "No alerts have fired yet." — a confident claim that
+    /// nothing happened, which is precisely the misreading the unavailable
+    /// state exists to prevent.
+    private var historyIsAvailable: Bool {
+        historyStore?.databaseQueue != nil
+    }
+
     private var historyColumn: some View {
         VStack(spacing: 0) {
-            if historyStore == nil {
+            if !historyIsAvailable {
                 message("Alert history isn't available — MacStat couldn't open its history database. Alerts still fire; they just aren't being recorded.")
             } else if historyEntries.isEmpty {
                 message("No alerts have fired yet.")
@@ -542,7 +556,7 @@ struct AlertsPane: View {
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .disabled(historyStore == nil)
+                .disabled(!historyIsAvailable)
                 .accessibilityLabel("Reload alert history")
             }
             .padding(8)
@@ -927,12 +941,14 @@ private enum ComparisonKind: String, CaseIterable, Hashable {
 private enum PreconditionKind: String, CaseIterable, Hashable {
     case onBattery
     case charging
+    case pluggedIn
     case displayAsleep
 
     var precondition: AlertRule.Precondition {
         switch self {
         case .onBattery: return .onBattery
         case .charging: return .charging
+        case .pluggedIn: return .pluggedIn
         case .displayAsleep: return .displayAsleep
         }
     }
@@ -941,6 +957,7 @@ private enum PreconditionKind: String, CaseIterable, Hashable {
         switch self {
         case .onBattery: return "On battery"
         case .charging: return "Charging"
+        case .pluggedIn: return "Plugged in"
         case .displayAsleep: return "Display asleep"
         }
     }
