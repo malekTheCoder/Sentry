@@ -36,6 +36,37 @@ final class CKMapperTests: XCTestCase {
         XCTAssertEqual(decoded, device)
     }
 
+    func testDeviceWithLastViewedAtRoundTrips() throws {
+        let device = Device(
+            deviceID: "22222222-2222-2222-2222-222222222222",
+            deviceName: "n", model: "m", chip: "c", osVersion: "o", appVersion: "a",
+            lastSeen: Date(timeIntervalSince1970: 1_700_000_000),
+            capabilitiesJSON: "{}",
+            lastViewedAt: Date(timeIntervalSince1970: 1_700_000_500)
+        )
+        let record = CKMapper.record(from: device, zoneID: zoneID)
+        let decoded = try CKMapper.device(from: record)
+        XCTAssertEqual(decoded, device)
+        XCTAssertEqual(decoded.lastViewedAt, device.lastViewedAt)
+    }
+
+    func testDeviceWithNilLastViewedAtOmitsTheKeyEntirely() throws {
+        // Confirms the "no iPhone has ever opened the app yet" case reads
+        // back as nil, not as some sentinel/zero date — and that the
+        // CKRecord genuinely has no key for it (optionalField's nil path,
+        // not a present-but-empty value).
+        let device = Device(
+            deviceID: "33333333-3333-3333-3333-333333333333",
+            deviceName: "n", model: "m", chip: "c", osVersion: "o", appVersion: "a",
+            lastSeen: Date(), capabilitiesJSON: "{}"
+        )
+        let record = CKMapper.record(from: device, zoneID: zoneID)
+        XCTAssertNil(record["lastViewedAt"])
+
+        let decoded = try CKMapper.device(from: record)
+        XCTAssertNil(decoded.lastViewedAt)
+    }
+
     func testDeviceRecordNameIsDeviceID() {
         let device = Device(
             deviceID: "stable-uuid-123",

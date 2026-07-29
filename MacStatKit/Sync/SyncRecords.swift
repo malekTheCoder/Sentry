@@ -39,11 +39,14 @@ import Foundation
 
 // MARK: - Device
 
-/// One record per Mac, written once by the Mac and updated on change
-/// (except `lastViewedAt`-style presence fields, which don't exist on this
-/// type — see plan §7.4's note that the iPhone writes `lastViewedAt`
-/// directly; that field is intentionally omitted here since it's owned by
-/// the not-yet-built heartbeat logic, not the record shape).
+/// One record per Mac, written once by the Mac and updated on change.
+///
+/// `lastViewedAt` is the one exception to "Mac writes this record": plan
+/// §7.4 has the *iPhone* write it directly, on foreground, so the Mac can
+/// read it back and enter fast-cadence mode for 10 minutes (see
+/// `HeartbeatTracker.isFastCadence(lastViewedAt:now:)`, which takes this
+/// field's value as a plain `Date?` rather than a whole `Device`, so it
+/// stays testable without constructing one).
 public struct Device: Codable, Sendable, Equatable {
     /// Stable UUID persisted in the app support dir. Used verbatim as the
     /// `CKRecord.ID.recordName` — see `CKMapper.recordID(forDeviceID:)`.
@@ -58,6 +61,12 @@ public struct Device: Codable, Sendable, Equatable {
     /// JSON-encoded capability description so the phone knows which
     /// modules to render without a schema round-trip.
     public var capabilitiesJSON: String
+    /// Last time the iPhone app was foregrounded, written by the iPhone —
+    /// `nil` until the phone app exists and writes it at least once (plan
+    /// §5's iPhone app is a later phase). `SyncService`/`HeartbeatTracker`
+    /// must treat `nil` as "not recently active," never as "always fast
+    /// cadence" — an absent value is the honest default for "we don't know."
+    public var lastViewedAt: Date?
 
     public init(
         deviceID: String,
@@ -67,7 +76,8 @@ public struct Device: Codable, Sendable, Equatable {
         osVersion: String,
         appVersion: String,
         lastSeen: Date,
-        capabilitiesJSON: String
+        capabilitiesJSON: String,
+        lastViewedAt: Date? = nil
     ) {
         self.deviceID = deviceID
         self.deviceName = deviceName
@@ -77,6 +87,7 @@ public struct Device: Codable, Sendable, Equatable {
         self.appVersion = appVersion
         self.lastSeen = lastSeen
         self.capabilitiesJSON = capabilitiesJSON
+        self.lastViewedAt = lastViewedAt
     }
 }
 

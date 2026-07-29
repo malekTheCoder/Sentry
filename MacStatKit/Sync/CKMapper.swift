@@ -67,6 +67,14 @@ public enum CKMapper {
         record["appVersion"] = device.appVersion as CKRecordValue
         record["lastSeen"] = device.lastSeen as CKRecordValue
         record["capabilitiesJSON"] = device.capabilitiesJSON as CKRecordValue
+        // Omit the key entirely when nil, rather than writing an explicit
+        // CloudKit null: matches CKRecord's own convention (a field that
+        // was never set has no key at all) and keeps `optionalField` below
+        // symmetric with how a real "no iPhone has ever opened the app yet"
+        // record would actually look.
+        if let lastViewedAt = device.lastViewedAt {
+            record["lastViewedAt"] = lastViewedAt as CKRecordValue
+        }
         return record
     }
 
@@ -79,7 +87,8 @@ public enum CKMapper {
             osVersion: field(record, "osVersion"),
             appVersion: field(record, "appVersion"),
             lastSeen: field(record, "lastSeen"),
-            capabilitiesJSON: field(record, "capabilitiesJSON")
+            capabilitiesJSON: field(record, "capabilitiesJSON"),
+            lastViewedAt: optionalField(record, "lastViewedAt")
         )
     }
 
@@ -238,6 +247,19 @@ public enum CKMapper {
         guard let value = record[key] else {
             throw MapperError.missingField(key)
         }
+        guard let typed = value as? T else {
+            throw MapperError.wrongType(key)
+        }
+        return typed
+    }
+
+    /// For fields that are genuinely optional in the model (`Device.lastViewedAt`)
+    /// — a missing key means "absent," not "malformed record," so this
+    /// doesn't throw `.missingField` the way `field(_:_:)` does. A present
+    /// key of the wrong type still throws `.wrongType`: that's real
+    /// corruption, not absence.
+    private static func optionalField<T>(_ record: CKRecord, _ key: String) throws -> T? {
+        guard let value = record[key] else { return nil }
         guard let typed = value as? T else {
             throw MapperError.wrongType(key)
         }
