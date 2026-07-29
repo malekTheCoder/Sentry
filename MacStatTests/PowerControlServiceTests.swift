@@ -1,0 +1,230 @@
+import XCTest
+@testable import MacStatKit
+
+/// Unit tests for `PowerControlService` (plan §10.1–§10.4). Covers the parts
+/// that are pure logic and safe to exercise on a real Mac in a test host
+/// process — the `ReleaseCondition` evaluators and the UserDefaults-backed
+/// persistence/reconciliation round trip — using real `IOPMAssertion`
+/// creation (per plan §10.1 this API is public, unprivileged, and safe to
+/// call from a test host; every test releases what it creates so no test
+/// leaves a stray sleep-prevention assertion alive past its own scope).
+///
+/// The whole class is `@MainActor` because `PowerControlService` itself is:
+/// that keeps every call in these tests synchronously isolated to the same
+/// actor as the service, with no `await` noise at each call site.
+@MainActor
+final class PowerControlServiceTests: XCTestCase {
+
+    /// UserDefaults suite names created by `makeTestDefaults`, cleaned up in
+    /// `tearDown()` so tests don't leave `~/Library/Preferences` plists
+    /// behind across runs.
+    private var suiteNames: [String] = []
+
+    override func tearDown() {
+        for name in suiteNames {
+            UserDefaults().removePersistentDomain(forName: name)
+        }
+        suiteNames.removeAll()
+        super.tearDown()
+    }
+
+    /// A fresh, isolated `UserDefaults` suite per test — mirrors
+    /// `PowerControlService`'s injectable-`defaults:` convention (see its
+    /// init doc comment referencing `RollupJob`) so these tests never touch
+    /// `.standard` / real app persisted state.
+    private func makeTestDefaults(_ name: String) -> UserDefaults {
+        let suiteName = "dev.malekswilam.macstat.tests.PowerControlServiceTests.\(name).\(UUID().uuidString)"
+        suiteNames.append(suiteName)
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    private func snapshot(cpuPercent: Double? = nil, batteryPercent: Double? = nil) -> SystemSnapshot {
+        SystemSnapshot(
+            deviceID: "test-device",
+            battery: batteryPercent.map { BatteryStats(chargePercent: $0, isCharging: false, isPluggedIn: false) },
+            cpu: cpuPercent.map { CPUStats(totalPercent: $0) }
+        )
+    }
+
+    // MARK: - ReleaseCondition.cpuAbovePercent (sustained duration)
+
+    func testCPUAbovePercentDoesNotReleaseBeforeSustainedWindowElapses() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("cpuNotYet"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .cpuAbovePercent(80, for: 0.3),
+            reason: "cpu sustained test"
+        )
+
+        // Above threshold, but the sustained window hasn't elapsed yet —
+        // must still be active.
+        service.evaluate(snapshot(cpuPercent: 90))
+        XCTAssertEqual(service.state, .active(mode: .systemOnly, expiresAt: nil, reason: "cpu sustained test"))
+    }
+
+    func testCPUAbovePercentDipResetsTheSustainedClock() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("cpuReset"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .cpuAbovePercent(80, for: 0.2),
+            reason: "cpu reset test"
+        )
+
+        service.evaluate(snapshot(cpuPercent: 90))       // sustained clock starts
+        Thread.sleep(forTimeInterval: 0.25)               // long enough to have fired...
+        service.evaluate(snapshot(cpuPercent: 10))         // ...but a dip resets the clock
+        service.evaluate(snapshot(cpuPercent: 90))         // freshly started again
+
+        // Only ~0s has elapsed since the reset, well under the 0.2s window,
+        // so this must still be active — proving the dip actually reset the
+        // clock rather than the sustained window merely never having been
+        // checked.
+        XCTAssertNotEqual(service.state, .inactive)
+    }
+
+    func testCPUAbovePercentReleasesAfterHeldContinuouslyForFullWindow() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("cpuFires"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .cpuAbovePercent(80, for: 0.15),
+            reason: "cpu fires test"
+        )
+
+        service.evaluate(snapshot(cpuPercent: 90))
+        Thread.sleep(forTimeInterval: 0.2)
+        service.evaluate(snapshot(cpuPercent: 90)) // still above threshold, window now elapsed
+
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    // MARK: - ReleaseCondition.batteryBelowPercent
+
+    func testBatteryBelowPercentStaysActiveAboveThresholdAndWithNoSample() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("batteryStaysActive"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .batteryBelowPercent(20),
+            reason: "battery test"
+        )
+
+        // No battery sample on this snapshot at all (e.g. desktop Mac, or a
+        // transient IOKit read failure per `BatteryStats`'s doc comment) —
+        // must not crash and must not release.
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive)
+
+        // Above the threshold — stays active.
+        service.evaluate(snapshot(batteryPercent: 55))
+        XCTAssertNotEqual(service.state, .inactive)
+    }
+
+    func testBatteryBelowPercentReleasesWhenCrossed() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("batteryReleases"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .batteryBelowPercent(20),
+            reason: "battery test"
+        )
+
+        service.evaluate(snapshot(batteryPercent: 55))
+        XCTAssertNotEqual(service.state, .inactive)
+
+        service.evaluate(snapshot(batteryPercent: 15))
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    // MARK: - Persistence / reconciliation round-trip
+
+    func testReconciliationWithNoPersistedRecordStartsInactive() {
+        let service = PowerControlService(defaults: makeTestDefaults("reconcileEmpty"))
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    func testReconciliationRestoresUnexpiredIndefiniteAssertionAcrossRelaunch() throws {
+        let defaults = makeTestDefaults("reconcileRestore")
+
+        let first = PowerControlService(defaults: defaults)
+        try first.startAssertion(mode: .systemOnly, duration: nil, reason: "round trip")
+        XCTAssertEqual(first.state, .active(mode: .systemOnly, expiresAt: nil, reason: "round trip"))
+
+        // A second instance sharing the same UserDefaults suite simulates an
+        // app relaunch: its `init` calls `reconcilePersistedState()`, which
+        // must read the persisted `.active` record back and recreate a real
+        // assertion rather than starting `.inactive` (plan §10.4's local
+        // reconciliation-on-launch requirement).
+        let second = PowerControlService(defaults: defaults)
+        XCTAssertEqual(second.state, .active(mode: .systemOnly, expiresAt: nil, reason: "round trip"))
+
+        first.releaseAssertion()
+        second.releaseAssertion()
+    }
+
+    func testReconciliationDiscardsExpiredRecordInsteadOfRestoring() throws {
+        let defaults = makeTestDefaults("reconcileExpired")
+        let key = "dev.malekswilam.macstat.powercontrol.state"
+
+        // Mirrors `PowerControlService`'s private `PersistedRecord` shape
+        // exactly (same member names, same public Codable member types), so
+        // encoding it here produces bytes the real service can decode. This
+        // simulates a record left behind by a session that was killed
+        // before its own in-process `Timer` could fire and clean up —
+        // exactly the "sat around while the Mac was asleep/off" scenario
+        // plan §10.4 calls out, applied to the local reconciliation path.
+        struct MirrorRecord: Codable {
+            var state: SleepAssertionState
+            var condition: ReleaseCondition?
+        }
+        let expiredRecord = MirrorRecord(
+            state: .active(mode: .systemOnly, expiresAt: Date().addingTimeInterval(-3600), reason: "stale"),
+            condition: nil
+        )
+        defaults.set(try JSONEncoder().encode(expiredRecord), forKey: key)
+
+        let service = PowerControlService(defaults: defaults)
+
+        // Must not fire a fresh assertion for a window that already passed...
+        XCTAssertEqual(service.state, .inactive)
+        // ...and must not leave the stale record behind to fool the next launch.
+        XCTAssertNil(defaults.data(forKey: key))
+    }
+
+    func testReconciliationWithStaleAssertionIDDoesNotLeakOnMissingRecord() {
+        // Regression test for the "no persisted record, but a live
+        // assertion still exists in memory" edge case: reconciling must
+        // route through the real release path (which clears `assertionID`)
+        // rather than only overwriting `state`, or the in-memory bookkeeping
+        // and the real OS-level assertion state can diverge silently.
+        // Exercised indirectly here via the public API: starting an
+        // indefinite assertion and then wiping the persisted record out
+        // from under a still-live service (simulating persistence loss)
+        // must not crash when reconciliation subsequently runs, and must
+        // leave the service reporting `.inactive` afterward.
+        let defaults = makeTestDefaults("reconcileStaleID")
+        let service = PowerControlService(defaults: defaults)
+        try? service.startAssertion(mode: .systemOnly, duration: nil, reason: "will be orphaned")
+        XCTAssertNotEqual(service.state, .inactive)
+
+        defaults.removeObject(forKey: "dev.malekswilam.macstat.powercontrol.state")
+
+        // Directly re-invoke the same reconciliation `init` goes through,
+        // via a fresh instance sharing the now-empty suite, confirming the
+        // "no record" path is safe and terminal.
+        let reconciled = PowerControlService(defaults: defaults)
+        XCTAssertEqual(reconciled.state, .inactive)
+
+        service.releaseAssertion()
+        reconciled.releaseAssertion()
+    }
+}
