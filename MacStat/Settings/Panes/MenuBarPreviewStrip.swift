@@ -134,6 +134,18 @@ struct MenuBarPreviewStrip: View {
                     .offset(x: 4, y: -6)
             }
         }
+        // Deliberately *not* resolved: the preview shows every conditional
+        // module dimmed rather than actually applying the rule. It has no
+        // snapshot, so "on battery" and "keeping the Mac awake" are unknowable
+        // here, and `.whenAboveThreshold` could only be evaluated against this
+        // file's invented sample value — which would hide or show a module
+        // based on a number the user never had. Naming the condition is the
+        // honest version; guessing the answer is not.
+        .help(visibilityNote(for: module) ?? "")
+    }
+
+    private func visibilityNote(for module: BarModule) -> String? {
+        module.visibilityRule.previewSummary(unit: module.metric.unit)
     }
 
     // MARK: - Display-mode pieces
@@ -336,7 +348,16 @@ struct MenuBarPreviewStrip: View {
     private var accessibilityDescription: String {
         guard !layout.modules.isEmpty else { return "Empty. No modules configured." }
         return layout.modules
-            .map { "\($0.metric.shortLabel) \(sampleText(for: $0))" }
+            .map { module in
+                var spoken = "\(module.metric.shortLabel) \(sampleText(for: module))"
+                // The dim + eye.slash cue is visual only; §9.4 wants the same
+                // information to reach VoiceOver, and "only shown when
+                // charging" is the whole reason the module looks faded.
+                if let note = visibilityNote(for: module) {
+                    spoken += ", \(note.lowercased())"
+                }
+                return spoken
+            }
             .joined(separator: ", ")
     }
 

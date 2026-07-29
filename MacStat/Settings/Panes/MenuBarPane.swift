@@ -11,6 +11,15 @@ struct MenuBarPane: View {
     /// persisted, so it deliberately lives here and not in `AppSettings`.
     @State private var selectedModuleID: BarModule.ID?
 
+    /// Thresholds parked when the user switches the visibility rule *away*
+    /// from `.whenAboveThreshold`. `VisibilityRule` has nowhere to store the
+    /// number for the other four cases, so without this, tapping through the
+    /// picker to read the options silently resets a threshold the user tuned.
+    /// Deliberately session-only and not persisted: it is undo affordance for
+    /// one editing session, not state worth surviving a relaunch, and the
+    /// per-unit default it falls back to is a fine answer after that.
+    @State private var parkedThresholds: [BarModule.ID: Double] = [:]
+
     var body: some View {
         VStack(spacing: 0) {
             MenuBarPreviewStrip(layout: layout, theme: store.resolvedTheme())
@@ -253,6 +262,98 @@ struct MenuBarPane: View {
                 EmptyView()
             }
         }
+
+        visibilitySection(module)
+    }
+
+    /// Plan §10.5's missing control. Every `VisibilityRule` case has always
+    /// been honored by `StatusItemView.isVisible`, but nothing wrote the
+    /// property, so four of the five were unreachable except by loading the
+    /// Battery Focus preset.
+    @ViewBuilder
+    private func visibilitySection(_ module: Binding<BarModule>) -> some View {
+        let unit = module.wrappedValue.metric.unit
+
+        Section("Visibility") {
+            Picker("Show", selection: visibilityRuleKindBinding(module)) {
+                ForEach(VisibilityRuleKind.allCases, id: \.self) { kind in
+                    Text(kind.displayName).tag(kind)
+                }
+            }
+            .accessibilityLabel("Visibility rule")
+
+            if case .whenAboveThreshold = module.wrappedValue.visibilityRule {
+                // The threshold is compared against the raw metric value in
+                // that metric's own unit (StatusItemView.isVisible), so the
+                // control has to be unit-aware: a slider is only honest where
+                // the unit has a real domain to slide across. Bytes/sec, MHz
+                // and counts have no upper bound worth inventing, so those get
+                // free numeric entry instead of a fake 0–100 track.
+                if let bounds = VisibilityThreshold.sliderBounds(for: unit) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Slider(
+                            value: visibilityThresholdBinding(module),
+                            in: bounds.range,
+                            step: bounds.step
+                        ) {
+                            Text("Threshold")
+                        } minimumValueLabel: {
+                            Text(MetricFormatter.compact(bounds.range.lowerBound, unit: unit))
+                        } maximumValueLabel: {
+                            Text(MetricFormatter.compact(bounds.range.upperBound, unit: unit))
+                        }
+                        .accessibilityLabel("Visibility threshold")
+                        .accessibilityValue(
+                            MetricFormatter.compact(
+                                visibilityThresholdBinding(module).wrappedValue,
+                                unit: unit
+                            )
+                        )
+                        thresholdExplanation(module)
+                    }
+                } else {
+                    LabeledContent("Threshold") {
+                        TextField(
+                            "Threshold",
+                            value: visibilityThresholdBinding(module),
+                            format: .number
+                        )
+                        .labelsHidden()
+                        .frame(width: 110)
+                        .accessibilityLabel("Visibility threshold value")
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Measured in \(VisibilityThreshold.unitDescription(for: unit)).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        thresholdExplanation(module)
+                    }
+                }
+            }
+
+            // Worth saying out loud because the obvious guess is wrong:
+            // `StatsCoordinator` runs a fixed tiered poll loop that never
+            // consults the layout, and `isVisible` is applied in
+            // `StatusItemView.rebuildLayout` after the value has already been
+            // read out of the snapshot. Hiding a module is a render filter, so
+            // the number is current the instant the rule flips back on — and
+            // it is not a way to save battery.
+            Text("Hiding a module only stops it drawing. MacStat keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func thresholdExplanation(_ module: Binding<BarModule>) -> some View {
+        let metric = module.wrappedValue.metric
+        let value = visibilityThresholdBinding(module).wrappedValue
+        // Strictly above, matching `isVisible`'s `value > threshold`; a module
+        // sitting exactly on its threshold stays hidden.
+        return Text("Shown only while \(metric.shortLabel) reads above \(MetricFormatter.compact(value, unit: metric.unit)). A metric with no reading counts as not above it.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var layoutSection: some View {
@@ -373,6 +474,51 @@ struct MenuBarPane: View {
         )
     }
 
+    /// Same shape as `colorRuleKindBinding`: `VisibilityRule` carries an
+    /// associated value on one case, so the `Picker` selects over a plain tag
+    /// and the rule is rebuilt on change. Unlike the color rule, the discarded
+    /// associated value is parked rather than dropped — see `parkedThresholds`.
+    private func visibilityRuleKindBinding(_ module: Binding<BarModule>) -> Binding<VisibilityRuleKind> {
+        Binding(
+            get: { VisibilityRuleKind(rule: module.wrappedValue.visibilityRule) },
+            set: { kind in
+                let current = module.wrappedValue.visibilityRule
+                guard kind != VisibilityRuleKind(rule: current) else { return }
+                if case .whenAboveThreshold(let parked) = current {
+                    parkedThresholds[module.wrappedValue.id] = parked
+                }
+                module.wrappedValue.visibilityRule = kind.rule(
+                    threshold: threshold(for: module.wrappedValue)
+                )
+            }
+        )
+    }
+
+    private func visibilityThresholdBinding(_ module: Binding<BarModule>) -> Binding<Double> {
+        Binding(
+            get: {
+                guard case .whenAboveThreshold(let value) = module.wrappedValue.visibilityRule else {
+                    return threshold(for: module.wrappedValue)
+                }
+                return value
+            },
+            set: { newValue in
+                // Guarded so a stale editor (the TextField commits on blur,
+                // which can land after the picker moved off this case) can't
+                // resurrect `.whenAboveThreshold` over the user's new choice.
+                guard case .whenAboveThreshold = module.wrappedValue.visibilityRule else { return }
+                parkedThresholds[module.wrappedValue.id] = newValue
+                module.wrappedValue.visibilityRule = .whenAboveThreshold(newValue)
+            }
+        )
+    }
+
+    /// The value to offer when `.whenAboveThreshold` is (re)selected: whatever
+    /// this module last used in this session, else a per-unit default.
+    private func threshold(for module: BarModule) -> Double {
+        parkedThresholds[module.id] ?? VisibilityThreshold.defaultValue(for: module.metric.unit)
+    }
+
     private var maxWidthEnabledBinding: Binding<Bool> {
         Binding(
             get: { store.settings.menuBarLayout.maxWidth != nil },
@@ -437,6 +583,163 @@ private enum ColorRuleKind: String, CaseIterable, Hashable {
         case .thresholdGradient: return .thresholdGradient(low: 20, high: 90)
         case .matchSystemAccent: return .matchSystemAccent
         case .themeMetricColor: return .themeMetricColor
+        }
+    }
+}
+
+// MARK: - VisibilityRule case tags
+
+/// A `Picker`-friendly stand-in for `VisibilityRule`'s cases, mirroring
+/// `ColorRuleKind`.
+///
+/// Internal rather than `private` (which is what `ColorRuleKind` gets away
+/// with) because the tag↔rule mapping is the one piece of real logic here:
+/// getting it wrong silently rewrites a user's rule, which no compiler check
+/// catches. `AlertsPane.RuleKind` is internal for the same reason.
+enum VisibilityRuleKind: String, CaseIterable, Hashable {
+    case always
+    case whenAboveThreshold
+    case whenOnBattery
+    case whenCharging
+    case whenAssertionActive
+
+    init(rule: VisibilityRule) {
+        switch rule {
+        case .always: self = .always
+        case .whenAboveThreshold: self = .whenAboveThreshold
+        case .whenOnBattery: self = .whenOnBattery
+        case .whenCharging: self = .whenCharging
+        case .whenAssertionActive: self = .whenAssertionActive
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .always: return "Always"
+        case .whenAboveThreshold: return "When above a threshold"
+        case .whenOnBattery: return "When on battery"
+        case .whenCharging: return "When charging"
+        // Named for what the user did ("keep my Mac awake"), not for the
+        // IOPMAssertion underneath it — plan §10.5's own framing.
+        case .whenAssertionActive: return "While keeping the Mac awake"
+        }
+    }
+
+    /// Rebuilds the real rule. `threshold` is only consumed by one case; the
+    /// caller supplies it unconditionally so the mapping stays total and the
+    /// number survives a round trip through the other four.
+    func rule(threshold: Double) -> VisibilityRule {
+        switch self {
+        case .always: return .always
+        case .whenAboveThreshold: return .whenAboveThreshold(threshold)
+        case .whenOnBattery: return .whenOnBattery
+        case .whenCharging: return .whenCharging
+        case .whenAssertionActive: return .whenAssertionActive
+        }
+    }
+}
+
+extension VisibilityRule {
+    /// Plain-language "when is this module actually on the bar", for surfaces
+    /// that must describe a rule they cannot evaluate — the settings window has
+    /// no snapshot stream, so the preview can say *what the condition is* but
+    /// never *whether it currently holds*.
+    ///
+    /// `nil` for `.always`, because "always shown" is the absence of a
+    /// condition and annotating it would make the unconditional case look
+    /// conditional.
+    func previewSummary(unit: MetricUnit) -> String? {
+        switch self {
+        case .always:
+            return nil
+        case .whenAboveThreshold(let value):
+            return "Only shown when above \(MetricFormatter.compact(value, unit: unit))"
+        case .whenOnBattery:
+            return "Only shown when on battery"
+        case .whenCharging:
+            return "Only shown when charging"
+        case .whenAssertionActive:
+            return "Only shown while MacStat is keeping the Mac awake"
+        }
+    }
+}
+
+/// Per-unit shaping for the `.whenAboveThreshold` control.
+///
+/// The threshold is compared against the metric's raw value in its own unit
+/// (`StatusItemView.isVisible`), so there is no single sensible range: 50 means
+/// half for a percent, a warm chip for °C, and half a *byte* per second for a
+/// network metric. Rather than pick one and be wrong four times out of five,
+/// units with a genuine domain get a bounded slider and the rest get free
+/// numeric entry.
+enum VisibilityThreshold {
+
+    /// Where a module "starts being interesting" for each unit — the point of
+    /// the rule is to surface a metric only when it's worth a glance.
+    static func defaultValue(for unit: MetricUnit) -> Double {
+        switch unit {
+        case .percent: return 50
+        case .celsius: return 70
+        case .watts: return 5
+        case .thermalLevel: return 1          // above nominal
+        case .megahertz: return 2000
+        case .bytes: return 1_073_741_824     // 1 GB
+        case .bytesPerSecond: return 1_048_576 // 1 MB/s
+        case .megabitsPerSecond: return 10
+        case .operationsPerSecond: return 100
+        case .minutes: return 30
+        case .seconds: return 60
+        case .millivolts: return 12_000
+        case .milliamps: return 1_000
+        case .decibelMilliwatts: return -60
+        case .boolean: return 0               // "> 0" is "true"
+        case .decimal: return 1
+        case .count: return 1
+        }
+    }
+
+    /// `nil` means "no defensible upper bound" — use a text field.
+    ///
+    /// Note `.decibelMilliwatts` is bounded but *negative*, and `.boolean` is
+    /// bounded but only has two meaningful positions; both still read better as
+    /// a slider than as a number a user has to guess the scale of.
+    static func sliderBounds(for unit: MetricUnit) -> (range: ClosedRange<Double>, step: Double)? {
+        switch unit {
+        case .percent: return (0...100, 1)
+        case .celsius: return (0...110, 1)
+        case .watts: return (0...150, 0.5)
+        case .thermalLevel: return (0...3, 1)
+        case .decibelMilliwatts: return ((-100)...(0), 1)
+        case .boolean: return (0...1, 1)
+        case .bytes, .bytesPerSecond, .megahertz, .megabitsPerSecond,
+             .operationsPerSecond, .minutes, .seconds, .millivolts,
+             .milliamps, .decimal, .count:
+            return nil
+        }
+    }
+
+    /// Spelled out for the free-entry case, where the field shows a bare
+    /// number and `MetricUnit.suffix` is empty for exactly the byte-scale
+    /// units that need the explanation most.
+    static func unitDescription(for unit: MetricUnit) -> String {
+        switch unit {
+        case .percent: return "percent"
+        case .watts: return "watts"
+        case .celsius: return "degrees Celsius"
+        case .megahertz: return "megahertz"
+        case .bytes: return "bytes"
+        case .bytesPerSecond: return "bytes per second"
+        case .operationsPerSecond: return "operations per second"
+        case .megabitsPerSecond: return "megabits per second"
+        case .minutes: return "minutes"
+        case .seconds: return "seconds"
+        case .millivolts: return "millivolts"
+        case .milliamps: return "milliamps"
+        case .decibelMilliwatts: return "dBm"
+        case .boolean: return "0 or 1"
+        case .decimal: return "a plain number"
+        case .thermalLevel: return "a thermal level from 0 to 3"
+        case .count: return "a count"
         }
     }
 }
