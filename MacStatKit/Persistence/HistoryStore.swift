@@ -168,6 +168,97 @@ public final class HistoryStore: @unchecked Sendable {
         flushTimer = timer
     }
 
+    // MARK: - Alert log (plan §11.3)
+
+    /// Records one `AlertEngine` rule firing. Unlike `record(_:)`'s
+    /// buffered/batched write path, this writes immediately: alert firings
+    /// are, by design, rare (`sustainedFor`, `cooldown`, and the global
+    /// rate cap all exist specifically to keep them rare — see
+    /// `AlertEngine`), so there's no throughput reason to defer the write,
+    /// and a reviewable history pane wants each entry durable as soon as
+    /// possible rather than lost if the app quits before the next flush.
+    ///
+    /// - Parameters:
+    ///   - suppressed: `true` when the rule's condition genuinely fired but
+    ///     the global notification rate cap held it back — still logged
+    ///     (never silently dropped) so a misconfigured rule's impact is
+    ///     visible in history rather than invisible.
+    public func logAlertFiring(
+        ruleID: UUID,
+        ruleName: String,
+        metric: String,
+        value: Double,
+        at date: Date = Date(),
+        delivered: Bool,
+        suppressed: Bool
+    ) {
+        guard let dbQueue else { return }
+        do {
+            try dbQueue.write { db in
+                try db.execute(
+                    sql: """
+                    INSERT INTO alert_log (ts, rule_id, rule_name, metric, value, delivered, suppressed)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        date.timeIntervalSince1970,
+                        ruleID.uuidString,
+                        ruleName,
+                        metric,
+                        value,
+                        delivered ? 1 : 0,
+                        suppressed ? 1 : 0
+                    ]
+                )
+            }
+        } catch {
+            Self.logger.error("Failed to log alert firing for rule \(ruleID.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Reads back recent `alert_log` rows, most recent first — the data
+    /// source for the future history pane (out of scope for this task, but
+    /// there's no reason to make that pane reach into raw SQL to get it).
+    public func recentAlertFirings(limit: Int = 200) -> [AlertLogEntry] {
+        guard let dbQueue else { return [] }
+        do {
+            return try dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT ts, rule_id, rule_name, metric, value, delivered, suppressed
+                    FROM alert_log ORDER BY ts DESC LIMIT ?
+                    """,
+                    arguments: [limit]
+                )
+                return rows.compactMap { row -> AlertLogEntry? in
+                    guard
+                        let ts: Double = row["ts"],
+                        let ruleIDString: String = row["rule_id"],
+                        let ruleID = UUID(uuidString: ruleIDString),
+                        let metric: String = row["metric"],
+                        let value: Double = row["value"],
+                        let delivered: Int = row["delivered"],
+                        let suppressed: Int = row["suppressed"]
+                    else { return nil }
+                    let ruleName: String = row["rule_name"] ?? ""
+                    return AlertLogEntry(
+                        timestamp: Date(timeIntervalSince1970: ts),
+                        ruleID: ruleID,
+                        ruleName: ruleName,
+                        metric: metric,
+                        value: value,
+                        delivered: delivered != 0,
+                        suppressed: suppressed != 0
+                    )
+                }
+            }
+        } catch {
+            Self.logger.error("Failed to read alert_log: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
     // MARK: - Read path
 
     /// Reads samples for one metric from the tier the caller specifies. The
@@ -388,4 +479,16 @@ public final class HistoryStore: @unchecked Sendable {
         case .critical: return 3
         }
     }
+}
+
+/// One row read back from `alert_log` — the future history pane's data
+/// source (plan §11.3).
+public struct AlertLogEntry: Equatable, Sendable {
+    public let timestamp: Date
+    public let ruleID: UUID
+    public let ruleName: String
+    public let metric: String
+    public let value: Double
+    public let delivered: Bool
+    public let suppressed: Bool
 }

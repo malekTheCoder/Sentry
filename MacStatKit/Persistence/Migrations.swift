@@ -63,6 +63,23 @@ public enum Migrations {
             }
         }
 
+        // `AlertEngine` (plan §11) needs two more columns on `alert_log`
+        // than v1Schema shipped with: a human-readable rule name (so the
+        // future history pane doesn't have to cross-reference a possibly
+        // since-deleted/renamed `AlertRule` just to render a list), and a
+        // `suppressed` flag for the §11.3 global rate cap — a firing that
+        // exceeded the cap is still recorded (never silently dropped, so
+        // the history pane can show "6 more alerts were suppressed") but
+        // wasn't actually delivered as a notification. `ALTER TABLE ADD
+        // COLUMN` rather than recreating the table, per this file's own
+        // rule: v1Schema already shipped and must not be edited.
+        migrator.registerMigration("v2AlertLogColumns") { db in
+            try db.alter(table: "alert_log") { t in
+                t.add(column: "rule_name", .text).notNull().defaults(to: "")
+                t.add(column: "suppressed", .integer).notNull().defaults(to: 0)
+            }
+        }
+
         return migrator
     }
 }
