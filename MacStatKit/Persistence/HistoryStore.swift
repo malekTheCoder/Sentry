@@ -337,6 +337,82 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
+    /// Like `samples(metric:since:tier:)`, but also surfaces the min/max
+    /// band each `.hourly`/`.daily` rollup row already stores alongside its
+    /// average — the Dashboard's detail charts want to draw a min/max band
+    /// around the average line, which the plain `avg`-only `samples` method
+    /// has no way to express. Added as a new method rather than changing
+    /// `samples`'s return shape so existing callers (`AlertsPane`, the
+    /// dropdown's chart) keep compiling against the tuple shape they
+    /// already depend on.
+    ///
+    /// **`.raw` tier:** `sample_raw` has no `min_value`/`max_value` columns
+    /// — each row already IS a single reading, so there's no band to
+    /// surface. Rather than force every caller to special-case `.raw`, this
+    /// returns the same value for `min`/`avg`/`max` in that case (a
+    /// zero-width band), which is both the mathematically honest answer (a
+    /// single sample's min, average, and max are all itself) and lets a
+    /// caller draw the band unconditionally without an `if tier == .raw`
+    /// branch. Callers that actually want a meaningful band should prefer
+    /// `.hourly`/`.daily`.
+    public func samplesWithRange(
+        metric: String,
+        since: Date,
+        tier: Tier
+    ) -> [(timestamp: Date, min: Double, avg: Double, max: Double)] {
+        guard let dbQueue else { return [] }
+        let sinceEpoch = since.timeIntervalSince1970
+
+        do {
+            return try dbQueue.read { db -> [(timestamp: Date, min: Double, avg: Double, max: Double)] in
+                let rows: [Row]
+                switch tier {
+                case .raw:
+                    rows = try Row.fetchAll(
+                        db,
+                        sql: "SELECT ts AS x, value AS avg FROM sample_raw WHERE metric = ? AND ts >= ? ORDER BY ts ASC",
+                        arguments: [metric, sinceEpoch]
+                    )
+                case .hourly:
+                    rows = try Row.fetchAll(
+                        db,
+                        sql: """
+                        SELECT hour_start AS x, min_value AS lo, max_value AS hi, avg_value AS avg
+                        FROM sample_hourly WHERE metric = ? AND hour_start >= ? ORDER BY hour_start ASC
+                        """,
+                        arguments: [metric, sinceEpoch]
+                    )
+                case .daily:
+                    rows = try Row.fetchAll(
+                        db,
+                        sql: """
+                        SELECT day_start AS x, min_value AS lo, max_value AS hi, avg_value AS avg
+                        FROM sample_daily WHERE metric = ? AND day_start >= ? ORDER BY day_start ASC
+                        """,
+                        arguments: [metric, sinceEpoch]
+                    )
+                }
+                // Safe against a future migration relaxing NOT NULL on these
+                // columns, same reasoning as `samples(metric:since:tier:)`:
+                // decode as optionals and skip rather than risk a trap on a
+                // GRDB non-optional Row subscript.
+                return rows.compactMap { row -> (timestamp: Date, min: Double, avg: Double, max: Double)? in
+                    guard let x: Double = row["x"], let avg: Double = row["avg"] else { return nil }
+                    switch tier {
+                    case .raw:
+                        return (timestamp: Date(timeIntervalSince1970: x), min: avg, avg: avg, max: avg)
+                    case .hourly, .daily:
+                        guard let lo: Double = row["lo"], let hi: Double = row["hi"] else { return nil }
+                        return (timestamp: Date(timeIntervalSince1970: x), min: lo, avg: avg, max: hi)
+                    }
+                }
+            }
+        } catch {
+            Self.logger.error("Failed to read \(metric, privacy: .public) ranged samples: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
     private func tier(for since: Date) -> Tier {
         let range = Date().timeIntervalSince(since)
         let hour: TimeInterval = 3600

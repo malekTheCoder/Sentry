@@ -83,6 +83,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let debugDumpViewModel = DebugDumpViewModel()
     private lazy var debugWindowController = DebugWindowController(viewModel: debugDumpViewModel)
 
+    // MARK: - Dashboard window
+    //
+    // Same lazy-singleton pattern as `settingsWindowController`/
+    // `debugWindowController` above — costs nothing until the dropdown's
+    // "History" button is actually clicked. `DashboardView` (the real root
+    // view) is being built concurrently elsewhere, so this is wired to a
+    // placeholder for now; see `HistoryWindowController`'s doc comment for
+    // why that's a one-line swap once `DashboardView` lands.
+    private lazy var historyWindowController = HistoryWindowController(
+        rootView: { AnyView(Text("Dashboard coming soon")) }
+    )
+
     private var snapshotTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
@@ -255,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 enabledModules: enabledModules,
                 cardListMaxHeight: height,
                 onOpenSettings: { [weak self] in self?.openSettings() },
-                onOpenHistory: { [weak self] in self?.openSettings() },
+                onOpenHistory: { [weak self] in self?.historyWindowController.show() },
                 onQuit: { NSApplication.shared.terminate(nil) }
             )
         )
