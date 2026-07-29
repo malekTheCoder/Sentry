@@ -167,6 +167,28 @@ public final class StatsCoordinator: @unchecked Sendable {
     }
     private var popoverIsClosedStorage = true
 
+    /// Current sleep-prevention state, pushed down by the composition root
+    /// whenever `PowerControlService.state` changes — deliberately *not* a
+    /// provider closure like the collectors above.
+    ///
+    /// `PowerControlService` is `@MainActor`-isolated, and every provider
+    /// closure here is invoked from a global background queue in
+    /// `tick(tier:)`; reading a main-actor `@Published` property from there
+    /// would be exactly the kind of unsynchronized cross-domain access this
+    /// file's own history (the `ChannelResolver` crash) argues against.
+    /// Pushing from the main actor instead keeps the isolation boundary
+    /// intact in the direction it already runs, and costs nothing — the
+    /// state changes on user action, not on a poll tick.
+    ///
+    /// Feeds `SystemSnapshot.sleepAssertion`, which is what makes the
+    /// `.whenAssertionActive` menu bar visibility rule (already implemented
+    /// in `StatusItemView.isVisible`) able to ever evaluate true.
+    public var sleepAssertionState: SleepAssertionState? {
+        get { queue.sync { sleepAssertionStateStorage } }
+        set { queue.async { [weak self] in self?.sleepAssertionStateStorage = newValue } }
+    }
+    private var sleepAssertionStateStorage: SleepAssertionState?
+
     /// Derived from the most recent `BatteryStats.isPluggedIn`, per the
     /// task's guidance to read our own last-known snapshot rather than
     /// re-deriving power-source state elsewhere (that would violate P1 —
@@ -426,8 +448,8 @@ public final class StatsCoordinator: @unchecked Sendable {
     /// Every sub-struct on `SystemSnapshot` is optional (plan §6.1) so a Mac
     /// missing a capability — or a tier that just hasn't ticked yet —
     /// produces a valid, smaller snapshot rather than fake zeros.
-    /// `sleepAssertion` has no collector/provider anywhere in this codebase
-    /// yet, so it's always nil for now.
+    /// `sleepAssertion` is pushed in from the main actor rather than polled
+    /// — see `sleepAssertionState`'s doc comment for why.
     private func buildSnapshot() -> SystemSnapshot {
         SystemSnapshot(
             deviceID: deviceID,
@@ -439,7 +461,7 @@ public final class StatsCoordinator: @unchecked Sendable {
             disk: latest.disk,
             network: latest.network,
             thermal: latest.thermal,
-            sleepAssertion: nil
+            sleepAssertion: sleepAssertionStateStorage
         )
     }
 }

@@ -8,6 +8,11 @@ import MacStatKit
 /// AppDelegate stays the composition root and this view stays previewable.
 struct DropdownView: View {
     @ObservedObject private var viewModel: DropdownViewModel
+    /// Observed here rather than only inside `SleepControlCard` so the card's
+    /// position in the layout can't be the thing that decides whether state
+    /// changes propagate; the service is owned by the AppDelegate composition
+    /// root, same as the view model.
+    @ObservedObject private var powerControl: PowerControlService
     @Environment(\.colorScheme) private var systemColorScheme
 
     private let theme: Theme
@@ -17,8 +22,21 @@ struct DropdownView: View {
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
 
+    /// `@MainActor` because `PowerControlService` is main-actor isolated and
+    /// this init stores one. Costs callers nothing: every one (AppDelegate,
+    /// `#Preview`) is already main-actor isolated, as any code building a
+    /// SwiftUI view hierarchy must be.
+    @MainActor
     init(
         viewModel: DropdownViewModel,
+        // Second, next to the other injected object it belongs with.
+        //
+        // Required, not optional-with-a-local-fallback: a locally constructed
+        // service would read and write the same persisted assertion record as
+        // the app's real one under `UserDefaults.standard`, so two live
+        // instances would each try to reconcile (and re-create) the other's
+        // assertion on wake. The composition root owns exactly one.
+        powerControl: PowerControlService,
         theme: Theme = .terminal,
         enabledModules: Set<MetricModule> = Set(MetricModule.allCases),
         // Callers pass the actual anchor screen's height so this scales with
@@ -32,6 +50,7 @@ struct DropdownView: View {
         onQuit: @escaping () -> Void
     ) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
+        self._powerControl = ObservedObject(wrappedValue: powerControl)
         self.theme = theme
         self.enabledModules = enabledModules
         self.cardListMaxHeight = cardListMaxHeight
@@ -51,6 +70,11 @@ struct DropdownView: View {
                 battery: viewModel.snapshot?.battery,
                 powerSeries: viewModel.series(for: .power)
             )
+            // Above the scroll view, not inside it: a control the user came
+            // to press shouldn't be reachable only after scrolling past the
+            // metric cards, and the live countdown is the one thing here
+            // worth keeping permanently visible.
+            SleepControlCard(powerControl: powerControl)
             ScrollView(.vertical, showsIndicators: false) {
                 ModuleCardStack(
                     snapshot: viewModel.snapshot,
@@ -192,6 +216,9 @@ private struct DropdownFooter: View {
 #Preview {
     DropdownView(
         viewModel: DropdownViewModel(),
+        // Throwaway suite so the preview never reads or writes the real app's
+        // persisted assertion record.
+        powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.dropdown")!),
         theme: .terminal,
         onOpenSettings: {},
         onOpenHistory: {},

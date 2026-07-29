@@ -42,6 +42,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let historyStore = HistoryStore()
     private lazy var rollupJob = RollupJob(dbQueue: historyStore.databaseQueue)
 
+    // MARK: - Phase 3 services
+    //
+    // Both are fed from the same snapshot stream as everything else (plan
+    // §3.2 P3) rather than owning timers of their own. Exactly one
+    // `PowerControlService` exists app-wide: it persists the live assertion
+    // to `UserDefaults` and re-creates it on wake, so a second instance
+    // would reconcile against — and fight over — the first's record.
+    private let powerControl = PowerControlService()
+
     // MARK: - UI
 
     private var statusItemController: StatusItemController?
@@ -51,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private var snapshotTask: Task<Void, Never>?
     private var settingsObservation: Task<Void, Never>?
+    private var powerControlObservation: Task<Void, Never>?
 
     /// Only a theme or enabled-modules change requires rebuilding the
     /// dropdown's SwiftUI tree. Tracked so unrelated settings edits (a
@@ -99,6 +109,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.historyStore.record(snapshot)
                 self.statusItemController?.update(snapshot)
                 self.dropdownViewModel.ingest(snapshot)
+                // Without this, a conditional assertion ("keep awake until
+                // battery < 20%") is armed but inert — the service has no
+                // data source of its own by design.
+                self.powerControl.evaluate(snapshot)
+            }
+        }
+
+        // Mirror assertion state into the coordinator so it lands on the next
+        // `SystemSnapshot` — that's what lets the `.whenAssertionActive`
+        // menu bar visibility rule (plan §10.5) ever evaluate true. Pushed
+        // from here rather than polled by the coordinator: the state is
+        // main-actor isolated and changes on user action, not on a tick.
+        powerControlObservation = Task { [weak self] in
+            guard let self else { return }
+            for await state in self.powerControl.$state.values {
+                self.coordinator.sleepAssertionState = state
             }
         }
 
@@ -134,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let hostingController = NSHostingController(
             rootView: DropdownView(
                 viewModel: dropdownViewModel,
+                powerControl: powerControl,
                 theme: theme,
                 enabledModules: enabledModules,
                 cardListMaxHeight: cardListMaxHeight(),
