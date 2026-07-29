@@ -38,6 +38,25 @@ struct MenuBarPalette {
             : [accent.withAlphaComponent(0.35), accent.withAlphaComponent(0)]
         metricColors = theme.metricColors.mapValues { $0.nsColor(dark: dark) }
     }
+
+    /// Resolves an `AlertAction.menuBarHighlight` token to a themed color.
+    ///
+    /// The token is a free-form `String` by design (see `AlertAction`'s doc
+    /// comment — the plan named a `ThemeColorToken` type that doesn't exist,
+    /// and inventing one as a side effect of the alerts work would have been
+    /// scope creep). So this maps the semantic names the shipped rules
+    /// actually use and falls back to `warning` rather than silently drawing
+    /// nothing: a highlight that fails to render is indistinguishable from a
+    /// rule that never fired, which is exactly the kind of invisible failure
+    /// the alert log exists to prevent.
+    func alertHighlightColor(for token: String) -> NSColor {
+        switch token.lowercased() {
+        case "critical", "danger", "error": return danger
+        case "success", "ok": return success
+        case "accent", "info": return accent
+        default: return warning
+        }
+    }
 }
 
 /// Where a value sits in a `.thresholdGradient` ramp.

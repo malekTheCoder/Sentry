@@ -72,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     )
 
     private var snapshotTask: Task<Void, Never>?
-    private var settingsObservation: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     /// Only a theme or enabled-modules change requires rebuilding the
@@ -132,15 +131,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         alertEngine.sleepAssertionReleaser = { [weak self] in
             self?.powerControl.releaseAssertion()
         }
-        // Plan §11.3 wants notification authorization requested lazily — on
-        // first rule *enable*, never at launch — so a user who turns every
-        // alert off is never prompted at all. Rules ship enabled by default,
-        // so "first enable" in practice means the first launch where any
-        // enabled rule exists; `ruleWasEnabled` itself only requests once.
-        lastEnabledRuleIDs = Set(settings.alertRules.filter(\.isEnabled).map(\.id))
-        if let firstEnabled = settings.alertRules.first(where: \.isEnabled) {
-            alertEngine.ruleWasEnabled(firstEnabled)
+        // The shipped "Thermal throttling" rule carries `.menuBarHighlight`
+        // and is enabled by default, so leaving this unassigned meant a
+        // default rule advertising an action that silently did nothing.
+        alertEngine.menuBarHighlighter = { [weak self] token in
+            self?.statusItemController?.highlight(token: token)
         }
+        // Seed the enabled set so `applySettings` can spot a genuine
+        // disabled→enabled transition later. Deliberately *without* calling
+        // `ruleWasEnabled` here: rules ship enabled, so doing so would
+        // request notification authorization at launch on every fresh
+        // install — precisely what plan §11.3 forbids ("request
+        // authorization lazily — on first alert rule enable, not at
+        // launch"). `AlertEngine` instead requests on its first actual
+        // delivery attempt, so a user who never trips a rule, or who turns
+        // alerts off before one fires, is never prompted at all.
+        lastEnabledRuleIDs = Set(settings.alertRules.filter(\.isEnabled).map(\.id))
 
         // StatsCoordinator's AsyncStream is the single source every consumer
         // reads (plan §3.2 P3) — the menu bar, the dropdown, and the history
@@ -184,12 +190,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .store(in: &cancellables)
 
         // Live-apply theme/layout changes made in Settings without a restart.
-        settingsObservation = Task { [weak self] in
-            guard let self else { return }
-            for await newSettings in self.settingsStore.$settings.values {
-                self.applySettings(newSettings)
+        //
+        // `sink` for the same reason as `$state` above, and it matters more
+        // here: this channel now carries `updateRules` and the
+        // disabled→enabled detection that drives notification
+        // authorization. `AsyncPublisher` would drop emissions during a
+        // rapid burst — and a slider drag emits per frame — which could
+        // leave the engine running stale rules. (The set-difference check
+        // means a missed transition self-heals on the next emission, but
+        // fixing one instance of a bug class and leaving its sibling is how
+        // it comes back.)
+        settingsStore.$settings
+            .sink { [weak self] newSettings in
+                self?.applySettings(newSettings)
             }
-        }
+            .store(in: &cancellables)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -329,6 +344,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // (cooldown timers, sustained-since) for rules whose `id` is
         // unchanged, so editing a rule's name mid-cooldown doesn't reset it.
         alertEngine.updateRules(settings.alertRules)
+        // Advanced pane exposes this as a live slider; captured once at
+        // construction it would do nothing until relaunch.
+        alertEngine.rateCapPerHour = settings.notificationRateCapPerHour
 
         // Then report any disabled→enabled transition, which is what drives
         // §11.3's lazy notification authorization.

@@ -112,7 +112,11 @@ public final class AlertEngine {
     /// in at construction (and reconstruct/update this engine if the user
     /// changes it), matching the same "read from `AppSettings`, don't
     /// hardcode" guidance `AlertRule` gives for `cooldown`.
-    private let rateCapPerHour: Int
+    /// `var`, not `let`: `AdvancedPane` exposes this as a live slider, so a
+    /// value captured once at construction would leave the control wired to
+    /// nothing until the next relaunch. The composition root assigns it from
+    /// `applySettings`.
+    public var rateCapPerHour: Int
 
     // MARK: - Rules
 
@@ -197,6 +201,15 @@ public final class AlertEngine {
     /// user who never turns on any alert never sees the system permission
     /// prompt at all.
     public func ruleWasEnabled(_ rule: AlertRule) {
+        requestAuthorizationIfNeeded()
+    }
+
+    /// Requests notification authorization exactly once per engine lifetime.
+    /// Called from `ruleWasEnabled` (user explicitly switched a rule on) and
+    /// from the first actual delivery attempt (covers the shipped-enabled
+    /// default rules) — see `deliverNotification` for why both entry points
+    /// are needed to satisfy §11.3 without prompting at launch.
+    private func requestAuthorizationIfNeeded() {
         guard !authorizationRequested else { return }
         authorizationRequested = true
         notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
@@ -454,6 +467,16 @@ public final class AlertEngine {
     }
 
     private func deliverNotification(title: String, body: String, sound: Bool, ruleID: UUID) {
+        // The other half of §11.3's lazy authorization. `ruleWasEnabled`
+        // covers the user explicitly switching a rule on; this covers the
+        // shipped-enabled default rules, which would otherwise force the
+        // composition root to prompt at launch (defeating the point) or
+        // never prompt at all (so notifications silently never appear).
+        // Requesting here means the prompt arrives at the first moment
+        // there is genuinely something to show the user. Idempotent via the
+        // same `authorizationRequested` flag.
+        requestAuthorizationIfNeeded()
+
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

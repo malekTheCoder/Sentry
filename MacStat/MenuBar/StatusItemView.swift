@@ -41,6 +41,11 @@ final class StatusItemView: NSView {
     /// view reads as an unlabeled blank.
     private(set) var accessibilitySummary: String = "MacStat"
 
+    /// Semantic color token of the currently-displayed alert highlight, or
+    /// nil when none is active. Set via `highlight(token:for:)`.
+    private var highlightToken: String?
+    private var highlightExpiryTimer: Timer?
+
     init(layout: MenuBarLayout, theme: Theme) {
         self.layout = layout
         self.theme = theme
@@ -71,6 +76,30 @@ final class StatusItemView: NSView {
         self.layout = layout
         pruneHistory()
         rebuildLayout()
+    }
+
+    /// Shows the alert highlight for `duration`, then clears it.
+    ///
+    /// Time-limited rather than sticky because nothing would ever clear it
+    /// otherwise: `AlertEngine` fires an action, it has no matching
+    /// "condition ended" event, and a highlight that never goes away stops
+    /// carrying information within a day. The timer is replaced (not
+    /// stacked) so a rule firing repeatedly extends the window instead of
+    /// queueing several expiries that each fight over the same state.
+    func highlight(token: String, for duration: TimeInterval = 30) {
+        highlightExpiryTimer?.invalidate()
+        highlightToken = token
+        needsDisplay = true
+        highlightExpiryTimer = Timer.scheduledTimer(
+            withTimeInterval: duration,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.highlightToken = nil
+                self?.highlightExpiryTimer = nil
+                self?.needsDisplay = true
+            }
+        }
     }
 
     func apply(theme: Theme) {
@@ -240,6 +269,8 @@ final class StatusItemView: NSView {
         let slot = bounds
         guard slot.width > 0 else { return }
 
+        drawHighlightIfNeeded(in: slot)
+
         guard !items.isEmpty else {
             renderer.drawFallbackGlyph(in: slot.insetBy(dx: horizontalPadding, dy: 0))
             return
@@ -268,6 +299,32 @@ final class StatusItemView: NSView {
             // pretending the dropped modules were never configured.
             renderer.drawTertiaryText(Self.ellipsis, in: slot, x: x + gap)
         }
+    }
+
+    // MARK: - Alert highlight (plan §11.1 `AlertAction.menuBarHighlight`)
+
+    /// Draws the alert highlight behind the modules, if one is active.
+    ///
+    /// Deliberately a rounded, translucent wash rather than an opaque fill:
+    /// the point is to draw the eye to a bar item the user isn't looking at,
+    /// not to make its numbers unreadable — and the menu bar sits on the
+    /// user's wallpaper, so an opaque block would read as a rendering glitch.
+    private func drawHighlightIfNeeded(in slot: CGRect) {
+        guard let token = highlightToken,
+              let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let color = renderer.palette.alertHighlightColor(for: token)
+        let inset = slot.insetBy(dx: 1, dy: 2)
+        let path = CGPath(
+            roundedRect: inset,
+            cornerWidth: 4,
+            cornerHeight: 4,
+            transform: nil
+        )
+        ctx.saveGState()
+        ctx.addPath(path)
+        ctx.setFillColor(color.withAlphaComponent(0.28).cgColor)
+        ctx.fillPath()
+        ctx.restoreGState()
     }
 
     private func drawSeparator(centeredAt x: CGFloat, in rect: CGRect) {

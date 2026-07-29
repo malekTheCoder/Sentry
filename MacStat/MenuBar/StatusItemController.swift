@@ -69,6 +69,13 @@ final class StatusItemController {
         resize()
     }
 
+    /// Delivers `AlertAction.menuBarHighlight` (plan §11.1). No `resize()` —
+    /// the highlight is drawn behind the existing modules and doesn't change
+    /// the item's intrinsic width.
+    func highlight(token: String) {
+        contentView.highlight(token: token)
+    }
+
     // MARK: - Private
 
     private func resize() {

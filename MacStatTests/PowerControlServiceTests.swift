@@ -199,10 +199,48 @@ final class PowerControlServiceTests: XCTestCase {
         }
         XCTAssertEqual(mode, .systemOnly)
         XCTAssertEqual(reason, "timed round trip")
-        XCTAssertNotNil(secondExpiry)
+        // Asserting the expiry is merely non-nil would also pass for an
+        // implementation that restarted the *full* hour on every launch —
+        // an assertion that renews itself indefinitely, which is the whole
+        // failure mode the indefinite case above exists to prevent. The
+        // distinguishing invariant is that restoring preserves the absolute
+        // expiry *instant*; restarting would push it later.
+        let secondExpiryUnwrapped = try XCTUnwrap(secondExpiry)
+        let firstExpiryUnwrapped = try XCTUnwrap(firstExpiry)
+        XCTAssertEqual(
+            secondExpiryUnwrapped.timeIntervalSince(firstExpiryUnwrapped),
+            0,
+            accuracy: 1.0,
+            "restoring must preserve the original expiry instant, not restart the window"
+        )
 
         first.releaseAssertion()
         second.releaseAssertion()
+    }
+
+    func testWakeKeepsAnIndefiniteAssertionThatColdStartWouldHaveDiscarded() throws {
+        let defaults = makeTestDefaults("reconcileWake")
+        let service = PowerControlService(defaults: defaults)
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "across wake")
+
+        // The deliberate asymmetry to `testColdStartDoesNotRestoreAnIndefiniteAssertion`:
+        // on wake the process never died, so the user's standing "keep this
+        // Mac awake" intent is still live and must survive. Only a cold
+        // start — where the OS already released the real assertion — treats
+        // the persisted record as stale. Without this test the two halves of
+        // `isColdStart` could silently converge on the same behaviour and
+        // still pass everything else.
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        let resumed = expectation(description: "wake reconciliation ran")
+        DispatchQueue.main.async { resumed.fulfill() }
+        wait(for: [resumed], timeout: 2)
+
+        XCTAssertEqual(service.state, .active(mode: .systemOnly, expiresAt: nil, reason: "across wake"))
+
+        service.releaseAssertion()
     }
 
     func testReconciliationDiscardsExpiredRecordInsteadOfRestoring() throws {
