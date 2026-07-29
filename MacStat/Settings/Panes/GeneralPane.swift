@@ -1,7 +1,9 @@
 import SwiftUI
 import MacStatKit
 
-/// Launch behaviour and the §8.4 sampling controls.
+/// Launch behaviour and the §8.4 sampling controls, including the FR-2
+/// per-tier medium/slow refresh sliders (see the "Tier Intervals" section
+/// below).
 struct GeneralPane: View {
 
     @ObservedObject var store: SettingsStore
@@ -65,6 +67,68 @@ struct GeneralPane: View {
                 Text("Sampling")
             }
 
+            // FR-2, additive: "refresh interval user-adjustable per module."
+            // `StatsCoordinator` schedules by tier (fast/medium/slow), not
+            // per collector, so this section is deliberately titled and
+            // captioned as tier-level control rather than claiming
+            // per-module granularity the app doesn't actually have — see
+            // `StatsCoordinator.setBaseInterval`'s doc comment for why that
+            // scope call was made instead of a per-collector scheduler
+            // rewrite.
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Slider(
+                        value: $store.settings.mediumTierRefreshInterval,
+                        in: 1...60,
+                        step: 1
+                    ) {
+                        Text("Medium tier interval")
+                    } minimumValueLabel: {
+                        Text("1s")
+                    } maximumValueLabel: {
+                        Text("60s")
+                    }
+                    .accessibilityLabel("Medium tier refresh interval in seconds")
+                    .accessibilityValue(formattedMediumInterval)
+
+                    LabeledContent("ANE, temperatures, fan RPM", value: formattedMediumInterval)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Slider(
+                        value: $store.settings.slowTierRefreshInterval,
+                        // Matches StatsCoordinator.setSlowInterval's actual
+                        // clamp: every tier's *effective* interval is capped
+                        // at 60s by adaptive throttling regardless of this
+                        // base value, so a wider slider would silently lie
+                        // about what setting it to, say, 180s does.
+                        in: 5...60,
+                        step: 5
+                    ) {
+                        Text("Slow tier interval")
+                    } minimumValueLabel: {
+                        Text("5s")
+                    } maximumValueLabel: {
+                        Text("60s")
+                    }
+                    .accessibilityLabel("Slow tier refresh interval in seconds")
+                    .accessibilityValue(formattedSlowInterval)
+
+                    LabeledContent("Battery %, health, cycle count", value: formattedSlowInterval)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Tier Intervals")
+            } footer: {
+                Text("The refresh interval above controls the fast tier (CPU, GPU, memory, network, disk). These two sliders control the other two tiers — every module assigned to a tier shares that tier's interval, so this is per-tier control, not independently adjustable per module.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("Updates") {
                 Toggle("Check for updates daily", isOn: $store.settings.updateCheckDaily)
                     .accessibilityLabel("Check for updates daily")
@@ -90,6 +154,14 @@ struct GeneralPane: View {
 
     private var formattedInterval: String {
         String(format: "%.1f s", store.settings.globalRefreshInterval)
+    }
+
+    private var formattedMediumInterval: String {
+        String(format: "%.0f s", store.settings.mediumTierRefreshInterval)
+    }
+
+    private var formattedSlowInterval: String {
+        String(format: "%.0f s", store.settings.slowTierRefreshInterval)
     }
 
     /// Writes through to `SMAppService` first and only records the new value in

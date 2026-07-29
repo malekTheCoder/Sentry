@@ -7,6 +7,12 @@ struct AdvancedPane: View {
 
     @ObservedObject var store: SettingsStore
 
+    /// Opens the Phase 1 exit-criterion debug window (raw `SystemSnapshot`
+    /// dump). `nil` by default so this pane keeps working — button just
+    /// absent — wherever it's constructed without a debug window controller
+    /// wired up (e.g. a future preview or test harness).
+    var onShowDebugWindow: (() -> Void)?
+
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -110,6 +116,20 @@ struct AdvancedPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let onShowDebugWindow {
+                Section("Developer") {
+                    Button("Show Debug Window…") {
+                        onShowDebugWindow()
+                    }
+                    .accessibilityLabel("Show debug window")
+
+                    Text("Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .formStyle(.grouped)

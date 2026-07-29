@@ -69,8 +69,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // view reads `alert_log` from it. Without this it renders an
         // explicit "history unavailable" state rather than a misleading
         // empty list.
-        historyStore: historyStore
+        historyStore: historyStore,
+        onShowDebugWindow: { [weak self] in self?.debugWindowController.show() }
     )
+
+    // MARK: - Debug window (plan Phase 1 exit criterion)
+    //
+    // Another independent consumer of `coordinator.snapshots()` — same shape
+    // as `historyStore`/`statusItemController`/`dropdownViewModel` below —
+    // not a second poll loop. `DebugWindowController` builds its window
+    // lazily on first `show()`, so this costs nothing until the developer
+    // actually opens it from the Advanced settings pane.
+    private let debugDumpViewModel = DebugDumpViewModel()
+    private lazy var debugWindowController = DebugWindowController(viewModel: debugDumpViewModel)
 
     private var snapshotTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
@@ -117,6 +128,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // refresh interval / retention window takes effect on the first tick
         // rather than only after the user next touches a control.
         coordinator.setBaseInterval(settings.globalRefreshInterval)
+        // FR-2, additive: medium/slow tiers are now independently
+        // user-adjustable (see StatsCoordinator.setBaseInterval's doc
+        // comment) rather than ratio-derived from the fast interval above.
+        coordinator.setMediumInterval(settings.mediumTierRefreshInterval)
+        coordinator.setSlowInterval(settings.slowTierRefreshInterval)
         coordinator.adaptiveThrottlingEnabled = settings.adaptiveThrottlingEnabled
         rollupJob.setRetention(
             rawHours: settings.rawRetentionHours,
@@ -159,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.historyStore.record(snapshot)
                 self.statusItemController?.update(snapshot)
                 self.dropdownViewModel.ingest(snapshot)
+                self.debugDumpViewModel.ingest(snapshot)
                 // Without these, both Phase 3 services are armed but inert —
                 // neither has a data source of its own by design (plan §3.2
                 // P3: one poll loop, many consumers). A conditional
@@ -333,6 +350,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Settings that must actually reach the services behind them —
         // these sliders/toggles were previously wired to nothing.
         coordinator.setBaseInterval(settings.globalRefreshInterval)
+        // FR-2, additive: medium/slow tiers are now independently
+        // user-adjustable (see StatsCoordinator.setBaseInterval's doc
+        // comment) rather than ratio-derived from the fast interval above.
+        coordinator.setMediumInterval(settings.mediumTierRefreshInterval)
+        coordinator.setSlowInterval(settings.slowTierRefreshInterval)
         coordinator.adaptiveThrottlingEnabled = settings.adaptiveThrottlingEnabled
         rollupJob.setRetention(
             rawHours: settings.rawRetentionHours,

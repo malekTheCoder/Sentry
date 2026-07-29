@@ -24,11 +24,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// gets a history pane that says it's unavailable.
     private let historyStore: HistoryStore?
 
+    /// Trigger for the Advanced pane's "Show Debug Window" button (plan
+    /// Phase 1 exit criterion). Defaulted to `nil`, same reasoning as
+    /// `historyStore` above: purely additive, so any call site that hasn't
+    /// been updated keeps compiling and simply gets a button that does
+    /// nothing rather than a broken build.
+    private let onShowDebugWindow: (() -> Void)?
+
     /// The window is built on first `show()` rather than in `init` so that
     /// constructing the controller at launch costs nothing.
-    init(settingsStore: SettingsStore, historyStore: HistoryStore? = nil) {
+    init(settingsStore: SettingsStore, historyStore: HistoryStore? = nil, onShowDebugWindow: (() -> Void)? = nil) {
         self.settingsStore = settingsStore
         self.historyStore = historyStore
+        self.onShowDebugWindow = onShowDebugWindow
         super.init(window: nil)
     }
 
@@ -51,7 +59,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let root = SettingsView(store: settingsStore, historyStore: historyStore)
+        let root = SettingsView(store: settingsStore, historyStore: historyStore, onShowDebugWindow: onShowDebugWindow)
         let hosting = NSHostingController(rootView: root)
 
         let settingsWindow = NSWindow(contentViewController: hosting)

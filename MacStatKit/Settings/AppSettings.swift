@@ -41,6 +41,29 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// verbatim, which is what a user staring at a benchmark wants.
     public var adaptiveThrottlingEnabled: Bool
 
+    // MARK: - Sampling: per-tier overrides (FR-2, additive)
+    //
+    // FR-2 asks for refresh interval "user-adjustable per module." The
+    // underlying `StatsCoordinator` scheduler is tier-based (fast/medium/slow
+    // timers, each carrying several collectors), not per-metric, so these two
+    // fields expose per-*tier* control rather than true per-module control —
+    // see `StatsCoordinator.setBaseInterval`'s doc comment for the full
+    // reasoning. `globalRefreshInterval` above remains the fast tier's
+    // interval (plan §8.4 default 3s); these two cover the other tiers, which
+    // previously could only move by a fixed ratio of the fast interval.
+
+    /// Seconds between "medium class" samples (ANE power, temperatures, fan
+    /// RPM). Plan §8.4 default 5s. No clamping here for the same reason as
+    /// `globalRefreshInterval` — the settings pane owns validation;
+    /// `StatsCoordinator.setMediumInterval` clamps defensively for a
+    /// hand-edited settings file.
+    public var mediumTierRefreshInterval: TimeInterval
+
+    /// Seconds between "slow class" samples (battery %, health, cycle count,
+    /// capacity). Plan §8.4 default 30s. Same no-clamp-here convention as
+    /// `mediumTierRefreshInterval`.
+    public var slowTierRefreshInterval: TimeInterval
+
     // MARK: - Retention (plan §6.3)
 
     /// `sample_raw` window. Daily rollups are kept forever, so there is
@@ -144,6 +167,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin: Bool = false,
         globalRefreshInterval: TimeInterval = 3,
         adaptiveThrottlingEnabled: Bool = true,
+        mediumTierRefreshInterval: TimeInterval = 5,
+        slowTierRefreshInterval: TimeInterval = 30,
         rawRetentionHours: Int = 48,
         hourlyRetentionDays: Int = 90,
         notificationRateCapPerHour: Int = 6,
@@ -162,6 +187,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.launchAtLogin = launchAtLogin
         self.globalRefreshInterval = globalRefreshInterval
         self.adaptiveThrottlingEnabled = adaptiveThrottlingEnabled
+        self.mediumTierRefreshInterval = mediumTierRefreshInterval
+        self.slowTierRefreshInterval = slowTierRefreshInterval
         self.rawRetentionHours = rawRetentionHours
         self.hourlyRetentionDays = hourlyRetentionDays
         self.notificationRateCapPerHour = notificationRateCapPerHour
@@ -190,6 +217,11 @@ extension AppSettings {
         case launchAtLogin
         case globalRefreshInterval
         case adaptiveThrottlingEnabled
+        // FR-2, additive: absent in any settings.json written before this
+        // pair existed, so both decode via the same decodeIfPresent ?? fallback
+        // pattern as every other field below.
+        case mediumTierRefreshInterval
+        case slowTierRefreshInterval
         case rawRetentionHours
         case hourlyRetentionDays
         case notificationRateCapPerHour
@@ -231,6 +263,10 @@ extension AppSettings {
                 ?? fallback.globalRefreshInterval,
             adaptiveThrottlingEnabled: try container.decodeIfPresent(Bool.self, forKey: .adaptiveThrottlingEnabled)
                 ?? fallback.adaptiveThrottlingEnabled,
+            mediumTierRefreshInterval: try container.decodeIfPresent(TimeInterval.self, forKey: .mediumTierRefreshInterval)
+                ?? fallback.mediumTierRefreshInterval,
+            slowTierRefreshInterval: try container.decodeIfPresent(TimeInterval.self, forKey: .slowTierRefreshInterval)
+                ?? fallback.slowTierRefreshInterval,
             rawRetentionHours: try container.decodeIfPresent(Int.self, forKey: .rawRetentionHours)
                 ?? fallback.rawRetentionHours,
             hourlyRetentionDays: try container.decodeIfPresent(Int.self, forKey: .hourlyRetentionDays)

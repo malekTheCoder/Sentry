@@ -15,9 +15,16 @@ struct SettingsView: View {
     /// an empty list that would read as "nothing has ever fired."
     let historyStore: HistoryStore?
 
-    init(store: SettingsStore, historyStore: HistoryStore? = nil) {
+    /// Passed straight through to `AdvancedPane`'s "Show Debug Window"
+    /// button. `nil` is a legitimate configuration (e.g. a settings window
+    /// built without the app delegate's debug window controller wired up),
+    /// same as `historyStore` above.
+    let onShowDebugWindow: (() -> Void)?
+
+    init(store: SettingsStore, historyStore: HistoryStore? = nil, onShowDebugWindow: (() -> Void)? = nil) {
         self.store = store
         self.historyStore = historyStore
+        self.onShowDebugWindow = onShowDebugWindow
     }
 
     var body: some View {
@@ -37,7 +44,7 @@ struct SettingsView: View {
             AlertsPane(store: store, historyStore: historyStore)
                 .tabItem { Label("Alerts", systemImage: "bell") }
 
-            AdvancedPane(store: store)
+            AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
         }
         .frame(minWidth: 640, minHeight: 440)

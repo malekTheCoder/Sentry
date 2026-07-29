@@ -84,6 +84,10 @@ public final class StatsCoordinator: @unchecked Sendable {
     // The Event tier (plug/unplug, sleep/wake, thermal-state transitions via
     // IOPSNotification/NSWorkspace) is out of scope for this pass — nothing
     // here currently pushes ad hoc updates between ticks.
+    //
+    // FR-2 ("refresh interval user-adjustable per module") is implemented at
+    // this tier granularity, not per collector — see `setBaseInterval`'s doc
+    // comment below for why that's a deliberate scope call, not a shortcut.
     public enum Tier: Hashable {
         case fast, medium, slow
     }
@@ -140,17 +144,81 @@ public final class StatsCoordinator: @unchecked Sendable {
         set { queue.async { [weak self] in self?.adaptiveThrottlingEnabledStorage = newValue } }
     }
 
-    /// Rescales all three tiers from a single user-facing "fast" interval,
-    /// keeping the plan's 1x/1.67x/10x tier ratios. Takes effect on each
-    /// tier's next self-reschedule.
+    /// Sets the fast tier's base interval (plan §8.4's "0.5s...30s" slider;
+    /// `AppSettings.globalRefreshInterval`). Takes effect on the fast timer's
+    /// next self-reschedule.
+    ///
+    /// **FR-2 note (per-tier, not per-module, control):** earlier revisions
+    /// of this method also rescaled `mediumInterval`/`slowInterval` off of
+    /// `fast` by the plan's fixed 1x/1.67x/10x ratios, so there was no way to
+    /// move one tier without moving all three. FR-2 asks for user-adjustable
+    /// refresh "per module" — but this scheduler is tier-based (one timer per
+    /// fast/medium/slow tier, each carrying several collectors; see the enum
+    /// doc above), not per-metric, and the plan's own §8.4 table already
+    /// groups metrics into exactly those three tiers rather than describing
+    /// independent per-metric timers. A true per-module scheduler would mean
+    /// one `DispatchSourceTimer` per collector, which is a materially bigger
+    /// architectural change than FR-2's one-line requirement implies, and
+    /// cuts against §3.2's P1/P3 preference for one simple poll loop. This
+    /// method (plus `setMediumInterval`/`setSlowInterval` below) instead
+    /// gives the user independent control over each *tier's* base interval —
+    /// "make the fast tier (CPU/GPU/memory/network/disk) update quicker" and
+    /// "make the slow tier (battery) update less often" are both expressible
+    /// now, which is the spirit of FR-2 without overclaiming per-metric
+    /// granularity the UI doesn't actually have. See `AppSettings`'s
+    /// `mediumTierRefreshInterval`/`slowTierRefreshInterval` doc comments and
+    /// `GeneralPane`'s "Tier Intervals" section for where this is surfaced.
     public func setBaseInterval(_ fast: TimeInterval) {
         queue.async { [weak self] in
             guard let self else { return }
-            let clamped = min(max(fast, 0.5), 30)
-            self.fastInterval = clamped
-            self.mediumInterval = clamped * (5.0 / 3.0)
-            self.slowInterval = clamped * 10
+            self.fastInterval = min(max(fast, 0.5), 30)
         }
+    }
+
+    /// Sets the medium tier's base interval independently of `fast`
+    /// (`AppSettings.mediumTierRefreshInterval`). See `setBaseInterval`'s doc
+    /// comment for why tiers are now independently adjustable rather than
+    /// ratio-locked. Clamped to 1...60s: below 1s defeats the plan's own
+    /// rationale for this tier ("IOReport needs >=1s windows anyway"); above
+    /// 60s a "medium" tier slower than the "slow" tier's 30s default would be
+    /// a confusing inversion for a value nobody asked to type in directly.
+    public func setMediumInterval(_ medium: TimeInterval) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.mediumInterval = min(max(medium, 1), 60)
+        }
+    }
+
+    /// Sets the slow tier's base interval independently of `fast`
+    /// (`AppSettings.slowTierRefreshInterval`). See `setBaseInterval`'s doc
+    /// comment for why tiers are now independently adjustable rather than
+    /// ratio-locked.
+    ///
+    /// Clamped to 5...60s, not a larger number: `effectiveInterval(for:)`
+    /// unconditionally caps every tier's *effective* interval at
+    /// `maxInterval` (60s, plan §8.4's own `return min(i, 60)` example) —
+    /// that cap is applied after this base value, in both the
+    /// throttling-enabled and throttling-disabled branches, with no
+    /// per-tier exception. A wider clamp here (this method previously
+    /// allowed up to 300s) would let the setter and any UI built on it
+    /// advertise a range the coordinator silently truncates 5x smaller the
+    /// moment a tick actually runs — exactly the kind of overclaim P5 exists
+    /// to prevent. 60s is the true achievable ceiling for every tier alike.
+    public func setSlowInterval(_ slow: TimeInterval) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.slowInterval = min(max(slow, 5), Self.maxInterval)
+        }
+    }
+
+    /// Read-only view of a tier's *base* interval (pre-adaptive-throttling),
+    /// i.e. exactly what `setBaseInterval`/`setMediumInterval`/
+    /// `setSlowInterval` last set (post-clamp). Exists mainly so tests can
+    /// assert the clamping/independence behavior documented on those setters
+    /// without depending on real timer firing or `effectiveInterval`'s
+    /// power-state multipliers.
+    public func currentBaseInterval(for tier: Tier) -> TimeInterval {
+        queue.sync { baseInterval(for: tier) }
     }
 
     /// Hard ceiling from the plan's `effectiveInterval` example (§8.4).
