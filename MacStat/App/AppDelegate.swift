@@ -83,6 +83,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let debugDumpViewModel = DebugDumpViewModel()
     private lazy var debugWindowController = DebugWindowController(viewModel: debugDumpViewModel)
 
+    /// Another independent consumer of `coordinator.snapshots()`, same shape
+    /// as `dropdownViewModel`/`debugDumpViewModel` above — not a second poll
+    /// loop. `lazy`, like `rollupJob` below, only because its initializer
+    /// references `historyStore` (a class stored-property initializer can't
+    /// reference `self` or sibling properties unless it's `lazy`) — not
+    /// because construction should wait for the Dashboard window to open.
+    /// It's still fed from the very first snapshot: the snapshot loop
+    /// touches `self.dashboardViewModel` on every tick regardless of
+    /// whether the Dashboard window has ever been shown, so `ingest(_:)`
+    /// keeps its live headlines current the whole time, not just once the
+    /// window is opened.
+    private lazy var dashboardViewModel = DashboardViewModel(historyStore: historyStore)
+
     // MARK: - Dashboard window
     //
     // Same lazy-singleton pattern as `settingsWindowController`/
@@ -188,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.statusItemController?.update(snapshot)
                 self.dropdownViewModel.ingest(snapshot)
                 self.debugDumpViewModel.ingest(snapshot)
+                self.dashboardViewModel.ingest(snapshot)
                 // Without these, both Phase 3 services are armed but inert —
                 // neither has a data source of its own by design (plan §3.2
                 // P3: one poll loop, many consumers). A conditional
