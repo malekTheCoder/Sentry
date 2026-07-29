@@ -129,6 +129,21 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(model.series(for: .gpu)?.count, 1)
     }
 
+    // MARK: - Live theme (regression: theme used to freeze at DashboardView's
+    // one-time init, since HistoryWindowController never rebuilds its
+    // hosting controller — see DashboardViewModel.theme's doc comment)
+
+    func testThemeDefaultsToTheValuePassedAtInit() {
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .paper)
+        XCTAssertEqual(model.theme, .paper)
+    }
+
+    func testThemeCanBeReassignedLiveAfterConstruction() {
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .terminal)
+        model.theme = .paper
+        XCTAssertEqual(model.theme, .paper)
+    }
+
     func testAssigningTheSameValuesDoesNotForceAnExtraRefresh() {
         // Not directly observable from outside (refresh has no side effect
         // to spy on besides `series`), but assigning an equal Set/enum value

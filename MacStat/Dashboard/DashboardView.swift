@@ -23,7 +23,6 @@ struct DashboardView: View {
     @ObservedObject private var viewModel: DashboardViewModel
     @Environment(\.colorScheme) private var systemColorScheme
 
-    private let theme: Theme
     /// `BatteryHealthTrendCard` manages its own all-time query rather than
     /// going through `DashboardViewModel.series` (see that card's doc
     /// comment), so it needs the same `HistoryStore` instance directly —
@@ -36,14 +35,18 @@ struct DashboardView: View {
     /// is main-actor isolated, and every real caller (AppDelegate, a
     /// `#Preview`) already is too.
     @MainActor
-    init(viewModel: DashboardViewModel, historyStore: HistoryStore, theme: Theme = .terminal) {
+    init(viewModel: DashboardViewModel, historyStore: HistoryStore) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.historyStore = historyStore
-        self.theme = theme
     }
 
+    // Reads `viewModel.theme` live rather than a `let` captured once at
+    // init — this view's `NSHostingController` is built exactly once per
+    // app run (`HistoryWindowController` reuses the window forever), so a
+    // captured theme would freeze at whatever was active the first time the
+    // Dashboard was opened. See `DashboardViewModel.theme`'s doc comment.
     private var palette: ThemePalette {
-        ThemePalette(theme: theme, scheme: systemColorScheme)
+        ThemePalette(theme: viewModel.theme, scheme: systemColorScheme)
     }
 
     var body: some View {

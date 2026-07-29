@@ -94,36 +94,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// whether the Dashboard window has ever been shown, so `ingest(_:)`
     /// keeps its live headlines current the whole time, not just once the
     /// window is opened.
-    private lazy var dashboardViewModel = DashboardViewModel(historyStore: historyStore)
+    private lazy var dashboardViewModel = DashboardViewModel(
+        historyStore: historyStore,
+        enabledModules: settingsStore.settings.enabledModules,
+        theme: settingsStore.resolvedTheme()
+    )
 
     // MARK: - Dashboard window
     //
     // Same lazy-singleton pattern as `settingsWindowController`/
     // `debugWindowController` above — costs nothing until the dropdown's
-    // "History" button is actually clicked. `rootView` is evaluated once, on
-    // first `show()` (see `HistoryWindowController`'s doc comment), so the
-    // theme it resolves is whatever's current at that moment, not
-    // necessarily launch time — `lastAppliedTheme` is the same
-    // already-resolved value `configurePopover`/`applySettings` keep in
-    // sync with Settings, so the Dashboard opens themed identically to
-    // whatever the dropdown is currently showing rather than a hardcoded
-    // `.terminal` default. Falls back to `settingsStore.resolvedTheme()`
-    // only for the theoretical case for the Dashboard being opened before
-    // `applicationDidFinishLaunching` has run `configurePopover` once —
-    // doesn't happen in practice (the History button lives inside the
-    // popover `configurePopover` builds), but this is a real closure that
-    // could in principle be invoked before it.
+    // "History" button is actually clicked. `rootView` is evaluated once,
+    // on first `show()` (see `HistoryWindowController`'s doc comment) — but
+    // unlike an earlier version of this wiring, that one-time evaluation no
+    // longer matters for theme/module freshness: `DashboardView` reads
+    // `dashboardViewModel.theme`/`.enabledModules` live rather than values
+    // captured at construction, and `applySettings` below pushes into both
+    // on every settings change, same as it already does for the dropdown's
+    // `lastAppliedTheme`. `onShow` re-triggers `dashboardViewModel.refresh()`
+    // on every `show()`, not just the first — `DashboardView`'s own `.task`
+    // only ever runs once (this window's `NSHostingController` is never
+    // rebuilt), so without this a Dashboard reopened after being closed for
+    // a while would keep showing whatever history it last queried.
     private lazy var historyWindowController = HistoryWindowController(
         rootView: { [weak self] in
             guard let self else { return AnyView(EmptyView()) }
-            let theme = self.lastAppliedTheme ?? self.settingsStore.resolvedTheme()
             return AnyView(
                 DashboardView(
                     viewModel: self.dashboardViewModel,
-                    historyStore: self.historyStore,
-                    theme: theme
+                    historyStore: self.historyStore
                 )
             )
+        },
+        onShow: { [weak self] in
+            self?.dashboardViewModel.refresh()
         }
     )
 
@@ -391,6 +395,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         statusItemController?.apply(layout: settings.menuBarLayout)
         statusItemController?.apply(theme: theme)
+
+        // Dashboard reads both live off the view model rather than a value
+        // captured once at window construction — without this, a theme
+        // change or a Modules-pane edit would never reach an already-built
+        // Dashboard window, since `HistoryWindowController` reuses its
+        // `NSHostingController` forever. Plain assignment, not conditional:
+        // `@Published`'s own `didSet`/equality check already makes a no-op
+        // assignment cheap, and `enabledModules`'s `didSet` is what triggers
+        // the re-query a module toggle needs.
+        dashboardViewModel.theme = theme
+        dashboardViewModel.enabledModules = settings.enabledModules
 
         // Settings that must actually reach the services behind them —
         // these sliders/toggles were previously wired to nothing.

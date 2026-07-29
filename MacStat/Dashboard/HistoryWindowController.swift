@@ -31,12 +31,25 @@ import MacStatKit
 final class HistoryWindowController: NSWindowController, NSWindowDelegate {
 
     private let rootView: () -> AnyView
+    private let onShow: (() -> Void)?
 
-    /// - Parameter rootView: builds the window's SwiftUI content, evaluated
-    ///   once on first `show()`. See the type doc comment for why this is a
-    ///   factory closure rather than a concrete `DashboardView` reference.
-    init(rootView: @escaping () -> AnyView) {
+    /// - Parameters:
+    ///   - rootView: builds the window's SwiftUI content, evaluated once on
+    ///     first `show()`. See the type doc comment for why this is a
+    ///     factory closure rather than a concrete `DashboardView` reference.
+    ///   - onShow: called at the top of every `show()`, not just the first.
+    ///     Because this window is a reused singleton, `rootView()` runs
+    ///     exactly once per app launch — `DashboardView`'s own `.task` that
+    ///     triggers the first history query therefore also runs exactly
+    ///     once, ever, leaving the Dashboard showing stale data on every
+    ///     re-show after the first (open Monday, close, reopen Friday: still
+    ///     shows Monday's history until the user happens to touch the range
+    ///     picker). `AppDelegate` wires this to re-run
+    ///     `DashboardViewModel.refresh()` so reopening the window always
+    ///     re-queries, independent of `rootView`'s one-time construction.
+    init(rootView: @escaping () -> AnyView, onShow: (() -> Void)? = nil) {
         self.rootView = rootView
+        self.onShow = onShow
         super.init(window: nil)
     }
 
@@ -57,6 +70,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate {
         // explicitly.
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow.makeKeyAndOrderFront(nil)
+        onShow?()
     }
 
     private func makeWindow() -> NSWindow {

@@ -95,6 +95,19 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    /// Live theme, pushed by `AppDelegate` whenever the user changes it in
+    /// Settings — the same value `applySettings` already keeps
+    /// `lastAppliedTheme` in sync with for the dropdown. Living here rather
+    /// than as a `let` captured once by `DashboardView` matters because
+    /// `HistoryWindowController` reuses one `NSHostingController` forever
+    /// (`isReleasedWhenClosed = false`): a theme captured at first-`show()`
+    /// would freeze for the rest of the app's run, since `DashboardView`'s
+    /// `init` only ever runs once. Publishing it through the view model
+    /// `DashboardView` already observes makes a theme change reach the
+    /// window live, exactly like the dropdown's popover rebuild does for
+    /// its own case.
+    @Published var theme: Theme
+
     private let historyStore: HistoryStore
 
     /// - Parameters:
@@ -108,11 +121,13 @@ final class DashboardViewModel: ObservableObject {
     init(
         historyStore: HistoryStore,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
-        timeRange: TimeRangePicker = .oneDay
+        timeRange: TimeRangePicker = .oneDay,
+        theme: Theme = .terminal
     ) {
         self.historyStore = historyStore
         self.enabledModules = enabledModules
         self.timeRange = timeRange
+        self.theme = theme
         // Deliberately not calling `refresh()` here: constructing this view
         // model (e.g. as an `AppDelegate` property, alongside every other
         // lazy controller) must stay cheap even though the Dashboard window
