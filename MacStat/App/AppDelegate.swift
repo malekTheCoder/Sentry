@@ -100,12 +100,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     //
     // Same lazy-singleton pattern as `settingsWindowController`/
     // `debugWindowController` above — costs nothing until the dropdown's
-    // "History" button is actually clicked. `DashboardView` (the real root
-    // view) is being built concurrently elsewhere, so this is wired to a
-    // placeholder for now; see `HistoryWindowController`'s doc comment for
-    // why that's a one-line swap once `DashboardView` lands.
+    // "History" button is actually clicked. `rootView` is evaluated once, on
+    // first `show()` (see `HistoryWindowController`'s doc comment), so the
+    // theme it resolves is whatever's current at that moment, not
+    // necessarily launch time — `lastAppliedTheme` is the same
+    // already-resolved value `configurePopover`/`applySettings` keep in
+    // sync with Settings, so the Dashboard opens themed identically to
+    // whatever the dropdown is currently showing rather than a hardcoded
+    // `.terminal` default. Falls back to `settingsStore.resolvedTheme()`
+    // only for the theoretical case for the Dashboard being opened before
+    // `applicationDidFinishLaunching` has run `configurePopover` once —
+    // doesn't happen in practice (the History button lives inside the
+    // popover `configurePopover` builds), but this is a real closure that
+    // could in principle be invoked before it.
     private lazy var historyWindowController = HistoryWindowController(
-        rootView: { AnyView(Text("Dashboard coming soon")) }
+        rootView: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            let theme = self.lastAppliedTheme ?? self.settingsStore.resolvedTheme()
+            return AnyView(
+                DashboardView(
+                    viewModel: self.dashboardViewModel,
+                    historyStore: self.historyStore,
+                    theme: theme
+                )
+            )
+        }
     )
 
     private var snapshotTask: Task<Void, Never>?

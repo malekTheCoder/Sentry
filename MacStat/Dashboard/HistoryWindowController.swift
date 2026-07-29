@@ -20,11 +20,13 @@ import MacStatKit
 /// Rather than block on that dependency, `init` takes a `rootView` factory —
 /// `@escaping () -> AnyView` — evaluated lazily on first `show()`, exactly
 /// where `SettingsWindowController` builds `SettingsView`. `AppDelegate`
-/// currently wires this to a placeholder (`Text("Dashboard coming soon")`);
-/// swapping in the real `DashboardView` once it exists is a one-line change
-/// at that call site — nothing here needs to change. Deferred rather than
-/// evaluated eagerly in `init` for the same reason `SettingsWindowController`
-/// defers its window: constructing this controller at launch should cost
+/// originally wired this to a placeholder (`Text("Dashboard coming soon")`)
+/// while `DashboardView` didn't exist yet; now that it does, `AppDelegate`
+/// builds the real view in that same closure — a one-line swap at that call
+/// site, exactly as planned, with nothing here needing to change. Deferred
+/// rather than evaluated eagerly in `init` for the same reason
+/// `SettingsWindowController` defers its window: constructing this
+/// controller at launch should cost
 /// nothing until the user actually opens the Dashboard.
 final class HistoryWindowController: NSWindowController, NSWindowDelegate {
 
