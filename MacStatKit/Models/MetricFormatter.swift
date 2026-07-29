@@ -58,7 +58,9 @@ public enum MetricFormatter {
             // (plan §5.1). Rendering that as "-1m" states a negative
             // duration as fact; it means "not known yet".
             guard value >= 0 else { return unavailable }
-            let total = Int(min(value, Double(Int.max - 1)))
+            // Same rounding trap as `clampToInt64` above: `Double(Int.max - 1)`
+            // rounds up to 2^63 and traps `Int(...)` for a huge input.
+            let total = Int(min(value, Double(Int.max).nextDown))
             let hours = total / 60
             let mins = total % 60
             return hours > 0 ? "\(hours)h \(mins)m" : "\(mins)m"
@@ -107,8 +109,15 @@ public enum MetricFormatter {
     }
 
     /// Saturates rather than traps. `Int64(someHugeDouble)` is a runtime trap.
+    ///
+    /// The upper bound is deliberately `Double(Int64.max).nextDown`, not
+    /// `Double(Int64.max)`: `Int64.max` (2^63 - 1) isn't exactly
+    /// representable as a `Double` (52-bit mantissa vs. 63-bit integer), so
+    /// it rounds *up* to 2^63 on conversion — which then traps when
+    /// converted back to `Int64` for a huge input value. `.nextDown` is the
+    /// largest `Double` that is still safely < `Int64.max`.
     private static func clampToInt64(_ value: Double) -> Double {
-        min(max(value, 0), Double(Int64.max))
+        min(max(value, 0), Double(Int64.max).nextDown)
     }
 
     /// Longer form for the dropdown, where a couple more characters are fine.
@@ -129,7 +138,9 @@ public enum MetricFormatter {
     /// "up 3d 4h" / "up 5h 12m" / "up 42m".
     public static func uptime(_ seconds: Double) -> String {
         guard seconds.isFinite else { return unavailable }
-        let total = Int(min(max(seconds, 0), Double(Int.max - 1)))
+        // Same rounding trap as `clampToInt64` above: `Double(Int.max - 1)`
+        // rounds up to 2^63 and traps `Int(...)` for a huge input.
+        let total = Int(min(max(seconds, 0), Double(Int.max).nextDown))
         let days = total / 86400
         let hours = (total % 86400) / 3600
         let minutes = (total % 3600) / 60

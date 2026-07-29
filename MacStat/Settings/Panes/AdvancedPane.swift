@@ -193,6 +193,11 @@ enum DiskEstimate {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        return formatter.string(fromByteCount: Int64(max(bytes, 0)))
+        // Same rounding trap as `MetricFormatter.clampToInt64`: `Double(Int64.max)`
+        // rounds up to 2^63 on conversion, which then traps `Int64(...)` for
+        // a huge input. `rawBytes`/`hourlyBytes` are driven by user-editable
+        // settings-file integers the UI slider can't produce but a
+        // hand-edited file can, so this is reachable, not just theoretical.
+        return formatter.string(fromByteCount: Int64(min(max(bytes, 0), Double(Int64.max).nextDown)))
     }
 }
