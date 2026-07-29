@@ -1,4 +1,5 @@
 import Cocoa
+import Combine
 import SwiftUI
 import MacStatKit
 import SystemMetricsKit
@@ -50,17 +51,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // to `UserDefaults` and re-creates it on wake, so a second instance
     // would reconcile against — and fight over — the first's record.
     private let powerControl = PowerControlService()
+    private lazy var alertEngine = AlertEngine(
+        rules: settingsStore.settings.alertRules,
+        historyStore: historyStore,
+        rateCapPerHour: settingsStore.settings.notificationRateCapPerHour
+    )
 
     // MARK: - UI
 
     private var statusItemController: StatusItemController?
     private let dropdownViewModel = DropdownViewModel()
     private let popover = NSPopover()
-    private lazy var settingsWindowController = SettingsWindowController(settingsStore: settingsStore)
+    private lazy var settingsWindowController = SettingsWindowController(
+        settingsStore: settingsStore,
+        // Same store the engine logs firings to — the Alerts pane's history
+        // view reads `alert_log` from it. Without this it renders an
+        // explicit "history unavailable" state rather than a misleading
+        // empty list.
+        historyStore: historyStore
+    )
 
     private var snapshotTask: Task<Void, Never>?
     private var settingsObservation: Task<Void, Never>?
-    private var powerControlObservation: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     /// Only a theme or enabled-modules change requires rebuilding the
     /// dropdown's SwiftUI tree. Tracked so unrelated settings edits (a
@@ -69,6 +82,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// popover.
     private var lastAppliedTheme: Theme?
     private var lastAppliedModules: Set<MetricModule>?
+    /// The `cardListMaxHeight` baked into the current hosting controller, so
+    /// `togglePopover` can tell a genuine display change from a no-op reopen
+    /// and skip the state-destroying rebuild in the latter case.
+    private var lastAppliedCardListMaxHeight: CGFloat?
+
+    /// Which rules were enabled last time settings changed, so a
+    /// disabled→enabled transition can be detected and reported to
+    /// `AlertEngine.ruleWasEnabled` (its lazy-authorization trigger).
+    /// Comparing sets rather than trusting the pane to notify us keeps the
+    /// authorization prompt correct no matter how a rule got enabled —
+    /// including a hand-edited settings file.
+    private var lastEnabledRuleIDs: Set<UUID> = []
 
     nonisolated static func main() {
         let app = NSApplication.shared
@@ -99,6 +124,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         )
         rollupJob.start()
 
+        // Closes the loop between the two Phase 3 services without either
+        // importing the other (see `AlertAction.releaseSleepAssertion`) —
+        // this is what makes a rule like "keep awake until battery < 20%"
+        // able to actually drop the hold. Unwired, the action was a no-op
+        // on both ends.
+        alertEngine.sleepAssertionReleaser = { [weak self] in
+            self?.powerControl.releaseAssertion()
+        }
+        // Plan §11.3 wants notification authorization requested lazily — on
+        // first rule *enable*, never at launch — so a user who turns every
+        // alert off is never prompted at all. Rules ship enabled by default,
+        // so "first enable" in practice means the first launch where any
+        // enabled rule exists; `ruleWasEnabled` itself only requests once.
+        lastEnabledRuleIDs = Set(settings.alertRules.filter(\.isEnabled).map(\.id))
+        if let firstEnabled = settings.alertRules.first(where: \.isEnabled) {
+            alertEngine.ruleWasEnabled(firstEnabled)
+        }
+
         // StatsCoordinator's AsyncStream is the single source every consumer
         // reads (plan §3.2 P3) — the menu bar, the dropdown, and the history
         // store are three independent consumers of the same stream, none of
@@ -109,10 +152,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.historyStore.record(snapshot)
                 self.statusItemController?.update(snapshot)
                 self.dropdownViewModel.ingest(snapshot)
-                // Without this, a conditional assertion ("keep awake until
-                // battery < 20%") is armed but inert — the service has no
-                // data source of its own by design.
+                // Without these, both Phase 3 services are armed but inert —
+                // neither has a data source of its own by design (plan §3.2
+                // P3: one poll loop, many consumers). A conditional
+                // assertion ("keep awake until battery < 20%") would never
+                // release, and no alert rule would ever fire.
                 self.powerControl.evaluate(snapshot)
+                self.alertEngine.evaluate(snapshot)
             }
         }
 
@@ -121,12 +167,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // menu bar visibility rule (plan §10.5) ever evaluate true. Pushed
         // from here rather than polled by the coordinator: the state is
         // main-actor isolated and changes on user action, not on a tick.
-        powerControlObservation = Task { [weak self] in
-            guard let self else { return }
-            for await state in self.powerControl.$state.values {
-                self.coordinator.sleepAssertionState = state
+        //
+        // Combine `sink`, not `for await ... in $state.values`: `AsyncPublisher`
+        // requests demand one value at a time and *drops* anything emitted
+        // while demand is zero. `startAssertionInternal` sets `state` twice
+        // back-to-back synchronously (`releaseAssertion()` → `.inactive`,
+        // then `.active`), so the second emission lands in exactly that
+        // window — the coordinator would latch `.inactive` while an
+        // assertion is genuinely live, and every snapshot would then carry
+        // that lie (P5). `sink` requests unlimited demand, so no emission is
+        // dropped.
+        powerControl.$state
+            .sink { [weak self] state in
+                self?.coordinator.sleepAssertionState = state
             }
-        }
+            .store(in: &cancellables)
 
         // Live-apply theme/layout changes made in Settings without a restart.
         settingsObservation = Task { [weak self] in
@@ -157,13 +212,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.delegate = self
         lastAppliedTheme = theme
         lastAppliedModules = enabledModules
+        let height = cardListMaxHeight()
+        lastAppliedCardListMaxHeight = height
         let hostingController = NSHostingController(
             rootView: DropdownView(
                 viewModel: dropdownViewModel,
                 powerControl: powerControl,
                 theme: theme,
                 enabledModules: enabledModules,
-                cardListMaxHeight: cardListMaxHeight(),
+                cardListMaxHeight: height,
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onOpenHistory: { [weak self] in self?.openSettings() },
                 onQuit: { NSApplication.shared.terminate(nil) }
@@ -200,10 +257,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // The button's `.window?.screen` usually isn't resolvable until
             // the status item has actually appeared once, so the height
             // computed at launch-time `configurePopover` can be stale (the
-            // generic 480pt fallback rather than this display's real one).
-            // Cheap to redo here since it's a plain frame-height read, no
-            // SwiftUI tree rebuild.
-            if let theme = lastAppliedTheme, let modules = lastAppliedModules {
+            // generic 480pt fallback rather than this display's real one) —
+            // and the user can move the status item to a different display
+            // mid-run.
+            //
+            // But only rebuild when the height *actually changed*. Assigning
+            // `contentViewController` builds a fresh SwiftUI tree, which
+            // resets every `@State` in the dropdown — the sleep control
+            // card's pending trigger/mode/threshold selections would revert
+            // to defaults every single time the popover reopened. (An
+            // earlier comment here claimed this was "no SwiftUI tree
+            // rebuild"; that was simply wrong, and harmless only for as
+            // long as the dropdown held no state worth keeping.)
+            let height = cardListMaxHeight()
+            if height != lastAppliedCardListMaxHeight,
+               let theme = lastAppliedTheme,
+               let modules = lastAppliedModules {
                 configurePopover(theme: theme, enabledModules: modules)
             }
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
@@ -253,6 +322,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             rawHours: settings.rawRetentionHours,
             hourlyDays: settings.hourlyRetentionDays
         )
+
+        // Rule edits in the Alerts pane only reach the engine through here —
+        // the pane deliberately holds no `AlertEngine` reference, it just
+        // writes to settings. `updateRules` preserves per-rule runtime state
+        // (cooldown timers, sustained-since) for rules whose `id` is
+        // unchanged, so editing a rule's name mid-cooldown doesn't reset it.
+        alertEngine.updateRules(settings.alertRules)
+
+        // Then report any disabled→enabled transition, which is what drives
+        // §11.3's lazy notification authorization.
+        let enabledNow = Set(settings.alertRules.filter(\.isEnabled).map(\.id))
+        if let newlyEnabledID = enabledNow.subtracting(lastEnabledRuleIDs).first,
+           let rule = settings.alertRules.first(where: { $0.id == newlyEnabledID }) {
+            alertEngine.ruleWasEnabled(rule)
+        }
+        lastEnabledRuleIDs = enabledNow
 
         // Rebuilding the hosting controller is how a new theme or module
         // selection reaches an already-constructed SwiftUI tree, but it's

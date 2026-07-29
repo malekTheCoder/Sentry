@@ -1,0 +1,947 @@
+import SwiftUI
+import MacStatKit
+
+/// The plan §11 alert surface: a rule list with an inspector for the selected
+/// rule, plus the `alert_log` history §11.3 asks for.
+///
+/// **Why history is a mode of this pane and not its own tab.** The settings
+/// window's `TabView` already carries five tabs; a seventh would start
+/// wrapping the toolbar on the 640 pt minimum width `SettingsView` declares.
+/// More importantly the two views are one workflow, not two subjects — you
+/// read the history *in order to* decide which rule to retune (that's the
+/// entire reason the rate cap logs suppressed firings instead of dropping
+/// them), so putting them a segmented-control click apart keeps the edit and
+/// the evidence together. History is read-only and needs no inspector, so it
+/// doesn't fight the rules mode for the split-view layout.
+///
+/// **Bindings write straight into `store.settings`**, like every other pane —
+/// there is deliberately no draft/apply copy (see `SettingsView`'s doc
+/// comment). `SettingsStore` debounces the resulting save.
+///
+/// **What this pane deliberately does not do:** it does not hold an
+/// `AlertEngine`. Pushing edits into the live engine
+/// (`AlertEngine.updateRules(_:)`) and requesting notification authorization
+/// on the first enable (`AlertEngine.ruleWasEnabled(_:)`, which plan §11.3
+/// requires to be lazy) are composition-root jobs — `AppDelegate` already
+/// owns both objects and can observe `store.$settings.map(\.alertRules)`
+/// without this view growing a second dependency it would have to keep in
+/// sync with the settings it's already writing to.
+///
+/// **Actions are shown but not edited.** A rule's `[AlertAction]` is
+/// summarized read-only. Editing it well means a UI for composing
+/// notification title/body copy plus per-action pickers, and two of the five
+/// action cases (`.pushToPhone`, `.runShortcut`) are documented no-ops with
+/// no backing implementation yet — an editor that let a user attach them
+/// would be promising delivery this app cannot perform. Showing the shipped
+/// actions honestly is the smaller lie than none at all.
+struct AlertsPane: View {
+
+    @ObservedObject var store: SettingsStore
+
+    /// Read-only source for the history mode. Optional because the settings
+    /// window is constructible without one (previews, and any composition
+    /// root that hasn't wired history yet) — history then shows an explicit
+    /// "unavailable" message rather than an empty list that would read as
+    /// "nothing has ever fired."
+    ///
+    /// `AppDelegate`/`SettingsWindowController` pass the same `HistoryStore`
+    /// instance `AlertEngine` was constructed with; nothing here writes to it.
+    let historyStore: HistoryStore?
+
+    init(store: SettingsStore, historyStore: HistoryStore? = nil) {
+        self.store = store
+        self.historyStore = historyStore
+    }
+
+    private enum Mode: String, CaseIterable, Hashable {
+        case rules, history
+
+        var displayName: String {
+            switch self {
+            case .rules: return "Rules"
+            case .history: return "History"
+            }
+        }
+    }
+
+    /// Transient UI state, not persisted — same reasoning as `MenuBarPane`'s
+    /// `selectedModuleID`.
+    @State private var mode: Mode = .rules
+    @State private var selectedRuleID: AlertRule.ID?
+    @State private var isConfirmingRestore = false
+    @State private var historyEntries: [AlertLogEntry] = []
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("View", selection: $mode) {
+                ForEach(Mode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(8)
+            .accessibilityLabel("Alerts view")
+
+            Divider()
+
+            switch mode {
+            case .rules:
+                HSplitView {
+                    ruleListColumn
+                        .frame(minWidth: 240)
+                    inspectorColumn
+                        .frame(minWidth: 300)
+                }
+            case .history:
+                historyColumn
+            }
+        }
+        .confirmationDialog(
+            "Restore the default alert rules?",
+            isPresented: $isConfirmingRestore
+        ) {
+            Button("Restore Defaults", role: .destructive) { restoreDefaultRules() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your \(rules.count == 1 ? "1 rule" : "\(rules.count) rules") will be replaced by the \(AppSettings.defaultAlertRules.count) rules MacStat ships with, including any you edited or removed. Alert history is not deleted.")
+        }
+    }
+
+    private var rules: [AlertRule] {
+        store.settings.alertRules
+    }
+
+    // MARK: - Left column: rule list
+
+    private var ruleListColumn: some View {
+        VStack(spacing: 0) {
+            List(selection: $selectedRuleID) {
+                ForEach(rules) { rule in
+                    ruleRow(rule)
+                        .tag(rule.id)
+                }
+            }
+            .accessibilityLabel("Alert rules")
+            // `.onDelete` gives no affordance at all on macOS — no swipe, no
+            // edit mode — so `MenuBarPane` established this trio (explicit
+            // button + context menu + Delete key) as the way a list row gets
+            // removed in this app. Same pattern here rather than a second
+            // discovery of the same gap.
+            .onDeleteCommand { removeSelectedRule() }
+            .contextMenu(forSelectionType: AlertRule.ID.self) { ids in
+                Button("Remove", role: .destructive) { removeRules(ids: ids) }
+            }
+
+            if rules.isEmpty {
+                Text("You have no alert rules. Nothing will ever notify you until you restore the defaults below.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding()
+            }
+
+            HStack {
+                Button(role: .destructive) {
+                    removeSelectedRule()
+                } label: {
+                    Label("Remove Rule", systemImage: "minus.circle")
+                }
+                .disabled(selectedRuleID == nil)
+                .accessibilityLabel("Remove the selected alert rule")
+
+                Spacer()
+
+                Button {
+                    isConfirmingRestore = true
+                } label: {
+                    Label("Restore Defaults", systemImage: "arrow.counterclockwise")
+                }
+                .accessibilityLabel("Restore the default alert rules")
+            }
+            .padding(.horizontal, 4)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private func ruleRow(_ rule: AlertRule) -> some View {
+        HStack(spacing: 8) {
+            Toggle(isOn: enabledBinding(for: rule.id)) {
+                EmptyView()
+            }
+            .labelsHidden()
+            .toggleStyle(.checkbox)
+            .accessibilityLabel("Enable \(rule.name)")
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(rule.name)
+                    .foregroundStyle(rule.isEnabled ? .primary : .secondary)
+                Text(Self.conditionSummary(for: rule))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        // Without this the row's accessibility label would splice the
+        // toggle's label into the condition sentence.
+        .accessibilityElement(children: .contain)
+    }
+
+    private func removeSelectedRule() {
+        guard let selected = selectedRuleID else { return }
+        removeRules(ids: [selected])
+    }
+
+    private func removeRules(ids: Set<AlertRule.ID>) {
+        guard !ids.isEmpty else { return }
+        store.settings.alertRules.removeAll { ids.contains($0.id) }
+        if let selected = selectedRuleID, ids.contains(selected) {
+            selectedRuleID = nil
+        }
+    }
+
+    /// Replaces the rule set wholesale, rebuilt at the user's *current*
+    /// cooldown setting rather than `AppSettings.defaultAlertRules`' baked-in
+    /// 30 minutes — `AlertRule`'s doc comment asks for exactly this: the
+    /// cooldown setting takes effect the next time defaults are rebuilt.
+    private func restoreDefaultRules() {
+        store.settings.alertRules = AlertEngine.defaultRules(
+            cooldown: TimeInterval(store.settings.alertCooldownMinutes * 60)
+        )
+        selectedRuleID = nil
+    }
+
+    // MARK: - Right column: rule inspector
+
+    private var inspectorColumn: some View {
+        Form {
+            if let binding = selectedRuleBinding() {
+                // Keyed on the selected id for the same reason `MenuBarPane`
+                // does it: the `TextField`s below commit on blur, so reusing
+                // one editor across a selection change would land text typed
+                // for rule A onto rule B.
+                ruleInspector(binding)
+                    .id(binding.wrappedValue.id)
+            } else {
+                Section("Rule") {
+                    Text("Select a rule on the left to edit when it fires.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            globalLimitsSection
+        }
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func ruleInspector(_ rule: Binding<AlertRule>) -> some View {
+        let kind = RuleKind(id: rule.wrappedValue.id)
+
+        Section("Rule") {
+            TextField("Name", text: rule.name)
+                .accessibilityLabel("Rule name")
+            Toggle("Enabled", isOn: rule.isEnabled)
+                .accessibilityLabel("Rule enabled")
+        }
+
+        conditionSection(rule, kind: kind)
+
+        Section {
+            durationField(
+                title: "Must hold for",
+                seconds: rule.sustainedFor,
+                accessibilityLabel: "Seconds the condition must hold before firing"
+            )
+            durationField(
+                title: "Cooldown",
+                seconds: rule.cooldown,
+                accessibilityLabel: "Seconds between repeat firings of this rule"
+            )
+        } header: {
+            Text("Timing")
+        } footer: {
+            Text("“Must hold for” suppresses flapping — a metric bouncing across the threshold resets the timer instead of firing. “Cooldown” is the minimum gap between two firings of this rule once it has fired. They are independent: satisfying one does not substitute for the other.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        quietHoursSection(rule)
+        preconditionSection(rule)
+        actionsSection(rule)
+    }
+
+    /// The condition half of the editor. Three of the shipped rules are
+    /// evaluated by `AlertEngine` from IDs it special-cases, not from the
+    /// metric/comparison/threshold stored on the rule — see `RuleKind`. For
+    /// those, showing editable fields the engine will never read would be a
+    /// straightforward lie about what the app does, so the fields that don't
+    /// apply are replaced by an explanation of what the rule actually
+    /// measures.
+    @ViewBuilder
+    private func conditionSection(_ rule: Binding<AlertRule>, kind: RuleKind) -> some View {
+        Section {
+            switch kind {
+            case .generic:
+                Picker("Metric", selection: rule.metric) {
+                    ForEach(MetricID.allCases, id: \.self) { metric in
+                        Text(metric.shortLabel).tag(metric)
+                    }
+                }
+                .accessibilityLabel("Metric this rule watches")
+
+                // Bound through `ComparisonKind` rather than directly:
+                // `AlertRule.Comparison` is `Equatable` but not `Hashable`,
+                // and a `Picker` tag has to be `Hashable`. Adding the
+                // conformance to a MacStatKit type this pane doesn't own,
+                // purely to satisfy one picker, is the wrong direction.
+                Picker("Comparison", selection: comparisonKindBinding(rule)) {
+                    ForEach(ComparisonKind.allCases, id: \.self) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                .accessibilityLabel("Comparison")
+
+                thresholdField(rule, label: "Threshold")
+
+            case .batteryHealthDrop:
+                // The one special-cased rule whose `threshold` *is* read
+                // (as a percentage-point drop from the observed baseline);
+                // only its metric and comparison are ignored.
+                thresholdField(rule, label: "Drop of at least")
+
+            case .chargingPaused, .slowCharging:
+                LabeledContent("Condition") {
+                    Text(kind.fixedConditionSummary ?? "")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+        } header: {
+            Text("Condition")
+        } footer: {
+            if let note = kind.notApplicableNote {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Fires when \(rule.wrappedValue.metric.shortLabel) is \(ComparisonKind(comparison: rule.wrappedValue.comparison).phrase) \(MetricFormatter.detailed(rule.wrappedValue.threshold, unit: rule.wrappedValue.metric.unit)). “Above” and “below” are inclusive (≥ and ≤).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func thresholdField(_ rule: Binding<AlertRule>, label: String) -> some View {
+        LabeledContent(label) {
+            HStack(spacing: 4) {
+                TextField(label, value: rule.threshold, format: .number)
+                    .labelsHidden()
+                    .frame(width: 110)
+                    .accessibilityLabel("\(label) value")
+                Text(Self.unitLabel(rule.wrappedValue.metric.unit))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Durations are stored as `TimeInterval` seconds. Edited in seconds
+    /// rather than a minutes/seconds pair because the shipped rules span 0 s
+    /// to 300 s and a minutes control would either round "30 seconds" away or
+    /// need a unit picker for no gain; the caption spells out long values in
+    /// minutes so a 300 doesn't have to be divided in the user's head.
+    private func durationField(
+        title: String,
+        seconds: Binding<TimeInterval>,
+        accessibilityLabel: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledContent(title) {
+                HStack(spacing: 4) {
+                    TextField(title, value: seconds, format: .number)
+                        .labelsHidden()
+                        .frame(width: 110)
+                        .accessibilityLabel(accessibilityLabel)
+                    Text("s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(Self.humanDuration(seconds.wrappedValue))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func quietHoursSection(_ rule: Binding<AlertRule>) -> some View {
+        Section {
+            Toggle("Mute during quiet hours", isOn: quietHoursEnabledBinding(rule))
+                .accessibilityLabel("Mute this rule during quiet hours")
+
+            if let quietHours = rule.wrappedValue.quietHours {
+                Picker("From", selection: quietHourBinding(rule, isStart: true)) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        Text(Self.hourLabel(hour)).tag(hour)
+                    }
+                }
+                .accessibilityLabel("Quiet hours start")
+
+                Picker("Until", selection: quietHourBinding(rule, isStart: false)) {
+                    ForEach(0..<24, id: \.self) { hour in
+                        Text(Self.hourLabel(hour)).tag(hour)
+                    }
+                }
+                .accessibilityLabel("Quiet hours end")
+
+                if quietHours.startHour == quietHours.endHour {
+                    // `QuietHours.contains(hour:)` treats an equal start/end
+                    // as a zero-width window, i.e. no muting at all. That is
+                    // the safer reading of an ambiguous value, but it is not
+                    // what a user setting both to 23 expects, so say so.
+                    Label(
+                        "A matching start and end mutes nothing. Pick different hours, or turn quiet hours off.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } header: {
+            Text("Quiet Hours")
+        } footer: {
+            Text("Inside the window this rule does not fire at all — and its cooldown is not consumed, so it can fire promptly once the window ends. An end hour earlier than the start wraps past midnight.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func preconditionSection(_ rule: Binding<AlertRule>) -> some View {
+        let selected = rule.wrappedValue.onlyWhen
+
+        Section {
+            ForEach(PreconditionKind.allCases, id: \.self) { kind in
+                Toggle(kind.displayName, isOn: preconditionBinding(rule, kind.precondition))
+                    .accessibilityLabel("Only when \(kind.displayName)")
+            }
+
+            if selected.contains(.onBattery) && selected.contains(.charging) {
+                // Preconditions are AND'd, and these two are mutually
+                // exclusive by construction, so this combination is a rule
+                // that provably never fires.
+                Label(
+                    "“On battery” and “Charging” can't both be true, so this rule will never fire.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if selected.contains(.displayAsleep) {
+                Label(
+                    "MacStat has no display-sleep signal yet, so this condition is always false and this rule will never fire.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Only When")
+        } footer: {
+            Text("All checked conditions must hold at once. With none checked the rule is always eligible.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func actionsSection(_ rule: Binding<AlertRule>) -> some View {
+        Section {
+            if rule.wrappedValue.actions.isEmpty {
+                Text("This rule has no actions and will only be recorded in history.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(Array(rule.wrappedValue.actions.enumerated()), id: \.offset) { _, action in
+                    LabeledContent(Self.actionTitle(action)) {
+                        Text(Self.actionDetail(action))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+            }
+        } header: {
+            Text("Actions")
+        } footer: {
+            Text("Actions aren't editable yet. Phone push and Shortcuts aren't implemented, so an editor offering them would promise delivery MacStat can't perform — every firing is still written to history regardless.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Points at the Advanced pane instead of duplicating the two
+    /// anti-spam controls (plan §11.3). `AdvancedPane` already owns
+    /// `notificationRateCapPerHour` and `alertCooldownMinutes`, and two live
+    /// editors for the same stored value in one window is how a user ends up
+    /// unsure which one won.
+    private var globalLimitsSection: some View {
+        Section {
+            LabeledContent("Notification cap", value: "\(store.settings.notificationRateCapPerHour) per hour")
+            LabeledContent("Default cooldown for new rules", value: "\(store.settings.alertCooldownMinutes) min")
+        } header: {
+            Text("Global Limits")
+        } footer: {
+            Text("Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - History (plan §11.3)
+
+    private var historyColumn: some View {
+        VStack(spacing: 0) {
+            if historyStore == nil {
+                message("Alert history isn't available — MacStat couldn't open its history database. Alerts still fire; they just aren't being recorded.")
+            } else if historyEntries.isEmpty {
+                message("No alerts have fired yet.")
+            } else {
+                // Keyed by position, not by content: `AlertLogEntry` has no
+                // row id and is only `Equatable`, and two firings of the
+                // same rule in the same second are legitimately identical
+                // values that must still render as two rows.
+                List(Array(historyEntries.enumerated()), id: \.offset) { _, entry in
+                    historyRow(entry)
+                }
+                .accessibilityLabel("Alert history, most recent first")
+            }
+
+            Divider()
+
+            HStack {
+                Text(historySummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    loadHistory()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(historyStore == nil)
+                .accessibilityLabel("Reload alert history")
+            }
+            .padding(8)
+        }
+        // Loaded on every appearance and on demand, rather than observed
+        // live: `HistoryStore` publishes no change notification, and polling
+        // SQLite from a settings window that's usually closed would burn
+        // exactly the battery this app exists to measure. Re-reading on each
+        // switch into this mode is one bounded `LIMIT 200` query and keeps
+        // the pane from showing a snapshot from whenever the window was last
+        // opened — which, since `SettingsWindowController` deliberately
+        // reuses its window forever, could be days ago.
+        .onAppear { loadHistory() }
+    }
+
+    private func message(_ text: String) -> some View {
+        VStack {
+            Spacer()
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var historySummary: String {
+        guard historyStore != nil else { return "History unavailable" }
+        let suppressed = historyEntries.filter(\.suppressed).count
+        if suppressed == 0 {
+            return "\(historyEntries.count) recent firings"
+        }
+        return "\(historyEntries.count) recent firings, \(suppressed) suppressed by the hourly cap"
+    }
+
+    private func historyRow(_ entry: AlertLogEntry) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.ruleName.isEmpty ? "(unnamed rule)" : entry.ruleName)
+                Text(entry.timestamp.formatted(date: .abbreviated, time: .standard))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(Self.historyValueText(entry))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+
+            // Suppressed rows are the whole point of logging a capped
+            // firing (see `AlertEngine`'s rate-cap doc comment), so they get
+            // a label rather than being dimmed or filtered out. §9.4: the
+            // word carries the meaning, not the color.
+            if entry.suppressed {
+                Label("Suppressed", systemImage: "bell.slash")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .labelStyle(.titleAndIcon)
+            } else if entry.delivered {
+                Label("Delivered", systemImage: "bell")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(entry.ruleName), \(entry.timestamp.formatted(date: .abbreviated, time: .standard)), \(Self.historyValueText(entry)), \(entry.suppressed ? "suppressed by the hourly cap" : "delivered")"
+        )
+    }
+
+    private func loadHistory() {
+        historyEntries = historyStore?.recentAlertFirings(limit: 200) ?? []
+    }
+
+    /// Renders the logged value in its metric's own unit. The
+    /// charging-paused rule is the one row where the stored `metric` is a
+    /// placeholder `AlertEngine` never reads (`AlertRule`'s doc comment
+    /// calls this out): its logged value is the decoded `NotChargingReason`
+    /// code, so formatting it as a battery percentage would print a
+    /// confident, wrong "1%".
+    static func historyValueText(_ entry: AlertLogEntry) -> String {
+        if entry.ruleID == AlertEngine.chargingPausedRuleID {
+            return "reason code \(Int(entry.value))"
+        }
+        guard let metric = MetricID(rawValue: entry.metric) else {
+            // A rule whose metric this build doesn't recognize (older or
+            // newer settings file) — show the raw number rather than
+            // dropping the row.
+            return String(format: "%g", entry.value)
+        }
+        return MetricFormatter.detailed(entry.value, unit: metric.unit)
+    }
+
+    // MARK: - Bindings
+
+    /// Resolved by id on every access rather than by cached index, so a
+    /// removal underneath the inspector can't write into the wrong rule.
+    private func selectedRuleBinding() -> Binding<AlertRule>? {
+        guard
+            let id = selectedRuleID,
+            let current = store.settings.alertRules.first(where: { $0.id == id })
+        else { return nil }
+
+        return Binding(
+            get: {
+                store.settings.alertRules.first(where: { $0.id == id }) ?? current
+            },
+            set: { newValue in
+                guard let index = store.settings.alertRules.firstIndex(where: { $0.id == id }) else { return }
+                store.settings.alertRules[index] = newValue
+            }
+        )
+    }
+
+    private func enabledBinding(for id: AlertRule.ID) -> Binding<Bool> {
+        Binding(
+            get: { store.settings.alertRules.first(where: { $0.id == id })?.isEnabled ?? false },
+            set: { isOn in
+                guard let index = store.settings.alertRules.firstIndex(where: { $0.id == id }) else { return }
+                store.settings.alertRules[index].isEnabled = isOn
+            }
+        )
+    }
+
+    private func comparisonKindBinding(_ rule: Binding<AlertRule>) -> Binding<ComparisonKind> {
+        Binding(
+            get: { ComparisonKind(comparison: rule.wrappedValue.comparison) },
+            set: { rule.wrappedValue.comparison = $0.comparison }
+        )
+    }
+
+    private func quietHoursEnabledBinding(_ rule: Binding<AlertRule>) -> Binding<Bool> {
+        Binding(
+            get: { rule.wrappedValue.quietHours != nil },
+            set: { isOn in
+                // Nothing is remembered on disable: re-enabling restores the
+                // plan's own 23:00–08:00 example rather than a stale window
+                // the user can no longer see. Same choice `MenuBarPane`
+                // makes for its max-width toggle.
+                rule.wrappedValue.quietHours = isOn
+                    ? AlertRule.QuietHours(startHour: 23, endHour: 8)
+                    : nil
+            }
+        )
+    }
+
+    private func quietHourBinding(_ rule: Binding<AlertRule>, isStart: Bool) -> Binding<Int> {
+        Binding(
+            get: {
+                guard let quietHours = rule.wrappedValue.quietHours else { return isStart ? 23 : 8 }
+                return isStart ? quietHours.startHour : quietHours.endHour
+            },
+            set: { newValue in
+                guard let quietHours = rule.wrappedValue.quietHours else { return }
+                rule.wrappedValue.quietHours = AlertRule.QuietHours(
+                    startHour: isStart ? newValue : quietHours.startHour,
+                    endHour: isStart ? quietHours.endHour : newValue
+                )
+            }
+        )
+    }
+
+    private func preconditionBinding(
+        _ rule: Binding<AlertRule>,
+        _ precondition: AlertRule.Precondition
+    ) -> Binding<Bool> {
+        Binding(
+            get: { rule.wrappedValue.onlyWhen.contains(precondition) },
+            set: { isOn in
+                var preconditions = rule.wrappedValue.onlyWhen
+                if isOn {
+                    guard !preconditions.contains(precondition) else { return }
+                    preconditions.append(precondition)
+                } else {
+                    preconditions.removeAll { $0 == precondition }
+                }
+                rule.wrappedValue.onlyWhen = preconditions
+            }
+        )
+    }
+
+    // MARK: - Display helpers
+
+    static func conditionSummary(for rule: AlertRule) -> String {
+        switch RuleKind(id: rule.id) {
+        case .chargingPaused, .slowCharging:
+            return RuleKind(id: rule.id).fixedConditionSummary ?? ""
+        case .batteryHealthDrop:
+            return "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more"
+        case .generic:
+            let comparison = ComparisonKind(comparison: rule.comparison).phrase
+            return "\(rule.metric.shortLabel) \(comparison) \(MetricFormatter.detailed(rule.threshold, unit: rule.metric.unit))"
+        }
+    }
+
+    /// Spells a raw second count out in the units a person would say it in.
+    /// Kept `static` and free of view state so the pane's arithmetic is
+    /// testable without a view hierarchy.
+    static func humanDuration(_ seconds: TimeInterval) -> String {
+        // A hand-edited settings file can hold a negative interval; treat it
+        // as "immediately" rather than printing "-30 seconds".
+        guard seconds > 0 else { return "Fires immediately" }
+        if seconds < 60 {
+            return "\(Self.trimmed(seconds)) second\(seconds == 1 ? "" : "s")"
+        }
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return "\(Self.trimmed(minutes)) minute\(minutes == 1 ? "" : "s")"
+        }
+        let hours = minutes / 60
+        return "\(Self.trimmed(hours)) hour\(hours == 1 ? "" : "s")"
+    }
+
+    /// "1.5" but "30", not "30.0".
+    private static func trimmed(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    /// Unit suffix for a bare numeric entry field. `MetricUnit.suffix` is
+    /// deliberately empty for byte-scale units (its formatter emits "1.2 GB"
+    /// itself, and "1.2 GB B" would be nonsense) — but a raw `TextField`
+    /// holding `10000000000` has no formatter and desperately needs the word.
+    static func unitLabel(_ unit: MetricUnit) -> String {
+        switch unit {
+        case .bytes: return "bytes"
+        case .bytesPerSecond: return "bytes/s"
+        case .boolean: return "0 or 1"
+        case .thermalLevel: return "0–3"
+        case .count, .decimal: return ""
+        default: return unit.suffix
+        }
+    }
+
+    static func hourLabel(_ hour: Int) -> String {
+        String(format: "%02d:00", hour)
+    }
+
+    static func actionTitle(_ action: AlertAction) -> String {
+        switch action {
+        case .notification: return "Notification"
+        case .menuBarHighlight: return "Menu bar highlight"
+        case .pushToPhone: return "Push to iPhone"
+        case .runShortcut: return "Run Shortcut"
+        case .releaseSleepAssertion: return "Allow sleep"
+        case .logOnly: return "Record only"
+        }
+    }
+
+    /// The detail column doubles as the honesty column: the two unimplemented
+    /// cases say so here rather than looking like working features.
+    static func actionDetail(_ action: AlertAction) -> String {
+        switch action {
+        case .notification(let title, _, let sound):
+            return sound ? "“\(title)”, with sound" : "“\(title)”"
+        case .menuBarHighlight(let token):
+            return "Token “\(token)”"
+        case .pushToPhone:
+            return "Not implemented yet — does nothing"
+        case .runShortcut(let name):
+            return "“\(name)” — not implemented yet, does nothing"
+        case .releaseSleepAssertion:
+            return "Releases the keep-awake assertion"
+        case .logOnly:
+            return "History only, no notification"
+        }
+    }
+}
+
+// MARK: - Rule kinds
+
+/// Which of `AlertEngine`'s evaluation paths a rule takes, derived from its
+/// `id` exactly the way the engine derives it.
+///
+/// This exists so the editor can't offer a field the engine will ignore. Three
+/// shipped rules don't reduce to a metric-vs-threshold compare, and their
+/// stored `metric`/`comparison` (and, for two of them, `threshold`) are
+/// documented placeholders `AlertEngine` never reads. Leaving those fields
+/// editable would let a user "fix" a rule by changing a number that has no
+/// effect — the worst kind of settings UI, because the change appears to
+/// take and the behavior never moves.
+///
+/// Derived from `id` rather than matched on rule *content* for the same
+/// reason `AlertEngine` uses fixed UUIDs: renaming or retuning one of these
+/// rules must not silently change which evaluator it gets.
+enum RuleKind: Hashable {
+    case generic
+    case chargingPaused
+    case slowCharging
+    case batteryHealthDrop
+
+    init(id: AlertRule.ID) {
+        switch id {
+        case AlertEngine.chargingPausedRuleID: self = .chargingPaused
+        case AlertEngine.slowChargingRuleID: self = .slowCharging
+        case AlertEngine.batteryHealthDropRuleID: self = .batteryHealthDrop
+        default: self = .generic
+        }
+    }
+
+    /// A plain-language description of what the engine actually measures, for
+    /// the rules whose stored condition fields are placeholders.
+    var fixedConditionSummary: String? {
+        switch self {
+        case .chargingPaused:
+            return "Plugged in but not charging, with a reason reported"
+        case .slowCharging:
+            return "Charging below half the adapter's rated wattage"
+        case .generic, .batteryHealthDrop:
+            return nil
+        }
+    }
+
+    var notApplicableNote: String? {
+        switch self {
+        case .chargingPaused:
+            return "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
+        case .slowCharging:
+            return "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
+        case .batteryHealthDrop:
+            return "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
+        case .generic:
+            return nil
+        }
+    }
+}
+
+// MARK: - Picker-friendly enum tags
+
+/// `AlertRule.Comparison` has no `CaseIterable` conformance (it lives in
+/// MacStatKit and gains nothing from one there), so the picker enumerates
+/// this local mirror instead of this pane reaching in to add a conformance to
+/// a type it doesn't own.
+private enum ComparisonKind: String, CaseIterable, Hashable {
+    case above
+    case below
+    case equals
+    case changedBy
+
+    init(comparison: AlertRule.Comparison) {
+        switch comparison {
+        case .above: self = .above
+        case .below: self = .below
+        case .equals: self = .equals
+        case .changedBy: self = .changedBy
+        }
+    }
+
+    var comparison: AlertRule.Comparison {
+        switch self {
+        case .above: return .above
+        case .below: return .below
+        case .equals: return .equals
+        case .changedBy: return .changedBy
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .above: return "At or above"
+        case .below: return "At or below"
+        case .equals: return "Equals"
+        case .changedBy: return "Changed by"
+        }
+    }
+
+    /// Sentence-fragment form, for the summary lines.
+    var phrase: String {
+        switch self {
+        case .above: return "≥"
+        case .below: return "≤"
+        case .equals: return "="
+        case .changedBy: return "changed by"
+        }
+    }
+}
+
+private enum PreconditionKind: String, CaseIterable, Hashable {
+    case onBattery
+    case charging
+    case displayAsleep
+
+    var precondition: AlertRule.Precondition {
+        switch self {
+        case .onBattery: return .onBattery
+        case .charging: return .charging
+        case .displayAsleep: return .displayAsleep
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .onBattery: return "On battery"
+        case .charging: return "Charging"
+        case .displayAsleep: return "Display asleep"
+        }
+    }
+}

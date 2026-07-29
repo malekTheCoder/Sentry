@@ -117,19 +117,23 @@ public final class PowerControlService: ObservableObject {
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
 
-        // Sleep/wake destroys any live IOPMAssertion, and an app relaunch
-        // starts with none either way — in both cases only our UserDefaults
-        // bookkeeping survived, not the actual OS-level assertion. A
-        // persisted "I was active" flag is a lie until the real assertion
-        // exists again, so both paths re-create it (or clean up) rather than
-        // trusting the flag at face value (plan §10.4's reconciliation
-        // paragraph, which applies locally even without CloudKit).
+        // Reconciliation exists because our UserDefaults bookkeeping can
+        // outlive the thing it describes: a persisted "I was active" flag is
+        // a claim about an OS-level assertion that may no longer exist, and
+        // P5 says we must not render a claim we haven't verified (plan
+        // §10.4's reconciliation paragraph, which applies locally even
+        // without CloudKit).
+        //
+        // The two entry points are deliberately *not* equivalent, hence
+        // `isColdStart` — see `reconcilePersistedState(isColdStart:)`. On
+        // wake the process never died, so a restored assertion is still the
+        // user's standing intent; on launch it is not.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.reconcilePersistedState() }
+            Task { @MainActor in self?.reconcilePersistedState(isColdStart: false) }
         }
 
         terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -141,7 +145,7 @@ public final class PowerControlService: ObservableObject {
             Task { @MainActor in self?.handleAppTermination(bundleIdentifier: bundleID) }
         }
 
-        reconcilePersistedState()
+        reconcilePersistedState(isColdStart: true)
     }
 
     /// `deinit` is `nonisolated` on a `@MainActor` class — it cannot hop
@@ -304,9 +308,38 @@ public final class PowerControlService: ObservableObject {
     /// Re-reads persisted state and either re-creates the real assertion (if
     /// still within its window) or cleans up to `.inactive`. Called from
     /// `init` (covers app relaunch) and the `didWakeNotification` observer
-    /// (covers sleep/wake) — both destroy the previous OS-level assertion,
-    /// so both need the same "recreate or clean up" handling.
-    private func reconcilePersistedState() {
+    /// (covers sleep/wake).
+    ///
+    /// An earlier version of this comment claimed both paths "destroy the
+    /// previous OS-level assertion." That is true of process exit — `powerd`
+    /// tracks assertions per-PID and drops them when the owner dies — but
+    /// **not** of sleep/wake, where an assertion survives untouched. The wake
+    /// path therefore releases and re-creates something that was already
+    /// live. That's wasteful rather than wrong (it opens a brief window with
+    /// no assertion, and flaps `state` through `.inactive`), and is left
+    /// as-is here only because narrowing it is a behavioral change worth
+    /// making deliberately rather than as a drive-by. Recorded so the next
+    /// reader doesn't re-derive the false premise.
+    ///
+    /// - Parameter isColdStart: `true` when called from `init` (the process
+    ///   just started), `false` from the wake observer (the process has been
+    ///   running throughout). This distinction exists to avoid a genuinely
+    ///   nasty failure mode: an **indefinite** assertion has no `expiresAt`,
+    ///   so it can never fail the expiry check below and would otherwise be
+    ///   re-created on *every* launch, forever, with no user action —
+    ///   turn it on once, quit, and the Mac is silently held awake again on
+    ///   next launch (and MacStat is a login item, so "next launch" is
+    ///   every boot). `IOPMAssertion`s are released by the OS when their
+    ///   owning process exits, so after a quit there is nothing left to
+    ///   "restore" — only our own stale bookkeeping claiming otherwise.
+    ///   Plan §10.4 authorizes restoring a record only "if its expiry is
+    ///   still in the future," which an indefinite assertion has no way to
+    ///   satisfy. Timed assertions still restore across a cold start: they
+    ///   carry a bounded, self-releasing window the user explicitly chose.
+    ///   On the wake path all of this is moot — the process never died, so
+    ///   restoring is continuing the user's standing intent, not resurrecting
+    ///   it.
+    private func reconcilePersistedState(isColdStart: Bool) {
         guard let record = loadPersistedRecord() else {
             // No persisted record to trust, but `assertionID` may still hold
             // a stale value from before this method ran (e.g. sleep/wake
@@ -327,6 +360,15 @@ public final class PowerControlService: ObservableObject {
             releaseAssertion()
 
         case .active(let mode, let expiresAt, let reason):
+            if isColdStart, expiresAt == nil {
+                // Indefinite hold from a previous run of the app — see the
+                // `isColdStart` parameter doc. Deliberately dropped rather
+                // than silently re-asserted.
+                Self.logger.notice("Discarding persisted indefinite sleep assertion from a previous launch rather than silently re-asserting it.")
+                releaseAssertion()
+                clearPersistedRecord()
+                return
+            }
             if let expiresAt, expiresAt <= Date() {
                 // Expired while we were asleep / not running — nothing to
                 // restore, and definitely don't fire a fresh assertion for a

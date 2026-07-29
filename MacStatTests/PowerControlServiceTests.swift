@@ -152,20 +152,54 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .inactive)
     }
 
-    func testReconciliationRestoresUnexpiredIndefiniteAssertionAcrossRelaunch() throws {
-        let defaults = makeTestDefaults("reconcileRestore")
+    func testColdStartDoesNotRestoreAnIndefiniteAssertion() throws {
+        let defaults = makeTestDefaults("reconcileIndefinite")
 
         let first = PowerControlService(defaults: defaults)
         try first.startAssertion(mode: .systemOnly, duration: nil, reason: "round trip")
         XCTAssertEqual(first.state, .active(mode: .systemOnly, expiresAt: nil, reason: "round trip"))
 
         // A second instance sharing the same UserDefaults suite simulates an
-        // app relaunch: its `init` calls `reconcilePersistedState()`, which
-        // must read the persisted `.active` record back and recreate a real
-        // assertion rather than starting `.inactive` (plan §10.4's local
-        // reconciliation-on-launch requirement).
+        // app relaunch. An *indefinite* assertion must NOT come back: the OS
+        // released the real assertion when the previous process exited, so
+        // the persisted record is only stale bookkeeping. Restoring it would
+        // silently re-hold the machine awake with no user action — and,
+        // because MacStat can be a login item, would do so on every boot,
+        // forever, with nothing on screen until the user happens to open the
+        // dropdown. Plan §10.4 only authorizes restoring a record whose
+        // "expiry is still in the future," which an indefinite hold cannot
+        // satisfy.
         let second = PowerControlService(defaults: defaults)
-        XCTAssertEqual(second.state, .active(mode: .systemOnly, expiresAt: nil, reason: "round trip"))
+        XCTAssertEqual(second.state, .inactive)
+        // The stale record must also be cleared, not left to be re-evaluated.
+        XCTAssertNil(defaults.data(forKey: "dev.malekswilam.macstat.powercontrol.state"))
+
+        first.releaseAssertion()
+        second.releaseAssertion()
+    }
+
+    func testColdStartStillRestoresATimedAssertionWithItsRemainingWindow() throws {
+        let defaults = makeTestDefaults("reconcileTimed")
+
+        let first = PowerControlService(defaults: defaults)
+        try first.startAssertion(mode: .systemOnly, duration: 3600, reason: "timed round trip")
+        guard case .active(_, let firstExpiry, _) = first.state else {
+            return XCTFail("expected the first service to hold an active assertion")
+        }
+        XCTAssertNotNil(firstExpiry)
+
+        // The counterpart to the test above: a *timed* assertion is bounded
+        // and self-releasing, so honouring the user's remaining window across
+        // a relaunch can't strand the machine awake. This is the behaviour
+        // the indefinite case deliberately diverges from, so it's asserted
+        // explicitly rather than assumed.
+        let second = PowerControlService(defaults: defaults)
+        guard case .active(let mode, let secondExpiry, let reason) = second.state else {
+            return XCTFail("expected a timed assertion to survive a cold start")
+        }
+        XCTAssertEqual(mode, .systemOnly)
+        XCTAssertEqual(reason, "timed round trip")
+        XCTAssertNotNil(secondExpiry)
 
         first.releaseAssertion()
         second.releaseAssertion()

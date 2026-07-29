@@ -53,6 +53,27 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var notificationRateCapPerHour: Int
     public var alertCooldownMinutes: Int
 
+    /// The user's alert rules (plan §11.1/§11.2), edited in `AlertsPane` and
+    /// handed to `AlertEngine.updateRules(_:)` by the composition root.
+    ///
+    /// **Why the whole rule set lives in settings rather than in its own
+    /// store:** rules are small, plain `Codable` value types by deliberate
+    /// design (see `AlertRule`'s doc comment — all engine runtime state is
+    /// kept *off* the rule), so they cost nothing to carry in the same
+    /// `settings.json` everything else already round-trips, and a user who
+    /// copies that one file to a new Mac gets their alerts with it.
+    ///
+    /// **Empty is a legal, deliberate state — but not a fallback.** See
+    /// `init(from:)` below: a settings file that *omits* this key (written by
+    /// a build from before alert rules existed) decodes to the shipped
+    /// defaults, whereas a file with an explicit `"alertRules": []` decodes
+    /// to no rules. Those are different situations and must not collapse
+    /// into one: the first is an upgrade, where silently ending up with zero
+    /// alerts would be an invisible regression; the second is a user who
+    /// removed every rule in `AlertsPane`, which that pane shows an explicit
+    /// empty-state message for.
+    public var alertRules: [AlertRule]
+
     // MARK: - Sync
 
     public var cloudKitSyncEnabled: Bool
@@ -83,6 +104,27 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let currentSchemaVersion: Int = 1
 
+    /// Appendix B's alert cooldown default, hoisted into a named constant
+    /// because `defaultAlertRules` below has to derive from the exact same
+    /// number — `AlertRule`'s doc comment is explicit that a rule's cooldown
+    /// should come from this setting rather than a literal baked in
+    /// somewhere else, and two independent `30`s is precisely how that
+    /// promise quietly breaks.
+    public static let defaultAlertCooldownMinutes: Int = 30
+
+    /// The 11 shipped rules from plan §11.2, built once.
+    ///
+    /// A `static let` rather than a computed property on purpose:
+    /// `AlertEngine.defaultRules(cooldown:)` mints a fresh `UUID` for every
+    /// non-special-cased rule on each call, so a computed version would make
+    /// two `AppSettings()` values compare unequal for no user-visible reason
+    /// — and `SettingsStore` writes to disk on exactly that inequality
+    /// (`settings != oldValue`), which would turn every incidental
+    /// re-assignment of defaults into a disk write with a churned rule set.
+    public static let defaultAlertRules: [AlertRule] = AlertEngine.defaultRules(
+        cooldown: TimeInterval(AppSettings.defaultAlertCooldownMinutes * 60)
+    )
+
     public init(
         themeID: String = Theme.terminal.id,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
@@ -93,7 +135,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         rawRetentionHours: Int = 48,
         hourlyRetentionDays: Int = 90,
         notificationRateCapPerHour: Int = 6,
-        alertCooldownMinutes: Int = 30,
+        alertCooldownMinutes: Int = AppSettings.defaultAlertCooldownMinutes,
+        alertRules: [AlertRule] = AppSettings.defaultAlertRules,
         cloudKitSyncEnabled: Bool = false,
         mcpServerEnabled: Bool = false,
         mcpWriteToolsEnabled: Bool = false,
@@ -110,6 +153,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.hourlyRetentionDays = hourlyRetentionDays
         self.notificationRateCapPerHour = notificationRateCapPerHour
         self.alertCooldownMinutes = alertCooldownMinutes
+        self.alertRules = alertRules
         self.cloudKitSyncEnabled = cloudKitSyncEnabled
         self.mcpServerEnabled = mcpServerEnabled
         self.mcpWriteToolsEnabled = mcpWriteToolsEnabled
@@ -136,6 +180,7 @@ extension AppSettings {
         case hourlyRetentionDays
         case notificationRateCapPerHour
         case alertCooldownMinutes
+        case alertRules
         case cloudKitSyncEnabled
         case mcpServerEnabled
         case mcpWriteToolsEnabled
@@ -179,6 +224,16 @@ extension AppSettings {
                 ?? fallback.notificationRateCapPerHour,
             alertCooldownMinutes: try container.decodeIfPresent(Int.self, forKey: .alertCooldownMinutes)
                 ?? fallback.alertCooldownMinutes,
+            // Same `decodeIfPresent ?? fallback` shape as every other field,
+            // and it matters more here than anywhere else: the fallback is
+            // the shipped 11-rule default set, *not* `[]`. A file written by
+            // a build from before this key existed must upgrade into working
+            // alerts — decoding it into an empty list would leave the user
+            // with no alerts and nothing on screen explaining why. An
+            // explicitly-stored empty array still decodes as empty, because
+            // that one really is a user who removed every rule.
+            alertRules: try container.decodeIfPresent([AlertRule].self, forKey: .alertRules)
+                ?? fallback.alertRules,
             cloudKitSyncEnabled: try container.decodeIfPresent(Bool.self, forKey: .cloudKitSyncEnabled)
                 ?? fallback.cloudKitSyncEnabled,
             mcpServerEnabled: try container.decodeIfPresent(Bool.self, forKey: .mcpServerEnabled)

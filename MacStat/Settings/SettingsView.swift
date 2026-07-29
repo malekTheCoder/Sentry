@@ -9,6 +9,17 @@ struct SettingsView: View {
 
     @ObservedObject var store: SettingsStore
 
+    /// Read-only, and only `AlertsPane`'s history mode uses it. `nil` is a
+    /// legitimate configuration — the settings window is constructible before
+    /// history is wired, and that pane says so on screen rather than showing
+    /// an empty list that would read as "nothing has ever fired."
+    let historyStore: HistoryStore?
+
+    init(store: SettingsStore, historyStore: HistoryStore? = nil) {
+        self.store = store
+        self.historyStore = historyStore
+    }
+
     var body: some View {
         TabView {
             GeneralPane(store: store)
@@ -22,6 +33,9 @@ struct SettingsView: View {
 
             ThemePane(store: store)
                 .tabItem { Label("Theme", systemImage: "paintpalette") }
+
+            AlertsPane(store: store, historyStore: historyStore)
+                .tabItem { Label("Alerts", systemImage: "bell") }
 
             AdvancedPane(store: store)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }

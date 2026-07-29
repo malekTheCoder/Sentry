@@ -64,10 +64,17 @@ public final class AlertEngine {
     /// content, so `defaultRules(cooldown:)` and this engine's evaluation
     /// path always agree on which rule gets the special-cased treatment
     /// even if a user later renames/edits the rule via a settings UI.
-    public static let chargingPausedRuleID = UUID(uuidString: "5B1A0001-0000-4000-8000-000000000001")!
+    ///
+    /// These three IDs are `nonisolated` (they're immutable `UUID`s, so
+    /// there's nothing for the main actor to protect) because their whole
+    /// purpose is to be compared against outside this class: `defaultRules`
+    /// below, and the settings UI, which has to know that a rule with one of
+    /// these IDs is evaluated by content this engine reads directly rather
+    /// than by the rule's own metric/comparison/threshold fields.
+    nonisolated public static let chargingPausedRuleID = UUID(uuidString: "5B1A0001-0000-4000-8000-000000000001")!
 
     /// "Slow charging" (plan §11.2). See `chargingPausedRuleID`.
-    public static let slowChargingRuleID = UUID(uuidString: "5B1A0001-0000-4000-8000-000000000002")!
+    nonisolated public static let slowChargingRuleID = UUID(uuidString: "5B1A0001-0000-4000-8000-000000000002")!
 
     /// "Battery health drop" (plan §11.2). Special-cased for the same reason
     /// as the two IDs above: plan §11.2 wants this to fire only on a
@@ -79,7 +86,7 @@ public final class AlertEngine {
     /// would narrow it for any future rule that legitimately wants
     /// bidirectional change detection), this one rule gets its own
     /// decrease-only evaluation, same pattern as charging-paused/slow-charging.
-    public static let batteryHealthDropRuleID = UUID(uuidString: "5B1A0001-0000-4000-8000-000000000003")!
+    nonisolated public static let batteryHealthDropRuleID = UUID(uuidString: "5B1A0001-0000-4000-8000-000000000003")!
 
     // MARK: - Injectable delivery hooks
 
@@ -481,7 +488,17 @@ extension AlertEngine {
     ///   itself so `MacStatKit/Services` doesn't need a dependency on
     ///   `MacStatKit/Settings` (or a hidden default that silently diverges
     ///   from the user's actual setting).
-    public static func defaultRules(cooldown: TimeInterval) -> [AlertRule] {
+    ///
+    /// `nonisolated` because this is a pure factory for value types with no
+    /// access to any engine state, and its natural callers aren't on the
+    /// main actor: `AppSettings.defaultAlertRules` (a `static let`) and
+    /// `AppSettings.init(from:)` (a nonisolated `Decodable` requirement)
+    /// both need it, and both are exactly the callers this function's own
+    /// `cooldown` parameter was designed for. Without `nonisolated` the
+    /// enclosing `@MainActor` class silently makes this unreachable from
+    /// them — a compile error, not a runtime hazard, and one that would
+    /// otherwise force `AppSettings` to hardcode a duplicate rule list.
+    nonisolated public static func defaultRules(cooldown: TimeInterval) -> [AlertRule] {
         [
             AlertRule(
                 name: "Low battery",

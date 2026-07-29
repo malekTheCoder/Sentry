@@ -13,10 +13,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private let settingsStore: SettingsStore
 
+    /// Read-only, and used by exactly one pane (`AlertsPane`'s history mode,
+    /// plan §11.3). Held here rather than reached for lazily because the
+    /// hosting controller is built once and never rebuilt.
+    ///
+    /// Defaulted to `nil` so this is a purely additive parameter: `AppDelegate`
+    /// passes the same `HistoryStore` instance it already hands to
+    /// `AlertEngine` — `SettingsWindowController(settingsStore:historyStore:)`
+    /// — and any call site that hasn't been updated keeps compiling and simply
+    /// gets a history pane that says it's unavailable.
+    private let historyStore: HistoryStore?
+
     /// The window is built on first `show()` rather than in `init` so that
     /// constructing the controller at launch costs nothing.
-    init(settingsStore: SettingsStore) {
+    init(settingsStore: SettingsStore, historyStore: HistoryStore? = nil) {
         self.settingsStore = settingsStore
+        self.historyStore = historyStore
         super.init(window: nil)
     }
 
@@ -39,7 +51,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let root = SettingsView(store: settingsStore)
+        let root = SettingsView(store: settingsStore, historyStore: historyStore)
         let hosting = NSHostingController(rootView: root)
 
         let settingsWindow = NSWindow(contentViewController: hosting)

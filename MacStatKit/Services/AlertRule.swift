@@ -15,7 +15,15 @@ import Foundation
 /// and `AlertEngine.slowChargingRuleID` — are special-cased by `AlertEngine`
 /// at evaluation time (see those rules' shipped `metric`/`comparison`
 /// wiring below and `AlertEngine`'s doc comment for why).
-public struct AlertRule: Codable, Identifiable, Equatable {
+///
+/// `Sendable` for the same reason every other persisted model in this module
+/// (`MetricID`, `MenuBarLayout`, `AppSettings`) is: `AppSettings` stores
+/// `[AlertRule]` and is itself `Sendable`, and `SettingsStore` hands a
+/// settings snapshot across to its private IO queue to write. Without the
+/// conformance that hop is a Swift 6 error and, today, a warning that would
+/// sit in the build forever. Nothing here is reference-typed, so the
+/// conformance is a statement of fact rather than a promise being made.
+public struct AlertRule: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var name: String
     public var isEnabled: Bool
@@ -83,7 +91,7 @@ public struct AlertRule: Codable, Identifiable, Equatable {
 }
 
 extension AlertRule {
-    public enum Comparison: Codable, Equatable {
+    public enum Comparison: Codable, Equatable, Sendable {
         /// `value >= threshold`. Inclusive rather than a strict `>`, so a
         /// single case can express both the plan's "≥" rules (charge limit
         /// reminder, fully charged) and its ">" rules (high temperature,
@@ -125,7 +133,7 @@ extension AlertRule {
     /// is treated as "no quiet window" (zero-width) rather than "24 hours
     /// of quiet" — an equal start/end is far more likely to be an
     /// unconfigured/default value than a deliberate all-day mute.
-    public struct QuietHours: Codable, Equatable {
+    public struct QuietHours: Codable, Equatable, Sendable {
         /// 0...23, inclusive start of the quiet window.
         public var startHour: Int
         /// 0...23, exclusive end of the quiet window. May be less than
@@ -150,7 +158,7 @@ extension AlertRule {
         }
     }
 
-    public enum Precondition: Codable, Equatable {
+    public enum Precondition: Codable, Equatable, Sendable {
         /// True when the most recent snapshot's `BatteryStats.isCharging`
         /// is `false`. Deliberately keyed off `isCharging` rather than
         /// `isPluggedIn` — a Mac can be plugged into a low-power/data-only
@@ -186,7 +194,7 @@ extension AlertRule {
 /// `AlertEngine.menuBarHighlighter` closure, whose owner (the menu bar
 /// rendering layer, once it exists) is free to map tokens to real
 /// `ThemeColor`s.
-public enum AlertAction: Codable, Equatable {
+public enum AlertAction: Codable, Equatable, Sendable {
     /// Delivered via `UNUserNotificationCenter` by `AlertEngine`.
     case notification(title: String, body: String, sound: Bool)
 
