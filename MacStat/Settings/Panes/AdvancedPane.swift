@@ -61,7 +61,11 @@ struct AdvancedPane: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Alerts") {
+            Section {
+                Toggle("Do Not Disturb", isOn: $store.settings.doNotDisturb)
+                    .accessibilityLabel("Do Not Disturb")
+                    .accessibilityValue(store.settings.doNotDisturb ? "On" : "Off")
+
                 Stepper(
                     value: $store.settings.notificationRateCapPerHour,
                     in: 1...60
@@ -85,6 +89,13 @@ struct AdvancedPane: View {
                 }
                 .accessibilityLabel("Cooldown between repeated alerts, in minutes")
                 .accessibilityValue("\(store.settings.alertCooldownMinutes)")
+            } header: {
+                Text("Alerts")
+            } footer: {
+                Text("Do Not Disturb is a master mute: while it's on, no rule delivers a notification, menu bar highlight, or sleep-assertion release, no matter what its own quiet hours say. Nothing is recorded in History while muted this way, the same as a rule's own quiet hours — see the Alerts pane.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Reset") {

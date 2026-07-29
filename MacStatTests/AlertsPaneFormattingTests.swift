@@ -113,6 +113,72 @@ final class AlertsPaneFormattingTests: XCTestCase {
         XCTAssertEqual(AlertsPane.unitLabel(.thermalLevel), "0–3")
     }
 
+    // MARK: - Byte-scale threshold editor/summary agreement
+
+    func testThresholdEditorAndSummaryAgreeOnAByteScaleValue() {
+        // Regression test for the reviewer-observed bug: the editable field
+        // showed the raw stored bytes ("10000000000", unit "bytes") while
+        // the row summary/footer showed `MetricFormatter.detailed`'s
+        // divided-by-1024³ "9.31 GB" for the very same stored value. Both
+        // now go through the same GB conversion.
+        let storedBytes = 10_000_000_000.0
+        let editorValue = AlertsPane.gbValue(fromBytes: storedBytes)
+        let summaryText = AlertsPane.detailedThreshold(storedBytes, unit: .bytes)
+
+        XCTAssertEqual(editorValue, storedBytes / (1024 * 1024 * 1024), accuracy: 0.0001)
+        XCTAssertTrue(
+            summaryText.hasPrefix(String(format: "%.2f", editorValue)),
+            "summary '\(summaryText)' must describe the same number the editor shows (\(editorValue))"
+        )
+        XCTAssertEqual(AlertsPane.thresholdUnitLabel(.bytes), "GB")
+    }
+
+    func testByteScaleThresholdRoundTripsThroughTheGBConversion() {
+        let originalBytes = 1_073_741_824.0 // exactly 1 GiB
+        let gb = AlertsPane.gbValue(fromBytes: originalBytes)
+        XCTAssertEqual(gb, 1, accuracy: 0.0001)
+        XCTAssertEqual(AlertsPane.bytes(fromGB: gb), originalBytes, accuracy: 0.5)
+    }
+
+    func testShippedLowDiskThresholdFormatsAsACleanTenGB() {
+        // The shipped default is defined in binary GiB specifically so this
+        // reads "10 GB", not the odd "9.31 GB" a decimal-billion threshold
+        // would produce through the same 1024-based formatter.
+        let rules = AlertEngine.defaultRules(cooldown: 1800)
+        let lowDisk = try? XCTUnwrap(rules.first { $0.name == "Low disk" })
+        XCTAssertEqual(
+            AlertsPane.detailedThreshold(lowDisk!.threshold, unit: .bytes),
+            "10 GB"
+        )
+    }
+
+    func testDetailedThresholdFallsBackToMetricFormatterForNonByteUnits() {
+        XCTAssertEqual(
+            AlertsPane.detailedThreshold(90, unit: .percent),
+            MetricFormatter.detailed(90, unit: .percent)
+        )
+    }
+
+    // MARK: - Adding a new rule
+
+    func testNewRuleGetsAFreshIDDistinctFromTheReservedSpecialCasedIDs() {
+        let rule = AlertsPane.makeNewRule(cooldown: 1800)
+        XCTAssertNotEqual(rule.id, AlertEngine.chargingPausedRuleID)
+        XCTAssertNotEqual(rule.id, AlertEngine.slowChargingRuleID)
+        XCTAssertNotEqual(rule.id, AlertEngine.batteryHealthDropRuleID)
+    }
+
+    func testNewRuleIsMeaningfulOnItsOwn() {
+        // A rule needs a metric, comparison, threshold, sustainedFor,
+        // cooldown, and at least one action to actually do anything — an
+        // empty-actions rule would fire and be silently useless.
+        let rule = AlertsPane.makeNewRule(cooldown: 1800)
+        XCTAssertFalse(rule.actions.isEmpty, "a new rule with no actions fires and does nothing")
+        XCTAssertEqual(rule.cooldown, 1800, "cooldown must come from the caller's current setting, not a baked-in literal")
+        XCTAssertTrue(rule.isEnabled)
+        XCTAssertEqual(RuleKind(id: rule.id), .generic, "a new rule must take the generic evaluation path, not collide with a special-cased one")
+    }
+
     // MARK: - Condition summaries
 
     func testConditionSummaryForAPlaceholderRuleDescribesWhatIsActuallyMeasured() {

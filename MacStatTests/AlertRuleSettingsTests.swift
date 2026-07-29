@@ -73,6 +73,26 @@ final class AlertRuleSettingsTests: XCTestCase {
         XCTAssertEqual(decoded, settings)
     }
 
+    // MARK: - Do Not Disturb (plan §11.3 master toggle)
+
+    func testSettingsFileWithoutDoNotDisturbDefaultsToOff() throws {
+        // A settings file written before this key existed must not come
+        // back up muted — that would be a silent, unexplained loss of every
+        // alert on upgrade, the same failure mode `alertRules` itself guards
+        // against above.
+        let settings = try decode("{}")
+        XCTAssertFalse(settings.doNotDisturb)
+    }
+
+    func testExplicitDoNotDisturbValueRoundTrips() throws {
+        let settings = try decode(#"{"doNotDisturb":true}"#)
+        XCTAssertTrue(settings.doNotDisturb)
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.doNotDisturb)
+    }
+
     // MARK: - Defaults agree with the cooldown setting
 
     func testDefaultRuleCooldownMatchesTheDefaultCooldownSetting() {

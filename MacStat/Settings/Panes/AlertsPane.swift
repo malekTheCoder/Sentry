@@ -85,6 +85,27 @@ struct AlertsPane: View {
 
             Divider()
 
+            // Honest-UI requirement for plan §11.3's DND master toggle: a
+            // user staring at an enabled, correctly-configured rule that
+            // just isn't firing needs to know *why* without having to guess
+            // that Advanced has a switch flipped. Shown regardless of
+            // `mode` since it's equally true of History (nothing fired
+            // because nothing was allowed to, not because nothing happened
+            // to be true).
+            if store.settings.doNotDisturb {
+                Label(
+                    "Do Not Disturb is on — no alerts will be delivered until you turn it off in the Advanced pane.",
+                    systemImage: "moon.fill"
+                )
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+
+                Divider()
+            }
+
             switch mode {
             case .rules:
                 HSplitView {
@@ -134,7 +155,7 @@ struct AlertsPane: View {
             }
 
             if rules.isEmpty {
-                Text("You have no alert rules. Nothing will ever notify you until you restore the defaults below.")
+                Text("You have no alert rules. Nothing will ever notify you until you add one or restore the defaults below.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -143,6 +164,13 @@ struct AlertsPane: View {
             }
 
             HStack {
+                Button {
+                    addRule()
+                } label: {
+                    Label("Add Rule", systemImage: "plus.circle")
+                }
+                .accessibilityLabel("Add a new alert rule")
+
                 Button(role: .destructive) {
                     removeSelectedRule()
                 } label: {
@@ -188,6 +216,77 @@ struct AlertsPane: View {
         // toggle's label into the condition sentence.
         .accessibilityElement(children: .contain)
     }
+
+    /// Removal (`Remove Rule`, the row's Delete key, its context menu) has
+    /// always been one-way in this pane — the only recovery was `Restore
+    /// Defaults`, which rebuilds all 11 shipped rules with fresh UUIDs and
+    /// discards every other edit along with it. `Add Rule` is the actual
+    /// undo path: selecting the new rule immediately afterward means the
+    /// user lands straight in the inspector to retune it, the same flow
+    /// `restoreDefaultRules` uses for consistency (it clears the selection
+    /// instead, since there's no single new rule to focus there).
+    private func addRule() {
+        let newRule = Self.makeNewRule(
+            cooldown: TimeInterval(store.settings.alertCooldownMinutes * 60)
+        )
+        store.settings.alertRules.append(newRule)
+        selectedRuleID = newRule.id
+        mode = .rules
+    }
+
+    /// Builds a fresh, meaningfully-configured rule for `addRule()`.
+    ///
+    /// **Why these particular defaults.** A rule needs a metric, a
+    /// comparison, a threshold, `sustainedFor`, a `cooldown`, and at least
+    /// one action to be worth anything at all — an all-zero/empty-actions
+    /// rule would evaluate some placeholder condition immediately and then
+    /// visibly do nothing, which is a worse starting point than no rule.
+    /// CPU above 90%, sustained a minute, with a plain notification, mirrors
+    /// the shipped "Sustained high CPU" default (plan §11.2): a real,
+    /// already-meaningful condition the user can retune from the inspector
+    /// rather than a blank template they have to fully construct themselves.
+    /// `cooldown` is threaded through from the current
+    /// `alertCooldownMinutes` setting for the same reason
+    /// `restoreDefaultRules` does — a hardcoded literal here would drift
+    /// from what the rest of this pane calls "the default cooldown for new
+    /// rules."
+    ///
+    /// **Fresh, non-colliding UUID.** `AlertRule.init`'s default `UUID()` is
+    /// astronomically unlikely to land on one of `AlertEngine`'s three fixed
+    /// special-cased IDs, but "astronomically unlikely" isn't "provably
+    /// can't" — and a user-created rule that happened to carry one of those
+    /// IDs would be silently evaluated by the engine's hardcoded logic
+    /// (reading `BatteryStats` fields directly) instead of the
+    /// metric/comparison/threshold this editor shows and the user actually
+    /// set, with no error and no indication anything was wrong. The loop
+    /// below makes the exclusion explicit rather than leaving it to chance.
+    static func makeNewRule(cooldown: TimeInterval) -> AlertRule {
+        var id = UUID()
+        while reservedRuleIDs.contains(id) {
+            id = UUID()
+        }
+        return AlertRule(
+            id: id,
+            name: "New Rule",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 60,
+            cooldown: cooldown,
+            actions: [
+                .notification(title: "New Rule", body: "Custom alert condition met.", sound: false)
+            ]
+        )
+    }
+
+    /// The three IDs `AlertEngine` special-cases (see `RuleKind`), pulled
+    /// into one set so `makeNewRule(cooldown:)` doesn't have to spell out
+    /// three separate comparisons.
+    private static let reservedRuleIDs: Set<AlertRule.ID> = [
+        AlertEngine.chargingPausedRuleID,
+        AlertEngine.slowChargingRuleID,
+        AlertEngine.batteryHealthDropRuleID,
+    ]
 
     private func removeSelectedRule() {
         guard let selected = selectedRuleID else { return }
@@ -330,7 +429,7 @@ struct AlertsPane: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("Fires when \(rule.wrappedValue.metric.shortLabel) is \(ComparisonKind(comparison: rule.wrappedValue.comparison).phrase) \(MetricFormatter.detailed(rule.wrappedValue.threshold, unit: rule.wrappedValue.metric.unit)). “Above” and “below” are inclusive (≥ and ≤).")
+                Text("Fires when \(rule.wrappedValue.metric.shortLabel) is \(ComparisonKind(comparison: rule.wrappedValue.comparison).phrase) \(Self.detailedThreshold(rule.wrappedValue.threshold, unit: rule.wrappedValue.metric.unit)). “Above” and “below” are inclusive (≥ and ≤).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -338,18 +437,50 @@ struct AlertsPane: View {
         }
     }
 
+    /// **Why byte-scale thresholds don't edit in raw bytes.** They used to:
+    /// the field showed the stored value verbatim (e.g. `10000000000`
+    /// alongside a "bytes" unit label), while every prose description of
+    /// the same threshold — this section's footer, the row's condition
+    /// summary — ran it through `MetricFormatter.detailed`, which divides
+    /// by 1024³ and prints "9.31 GB". Both numbers were defensible on their
+    /// own; showing both for the same stored value was not. Byte-scale
+    /// units edit in GB here (`Self.gbValue`/`Self.bytes(fromGB:)`) and the
+    /// prose helpers (`detailedThreshold`) use that exact same conversion,
+    /// so the editor and the sentence describing it always agree.
     private func thresholdField(_ rule: Binding<AlertRule>, label: String) -> some View {
-        LabeledContent(label) {
+        let unit = rule.wrappedValue.metric.unit
+        let isByteScale = unit == .bytes || unit == .bytesPerSecond
+
+        return LabeledContent(label) {
             HStack(spacing: 4) {
-                TextField(label, value: rule.threshold, format: .number)
-                    .labelsHidden()
-                    .frame(width: 110)
-                    .accessibilityLabel("\(label) value")
-                Text(Self.unitLabel(rule.wrappedValue.metric.unit))
+                if isByteScale {
+                    TextField(label, value: byteScaleThresholdBinding(rule), format: .number.precision(.fractionLength(0...2)))
+                        .labelsHidden()
+                        .frame(width: 110)
+                        .accessibilityLabel("\(label) value in gigabytes")
+                } else {
+                    TextField(label, value: rule.threshold, format: .number)
+                        .labelsHidden()
+                        .frame(width: 110)
+                        .accessibilityLabel("\(label) value")
+                }
+                Text(Self.thresholdUnitLabel(unit))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Bridges the stored byte threshold to the GB number the field above
+    /// actually shows and edits. `AlertRule.threshold` itself is never
+    /// stored in GB — only this editor's *presentation* of a byte-scale
+    /// threshold is — so every other reader of `threshold` (the engine,
+    /// history) keeps working in raw bytes unchanged.
+    private func byteScaleThresholdBinding(_ rule: Binding<AlertRule>) -> Binding<Double> {
+        Binding(
+            get: { Self.gbValue(fromBytes: rule.wrappedValue.threshold) },
+            set: { rule.wrappedValue.threshold = Self.bytes(fromGB: $0) }
+        )
     }
 
     /// Durations are stored as `TimeInterval` seconds. Edited in seconds
@@ -499,12 +630,13 @@ struct AlertsPane: View {
     /// unsure which one won.
     private var globalLimitsSection: some View {
         Section {
+            LabeledContent("Do Not Disturb", value: store.settings.doNotDisturb ? "On" : "Off")
             LabeledContent("Notification cap", value: "\(store.settings.notificationRateCapPerHour) per hour")
             LabeledContent("Default cooldown for new rules", value: "\(store.settings.alertCooldownMinutes) min")
         } header: {
             Text("Global Limits")
         } footer: {
-            Text("Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped.")
+            Text("Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped. Do Not Disturb is a full mute instead of a cap — while it's on, nothing fires and nothing is recorded, the same as a rule's own quiet hours.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -753,7 +885,7 @@ struct AlertsPane: View {
             return "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more"
         case .generic:
             let comparison = ComparisonKind(comparison: rule.comparison).phrase
-            return "\(rule.metric.shortLabel) \(comparison) \(MetricFormatter.detailed(rule.threshold, unit: rule.metric.unit))"
+            return "\(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))"
         }
     }
 
@@ -793,6 +925,64 @@ struct AlertsPane: View {
         case .count, .decimal: return ""
         default: return unit.suffix
         }
+    }
+
+    /// The 1024-based bytes-per-GB conversion the threshold editor and its
+    /// prose descriptions share — see `thresholdField`'s doc comment.
+    /// Matches `ByteCountFormatter`'s `.memory` count style (what
+    /// `MetricFormatter` uses for byte-scale live readings), not the
+    /// decimal-1000 `.file` style, so a rule edited here and a live reading
+    /// of the same metric elsewhere in the app scale the same way.
+    private static let bytesPerGB: Double = 1024 * 1024 * 1024
+
+    /// Raw bytes → the GB number the threshold editor shows.
+    static func gbValue(fromBytes bytes: Double) -> Double {
+        bytes / bytesPerGB
+    }
+
+    /// The GB number typed into the threshold editor → raw bytes to store.
+    static func bytes(fromGB value: Double) -> Double {
+        value * bytesPerGB
+    }
+
+    /// Unit suffix for the threshold editor specifically — distinct from
+    /// `unitLabel(_:)`, which still describes the *stored* unit (used by
+    /// history rows, which render an actually-observed value, not a
+    /// threshold a user is editing). Byte-scale units are edited in GB
+    /// (`gbValue`/`bytes(fromGB:)`), so this reads "GB"/"GB/s" here instead
+    /// of `unitLabel`'s "bytes"/"bytes/s".
+    static func thresholdUnitLabel(_ unit: MetricUnit) -> String {
+        switch unit {
+        case .bytes: return "GB"
+        case .bytesPerSecond: return "GB/s"
+        default: return unitLabel(unit)
+        }
+    }
+
+    /// Formats a threshold for prose (the condition footer, a row's
+    /// condition summary) so it always agrees with what `thresholdField`
+    /// shows for the same stored value. Byte-scale units can't delegate to
+    /// `MetricFormatter.detailed` here: its `ByteCountFormatter` picks
+    /// KB/MB/GB/TB adaptively based on magnitude, which is correct for a
+    /// live reading but would silently disagree with the threshold editor's
+    /// fixed GB field the moment a stored value crossed one of those
+    /// adaptive boundaries.
+    static func detailedThreshold(_ value: Double, unit: MetricUnit) -> String {
+        switch unit {
+        case .bytes, .bytesPerSecond:
+            return "\(trimmedDecimal(gbValue(fromBytes: value))) \(thresholdUnitLabel(unit))"
+        default:
+            return MetricFormatter.detailed(value, unit: unit)
+        }
+    }
+
+    /// "9.31" but "10", not "10.00" — same trimming idea as `trimmed(_:)`
+    /// above, with two fraction digits instead of one since a GB-scale
+    /// threshold needs finer precision than a duration spelled out in
+    /// minutes/hours does.
+    private static func trimmedDecimal(_ value: Double) -> String {
+        let rounded = (value * 100).rounded() / 100
+        return rounded == rounded.rounded() ? String(Int(rounded)) : String(format: "%.2f", rounded)
     }
 
     static func hourLabel(_ hour: Int) -> String {

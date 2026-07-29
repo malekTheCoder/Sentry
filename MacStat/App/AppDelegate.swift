@@ -54,7 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var alertEngine = AlertEngine(
         rules: settingsStore.settings.alertRules,
         historyStore: historyStore,
-        rateCapPerHour: settingsStore.settings.notificationRateCapPerHour
+        rateCapPerHour: settingsStore.settings.notificationRateCapPerHour,
+        doNotDisturb: settingsStore.settings.doNotDisturb
     )
 
     // MARK: - UI
@@ -347,6 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Advanced pane exposes this as a live slider; captured once at
         // construction it would do nothing until relaunch.
         alertEngine.rateCapPerHour = settings.notificationRateCapPerHour
+        alertEngine.doNotDisturb = settings.doNotDisturb
 
         // Then report any disabled→enabled transition, which is what drives
         // §11.3's lazy notification authorization.

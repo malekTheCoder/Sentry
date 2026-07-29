@@ -53,6 +53,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var notificationRateCapPerHour: Int
     public var alertCooldownMinutes: Int
 
+    /// Plan §11.3's global "Do Not Disturb" master toggle: when `true`, no
+    /// rule fires anything a user can perceive, full stop — a coarser mute
+    /// than any per-rule `AlertRule.quietHours` window, and independent of
+    /// them (a rule with no quiet hours of its own is still silenced while
+    /// this is on). Lives here rather than on `AlertRule` because it's one
+    /// setting for the whole engine, not a per-rule concern, matching
+    /// `notificationRateCapPerHour`/`alertCooldownMinutes` immediately
+    /// above. See `AlertEngine`'s doc comment for exactly where this sits in
+    /// the firing pipeline and why a DND-suppressed firing is not written to
+    /// `alert_log`.
+    public var doNotDisturb: Bool
+
     /// The user's alert rules (plan §11.1/§11.2), edited in `AlertsPane` and
     /// handed to `AlertEngine.updateRules(_:)` by the composition root.
     ///
@@ -136,6 +148,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         hourlyRetentionDays: Int = 90,
         notificationRateCapPerHour: Int = 6,
         alertCooldownMinutes: Int = AppSettings.defaultAlertCooldownMinutes,
+        doNotDisturb: Bool = false,
         alertRules: [AlertRule] = AppSettings.defaultAlertRules,
         cloudKitSyncEnabled: Bool = false,
         mcpServerEnabled: Bool = false,
@@ -153,6 +166,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.hourlyRetentionDays = hourlyRetentionDays
         self.notificationRateCapPerHour = notificationRateCapPerHour
         self.alertCooldownMinutes = alertCooldownMinutes
+        self.doNotDisturb = doNotDisturb
         self.alertRules = alertRules
         self.cloudKitSyncEnabled = cloudKitSyncEnabled
         self.mcpServerEnabled = mcpServerEnabled
@@ -180,6 +194,7 @@ extension AppSettings {
         case hourlyRetentionDays
         case notificationRateCapPerHour
         case alertCooldownMinutes
+        case doNotDisturb
         case alertRules
         case cloudKitSyncEnabled
         case mcpServerEnabled
@@ -224,6 +239,8 @@ extension AppSettings {
                 ?? fallback.notificationRateCapPerHour,
             alertCooldownMinutes: try container.decodeIfPresent(Int.self, forKey: .alertCooldownMinutes)
                 ?? fallback.alertCooldownMinutes,
+            doNotDisturb: try container.decodeIfPresent(Bool.self, forKey: .doNotDisturb)
+                ?? fallback.doNotDisturb,
             // Same `decodeIfPresent ?? fallback` shape as every other field,
             // and it matters more here than anywhere else: the fallback is
             // the shipped 11-rule default set, *not* `[]`. A file written by

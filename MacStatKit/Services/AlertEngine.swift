@@ -12,17 +12,36 @@ import UserNotifications
 /// the coordinator's tiers are already doing, with no second timer to keep
 /// in sync and no extra IOKit/collector traffic.
 ///
-/// **Sustained-duration + cooldown + quiet hours, in that order.** For
-/// every enabled, precondition-satisfied rule: the metric comparison must
-/// hold *continuously* for `sustainedFor` (tracked per rule as a "condition
-/// became true at" timestamp that resets to nil the instant the condition
-/// isn't true on some tick — the same flapping-suppression semantics the
-/// plan already establishes for `PowerControlService.evaluate`'s
+/// **Sustained-duration + cooldown + Do Not Disturb + quiet hours, in that
+/// order.** For every enabled, precondition-satisfied rule: the metric
+/// comparison must hold *continuously* for `sustainedFor` (tracked per rule
+/// as a "condition became true at" timestamp that resets to nil the instant
+/// the condition isn't true on some tick — the same flapping-suppression
+/// semantics the plan already establishes for `PowerControlService.evaluate`'s
 /// `cpuAbovePercent` condition); then `cooldown` must have elapsed since
-/// this rule last actually fired; then the current hour must fall outside
-/// `quietHours`. All three exist for the same reason (plan §11.3:
-/// "anti-spam is mandatory") and are independent — meeting one doesn't
-/// substitute for another.
+/// this rule last actually fired; then `doNotDisturb` must be off; then the
+/// current hour must fall outside `quietHours`. All four exist for the same
+/// reason (plan §11.3: "anti-spam is mandatory") and are independent —
+/// meeting one doesn't substitute for another.
+///
+/// **Do Not Disturb vs. quiet hours vs. the rate cap.** `doNotDisturb` is
+/// checked before `quietHours` because it's the coarser, user-facing "mute
+/// everything" switch (plan §11.3's master toggle) — there's no reason to
+/// evaluate a per-rule quiet-hours window once the global one has already
+/// decided nothing is getting through. Both give a firing the same
+/// treatment: the rule simply isn't due to run right now, so neither
+/// consumes `cooldown` (a rule muted for an hour can still fire promptly
+/// the second it's unmuted) and neither writes to `alert_log`. That is a
+/// deliberate departure from the global rate cap below, which *does* log a
+/// suppressed firing — the rate cap exists to keep a misconfigured rule
+/// (one that's firing far more often than anyone wants) visible in History
+/// rather than invisible, which is a diagnostic need. DND is not a
+/// misconfiguration signal; it is the user explicitly asking, on purpose,
+/// to hear nothing until they say otherwise, the same "don't fire, don't
+/// log, don't touch the cooldown" contract `quietHours` already has. Making
+/// DND behave like the rate cap instead would fill History with a firing
+/// for every single tick a muted rule's condition holds — noise that
+/// defeats the point of muting in the first place.
 ///
 /// **The two ID-special-cased rules.** `chargingPausedRuleID` and
 /// `slowChargingRuleID` (see `AlertRule`'s doc comment) don't reduce to a
@@ -118,6 +137,16 @@ public final class AlertEngine {
     /// `applySettings`.
     public var rateCapPerHour: Int
 
+    /// Plan §11.3's global "Do Not Disturb" master toggle. Mirrors
+    /// `AppSettings.doNotDisturb` — the composition root is expected to
+    /// assign this from `applySettings`, same convention as
+    /// `rateCapPerHour` immediately above. `var`, not `let`, for the same
+    /// reason: it's exposed as a live toggle (in `AdvancedPane`), so a value
+    /// captured once at construction would freeze until the next relaunch.
+    /// See the type doc comment for exactly where this sits in the firing
+    /// pipeline and why a DND-suppressed firing isn't logged.
+    public var doNotDisturb: Bool
+
     // MARK: - Rules
 
     public private(set) var rules: [AlertRule]
@@ -161,6 +190,8 @@ public final class AlertEngine {
     ///     failure handling.
     ///   - rateCapPerHour: plan §11.3 default 6; pass
     ///     `AppSettings.notificationRateCapPerHour` in production.
+    ///   - doNotDisturb: plan §11.3 default off; pass
+    ///     `AppSettings.doNotDisturb` in production.
     ///   - notificationCenter: injectable for tests, defaults to the real
     ///     shared center.
     ///   - clock: injectable `Date` source so tests can drive
@@ -170,12 +201,14 @@ public final class AlertEngine {
         rules: [AlertRule],
         historyStore: HistoryStore? = nil,
         rateCapPerHour: Int = 6,
+        doNotDisturb: Bool = false,
         notificationCenter: UNUserNotificationCenter = .current(),
         clock: @escaping () -> Date = Date.init
     ) {
         self.rules = rules
         self.historyStore = historyStore
         self.rateCapPerHour = rateCapPerHour
+        self.doNotDisturb = doNotDisturb
         self.notificationCenter = notificationCenter
         self.clock = clock
     }
@@ -261,6 +294,17 @@ public final class AlertEngine {
         guard now.timeIntervalSince(since) >= rule.sustainedFor else { return }
 
         if let last = lastFired[rule.id], now.timeIntervalSince(last) < rule.cooldown {
+            return
+        }
+
+        if doNotDisturb {
+            // The global master mute (plan §11.3), checked before the
+            // per-rule quiet-hours window because it's the coarser gate —
+            // see the type doc comment for why this is a silent, unlogged
+            // return (same contract as `quietHours` below) rather than the
+            // rate cap's "fire but log as suppressed" treatment.
+            // `lastFired` is intentionally left untouched so the rule can
+            // fire promptly once DND is turned off.
             return
         }
 
@@ -660,7 +704,14 @@ extension AlertEngine {
                 name: "Low disk",
                 metric: .diskFreeBytes,
                 comparison: .below,
-                threshold: 10 * 1_000_000_000,
+                // 10 GiB (1024-based), not 10 decimal-billion bytes: every
+                // byte-scale display in this app (`MetricFormatter`'s
+                // `ByteCountFormatter` uses `.memory` count style, and
+                // `AlertsPane`'s threshold editor for this same field) is
+                // 1024-based, so a decimal-GB threshold here would show as
+                // an odd "9.31 GB" everywhere a person actually reads it
+                // instead of the clean "10 GB" plan §11.2 asks for.
+                threshold: 10 * 1024 * 1024 * 1024,
                 sustainedFor: 0,
                 cooldown: cooldown,
                 actions: [

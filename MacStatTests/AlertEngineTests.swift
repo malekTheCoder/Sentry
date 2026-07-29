@@ -304,6 +304,56 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(unpluggedButFull.battery?.isPluggedIn, false)
     }
 
+    // MARK: - Do Not Disturb (plan §11.3 master toggle)
+
+    func testDoNotDisturbSuppressesFiringEntirely() {
+        let now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 0)
+        let engine = AlertEngine(rules: [rule], doNotDisturb: true, clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(highlightCount, 0, "no user-perceptible action must occur while DND is on")
+    }
+
+    func testDoNotDisturbSuppressedFiringIsNotLogged() {
+        // Deliberate departure from the rate cap, which *does* log a
+        // suppressed firing (see `testGlobalRateCapSuppressesDeliveryButStillLogs`)
+        // — the rate cap exists to keep a misbehaving rule visible for
+        // diagnosis, but DND is the user asking on purpose to hear nothing,
+        // the same contract quiet hours already has.
+        let now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 0)
+        let historyStore = tempHistoryStore()
+        let engine = AlertEngine(rules: [rule], historyStore: historyStore, doNotDisturb: true, clock: { now })
+
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertTrue(historyStore.recentAlertFirings().isEmpty, "a DND-suppressed firing must not appear in history at all")
+    }
+
+    func testDoNotDisturbDoesNotConsumeCooldownAndFiresPromptlyOnceOff() {
+        var now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 0, cooldown: 3600)
+        let engine = AlertEngine(rules: [rule], doNotDisturb: true, clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 0)
+
+        // Turn DND off a second later — nowhere near the rule's own 1-hour
+        // cooldown. If DND had consumed the cooldown the same way an actual
+        // firing does, this would still be suppressed.
+        now = now.addingTimeInterval(1)
+        engine.doNotDisturb = false
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(highlightCount, 1, "DND must not have consumed the rule's cooldown while it was on")
+    }
+
     // MARK: - Special-cased rules
 
     func testChargingPausedFiresWithDecodedReasonAndIgnoresPlaceholderMetric() {
