@@ -21,10 +21,20 @@ struct SettingsView: View {
     /// same as `historyStore` above.
     let onShowDebugWindow: (() -> Void)?
 
-    init(store: SettingsStore, historyStore: HistoryStore? = nil, onShowDebugWindow: (() -> Void)? = nil) {
+    /// Passed straight through to `AIAccessPane`. `nil` is a legitimate
+    /// configuration, same as `historyStore`/`onShowDebugWindow` above.
+    let mcpActivityLog: MCPActivityLog?
+
+    init(
+        store: SettingsStore,
+        historyStore: HistoryStore? = nil,
+        onShowDebugWindow: (() -> Void)? = nil,
+        mcpActivityLog: MCPActivityLog? = nil
+    ) {
         self.store = store
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
+        self.mcpActivityLog = mcpActivityLog
     }
 
     var body: some View {
@@ -49,6 +59,9 @@ struct SettingsView: View {
 
             SyncPane()
                 .tabItem { Label("Sync", systemImage: "icloud") }
+
+            AIAccessPane(store: store, activityLog: mcpActivityLog)
+                .tabItem { Label("AI Access", systemImage: "sparkles") }
         }
         .frame(minWidth: 640, minHeight: 440)
     }

@@ -31,12 +31,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// nothing rather than a broken build.
     private let onShowDebugWindow: (() -> Void)?
 
+    /// Backs the AI Access pane's live activity log (plan §13.4). `nil` is a
+    /// legitimate configuration, same convention as `historyStore`/
+    /// `onShowDebugWindow` above — `AIAccessPane` shows an explicit "log
+    /// unavailable" state rather than a silently-empty list.
+    private let mcpActivityLog: MCPActivityLog?
+
     /// The window is built on first `show()` rather than in `init` so that
     /// constructing the controller at launch costs nothing.
-    init(settingsStore: SettingsStore, historyStore: HistoryStore? = nil, onShowDebugWindow: (() -> Void)? = nil) {
+    init(
+        settingsStore: SettingsStore,
+        historyStore: HistoryStore? = nil,
+        onShowDebugWindow: (() -> Void)? = nil,
+        mcpActivityLog: MCPActivityLog? = nil
+    ) {
         self.settingsStore = settingsStore
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
+        self.mcpActivityLog = mcpActivityLog
         super.init(window: nil)
     }
 
@@ -59,7 +71,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let root = SettingsView(store: settingsStore, historyStore: historyStore, onShowDebugWindow: onShowDebugWindow)
+        let root = SettingsView(store: settingsStore, historyStore: historyStore, onShowDebugWindow: onShowDebugWindow, mcpActivityLog: mcpActivityLog)
         let hosting = NSHostingController(rootView: root)
 
         let settingsWindow = NSWindow(contentViewController: hosting)

@@ -70,7 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // explicit "history unavailable" state rather than a misleading
         // empty list.
         historyStore: historyStore,
-        onShowDebugWindow: { [weak self] in self?.debugWindowController.show() }
+        onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
+        mcpActivityLog: mcpActivityLog
     )
 
     // MARK: - Debug window (plan Phase 1 exit criterion)
@@ -130,6 +131,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.dashboardViewModel.refresh()
         }
     )
+
+    // MARK: - MCP (plan §13)
+    //
+    // `MCPAccessController`/`MCPActivityLog` are plain (non-lazy) instances —
+    // cheap value/ObservableObject holders with no timers or IOKit access of
+    // their own, so there's no reason to defer construction the way the
+    // window controllers below defer theirs. `mcpXPCService` and
+    // `mcpListener` *are* lazy: both close over `self.coordinator` /
+    // `self.historyStore` / etc., which — same as `dashboardViewModel` and
+    // `rollupJob` above — a stored-property initializer can't reference
+    // before `self` fully exists.
+    private let mcpAccessController = MCPAccessController()
+    private let mcpActivityLog = MCPActivityLog()
+    private lazy var mcpXPCService = MCPXPCService(
+        coordinator: coordinator,
+        historyStore: historyStore,
+        alertEngine: alertEngine,
+        powerControl: powerControl,
+        settingsStore: settingsStore,
+        accessController: mcpAccessController,
+        activityLog: mcpActivityLog
+    )
+    private var mcpListener: NSXPCListener?
 
     private var snapshotTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
@@ -272,6 +296,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.applySettings(newSettings)
             }
             .store(in: &cancellables)
+
+        // MCP (plan §13.2): register the Mach service unconditionally, not
+        // gated behind `settings.mcpServerEnabled`. The permission model
+        // lives entirely inside `MCPXPCService`/`MCPAccessController` (every
+        // method checks live settings before doing anything real) rather
+        // than in whether the listener exists at all — same reasoning
+        // `AlertEngine`'s lazy-authorization-request pattern uses elsewhere
+        // in this file: a disabled feature should *reject cleanly*, not be
+        // unreachable in a way that makes `MacStatMCP` fail with an opaque
+        // connection error indistinguishable from "MacStat isn't running."
+        startMCPListener()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -449,5 +484,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
               !popover.isShown
         else { return }
         configurePopover(theme: theme, enabledModules: settings.enabledModules)
+    }
+
+    // MARK: - MCP XPC listener (plan §13.2)
+
+    /// Registers `NSXPCListener(machServiceName:)` under the well-known
+    /// service name `MacStatMCP` connects to, with `self` as its delegate
+    /// (see the `NSXPCListenerDelegate` conformance below) and starts
+    /// listening. This app already ships unsandboxed
+    /// (`CODE_SIGNING_REQUIRED: NO`, no Apple Developer Program enrollment —
+    /// same constraint documented on `SyncPane`), so a plain Mach-service
+    /// listener works without any entitlement or provisioning profile; the
+    /// XPC service's own methods, not code-signing, are what gate access
+    /// (see `MCPXPCService`'s type doc comment).
+    private func startMCPListener() {
+        let listener = NSXPCListener(machServiceName: MacStatXPCServiceName.machService)
+        listener.delegate = self
+        listener.resume()
+        mcpListener = listener
+    }
+}
+
+extension AppDelegate: NSXPCListenerDelegate {
+    /// Called once per incoming connection attempt from a spawned
+    /// `MacStatMCP` process. `exportedObject`/`exportedInterface` are set
+    /// per-connection (the standard `NSXPCListener` pattern) rather than
+    /// once globally — cheap, since `mcpXPCService` is a single shared
+    /// instance reused across every connection, not constructed per-client.
+    /// Returning `true` unconditionally and resuming is deliberate: there is
+    /// no connection-level identity check to perform (see
+    /// `MacStatXPCServiceProtocol`'s doc comment on why `clientName` is
+    /// self-reported, not a security boundary) — every actual authorization
+    /// decision happens per-method-call inside `MCPXPCService`, not here.
+    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
+        newConnection.exportedInterface = NSXPCInterface(with: MacStatXPCServiceProtocol.self)
+        newConnection.exportedObject = mcpXPCService
+        newConnection.resume()
+        return true
     }
 }

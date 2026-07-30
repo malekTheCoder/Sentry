@@ -120,6 +120,35 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// smaller trust decision than letting an agent change power state.
     public var mcpWriteToolsEnabled: Bool
 
+    /// Per-tool enable set (plan §13.4: "per-tool toggles, grouped read vs
+    /// write, write tools default-off"). Stores `MCPToolID.rawValue`s rather
+    /// than `[MCPToolID: Bool]` because `Dictionary` with a non-`String`/`Int`
+    /// key round-trips through `Codable` as an array-of-pairs, which is a
+    /// worse `settings.json` shape than a plain string set for something a
+    /// user might hand-edit. Membership means "enabled" — a tool ID *absent*
+    /// from this set (e.g. one added in a later build, present in
+    /// `MCPToolID.allCases` but not yet in an existing settings file) is
+    /// **not** implicitly enabled; see `init(from:)` below for how a missing
+    /// key upgrades safely to "just the shipped defaults," and
+    /// `MCPAccessController.evaluate` for why a tool absent from this set
+    /// after that upgrade is authoritative denial, not a fallback guess.
+    public var mcpEnabledToolIDs: Set<String>
+
+    /// Plan §13.4: "'Require confirmation' checkbox per write tool → the app
+    /// shows a native confirmation dialog before executing." Only write
+    /// tools are meaningful members — `MCPAccessController.evaluate` only
+    /// consults this set for `tool.isWrite`, so a read tool's ID present
+    /// here (e.g. from a hand-edited file) is simply never checked, not an
+    /// error.
+    public var mcpConfirmationRequiredToolIDs: Set<String>
+
+    /// Plan §13.4: "Rate limiting: max N tool calls/minute," enforced by
+    /// `MCPAccessController.isRateLimited`. Applies across every tool
+    /// combined (one shared window, not one per tool) — a client alternating
+    /// between two allowed tools to dodge a per-tool cap would otherwise
+    /// defeat the point of having a cap at all.
+    public var mcpRateLimitPerMinute: Int
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -160,6 +189,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         cooldown: TimeInterval(AppSettings.defaultAlertCooldownMinutes * 60)
     )
 
+    /// Plan §13.4: read tools ship enabled, write tools ship disabled. This
+    /// is the single source `mcpEnabledToolIDs`'s default parameter and
+    /// `init(from:)`'s upgrade fallback both read from — see
+    /// `MCPToolID.enabledByDefault`'s doc comment for the underlying rule.
+    public static let defaultMCPEnabledToolIDs: Set<String> = Set(
+        MCPToolID.allCases.filter(\.enabledByDefault).map(\.rawValue)
+    )
+
     public init(
         themeID: String = Theme.terminal.id,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
@@ -178,6 +215,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         cloudKitSyncEnabled: Bool = false,
         mcpServerEnabled: Bool = false,
         mcpWriteToolsEnabled: Bool = false,
+        mcpEnabledToolIDs: Set<String> = AppSettings.defaultMCPEnabledToolIDs,
+        mcpConfirmationRequiredToolIDs: Set<String> = [],
+        mcpRateLimitPerMinute: Int = 20,
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -198,6 +238,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.cloudKitSyncEnabled = cloudKitSyncEnabled
         self.mcpServerEnabled = mcpServerEnabled
         self.mcpWriteToolsEnabled = mcpWriteToolsEnabled
+        self.mcpEnabledToolIDs = mcpEnabledToolIDs
+        self.mcpConfirmationRequiredToolIDs = mcpConfirmationRequiredToolIDs
+        self.mcpRateLimitPerMinute = mcpRateLimitPerMinute
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -231,6 +274,9 @@ extension AppSettings {
         case cloudKitSyncEnabled
         case mcpServerEnabled
         case mcpWriteToolsEnabled
+        case mcpEnabledToolIDs
+        case mcpConfirmationRequiredToolIDs
+        case mcpRateLimitPerMinute
         case updateCheckDaily
         case schemaVersion
     }
@@ -293,6 +339,17 @@ extension AppSettings {
                 ?? fallback.mcpServerEnabled,
             mcpWriteToolsEnabled: try container.decodeIfPresent(Bool.self, forKey: .mcpWriteToolsEnabled)
                 ?? fallback.mcpWriteToolsEnabled,
+            // Same "missing key upgrades to shipped defaults, explicit value
+            // is honored verbatim" contract as `alertRules` above — a
+            // settings file written before this key existed must upgrade
+            // into "read tools on, write tools off," not into an empty set
+            // that would silently disable every read tool too.
+            mcpEnabledToolIDs: try container.decodeIfPresent(Set<String>.self, forKey: .mcpEnabledToolIDs)
+                ?? fallback.mcpEnabledToolIDs,
+            mcpConfirmationRequiredToolIDs: try container.decodeIfPresent(Set<String>.self, forKey: .mcpConfirmationRequiredToolIDs)
+                ?? fallback.mcpConfirmationRequiredToolIDs,
+            mcpRateLimitPerMinute: try container.decodeIfPresent(Int.self, forKey: .mcpRateLimitPerMinute)
+                ?? fallback.mcpRateLimitPerMinute,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;

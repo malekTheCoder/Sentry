@@ -27,6 +27,15 @@ final class DashboardViewModel: ObservableObject {
     private let dataSource: MockDataSource
     private var snapshotTask: Task<Void, Never>?
 
+    /// Feeds every received snapshot into the App-Group-shared
+    /// `WidgetSnapshot` cache `MacStatWidget` reads (plan §12.3). Owned here
+    /// rather than constructed at the call site because it needs to see the
+    /// exact same snapshot stream this view model already observes — a
+    /// second, independent `StatsTransport` subscription would double the
+    /// `MockDataSource` timer work for no benefit and risk the widget cache
+    /// and the dashboard UI drifting out of sync with each other.
+    private let widgetSnapshotWriter = WidgetSnapshotWriter()
+
     init(dataSource: MockDataSource = MockDataSource()) {
         self.dataSource = dataSource
         self.transport = dataSource
@@ -53,10 +62,17 @@ final class DashboardViewModel: ObservableObject {
     private func observeSnapshots() {
         snapshotTask?.cancel()
         let transport = self.transport
+        let writer = widgetSnapshotWriter
         snapshotTask = Task { [weak self] in
             for await snapshot in transport.snapshots() {
                 guard !Task.isCancelled else { return }
                 self?.latestSnapshot = snapshot
+                // `selectedDevice` (not raw `devices.first`) so the cache
+                // follows whichever Mac the dashboard is actually showing,
+                // once a device picker exists for more than one Mac.
+                if let device = self?.selectedDevice {
+                    await writer.record(device: device, snapshot: snapshot)
+                }
             }
         }
     }

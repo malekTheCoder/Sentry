@@ -359,6 +359,24 @@ public final class StatsCoordinator: @unchecked Sendable {
         }
     }
 
+    /// Synchronous point-in-time read of whatever this coordinator currently
+    /// knows, without subscribing to the stream. Added for the MCP server
+    /// (plan §13.3's `get_system_snapshot` and friends): `MCPXPCService`
+    /// answers a request/response XPC call, not a long-lived stream
+    /// consumer, so `snapshots()`'s `AsyncStream` — designed for a UI
+    /// component that wants to keep observing — is the wrong shape for "give
+    /// me the current values right now." `queue.sync` is safe here for the
+    /// same reason every other synchronous accessor on this type
+    /// (`currentBaseInterval`, `popoverIsClosed`'s getter) is: it's a quick
+    /// read of already-computed state, never blocked on a provider call.
+    /// Does *not* start polling on its own — if nothing has called
+    /// `snapshots()` yet, this returns whatever `buildSnapshot()` produces
+    /// from an all-nil `LatestSamples` (every field optional, so that's a
+    /// valid, honestly-empty snapshot, not a crash).
+    public func latestSnapshot() -> SystemSnapshot {
+        queue.sync { buildSnapshot() }
+    }
+
     /// Stops all timers and drops every subscriber's continuation. Mainly
     /// for app-teardown / test cleanup; polling restarts automatically the
     /// next time `snapshots()` is called.

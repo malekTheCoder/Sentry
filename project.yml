@@ -26,6 +26,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle.git
     from: 2.6.0
+  MCP:
+    url: https://github.com/modelcontextprotocol/swift-sdk.git
+    from: 0.11.0
 
 targets:
   SystemMetricsKit:
@@ -102,6 +105,17 @@ targets:
         embed: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile
+      # Simulator builds don't need a signing team, but they DO need the
+      # entitlements actually embedded (codesign runs even for the "Sign to
+      # Run Locally" identity Xcode uses on Simulator) for the App Group
+      # container behind `WidgetSnapshotStore` to work — that's real, not
+      # just cosmetic, unlike the project-wide CODE_SIGNING_ALLOWED: NO
+      # default in the `base` settings block above, which fully suppresses
+      # signing (and therefore entitlement embedding) for the targets that
+      # never asked for one. See `WidgetSnapshotStore.swift`'s doc comment
+      # for what happens if this ever regresses.
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_ENTITLEMENTS: MacStatMobile/MacStatMobile.entitlements
     info:
       path: MacStatMobile/Info.plist
       properties:
@@ -122,6 +136,11 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile.widget
       PRODUCT_NAME: MacStatWidget
+      # See the matching comment on the `MacStatMobile` target above — same
+      # reasoning, same App Group, same requirement that entitlements are
+      # actually embedded even for an unsigned-by-default project.
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_ENTITLEMENTS: MacStatWidget/MacStatWidget.entitlements
     info:
       path: MacStatWidget/Info.plist
       properties:
@@ -137,6 +156,10 @@ targets:
     dependencies:
       - target: MacStatKit_macOS
         embed: false
+      - package: MCP
+        product: MCP
+        embed: false
+        link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mcp
 
@@ -157,6 +180,7 @@ schemes:
     build:
       targets:
         MacStat: all
+        MacStatMCP: all
         MacStatTests: [test]
     run:
       config: Debug
