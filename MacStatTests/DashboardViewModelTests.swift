@@ -42,7 +42,7 @@ final class DashboardViewModelTests: XCTestCase {
         let store = tempHistoryStore()
         let dbQueue = try XCTUnwrap(store.databaseQueue)
         // One raw row each for CPU (enabled) and GPU (not enabled), both
-        // well inside the .oneHour range.
+        // well inside the .day range.
         try dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO sample_raw (ts, metric, value) VALUES (?, ?, ?)",
@@ -57,7 +57,7 @@ final class DashboardViewModelTests: XCTestCase {
         let model = DashboardViewModel(
             historyStore: store,
             enabledModules: [.cpu],
-            timeRange: .oneHour
+            timeRange: .day
         )
         model.refresh(now: now)
 
@@ -75,8 +75,8 @@ final class DashboardViewModelTests: XCTestCase {
         // injected clock (that's a one-off `refresh(now:)` parameter, not a
         // stored dependency), so it always queries against the real wall
         // clock. The data is seeded relative to `Date()` for the same
-        // reason, with a wide enough margin (3 days vs. `.oneHour`'s 1h
-        // window, `.sevenDays`' 7d window) that normal test execution
+        // reason, with a wide enough margin (3 days vs. `.day`'s 24h
+        // window, `.week`'s 7d window) that normal test execution
         // latency can't flip either assertion.
         let wallClockNow = Date()
         let store = tempHistoryStore()
@@ -92,13 +92,13 @@ final class DashboardViewModelTests: XCTestCase {
             )
         }
 
-        let model = DashboardViewModel(historyStore: store, enabledModules: [.cpu], timeRange: .oneHour)
+        let model = DashboardViewModel(historyStore: store, enabledModules: [.cpu], timeRange: .day)
         model.refresh()
-        XCTAssertEqual(model.series(for: .cpu)?.count, 0, "3 days ago is outside .oneHour's raw-tier window")
+        XCTAssertEqual(model.series(for: .cpu)?.count, 0, "3 days ago is outside .day's raw-tier window")
 
         // Changing timeRange must re-query on its own (didSet), without a
         // second explicit refresh() call from the test.
-        model.timeRange = .sevenDays
+        model.timeRange = .week
 
         let cpuSeries = try XCTUnwrap(model.series(for: .cpu))
         XCTAssertEqual(cpuSeries.count, 1)
@@ -120,7 +120,7 @@ final class DashboardViewModelTests: XCTestCase {
             )
         }
 
-        let model = DashboardViewModel(historyStore: store, enabledModules: [.cpu], timeRange: .oneHour)
+        let model = DashboardViewModel(historyStore: store, enabledModules: [.cpu], timeRange: .day)
         model.refresh()
         XCTAssertNil(model.series(for: .gpu))
 
@@ -151,8 +151,8 @@ final class DashboardViewModelTests: XCTestCase {
         // guard's `guard ... != oldValue else { return }` short-circuit
         // exists at all, protecting against a future edit that drops it and
         // silently reintroduces a query-per-assignment cost.
-        let model = DashboardViewModel(historyStore: tempHistoryStore(), enabledModules: [.cpu], timeRange: .oneHour)
-        model.timeRange = .oneHour
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), enabledModules: [.cpu], timeRange: .day)
+        model.timeRange = .day
         model.enabledModules = [.cpu]
         XCTAssertTrue(model.series.isEmpty, "no refresh() was ever called explicitly, so series should still be empty")
     }
@@ -233,7 +233,7 @@ final class DashboardViewModelTests: XCTestCase {
     func testRefreshPopulatesAgentActivityFromHistoryStore() {
         let store = tempHistoryStore()
         store.logAgentActivity(clientName: "Claude Code", tool: "keep_awake", at: now)
-        let viewModel = DashboardViewModel(historyStore: store, timeRange: .oneDay)
+        let viewModel = DashboardViewModel(historyStore: store, timeRange: .day)
 
         viewModel.refresh(now: now.addingTimeInterval(60))
 

@@ -56,15 +56,15 @@ final class DashboardViewModel: ObservableObject {
     /// **Why downsampling is needed at all:** `.raw`-tier data has no
     /// rollup — one row per sample, at whatever cadence
     /// `globalRefreshInterval` is set to (3s default). `TimeRangePicker`
-    /// only routes `.oneHour`/`.oneDay` to `.raw` (see its doc comment for
-    /// why those two land under `HistoryStore`'s 48h raw-tier cutoff), but
-    /// even the narrower of those two — 24h at a 3s cadence — is up to
-    /// 28,800 raw rows for one metric. Swift Charts has no trouble laying
-    /// out that many `LineMark`s, but there is no visual benefit to a
-    /// 900pt-wide chart plotting 28,800 x-positions: at that density,
-    /// adjacent points are sub-pixel apart, so every point beyond what the
-    /// chart can actually resolve is pure CPU cost (path construction) with
-    /// zero perceptible payoff. `.hourly`/`.thirtyDays` and `.daily`/`.all`
+    /// only routes `.day` to `.raw` (see its doc comment for why that one
+    /// lands under `HistoryStore`'s 48h raw-tier cutoff), but even that
+    /// single case — 24h at a 3s cadence — is up to 28,800 raw rows for one
+    /// metric. Swift Charts has no trouble laying out that many
+    /// `LineMark`s, but there is no visual benefit to a 900pt-wide chart
+    /// plotting 28,800 x-positions: at that density, adjacent points are
+    /// sub-pixel apart, so every point beyond what the chart can actually
+    /// resolve is pure CPU cost (path construction) with zero perceptible
+    /// payoff. `.hourly`/`.month` and `.daily`/`.halfYear`
     /// are already far below this cap by construction (720 hourly rows at
     /// most, and years of daily rows before this would ever bind), so the
     /// cap is a no-op for those tiers in practice — it exists specifically
@@ -135,13 +135,13 @@ final class DashboardViewModel: ObservableObject {
     ///     view model never opens its own database connection.
     ///   - enabledModules: typically `AppSettings.enabledModules` from the
     ///     current settings snapshot.
-    ///   - timeRange: initial selection; `.oneDay` is a reasonable default
+    ///   - timeRange: initial selection; `.day` is a reasonable default
     ///     landing view (recent enough to be relevant, wide enough to show a
     ///     trend).
     init(
         historyStore: HistoryStore,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
-        timeRange: TimeRangePicker = .oneDay,
+        timeRange: TimeRangePicker = .day,
         theme: Theme = .terminal
     ) {
         self.historyStore = historyStore

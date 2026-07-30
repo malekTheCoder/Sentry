@@ -9,41 +9,48 @@ import MacStatKit
 /// private `tier(for:)` already encodes "raw <48h, hourly <90d, daily
 /// beyond" (see that file), and this picker's cases are deliberately chosen
 /// to land clear of those boundaries rather than skate along them:
-///   - `.oneHour` / `.oneDay` are both well under the 48h raw cutoff, so
-///     both get full-resolution un-rolled-up samples.
-///   - `.sevenDays` / `.thirtyDays` are both well under the 90d hourly
-///     cutoff, so both use the hourly rollup (raw rows that old have
-///     usually already been deleted by `RollupJob`'s raw retention anyway).
-///   - `.all` has no natural upper bound, so it always asks for the daily
-///     rollup — the only tier `RollupJob` keeps forever.
+///   - `.day` is well under the 48h raw cutoff, so it gets full-resolution
+///     un-rolled-up samples.
+///   - `.week` / `.month` are both well under the 90d hourly cutoff, so
+///     both use the hourly rollup (raw rows that old have usually already
+///     been deleted by `RollupJob`'s raw retention anyway).
+///   - `.quarter` (90d) sits right at that same hourly-tier boundary —
+///     still comfortably answerable by the hourly rollup rather than
+///     stepping down to daily, since `HistoryStore.tier(for:)` treats "under
+///     90d" as hourly's own upper edge, not a cliff to back away from.
+///   - `.halfYear` (6mo) is a real bounded window, unlike the old "All"
+///     case this design replaces — it still asks for the daily rollup (the
+///     only tier `RollupJob` keeps forever), but with an actual 6-month
+///     `since` bound rather than `.distantPast`, since "6 months" has a
+///     natural edge that "all history" never did.
 /// Picking tiers explicitly per range (instead of calling the
 /// tier-inferring `samples(metric:since:)` convenience) also means the
 /// Dashboard can request `samplesWithRange`'s min/max band uniformly, since
 /// that method takes an explicit `tier:` and has no auto-selecting overload.
 enum TimeRangePicker: String, CaseIterable, Identifiable, Sendable {
-    case oneHour, oneDay, sevenDays, thirtyDays, all
+    case day, week, month, quarter, halfYear
 
     var id: String { rawValue }
 
-    /// Segmented-control label. Short on purpose — this sits in a
-    /// fixed-width control, not prose.
+    /// Segmented-control label. Short and lowercase per the Nocturne
+    /// redesign mock — this sits in a fixed-width pill control, not prose.
     var label: String {
         switch self {
-        case .oneHour: return "1H"
-        case .oneDay: return "24H"
-        case .sevenDays: return "7D"
-        case .thirtyDays: return "30D"
-        case .all: return "All"
+        case .day: return "24h"
+        case .week: return "7d"
+        case .month: return "30d"
+        case .quarter: return "90d"
+        case .halfYear: return "6mo"
         }
     }
 
     var accessibilityLabel: String {
         switch self {
-        case .oneHour: return "Last hour"
-        case .oneDay: return "Last 24 hours"
-        case .sevenDays: return "Last 7 days"
-        case .thirtyDays: return "Last 30 days"
-        case .all: return "All history"
+        case .day: return "Last 24 hours"
+        case .week: return "Last 7 days"
+        case .month: return "Last 30 days"
+        case .quarter: return "Last 90 days"
+        case .halfYear: return "Last 6 months"
         }
     }
 
@@ -53,45 +60,78 @@ enum TimeRangePicker: String, CaseIterable, Identifiable, Sendable {
     /// wall clock.
     func queryWindow(now: Date = Date()) -> (since: Date, tier: HistoryStore.Tier) {
         switch self {
-        case .oneHour:
-            return (now.addingTimeInterval(-3600), .raw)
-        case .oneDay:
+        case .day:
             return (now.addingTimeInterval(-86400), .raw)
-        case .sevenDays:
+        case .week:
             return (now.addingTimeInterval(-7 * 86400), .hourly)
-        case .thirtyDays:
+        case .month:
             return (now.addingTimeInterval(-30 * 86400), .hourly)
-        case .all:
-            // `.distantPast` rather than some large-but-finite lookback:
-            // "All" means all, and a `ts >= sinceEpoch` comparison against
-            // distantPast's (huge negative) epoch is always true without
-            // this type having to guess how far back history could go.
-            return (.distantPast, .daily)
+        case .quarter:
+            return (now.addingTimeInterval(-90 * 86400), .hourly)
+        case .halfYear:
+            // A real 6-month bound rather than `.distantPast` — unlike the
+            // old "All" case this replaces, "6 months" has a natural edge,
+            // so there's no reason to ask the daily rollup for more than
+            // that just because it's the tier that happens to keep rows
+            // forever.
+            return (now.addingTimeInterval(-182 * 86400), .daily)
         }
     }
 }
 
-// MARK: - Segmented control
+// MARK: - Pill segmented control
 
-/// Thin `Picker` wrapper so call sites get a ready-made segmented control
-/// instead of every screen re-deriving `ForEach(TimeRangePicker.allCases)`
-/// boilerplate. Deliberately not theme-styled beyond the system segmented
-/// control's own appearance — unlike the module cards, this is a standard
-/// AppKit-backed control (`.pickerStyle(.segmented)`), and re-skinning it to
-/// match `ThemePalette` would fight the platform's native look for no
-/// benefit the way a custom `Chart` does.
+/// Themed pill-style time-range control, per the Nocturne redesign's
+/// Dashboard mock: a rounded `palette.surface` container holding tappable
+/// segments, the active one filled solid with `palette.accent` and primary
+/// text, inactive ones transparent with `palette.textSecondary` text.
+///
+/// Deliberately not a native `Picker(...).pickerStyle(.segmented)` (what
+/// this view used to be, and what `HistoryRangeSelector` on iOS still is) —
+/// the redesign calls for the pill look specifically here, matching the
+/// rounded-container idiom `MetricCard` already uses for its own chrome
+/// (`palette.surface` background, `palette.cornerRadius`-radius clip).
 struct TimeRangePickerView: View {
+    @Environment(\.themePalette) private var palette
+
     @Binding var selection: TimeRangePicker
 
+    /// Padding between the container's edge and its segments — small enough
+    /// that the active pill's own fill reads as inset within the track
+    /// rather than flush against it.
+    private let containerPadding: CGFloat = 3
+    private let containerCornerRadius: CGFloat = 8
+
     var body: some View {
-        Picker("Time Range", selection: $selection) {
+        HStack(spacing: 2) {
             ForEach(TimeRangePicker.allCases) { range in
-                Text(range.label)
-                    .accessibilityLabel(range.accessibilityLabel)
-                    .tag(range)
+                segment(for: range)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        .padding(containerPadding)
+        .background(palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func segment(for range: TimeRangePicker) -> some View {
+        let isSelected = range == selection
+        return Button {
+            selection = range
+        } label: {
+            Text(range.label)
+                .font(palette.font(size: 11, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.white : palette.textSecondary)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: containerCornerRadius - containerPadding, style: .continuous)
+                        .fill(isSelected ? palette.accent : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(range.accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
