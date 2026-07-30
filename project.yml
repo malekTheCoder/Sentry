@@ -62,6 +62,7 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
       PRODUCT_NAME: MacStatKit
       PRODUCT_MODULE_NAME: MacStatKit
+      GENERATE_INFOPLIST_FILE: YES
 
   MacStat:
     type: application
