@@ -83,7 +83,7 @@ struct SettingsTabView: View {
         } header: {
             Text("Theme")
         } footer: {
-            Text("The same six presets as the Mac app (MacStatKit/Settings/Theme.swift), applied to all four tabs on this phone. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.")
+            Text("The same six presets as the Mac app (MacStatKit/Settings/Theme.swift), applied to Dashboard and History — Alerts and Settings use standard iOS list styling instead. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.")
         }
     }
 

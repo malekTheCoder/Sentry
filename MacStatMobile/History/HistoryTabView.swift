@@ -39,15 +39,19 @@ import MacStatKit
 ///      synthetic history per metric; see that view's doc comment for why.
 struct HistoryTabView: View {
     @StateObject private var viewModel = HistoryViewModel()
-    @Environment(\.colorScheme) private var systemColorScheme
 
-    /// Matches `DashboardTabView`'s own hardcoded `.terminal` default — no
-    /// theme picker exists yet on this platform (Settings tab is separate,
-    /// parallel work), so a first launch looking intentional beats an
-    /// arbitrary choice made independently per tab.
-    private var palette: ThemePalette {
-        ThemePalette(theme: .terminal, scheme: systemColorScheme)
-    }
+    /// Reads the theme `RootTabView` already resolved and injected over the
+    /// whole `TabView`, the same way `DashboardTabView` does — this file
+    /// used to compute its own hardcoded `ThemePalette(theme: .terminal...)`
+    /// and re-inject it here, which silently overrode the user's actual
+    /// picker selection for this tab's entire subtree the moment the
+    /// Settings tab's theme picker landed in the same commit (both were
+    /// built concurrently, before either could see the other's result).
+    /// Two independent reviews caught this: picking a non-default theme
+    /// visibly re-themed Dashboard but did nothing on History, which reads
+    /// as "the app is broken" or "my choice didn't save" — neither true,
+    /// the picker worked fine, this tab just never listened to it.
+    @Environment(\.themePalette) private var palette
 
     var body: some View {
         NavigationStack {
@@ -65,7 +69,6 @@ struct HistoryTabView: View {
             .background(palette.background)
             .navigationTitle("History")
         }
-        .environment(\.themePalette, palette)
         .task { await viewModel.start() }
         .onChange(of: viewModel.selectedRange) { _, _ in
             Task { await viewModel.reloadDailyHealth() }
