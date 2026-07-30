@@ -117,6 +117,10 @@ targets:
         product: NIOHTTP1
         embed: false
         link: true
+      - package: SwiftNIO
+        product: NIOFoundationCompat
+        embed: false
+        link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
       MARKETING_VERSION: "0.1.0"
