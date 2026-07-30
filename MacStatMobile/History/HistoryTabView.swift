@@ -40,6 +40,16 @@ import MacStatKit
 struct HistoryTabView: View {
     @StateObject private var viewModel = HistoryViewModel()
 
+    /// Same gating `DashboardTabView` applies to its own `demoDataBanner` —
+    /// see that type's doc comment. Note the battery-health trend chart
+    /// stays honestly empty (not fabricated) once a real `LocalSyncClient`
+    /// connection is live, since `AppDataSource.dailyHealthHistory(deviceID:
+    /// dayCount:)` returns `[]` rather than synthetic data for that case
+    /// (`MacStatMobile/Data/AppDataSource.swift`'s doc comment) — the banner
+    /// only needs to stop claiming *fabrication* once data is genuinely real,
+    /// which `isUsingLocalSync` is the accurate signal for.
+    @EnvironmentObject private var appDataSource: AppDataSource
+
     /// Reads the theme `RootTabView` already resolved and injected over the
     /// whole `TabView`, the same way `DashboardTabView` does — this file
     /// used to compute its own hardcoded `ThemePalette(theme: .terminal...)`
@@ -57,7 +67,9 @@ struct HistoryTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 title
-                demoDataBanner
+                if !appDataSource.isUsingLocalSync {
+                    demoDataBanner
+                }
                 HistoryRangeSelector(selection: $viewModel.selectedRange)
                 batteryHealthCard
                 chargeSessionGapNotice

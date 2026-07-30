@@ -57,12 +57,19 @@ struct KeepAwakeIntent: AppIntent {
             nonce: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(5 * 60)
         )
-        // `MockDataSource.send(command:)` is itself a documented no-op — see
-        // that method's doc comment — but calling it (rather than skipping
-        // straight to the dialog below) keeps this intent's code path
-        // identical in shape to what it will be once a real `StatsTransport`
-        // exists: construct the command, send it, report what happened.
-        try? await MockDataSource().send(command: command)
+        // Routed through the app-wide `AppDataSource.shared.transport`
+        // (`MacStatMobile/Data/AppDataSource.swift`), not a locally
+        // constructed `MockDataSource()` — same shared instance every other
+        // call site in this app now reads from. Both conformers currently
+        // fail to actually deliver a command (`MockDataSource.send(command:)`
+        // is a documented no-op; `LocalSyncClient.send(command:)` throws
+        // "not supported yet" — see that type's doc comment), so calling it
+        // here (rather than skipping straight to the dialog below) keeps
+        // this intent's code path identical in shape to what it will be once
+        // a transport that actually delivers commands exists: construct the
+        // command, send it, report what happened.
+        let transport = await AppDataSource.shared.transport
+        try? await transport.send(command: command)
         return .result(
             dialog: "MacStat can't keep your Mac awake yet — this build has no live connection to a Mac to send that request to."
         )
@@ -86,7 +93,8 @@ struct ReleaseAwakeIntent: AppIntent {
             nonce: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(5 * 60)
         )
-        try? await MockDataSource().send(command: command)
+        let transport = await AppDataSource.shared.transport
+        try? await transport.send(command: command)
         return .result(
             dialog: "MacStat can't release your Mac's sleep assertion yet — this build has no live connection to a Mac to send that request to."
         )

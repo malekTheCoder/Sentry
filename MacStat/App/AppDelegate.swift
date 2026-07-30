@@ -168,6 +168,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     )
     private var mcpListener: NSXPCListener?
 
+    // MARK: - Local-network sync (plan §7.1's "v4" fast path)
+    //
+    // `LocalSyncServer` (`MacStatKit/LocalSync/LocalSyncServer.swift`) is the
+    // Bonjour/`Network.framework` transport built ahead of CloudKit
+    // specifically because it needs no Apple Developer Program enrollment —
+    // see that type's doc comment. Named with this Mac's user-facing name
+    // (same `Host.current().localizedName` source `DropdownHeader`/
+    // `DashboardView` already use) so a multi-Mac household's Bonjour
+    // browse results are distinguishable, even though `LocalSyncClient`'s
+    // current picker just connects to whichever result arrives first.
+    private lazy var localSyncServer = LocalSyncServer(
+        serviceName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+    )
+
     private var snapshotTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
@@ -340,6 +354,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // unreachable in a way that makes `MacStatMCP` fail with an opaque
         // connection error indistinguishable from "MacStat isn't running."
         startMCPListener()
+
+        // Local-network sync (plan §7.1 "v4"): another independent consumer
+        // of `coordinator.snapshots()`, same shape as `historyStore`/
+        // `dropdownViewModel`/etc. above — not a second poll loop. Started
+        // unconditionally, same reasoning `startMCPListener()`'s doc comment
+        // gives for its own unconditional registration: a disabled/unused
+        // feature should be an inert, harmless listener (nobody on the LAN
+        // is browsing for `_macstat._tcp` if no phone app is installed),
+        // not something that has to be reached through a settings gate to
+        // exist at all.
+        localSyncServer.start(feedingFrom: coordinator.snapshots())
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -347,6 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // flush would drop whatever accumulated since the last interval.
         historyStore.flush()
         settingsStore.save()
+        localSyncServer.stop()
     }
 
     // MARK: - Popover

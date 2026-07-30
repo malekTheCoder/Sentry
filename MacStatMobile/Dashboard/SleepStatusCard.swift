@@ -219,16 +219,23 @@ struct SleepStatusCard: View {
         .foregroundStyle(palette.danger)
     }
 
-    /// Constructs and "sends" a real `ControlCommand` — through the same
-    /// no-op `MockDataSource.send(command:)` every other call site in this
-    /// app uses (see that method's doc comment) — then always shows the
-    /// honest result, never a fabricated success. Mirrors `KeepAwakeIntent
+    /// Constructs and "sends" a real `ControlCommand` — through the app-wide
+    /// `AppDataSource.shared.transport` (`MacStatMobile/Data/AppDataSource.swift`)
+    /// every other call site in this app now reads from, not a locally
+    /// constructed `MockDataSource()` — then always shows the honest
+    /// result, never a fabricated success. Both `MockDataSource.send
+    /// (command:)` and `LocalSyncClient.send(command:)` are honest about not
+    /// delivering anything today (the former is a documented no-op, the
+    /// latter `throw`s "not supported yet" — see that type's doc comment),
+    /// so `try?` swallowing the result and always showing the same "not
+    /// sent" copy remains accurate either way. Mirrors `KeepAwakeIntent
     /// .perform()`'s "construct, send, report what actually happened" shape.
     private func sendCommand(_ command: ControlCommand) {
         feedbackTask?.cancel()
         feedback = "Not sent — no connection to your Mac yet."
         feedbackTask = Task {
-            try? await MockDataSource().send(command: command)
+            let transport = await AppDataSource.shared.transport
+            try? await transport.send(command: command)
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             guard !Task.isCancelled else { return }
             feedback = nil

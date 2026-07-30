@@ -58,15 +58,28 @@ struct SettingsTabView: View {
     @Environment(\.themePalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
 
-    /// The one mock Mac this build has anything to say about. Built directly
-    /// here rather than threaded through a view model — this tab makes
-    /// exactly one read (`mockDevice`, a `let` property `MockDataSource`
-    /// exposes for synchronous, un-awaited access per SE-0313; see that
-    /// type's `snapshots()` doc comment for the same reasoning) and needs no
-    /// ongoing snapshot subscription the way `DashboardViewModel` does.
-    private let dataSource = MockDataSource()
+    /// Reads from the app-wide `AppDataSource.shared`
+    /// (`MacStatMobile/Data/AppDataSource.swift`) instead of constructing
+    /// its own `MockDataSource()` — this tab used to make exactly one
+    /// synchronous read (`MockDataSource.mockDevice`) and needed no ongoing
+    /// snapshot subscription, but that shortcut only worked because
+    /// `MockDataSource` is stateless and cheap to duplicate. A real
+    /// `LocalSyncClient` behind `AppDataSource` is neither, so this tab now
+    /// asks the shared instance for its device catalog like every other
+    /// consumer, via `.task`/`AppDataSource.devices()` populating `device`
+    /// below rather than a synchronous property read.
+    @EnvironmentObject private var appDataSource: AppDataSource
 
-    private var device: Device { dataSource.mockDevice }
+    @State private var device: Device?
+
+    /// Falls back to `MockDataSource`'s own fixed mock device whenever
+    /// nothing has loaded yet (first frame, before `.task` below has run) —
+    /// keeps this section rendering something plausible immediately, same
+    /// as `AppDataSource.transport`'s own "start as a mock, not nil"
+    /// default.
+    private var displayedDevice: Device {
+        device ?? MockDataSource().mockDevice
+    }
 
     var body: some View {
         ScrollView {
@@ -81,6 +94,9 @@ struct SettingsTabView: View {
             .padding(palette.spacing * 2)
         }
         .background(palette.background)
+        .task {
+            device = await appDataSource.devices().first
+        }
     }
 
     // MARK: - Title
@@ -157,10 +173,16 @@ struct SettingsTabView: View {
     /// without inventing a sync timestamp.
     private var deviceCard: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(device.deviceName)
+            Text(displayedDevice.deviceName)
                 .font(palette.font(size: 12.5, weight: .medium))
                 .foregroundStyle(palette.textPrimary)
-            Text("\(device.model) · Demo device, not synced")
+            // The meta line's second half distinguishes a real local-network
+            // connection from `MockDataSource`'s demo data — `syncStatusRow`
+            // right below is scoped specifically to iCloud/CloudKit sync
+            // (still genuinely unavailable), not this local-network path, so
+            // this is the one place on this tab that actually reflects
+            // `AppDataSource.isUsingLocalSync`.
+            Text("\(displayedDevice.model) · \(appDataSource.isUsingLocalSync ? "Live on your local network" : "Demo device, not synced")")
                 .font(palette.font(size: 10.5))
                 .foregroundStyle(palette.textTertiary)
         }
@@ -173,7 +195,11 @@ struct SettingsTabView: View {
                 .stroke(palette.separator, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityHint("This is demo data from MockDataSource, not a real Mac — there is no Mac on the other end reporting in.")
+        .accessibilityHint(
+            appDataSource.isUsingLocalSync
+                ? "This device is live data from a Mac reporting in over your local Wi-Fi network."
+                : "This is demo data from MockDataSource, not a real Mac — there is no Mac on the other end reporting in."
+        )
     }
 
     // MARK: - Sync status (SyncPane's tone, mobile side)
