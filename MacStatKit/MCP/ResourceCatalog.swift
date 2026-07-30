@@ -1,6 +1,7 @@
 import Foundation
+
+#if os(macOS)
 import MCP
-import MacStatKit
 
 /// MCP Resource support (AI-agent-integration pass — see
 /// MacStat-AI-Features-Research.md item #9). Before this, `MacStatMCP` only
@@ -27,10 +28,21 @@ import MacStatKit
 /// updates, no repeated `tools/call`) is real; what's saved is the client's
 /// token cost, not MacStat's own poll loop, which already runs regardless
 /// (`StatsCoordinator`'s tiered `AsyncStream`).
-enum ResourceCatalog {
-    static let systemSnapshotURI = "macstat://system-snapshot"
+///
+/// **Why this lives in `MacStatKit`, not the `MacStatMCP` executable
+/// target.** Originally this was `MacStatMCP`-only (the stdio subprocess was
+/// the only MCP transport). Once an in-app remote HTTP transport
+/// (`MacStat/App/MCPRemoteServer.swift`) needed the identical tool/resource
+/// dispatch logic, this became shared code — moved here so both transports
+/// call one implementation rather than maintaining two copies. Gated behind
+/// `#if os(macOS)` (matching `MacStatXPCClient`/`MacStatXPCProtocol`'s own
+/// guard) since `MacStatKit_iOS` compiles this same source directory but has
+/// no XPC connection, no `MCP` package dependency, and no reason to carry
+/// this code at all.
+public enum ResourceCatalog {
+    public static let systemSnapshotURI = "macstat://system-snapshot"
 
-    static let resources: [Resource] = [
+    public static let resources: [Resource] = [
         Resource(
             name: "system-snapshot",
             uri: systemSnapshotURI,
@@ -39,7 +51,7 @@ enum ResourceCatalog {
         )
     ]
 
-    static func read(uri: String, clientName: String, xpcClient: MacStatXPCClient) async throws -> ReadResource.Result {
+    public static func read(uri: String, clientName: String, xpcClient: MacStatXPCClient) async throws -> ReadResource.Result {
         guard uri == systemSnapshotURI else {
             throw MCPError.invalidParams("Unknown resource URI '\(uri)'.")
         }
@@ -55,7 +67,7 @@ enum ResourceCatalog {
 /// is above zero, and calls `onUpdate` whenever the snapshot's `timestamp`
 /// field advances — see `ResourceCatalog`'s doc comment for why polling
 /// happens here rather than this being a true push from `MacStat.app`.
-actor ResourceSubscriptionPump {
+public actor ResourceSubscriptionPump {
     private let xpcClient: MacStatXPCClient
     private let clientName: String
     private let pollInterval: Duration
@@ -63,13 +75,13 @@ actor ResourceSubscriptionPump {
     private var pumpTask: Task<Void, Never>?
     private var lastTimestamp: Date?
 
-    init(xpcClient: MacStatXPCClient, clientName: String, pollInterval: Duration = .seconds(3)) {
+    public init(xpcClient: MacStatXPCClient, clientName: String, pollInterval: Duration = .seconds(3)) {
         self.xpcClient = xpcClient
         self.clientName = clientName
         self.pollInterval = pollInterval
     }
 
-    func subscribe(onUpdate: @escaping @Sendable () async -> Void) {
+    public func subscribe(onUpdate: @escaping @Sendable () async -> Void) {
         subscriberCount += 1
         guard pumpTask == nil else { return }
         pumpTask = Task { [weak self] in
@@ -81,7 +93,7 @@ actor ResourceSubscriptionPump {
         }
     }
 
-    func unsubscribe() {
+    public func unsubscribe() {
         subscriberCount = max(0, subscriberCount - 1)
         if subscriberCount == 0 {
             pumpTask?.cancel()
@@ -104,3 +116,4 @@ actor ResourceSubscriptionPump {
         await onUpdate()
     }
 }
+#endif

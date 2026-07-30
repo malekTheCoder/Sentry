@@ -1,18 +1,27 @@
 import Foundation
+
+#if os(macOS)
 import MCP
-import MacStatKit
 
 /// Maps plan §13.3's 14-tool surface (`MCPToolID`, shared with
 /// `MacStatKit`'s access-control layer) onto the MCP SDK's `Tool` schema
 /// type and dispatches `tools/call` requests to `MacStatXPCServiceProtocol`.
-/// Kept as its own file/namespace rather than inlined in `main.swift` so the
-/// (fairly mechanical, but long) per-tool schema/dispatch pairs don't bury
-/// the actual server bootstrapping.
-enum MCPToolCatalog {
+/// Kept as its own file/namespace rather than inlined in a server's entry
+/// point so the (fairly mechanical, but long) per-tool schema/dispatch pairs
+/// don't bury the actual server bootstrapping.
+///
+/// **Why this lives in `MacStatKit`, not the `MacStatMCP` executable
+/// target.** See `ResourceCatalog.swift`'s doc comment — this moved here for
+/// the same reason: both the stdio transport (`MacStatMCP/main.swift`) and
+/// the in-app remote HTTP transport (`MacStat/App/MCPRemoteServer.swift`)
+/// dispatch tool calls identically, through the same
+/// `MacStatXPCServiceProtocol`/`MCPAccessController` pipeline, regardless of
+/// which transport carried the request in.
+public enum MCPToolCatalog {
 
     // MARK: - Tool list (tools/list)
 
-    static let tools: [Tool] = MCPToolID.allCases.map { id in
+    public static let tools: [Tool] = MCPToolID.allCases.map { id in
         Tool(
             name: id.rawValue,
             description: id.toolDescription,
@@ -149,7 +158,7 @@ enum MCPToolCatalog {
 
     // MARK: - Dispatch (tools/call)
 
-    static func call(
+    public static func call(
         name: String,
         arguments: [String: Value],
         clientName: String,
@@ -263,3 +272,4 @@ enum MCPToolCatalog {
         .init(content: [.text(text: message, annotations: nil, _meta: nil)], isError: true)
     }
 }
+#endif

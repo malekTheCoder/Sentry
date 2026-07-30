@@ -49,6 +49,18 @@ targets:
       - path: MacStatKit
     dependencies:
       - package: GRDB
+      # MacStatKit/MCP/ (MCPToolCatalog, ResourceCatalog) is #if os(macOS)-
+      # gated — see those files' doc comments for why the tool/resource
+      # dispatch logic shared by both MCP transports (stdio MacStatMCP, and
+      # the in-app remote MCPRemoteServer) lives here rather than in the
+      # MacStatMCP executable target alone. Not added to MacStatKit_iOS
+      # below: that target compiles the same source directory, but the
+      # entire `import MCP` + implementation sits behind the same macOS
+      # guard, so iOS never needs this package to resolve.
+      - package: MCP
+        product: MCP
+        embed: false
+        link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
       PRODUCT_NAME: MacStatKit
