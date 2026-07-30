@@ -34,35 +34,59 @@ struct AgentActivityCard: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(palette.accent)
+        VStack(alignment: .leading, spacing: 2) {
             Text("AI Agent Activity")
-                .font(palette.font(size: 13, weight: .semibold))
+                .font(palette.font(size: 14, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
+            Text("In this range")
+                .font(palette.font(size: 12))
+                .foregroundStyle(palette.textTertiary)
         }
     }
+
+    /// Light accent tint, per the mock's `#c3caf7`-on-Slate readout color —
+    /// a step lighter than the flat `palette.accent` dot/border/fill
+    /// treatment used everywhere else, since here the color *is* the value's
+    /// own text rather than a small signal next to it.
+    private var statTint: Color { palette.accent.opacity(0.85) }
 
     @ViewBuilder
     private var content: some View {
         if let summary, summary.eventCount > 0 {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(summary.eventCount) action\(summary.eventCount == 1 ? "" : "s") in this range")
-                    .font(palette.font(size: 20, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                    .monospacedDigit()
+            HStack(alignment: .top, spacing: palette.spacing * 2.2) {
+                stat(
+                    value: "\(summary.eventCount)",
+                    label: summary.eventCount == 1 ? "action" : "actions"
+                )
                 if let client = summary.mostActiveClient {
-                    Text("Most active: \(client) · \(summary.distinctToolCount) distinct tool\(summary.distinctToolCount == 1 ? "" : "s") used")
-                        .font(palette.font(size: 11))
-                        .foregroundStyle(palette.textTertiary)
+                    stat(value: client, label: "most active")
                 }
+                stat(
+                    value: "\(summary.distinctToolCount)",
+                    label: summary.distinctToolCount == 1 ? "tool used" : "tools used"
+                )
             }
+            .padding(.top, 2)
         } else {
             Text("No AI agent activity in this range. Enable write tools in Settings → AI Access to let Claude Code, Cursor, or another MCP client act on this Mac.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func stat(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(statTint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+                .lineLimit(1)
         }
     }
 }

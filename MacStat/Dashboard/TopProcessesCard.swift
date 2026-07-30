@@ -28,7 +28,7 @@ struct TopProcessesCard: View {
 
     private var header: some View {
         Text("Top Processes")
-            .font(palette.font(size: 13, weight: .semibold))
+            .font(palette.font(size: 14, weight: .semibold))
             .foregroundStyle(palette.textPrimary)
     }
 

@@ -37,10 +37,25 @@ struct DashboardChart: View {
     /// rather than pay for an invisible fill.
     var showBand: Bool = true
 
+    /// The Nocturne Dashboard mock's per-module grid card wants a 36px "mini
+    /// sparkline area tinted in the module's own color" — a shape to glance
+    /// at, not a chart to read exact values off of (that's what the full
+    /// `DashboardMetricCard` detail rows and this same view's non-compact
+    /// mode, used elsewhere on the card, are for). Compact mode hides the
+    /// axis chrome (labels/ticks/gridlines would just be illegible noise at
+    /// 36-44pt) and skips the "No history yet" prose empty state in favor of
+    /// a bare baseline hairline, matching the mock's flat gradient-over-a-line
+    /// treatment.
+    var compact: Bool = false
+
     var body: some View {
         Group {
             if points.isEmpty {
-                emptyState
+                if compact {
+                    compactEmptyState
+                } else {
+                    emptyState
+                }
             } else {
                 chart
             }
@@ -50,8 +65,9 @@ struct DashboardChart: View {
 
     // MARK: - Chart
 
+    @ViewBuilder
     private var chart: some View {
-        Chart(points) { point in
+        let base = Chart(points) { point in
             if showBand {
                 AreaMark(
                     x: .value("Time", point.timestamp),
@@ -69,25 +85,34 @@ struct DashboardChart: View {
             .foregroundStyle(tint)
             .interpolationMethod(.monotone)
         }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                AxisGridLine().foregroundStyle(palette.chartGrid)
-                AxisTick().foregroundStyle(palette.chartGrid)
-                AxisValueLabel(format: xAxisFormat)
-                    .foregroundStyle(palette.textSecondary)
-            }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine().foregroundStyle(palette.chartGrid)
-                AxisValueLabel()
-                    .foregroundStyle(palette.textSecondary)
-            }
-        }
         .chartYScale(domain: yDomain)
-        .shadow(color: tint.opacity(palette.glow * 0.8), radius: palette.glow * 4)
         .accessibilityLabel("\(metricTitle) history, \(samples.count) samples")
         .accessibilityValue(rangeDescription)
+
+        if compact {
+            base
+                .chartXAxis(.hidden)
+                .chartYAxis(.hidden)
+                .chartPlotStyle { plot in plot.background(Color.clear) }
+        } else {
+            base
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                        AxisGridLine().foregroundStyle(palette.chartGrid)
+                        AxisTick().foregroundStyle(palette.chartGrid)
+                        AxisValueLabel(format: xAxisFormat)
+                            .foregroundStyle(palette.textSecondary)
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { value in
+                        AxisGridLine().foregroundStyle(palette.chartGrid)
+                        AxisValueLabel()
+                            .foregroundStyle(palette.textSecondary)
+                    }
+                }
+                .shadow(color: tint.opacity(palette.glow * 0.8), radius: palette.glow * 4)
+        }
     }
 
     @ViewBuilder
@@ -102,6 +127,19 @@ struct DashboardChart: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// A single hairline baseline — the same "no wallpaper, color as a thin
+    /// signal" language the mock's own empty sparkline area uses, rather than
+    /// prose that would overflow a 36pt-tall cell.
+    private var compactEmptyState: some View {
+        VStack {
+            Spacer(minLength: 0)
+            Rectangle()
+                .fill(palette.separator)
+                .frame(height: 1)
+        }
+        .accessibilityLabel("\(metricTitle) history, no samples")
     }
 
     // MARK: - Points

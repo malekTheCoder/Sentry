@@ -31,7 +31,7 @@ struct AnomaliesCard: View {
                 .font(.system(size: 11))
                 .foregroundStyle(anomalies.isEmpty ? palette.success : palette.warning)
             Text("Anomalies")
-                .font(palette.font(size: 13, weight: .semibold))
+                .font(palette.font(size: 14, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
         }
     }
