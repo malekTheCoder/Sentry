@@ -46,6 +46,9 @@ struct SettingsView: View {
 
             AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+
+            SyncPane()
+                .tabItem { Label("Sync", systemImage: "icloud") }
         }
         .frame(minWidth: 640, minHeight: 440)
     }
