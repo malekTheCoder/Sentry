@@ -82,7 +82,12 @@ struct DropdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
-            DropdownHeader(thermal: viewModel.snapshot?.thermal, latestActivity: activityLog.entries.first)
+            DropdownHeader(
+                thermal: viewModel.snapshot?.thermal,
+                latestActivity: activityLog.entries.first,
+                onOpenSettings: onOpenSettings,
+                onQuit: onQuit
+            )
             HeadlineMetricGrid(snapshot: viewModel.snapshot)
             // A control the user came to press, not something to cut for
             // lightness — the live countdown is worth keeping permanently
@@ -124,6 +129,15 @@ struct DropdownView: View {
 /// Plan §8.3 item 1. The sync-status dot is deliberately absent — CloudKit
 /// sync doesn't exist yet, and a permanently gray dot would imply a state the
 /// app can't actually report.
+///
+/// **Settings/Quit access.** The lighter redesign made "Open Dashboard" the
+/// only way to reach *depth* (module detail, history) from this popover —
+/// but Settings and Quit aren't depth, they're basic app utility that has to
+/// stay reachable from *somewhere*, and left/right-click both open this same
+/// popover (see `StatusItemController`'s doc comment — there's no separate
+/// AppKit context menu). Two small icon-only buttons here are that path:
+/// unobtrusive enough not to fight the header's actual content (machine name,
+/// thermal/agent pills) for attention, but always present.
 private struct DropdownHeader: View {
     @Environment(\.themePalette) private var palette
 
@@ -133,6 +147,8 @@ private struct DropdownHeader: View {
     /// entries yet) and an old/read-only entry both render nothing; see
     /// `showsAgentActivity`.
     let latestActivity: MCPActivityLogEntry?
+    let onOpenSettings: () -> Void
+    let onQuit: () -> Void
 
     /// Recomputed per body evaluation (i.e. per snapshot) rather than on a
     /// timer of its own — a minute-resolution readout doesn't justify a
@@ -175,8 +191,22 @@ private struct DropdownHeader: View {
                 agentActivityPill(latestActivity)
             }
             thermalPill
+            headerIconButton(symbol: "gearshape", label: "Settings", action: onOpenSettings)
+            headerIconButton(symbol: "power", label: "Quit MacStat", action: onQuit)
         }
         .padding(.horizontal, 2)
+    }
+
+    private func headerIconButton(symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(palette.textTertiary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder
