@@ -265,7 +265,12 @@ extension Theme {
         barFontSize: 11,
         barFontWeight: .medium,
         numericStyle: .monospacedDigit,
-        cornerRadius: 8,
+        // Small on purpose. Notion's own surfaces sit around 3–4pt; 6 is the
+        // most a Mac popover wants. Large radii read as "card" and invite the
+        // nested-rounded-rectangle look this redesign is specifically moving
+        // away from — interior elements should mostly have no radius at all
+        // because they should mostly have no fill or border.
+        cornerRadius: 6,
         density: .comfortable,
         chartStyle: .area,
         chartLineWidth: 1.5,
