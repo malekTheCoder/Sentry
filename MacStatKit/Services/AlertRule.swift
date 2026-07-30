@@ -216,14 +216,19 @@ public enum AlertAction: Codable, Equatable, Sendable {
     /// `releaseSleepAssertion` below.
     case menuBarHighlight(String)
 
-    /// Remote push via CloudKit subscription (plan §11.3/§12). No CloudKit
-    /// wiring exists in this codebase yet; `AlertEngine` treats this as a
-    /// documented no-op for now rather than silently dropping it from the
-    /// action list or guessing at a CloudKit record shape.
+    /// Remote push via CloudKit subscription (plan §11.3/§12). Delivered as
+    /// far as possible without real CloudKit infra: `AlertEngine.phonePushRecorder`
+    /// turns a fired action into a locally-queued `AlertPush`
+    /// (`PendingAlertPushStore`) rather than a true push — actual CloudKit
+    /// upload is blocked on Apple Developer Program enrollment (see that
+    /// store's doc comment), not silently dropped or guessed at.
     case pushToPhone
 
-    /// Shortcuts.app integration (plan §11.1). No Shortcuts bridge exists
-    /// yet; same documented-no-op treatment as `pushToPhone`.
+    /// Shortcuts.app integration (plan §11.1). Delivered via
+    /// `AlertEngine.shortcutRunner`, which `AppDelegate`'s composition root
+    /// wires to `NSWorkspace.shared.open("shortcuts://run-shortcut?name=...")` —
+    /// see that closure's doc comment for why it's injected rather than a
+    /// direct `NSWorkspace` call inside `AlertEngine` itself.
     case runShortcut(name: String)
 
     /// Powers "keep awake until battery <20%" (plan §10.3). `AlertEngine`

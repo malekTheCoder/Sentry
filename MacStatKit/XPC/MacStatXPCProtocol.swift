@@ -81,6 +81,23 @@ public enum MacStatXPCServiceName {
     func getDeviceInfo(clientName: String, reply: @escaping (Data?, String?) -> Void)
     func getSleepState(clientName: String, reply: @escaping (Data?, String?) -> Void)
 
+    // MARK: - AI-agent-integration read tools (see MacStat-AI-Features-Research.md)
+
+    /// `preflight_check`: one-shot go/wait recommendation — see
+    /// `SystemAdvisor.recommend`.
+    func preflightCheck(clientName: String, reply: @escaping (Data?, String?) -> Void)
+    /// `get_resource_events_since`: alert firings plus a peak-value summary
+    /// over `[now - sinceSeconds, now]`.
+    func getResourceEventsSince(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void)
+    /// `get_agent_capacity`: headroom heuristic for `requestedAgents` more
+    /// local processes.
+    func getAgentCapacity(clientName: String, requestedAgents: Int, reply: @escaping (Data?, String?) -> Void)
+    /// `get_agent_activity`: the last `limit` entries of `MCPActivityLog`.
+    func getAgentActivity(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void)
+    /// `get_session_resource_report`: aggregated CPU/thermal/memory "cost"
+    /// over `[now - sinceSeconds, now]`.
+    func getSessionResourceReport(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void)
+
     // MARK: - Write tools (plan §13.4 — off by default, individually gated)
 
     /// - Parameters:
@@ -99,6 +116,16 @@ public enum MacStatXPCServiceName {
     ///   trusted to generate a collision-free UUID, and there's no reason to
     ///   ask it to).
     func createAlertRule(clientName: String, ruleJSON: Data, reply: @escaping (Bool, String?) -> Void)
+
+    /// `wait_until_ready`: blocks (server-side, subscribing to
+    /// `StatsCoordinator.snapshots()`) until `condition` (a `WaitCondition`
+    /// raw string) is satisfied or `timeoutSeconds` elapses, then replies
+    /// with a `MCPPayloads.WaitResult`. Uses the `(Data?, String?)` read-tool
+    /// reply shape, not `(Bool, String?)`, because a caller needs the rich
+    /// result (satisfied vs. timed out, how long it waited, the final
+    /// snapshot) — the write-tool classification here is about risk
+    /// (stalling the caller's turn), not about this method's reply shape.
+    func waitUntilReady(clientName: String, condition: String, timeoutSeconds: Double, reply: @escaping (Data?, String?) -> Void)
 }
 
 #endif

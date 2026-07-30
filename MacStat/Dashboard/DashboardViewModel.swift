@@ -27,6 +27,19 @@ import MacStatKit
 /// look like 6 days ago" because it never kept that data. This type answers
 /// exactly that question by going to `HistoryStore` instead, and does not
 /// touch `DropdownViewModel` at all.
+/// Dashboard panel data for the AI-agent-integration pass (see
+/// MacStat-AI-Features-Research.md item #15) — a summary of
+/// `HistoryStore.agentActivityEvents` over the currently selected
+/// `TimeRangePicker` window. `eventCount == 0` is the honest "no AI agent
+/// activity in this range" state, not an error — most users, most of the
+/// time, won't have any agent connected at all, and the panel should say so
+/// plainly rather than hide itself (plan §3.2 P5).
+struct AgentActivitySummary: Equatable {
+    var eventCount: Int
+    var mostActiveClient: String?
+    var distinctToolCount: Int
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
 
@@ -73,6 +86,13 @@ final class DashboardViewModel: ObservableObject {
     /// absent rather than present-but-empty, so `series(for:)` can't
     /// confuse "queried and genuinely empty" with "not requested."
     @Published private(set) var series: [ChartMetric: RangedSamples] = [:]
+
+    /// AI-agent-integration pass (see MacStat-AI-Features-Research.md item
+    /// #15) — a `HistoryStore.agentActivityEvents` summary for the current
+    /// `timeRange`, refreshed alongside `series`. `nil` until `refresh()`
+    /// has run at least once, same "absent means not queried yet" contract
+    /// as `series`.
+    @Published private(set) var agentActivity: AgentActivitySummary?
 
     /// Which modules' charts to query. Reuses `AppSettings.enabledModules`'s
     /// concept (the same set, not a copy of its logic) rather than
@@ -171,6 +191,23 @@ final class DashboardViewModel: ObservableObject {
             next[metric] = Self.downsample(raw, cap: Self.maxPointsPerSeries)
         }
         series = next
+        agentActivity = Self.summarize(historyStore.agentActivityEvents(since: since))
+    }
+
+    /// Pure so it's independently testable without a real `HistoryStore` —
+    /// same reasoning as `downsample` below.
+    static func summarize(_ events: [AgentActivityEvent]) -> AgentActivitySummary {
+        var countByClient: [String: Int] = [:]
+        var countByTool: [String: Int] = [:]
+        for event in events {
+            countByClient[event.clientName, default: 0] += 1
+            countByTool[event.tool, default: 0] += 1
+        }
+        return AgentActivitySummary(
+            eventCount: events.count,
+            mostActiveClient: countByClient.max(by: { $0.value < $1.value })?.key,
+            distinctToolCount: countByTool.count
+        )
     }
 
     /// `nil` when the metric's module isn't enabled, or `refresh()` hasn't

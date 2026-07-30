@@ -144,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // before `self` fully exists.
     private let mcpAccessController = MCPAccessController()
     private let mcpActivityLog = MCPActivityLog()
+    private let pendingAlertPushStore = PendingAlertPushStore()
     private lazy var mcpXPCService = MCPXPCService(
         coordinator: coordinator,
         historyStore: historyStore,
@@ -225,6 +226,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // default rule advertising an action that silently did nothing.
         alertEngine.menuBarHighlighter = { [weak self] token in
             self?.statusItemController?.highlight(token: token)
+        }
+        // Activates `AlertAction.runShortcut` (AI-agent-integration pass —
+        // see MacStat-AI-Features-Research.md item #8): Shortcuts.app's own
+        // URL scheme, no Shortcuts framework linkage needed. A name with
+        // spaces/special characters must be percent-encoded for the query
+        // item to survive `NSWorkspace.open`; an empty/invalid name after
+        // encoding is simply not opened rather than launching a broken URL.
+        alertEngine.shortcutRunner = { name in
+            guard !name.isEmpty,
+                  let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let url = URL(string: "shortcuts://run-shortcut?name=\(encodedName)")
+            else { return }
+            NSWorkspace.shared.open(url)
+        }
+        // Activates `AlertAction.pushToPhone` as far as it can go without
+        // real CloudKit infra — see `PendingAlertPushStore`'s doc comment
+        // for what "activated" means here vs. what's still blocked on
+        // Apple Developer Program enrollment.
+        alertEngine.phonePushRecorder = { [weak self] push in
+            self?.pendingAlertPushStore.enqueue(push)
         }
         // Seed the enabled set so `applySettings` can spot a genuine
         // disabled→enabled transition later. Deliberately *without* calling
@@ -335,6 +356,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             rootView: DropdownView(
                 viewModel: dropdownViewModel,
                 powerControl: powerControl,
+                activityLog: mcpActivityLog,
                 theme: theme,
                 enabledModules: enabledModules,
                 cardListMaxHeight: height,

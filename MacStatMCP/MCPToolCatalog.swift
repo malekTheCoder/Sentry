@@ -30,7 +30,8 @@ enum MCPToolCatalog {
     private static func inputSchema(for id: MCPToolID) -> Value {
         switch id {
         case .getSystemSnapshot, .getBatteryStatus, .getThermalStatus,
-             .getResourceUsage, .getDeviceInfo, .getSleepState, .releaseAwake:
+             .getResourceUsage, .getDeviceInfo, .getSleepState, .releaseAwake,
+             .preflightCheck:
             return .object(["type": .string("object"), "properties": .object([:])])
 
         case .getBatteryHealthHistory:
@@ -90,6 +91,44 @@ enum MCPToolCatalog {
                 ],
                 required: ["ruleJSON"]
             )
+
+        case .getResourceEventsSince:
+            return schema(
+                properties: [
+                    "sinceSeconds": property("number", "How far back, in seconds, to look for anomalous events.")
+                ],
+                required: ["sinceSeconds"]
+            )
+
+        case .getAgentCapacity:
+            return schema(
+                properties: [
+                    "requestedAgents": property("integer", "How many additional local agent/subagent processes you're considering starting.")
+                ],
+                required: ["requestedAgents"]
+            )
+
+        case .getAgentActivity:
+            return schema(properties: [
+                "limit": property("integer", "Maximum number of recent MCP calls to return (default 50, max 200).")
+            ])
+
+        case .getSessionResourceReport:
+            return schema(
+                properties: [
+                    "sinceSeconds": property("number", "How far back, in seconds, the session/job window started.")
+                ],
+                required: ["sinceSeconds"]
+            )
+
+        case .waitUntilReady:
+            return schema(
+                properties: [
+                    "condition": property("string", "One of: thermal_normal, cpu_below:N, battery_above:N, memory_below:N (N is a percent)."),
+                    "timeoutSeconds": property("number", "Maximum seconds to block for, capped at 600.")
+                ],
+                required: ["condition"]
+            )
         }
     }
 
@@ -145,6 +184,27 @@ enum MCPToolCatalog {
             return await read(xpcClient) { $0.getDeviceInfo(clientName: clientName, reply: $1) }
         case .getSleepState:
             return await read(xpcClient) { $0.getSleepState(clientName: clientName, reply: $1) }
+
+        case .preflightCheck:
+            return await read(xpcClient) { $0.preflightCheck(clientName: clientName, reply: $1) }
+        case .getResourceEventsSince:
+            let sinceSeconds = arguments["sinceSeconds"]?.doubleValue ?? 3600
+            return await read(xpcClient) { $0.getResourceEventsSince(clientName: clientName, sinceSeconds: sinceSeconds, reply: $1) }
+        case .getAgentCapacity:
+            let requestedAgents = arguments["requestedAgents"]?.intValue ?? 1
+            return await read(xpcClient) { $0.getAgentCapacity(clientName: clientName, requestedAgents: requestedAgents, reply: $1) }
+        case .getAgentActivity:
+            let limit = arguments["limit"]?.intValue ?? 50
+            return await read(xpcClient) { $0.getAgentActivity(clientName: clientName, limit: limit, reply: $1) }
+        case .getSessionResourceReport:
+            let sinceSeconds = arguments["sinceSeconds"]?.doubleValue ?? 3600
+            return await read(xpcClient) { $0.getSessionResourceReport(clientName: clientName, sinceSeconds: sinceSeconds, reply: $1) }
+        case .waitUntilReady:
+            guard let condition = arguments["condition"]?.stringValue else {
+                return errorResult("Missing required argument 'condition'.")
+            }
+            let timeoutSeconds = arguments["timeoutSeconds"]?.doubleValue ?? 120
+            return await read(xpcClient) { $0.waitUntilReady(clientName: clientName, condition: condition, timeoutSeconds: timeoutSeconds, reply: $1) }
 
         case .keepAwake:
             guard let mode = arguments["mode"]?.stringValue else {

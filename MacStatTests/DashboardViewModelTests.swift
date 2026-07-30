@@ -208,4 +208,36 @@ final class DashboardViewModelTests: XCTestCase {
             (timestamp: now.addingTimeInterval(Double(i)), min: min, avg: avg, max: max)
         }
     }
+
+    // MARK: - summarize (AI-agent-integration pass)
+
+    func testSummarizeEmptyEventsReturnsZeroCount() {
+        let summary = DashboardViewModel.summarize([])
+        XCTAssertEqual(summary.eventCount, 0)
+        XCTAssertNil(summary.mostActiveClient)
+        XCTAssertEqual(summary.distinctToolCount, 0)
+    }
+
+    func testSummarizeCountsAndFindsMostActiveClient() {
+        let events = [
+            AgentActivityEvent(timestamp: now, clientName: "Claude Code", tool: "keep_awake"),
+            AgentActivityEvent(timestamp: now, clientName: "Claude Code", tool: "keep_awake"),
+            AgentActivityEvent(timestamp: now, clientName: "Cursor", tool: "set_refresh_interval")
+        ]
+        let summary = DashboardViewModel.summarize(events)
+        XCTAssertEqual(summary.eventCount, 3)
+        XCTAssertEqual(summary.mostActiveClient, "Claude Code")
+        XCTAssertEqual(summary.distinctToolCount, 2)
+    }
+
+    func testRefreshPopulatesAgentActivityFromHistoryStore() {
+        let store = tempHistoryStore()
+        store.logAgentActivity(clientName: "Claude Code", tool: "keep_awake", at: now)
+        let viewModel = DashboardViewModel(historyStore: store, timeRange: .oneDay)
+
+        viewModel.refresh(now: now.addingTimeInterval(60))
+
+        XCTAssertEqual(viewModel.agentActivity?.eventCount, 1)
+        XCTAssertEqual(viewModel.agentActivity?.mostActiveClient, "Claude Code")
+    }
 }

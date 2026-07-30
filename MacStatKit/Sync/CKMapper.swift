@@ -42,6 +42,7 @@ public enum CKMapper {
         public static let dailyHealth = "DailyHealth"
         public static let controlCommand = "ControlCommand"
         public static let controlStatus = "ControlStatus"
+        public static let alertPush = "AlertPush"
     }
 
     public enum MapperError: Error, Equatable {
@@ -223,6 +224,32 @@ public enum CKMapper {
             assertionActive: assertionActive != 0,
             assertionExpiresAt: record["assertionExpiresAt"] as? Date,
             updatedAt: field(record, "updatedAt")
+        )
+    }
+
+    // MARK: - AlertPush
+
+    public static func record(from push: AlertPush, zoneID: CKRecordZone.ID) -> CKRecord {
+        let record = CKRecord(
+            recordType: RecordType.alertPush,
+            recordID: CKRecord.ID(recordName: UUID().uuidString, zoneID: zoneID)
+        )
+        record["deviceRef"] = deviceReference(deviceID: push.deviceID, zoneID: zoneID, action: .none)
+        record["ruleName"] = push.ruleName as CKRecordValue
+        record["title"] = push.title as CKRecordValue
+        record["body"] = push.body as CKRecordValue
+        record["firedAt"] = push.firedAt as CKRecordValue
+        return record
+    }
+
+    public static func alertPush(from record: CKRecord) throws -> AlertPush {
+        let deviceID = try referencedDeviceID(record, "deviceRef")
+        return try AlertPush(
+            deviceID: deviceID,
+            ruleName: field(record, "ruleName"),
+            title: field(record, "title"),
+            body: field(record, "body"),
+            firedAt: field(record, "firedAt")
         )
     }
 

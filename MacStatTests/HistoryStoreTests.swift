@@ -155,4 +155,32 @@ final class HistoryStoreTests: XCTestCase {
 
         XCTAssertTrue(result.isEmpty)
     }
+
+    // MARK: - agent_activity_log (AI-agent-integration pass)
+
+    func testLogAgentActivityRoundTrips() {
+        let store = tempHistoryStore()
+        let at = Date(timeIntervalSince1970: 1_700_000_000)
+        store.logAgentActivity(clientName: "Claude Code", tool: "keep_awake", at: at)
+
+        let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: 1_699_999_000))
+        XCTAssertEqual(events, [AgentActivityEvent(timestamp: at, clientName: "Claude Code", tool: "keep_awake")])
+    }
+
+    func testAgentActivityEventsRespectsSinceLowerBound() {
+        let store = tempHistoryStore()
+        store.logAgentActivity(clientName: "Claude Code", tool: "keep_awake", at: Date(timeIntervalSince1970: 1_700_000_000))
+
+        let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: 1_700_000_001))
+        XCTAssertTrue(events.isEmpty)
+    }
+
+    func testAgentActivityEventsOrdersAscendingByTime() {
+        let store = tempHistoryStore()
+        store.logAgentActivity(clientName: "Cursor", tool: "set_refresh_interval", at: Date(timeIntervalSince1970: 1_700_000_100))
+        store.logAgentActivity(clientName: "Claude Code", tool: "keep_awake", at: Date(timeIntervalSince1970: 1_700_000_000))
+
+        let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: 1_699_999_000))
+        XCTAssertEqual(events.map(\.clientName), ["Claude Code", "Cursor"])
+    }
 }

@@ -62,6 +62,7 @@ struct DashboardView: View {
                     historyStore: historyStore,
                     currentCycleCount: viewModel.snapshot?.battery?.cycleCount
                 )
+                AgentActivityCard(summary: viewModel.agentActivity)
                 DashboardGrid(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,

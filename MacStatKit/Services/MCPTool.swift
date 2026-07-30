@@ -27,6 +27,23 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
     case getDeviceInfo = "get_device_info"
     case getSleepState = "get_sleep_state"
 
+    // MARK: - Read tools (AI-agent-integration pass — see MacStat-AI-Features-Research.md)
+
+    /// One-shot "is now a good time" recommendation — see `SystemAdvisor`.
+    case preflightCheck = "preflight_check"
+    /// Correlates recent alert firings with the metric history around them,
+    /// for an agent asking "was anything anomalous on this machine recently."
+    case getResourceEventsSince = "get_resource_events_since"
+    /// Headroom heuristic for "do I have room to start N more local agent
+    /// processes."
+    case getAgentCapacity = "get_agent_capacity"
+    /// Exposes `MCPActivityLog`'s existing ring buffer as a tool, so an agent
+    /// (or a user reading the transcript) can see recent MCP call history.
+    case getAgentActivity = "get_agent_activity"
+    /// Aggregated avg/peak CPU/memory/thermal "cost" of a time window, framed
+    /// as a session report.
+    case getSessionResourceReport = "get_session_resource_report"
+
     // MARK: - Write tools (plan §13.4, "each individually gated, off by default")
 
     case keepAwake = "keep_awake"
@@ -34,6 +51,12 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
     case setRefreshInterval = "set_refresh_interval"
     case setAlertRuleEnabled = "set_alert_rule_enabled"
     case createAlertRule = "create_alert_rule"
+    /// Blocks the call (up to a capped timeout) until a condition holds —
+    /// see `WaitCondition`. Classified as a write tool, off by default,
+    /// because it can stall a calling agent's turn even though it never
+    /// mutates any MacStat state — the same "off by default" posture plan
+    /// §13.4 gives every tool with a user-perceptible side effect.
+    case waitUntilReady = "wait_until_ready"
 
     /// The complete surface, split by plan §13.3's own grouping. Order
     /// matters only for UI presentation (`AIAccessPane` renders read tools
@@ -58,10 +81,12 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
         switch self {
         case .getSystemSnapshot, .getBatteryStatus, .getBatteryHealthHistory,
              .getMetricHistory, .getThermalStatus, .getResourceUsage,
-             .getAlertHistory, .getDeviceInfo, .getSleepState:
+             .getAlertHistory, .getDeviceInfo, .getSleepState,
+             .preflightCheck, .getResourceEventsSince, .getAgentCapacity,
+             .getAgentActivity, .getSessionResourceReport:
             return false
         case .keepAwake, .releaseAwake, .setRefreshInterval,
-             .setAlertRuleEnabled, .createAlertRule:
+             .setAlertRuleEnabled, .createAlertRule, .waitUntilReady:
             return true
         }
     }
@@ -77,6 +102,8 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
         case .createAlertRule:
             return "Medium"
         case .keepAwake, .releaseAwake, .setRefreshInterval, .setAlertRuleEnabled:
+            return "Low"
+        case .waitUntilReady:
             return "Low"
         default:
             return nil
@@ -94,11 +121,17 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
         case .getAlertHistory: return "Get Alert History"
         case .getDeviceInfo: return "Get Device Info"
         case .getSleepState: return "Get Sleep State"
+        case .preflightCheck: return "Preflight Check"
+        case .getResourceEventsSince: return "Get Resource Events Since"
+        case .getAgentCapacity: return "Get Agent Capacity"
+        case .getAgentActivity: return "Get Agent Activity"
+        case .getSessionResourceReport: return "Get Session Resource Report"
         case .keepAwake: return "Keep Awake"
         case .releaseAwake: return "Release Awake"
         case .setRefreshInterval: return "Set Refresh Interval"
         case .setAlertRuleEnabled: return "Enable/Disable Alert Rule"
         case .createAlertRule: return "Create Alert Rule"
+        case .waitUntilReady: return "Wait Until Ready"
         }
     }
 
@@ -113,11 +146,17 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
         case .getAlertHistory: return "Recently fired alerts."
         case .getDeviceInfo: return "Model, chip, OS, capabilities."
         case .getSleepState: return "Current assertion state + expiry."
+        case .preflightCheck: return "One-shot go/wait recommendation for starting a heavy job now (thermal, CPU, battery)."
+        case .getResourceEventsSince: return "Alert firings + peak thermal/CPU/memory/disk values since a given time — for root-causing a failed/flaky run."
+        case .getAgentCapacity: return "Whether this Mac has memory/CPU headroom for N more local agent processes."
+        case .getAgentActivity: return "Recent MCP tool calls (client, tool, decision) — what agents have been asking this Mac for."
+        case .getSessionResourceReport: return "Aggregated CPU/thermal/memory cost over a time window, framed as a session report."
         case .keepAwake: return "Start a sleep assertion with mode + duration."
         case .releaseAwake: return "Release the current sleep assertion."
         case .setRefreshInterval: return "Change polling cadence for a tier."
         case .setAlertRuleEnabled: return "Toggle an alert rule on or off."
         case .createAlertRule: return "Define a new alert rule."
+        case .waitUntilReady: return "Block (capped) until a condition holds — e.g. thermal_normal, cpu_below:50 — then return what changed."
         }
     }
 

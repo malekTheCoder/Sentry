@@ -88,6 +88,15 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
 
         if decision == .allow {
             accessController.recordCall()
+            // Durable counterpart to `activityLog` below — write tools only
+            // (see `logAgentActivity`'s doc comment for why), so the
+            // Dashboard's agent-activity panel has real history to query
+            // beyond this session. Read tools aren't logged here: they're
+            // high-volume and, unlike a write tool, never change anything
+            // on this Mac worth correlating against a thermal/CPU chart.
+            if tool.isWrite {
+                historyStore.logAgentActivity(clientName: clientName, tool: tool.rawValue)
+            }
         }
 
         activityLog.record(
@@ -263,6 +272,169 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
         }
     }
 
+    // MARK: - AI-agent-integration read tools
+
+    nonisolated func preflightCheck(clientName: String, reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            guard self.checkAndReplyIfDenied(.preflightCheck, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            let recommendation = SystemAdvisor.recommend(self.coordinator.latestSnapshot(), lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled)
+            self.encodeAndReply(recommendation, reply: reply)
+        }
+    }
+
+    nonisolated func getResourceEventsSince(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            let summary = "sinceSeconds=\(sinceSeconds)"
+            guard self.checkAndReplyIfDenied(.getResourceEventsSince, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard sinceSeconds > 0 else {
+                reply(nil, "sinceSeconds must be positive.")
+                return
+            }
+            let since = Date().addingTimeInterval(-sinceSeconds)
+
+            let firings = self.historyStore.recentAlertFirings(limit: 500)
+                .filter { $0.timestamp >= since }
+                .map(MCPPayloads.AlertHistoryEntry.init)
+
+            let socTemps = self.historyStore.samples(metric: MetricID.thermalSocTempC.rawValue, since: since)
+            let cpuSamples = self.historyStore.samples(metric: MetricID.cpuTotalPercent.rawValue, since: since)
+            let memPressure = self.historyStore.samples(metric: MetricID.memoryPressurePercent.rawValue, since: since)
+            let diskFree = self.historyStore.samples(metric: MetricID.diskFreeBytes.rawValue, since: since)
+            let throttling = self.historyStore.samples(metric: MetricID.thermalIsThrottling.rawValue, since: since)
+
+            let summaryPayload = MCPPayloads.ResourceEventsSummary(
+                since: since,
+                alertFirings: firings,
+                peakSoCTemperatureCelsius: socTemps.map(\.value).max(),
+                peakCPUPercent: cpuSamples.map(\.value).max(),
+                peakMemoryPressurePercent: memPressure.map(\.value).max(),
+                minDiskFreeBytes: diskFree.map(\.value).min(),
+                anyThrottling: throttling.contains { $0.value > 0 }
+            )
+            self.encodeAndReply(summaryPayload, reply: reply)
+        }
+    }
+
+    nonisolated func getAgentCapacity(clientName: String, requestedAgents: Int, reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            let summary = "requestedAgents=\(requestedAgents)"
+            guard self.checkAndReplyIfDenied(.getAgentCapacity, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+
+            let snapshot = self.coordinator.latestSnapshot()
+            // Upper-bounded, not just lower-bounded: a caller passing an
+            // absurd value (accidental or adversarial) must not reach the
+            // multiplication below with an unclamped `Int` — `UInt64(_:)`
+            // would trap on a negative value, and even a merely huge
+            // positive value would overflow `estimatedBytesPerAgent *
+            // UInt64(clampedAgents)`'s trapping `*` and crash this
+            // `@MainActor` process for every client. 10,000 is already far
+            // beyond any plausible real request (this heuristic isn't
+            // meaningful past a handful of agents anyway).
+            let clampedAgents = min(max(1, requestedAgents), 10_000)
+
+            // Coarse per-agent footprint estimate for a local coding-agent
+            // subprocess (interpreter/runtime + working set) — deliberately
+            // conservative (higher than a lean CLI, lower than a full
+            // Electron app) since this is a heuristic gate, not a promise.
+            let estimatedBytesPerAgent: UInt64 = 512 * 1024 * 1024
+            let freeBytes: UInt64
+            if let memory = snapshot.memory, memory.totalBytes > memory.usedBytes {
+                freeBytes = memory.totalBytes - memory.usedBytes
+            } else {
+                freeBytes = 0
+            }
+            let cpuHeadroom = max(0, 100 - (snapshot.cpu?.totalPercent ?? 0))
+
+            let memoryOK = freeBytes >= estimatedBytesPerAgent * UInt64(clampedAgents)
+            // Each agent is assumed to want roughly one core's worth of
+            // headroom (25% of total CPU on a 4+ core Mac) — again a coarse
+            // heuristic, not a scheduler guarantee.
+            let cpuOK = cpuHeadroom >= Double(clampedAgents) * 25
+            let hasCapacity = memoryOK && cpuOK
+
+            let reasoning: String
+            if hasCapacity {
+                reasoning = "Free memory (\(ByteCountFormatter.string(fromByteCount: Int64(freeBytes), countStyle: .memory))) and CPU headroom (\(Int(cpuHeadroom))%) look sufficient for \(clampedAgents) more agent(s)."
+            } else if !memoryOK {
+                reasoning = "Free memory (\(ByteCountFormatter.string(fromByteCount: Int64(freeBytes), countStyle: .memory))) is likely too tight for \(clampedAgents) more agent(s) at ~512 MB each."
+            } else {
+                reasoning = "CPU headroom (\(Int(cpuHeadroom))%) is likely too tight for \(clampedAgents) more agent(s)."
+            }
+
+            let payload = MCPPayloads.AgentCapacity(
+                requestedAgents: clampedAgents,
+                hasCapacity: hasCapacity,
+                freeMemoryBytes: freeBytes,
+                estimatedBytesPerAgent: estimatedBytesPerAgent,
+                cpuHeadroomPercent: cpuHeadroom,
+                reasoning: reasoning
+            )
+            self.encodeAndReply(payload, reply: reply)
+        }
+    }
+
+    nonisolated func getAgentActivity(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            let summary = "limit=\(limit)"
+            guard self.checkAndReplyIfDenied(.getAgentActivity, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            let clampedLimit = min(max(1, limit), 200)
+            let entries = self.activityLog.entries.prefix(clampedLimit).map { entry in
+                MCPPayloads.AgentActivityEntry(
+                    timestamp: entry.timestamp,
+                    clientName: entry.clientName,
+                    tool: entry.tool.rawValue,
+                    argumentsSummary: entry.argumentsSummary,
+                    decision: String(describing: entry.decision)
+                )
+            }
+            self.encodeAndReply(Array(entries), reply: reply)
+        }
+    }
+
+    nonisolated func getSessionResourceReport(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            let summary = "sinceSeconds=\(sinceSeconds)"
+            guard self.checkAndReplyIfDenied(.getSessionResourceReport, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard sinceSeconds > 0 else {
+                reply(nil, "sinceSeconds must be positive.")
+                return
+            }
+            let since = Date().addingTimeInterval(-sinceSeconds)
+            let now = Date()
+
+            let cpuSamples = self.historyStore.samples(metric: MetricID.cpuTotalPercent.rawValue, since: since).map(\.value)
+            let socTemps = self.historyStore.samples(metric: MetricID.thermalSocTempC.rawValue, since: since).map(\.value)
+            let throttlingSamples = self.historyStore.samples(metric: MetricID.thermalIsThrottling.rawValue, since: since)
+            let memPressure = self.historyStore.samples(metric: MetricID.memoryPressurePercent.rawValue, since: since).map(\.value)
+            let firings = self.historyStore.recentAlertFirings(limit: 500).filter { $0.timestamp >= since }
+
+            // Approximates seconds spent throttling by assuming each sample
+            // represents the interval since the previous one (bounded to
+            // avoid one stale/late sample inflating the total) — this is a
+            // best-effort estimate over already-persisted samples, not a
+            // continuous measurement.
+            var secondsThrottling: Double = 0
+            var previousTimestamp = since
+            for sample in throttlingSamples {
+                let interval = min(sample.timestamp.timeIntervalSince(previousTimestamp), 300)
+                if sample.value > 0 { secondsThrottling += max(0, interval) }
+                previousTimestamp = sample.timestamp
+            }
+
+            let report = MCPPayloads.SessionResourceReport(
+                windowStart: since,
+                windowEnd: now,
+                averageCPUPercent: cpuSamples.isEmpty ? nil : cpuSamples.reduce(0, +) / Double(cpuSamples.count),
+                peakCPUPercent: cpuSamples.max(),
+                peakSoCTemperatureCelsius: socTemps.max(),
+                secondsThrottling: secondsThrottling,
+                peakMemoryPressurePercent: memPressure.max(),
+                alertsFired: firings.count
+            )
+            self.encodeAndReply(report, reply: reply)
+        }
+    }
+
     // MARK: - Write tools
 
     nonisolated func keepAwake(clientName: String, mode: String, durationSeconds: Double, reason: String, reply: @escaping (Bool, String?) -> Void) {
@@ -358,6 +530,79 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
         }
     }
 
+    nonisolated func waitUntilReady(clientName: String, condition: String, timeoutSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            let summary = "condition=\(condition), timeoutSeconds=\(timeoutSeconds)"
+            guard self.checkAndReplyIfDenied(.waitUntilReady, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+
+            guard let parsedCondition = WaitCondition(condition) else {
+                reply(nil, "Unrecognized condition '\(condition)'. Expected thermal_normal, cpu_below:N, battery_above:N, or memory_below:N.")
+                return
+            }
+
+            // Capped well below any reasonable MCP client request timeout —
+            // a caller that wants longer should poll `preflight_check`
+            // itself rather than hold one XPC/MCP call open indefinitely.
+            let clampedTimeout = min(max(timeoutSeconds, 1), 600)
+            let start = Date()
+
+            let initial = self.coordinator.latestSnapshot()
+            if parsedCondition.isSatisfied(by: initial) {
+                self.encodeAndReply(
+                    MCPPayloads.WaitResult(satisfied: true, timedOut: false, waitedSeconds: 0, finalSnapshot: initial),
+                    reply: reply
+                )
+                return
+            }
+
+            let deadline = start.addingTimeInterval(clampedTimeout)
+
+            // A deadline check made only when a new snapshot arrives (the
+            // previous version of this loop) can overrun `clampedTimeout`
+            // by up to a full poll-tier interval — up to 60s if the tier
+            // is at its slowest setting — since nothing wakes the loop
+            // between snapshots. `repliedOnce` plus a sibling timer task
+            // below makes the timeout a real wall-clock bound: whichever
+            // of "condition satisfied" or "clock expired" happens first
+            // replies, and the other is a silent no-op.
+            let repliedOnce = SingleFire()
+
+            let timeoutTask = Task { @MainActor in
+                let remaining = max(0, deadline.timeIntervalSinceNow)
+                try? await Task.sleep(for: .seconds(remaining))
+                guard repliedOnce.fire() else { return }
+                self.encodeAndReply(
+                    MCPPayloads.WaitResult(satisfied: false, timedOut: true, waitedSeconds: Date().timeIntervalSince(start), finalSnapshot: self.coordinator.latestSnapshot()),
+                    reply: reply
+                )
+            }
+
+            for await snapshot in self.coordinator.snapshots() {
+                guard !repliedOnce.hasFired else { break }
+                if parsedCondition.isSatisfied(by: snapshot) {
+                    guard repliedOnce.fire() else { break }
+                    timeoutTask.cancel()
+                    self.encodeAndReply(
+                        MCPPayloads.WaitResult(satisfied: true, timedOut: false, waitedSeconds: Date().timeIntervalSince(start), finalSnapshot: snapshot),
+                        reply: reply
+                    )
+                    return
+                }
+            }
+
+            // The stream ended (coordinator torn down) without satisfying —
+            // reply with whatever's on hand rather than leaving the caller
+            // hanging until `timeoutTask` fires (if it hasn't already).
+            if repliedOnce.fire() {
+                timeoutTask.cancel()
+                self.encodeAndReply(
+                    MCPPayloads.WaitResult(satisfied: false, timedOut: true, waitedSeconds: Date().timeIntervalSince(start), finalSnapshot: self.coordinator.latestSnapshot()),
+                    reply: reply
+                )
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     /// `authorize` already logs and applies the confirmation flow; this
@@ -403,6 +648,27 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
         var buffer = [CChar](repeating: 0, count: size)
         guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return nil }
         return String(cString: buffer)
+    }
+}
+
+/// A "did this already happen" latch shared between `waitUntilReady`'s
+/// snapshot-watching loop and its sibling timeout task — exactly one of
+/// them should ever call `reply`, whichever wins the race. `fire()` returns
+/// `true` for the caller that wins (and should proceed to reply) and
+/// `false` for the loser. `@MainActor`-isolated, not locked: both callers
+/// (the loop and the timeout `Task { @MainActor in ... }`) already run on
+/// the main actor, which serializes access — no separate synchronization
+/// needed, unlike `ResumeOnce` (`MacStatXPCClient.swift`), which guards
+/// against a genuine cross-thread XPC race.
+@MainActor
+private final class SingleFire {
+    private(set) var hasFired = false
+
+    @discardableResult
+    func fire() -> Bool {
+        guard !hasFired else { return false }
+        hasFired = true
+        return true
     }
 }
 #endif

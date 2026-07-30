@@ -163,6 +163,23 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mcp
 
+  MacStatCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: MacStatCLI
+    dependencies:
+      - target: MacStatKit_macOS
+        embed: false
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.cli
+      # EXECUTABLE_NAME (not PRODUCT_NAME) renames just the output binary to
+      # "macstat" — PRODUCT_NAME stays "MacStatCLI" so the module name it
+      # implies doesn't collide with the "MacStat" app target's own module
+      # on a case-insensitive filesystem (this collided as "cannot load
+      # module 'macstat' as 'MacStat'" when PRODUCT_NAME was set directly).
+      EXECUTABLE_NAME: macstat
+
   MacStatTests:
     type: bundle.unit-test
     platform: macOS
@@ -181,6 +198,7 @@ schemes:
       targets:
         MacStat: all
         MacStatMCP: all
+        MacStatCLI: all
         MacStatTests: [test]
     run:
       config: Debug

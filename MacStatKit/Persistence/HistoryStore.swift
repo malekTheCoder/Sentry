@@ -264,6 +264,55 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
+    /// Persists one executed write-tool MCP call (AI-agent-integration pass
+    /// — see MacStat-AI-Features-Research.md item #15). Called only for
+    /// calls that actually reached `StatsCoordinator`/`PowerControlService`/
+    /// `AlertEngine` (i.e. `MCPAccessController.Decision.allow`), not every
+    /// attempted call — same "record what actually happened" posture as
+    /// `logAlertFiring`'s `delivered` flag, and the reason this is a
+    /// separate durable log from the in-memory `MCPActivityLog` (which
+    /// records every decision, including denials, for the live AI Access
+    /// pane view) rather than a duplicate of it.
+    public func logAgentActivity(clientName: String, tool: String, at date: Date = Date()) {
+        guard let dbQueue else { return }
+        do {
+            try dbQueue.write { db in
+                try db.execute(
+                    sql: "INSERT INTO agent_activity_log (ts, client_name, tool) VALUES (?, ?, ?)",
+                    arguments: [date.timeIntervalSince1970, clientName, tool]
+                )
+            }
+        } catch {
+            Self.logger.error("Failed to log agent activity for tool \(tool, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Reads back `agent_activity_log` rows at or after `since`, oldest
+    /// first — the data source for the Dashboard's agent-activity panel.
+    public func agentActivityEvents(since: Date) -> [AgentActivityEvent] {
+        guard let dbQueue else { return [] }
+        do {
+            return try dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT ts, client_name, tool FROM agent_activity_log WHERE ts >= ? ORDER BY ts ASC",
+                    arguments: [since.timeIntervalSince1970]
+                )
+                return rows.compactMap { row -> AgentActivityEvent? in
+                    guard
+                        let ts: Double = row["ts"],
+                        let clientName: String = row["client_name"],
+                        let tool: String = row["tool"]
+                    else { return nil }
+                    return AgentActivityEvent(timestamp: Date(timeIntervalSince1970: ts), clientName: clientName, tool: tool)
+                }
+            }
+        } catch {
+            Self.logger.error("Failed to read agent_activity_log: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
     // MARK: - Read path
 
     /// Reads samples for one metric from the tier the caller specifies. The
@@ -572,4 +621,17 @@ public struct AlertLogEntry: Equatable, Sendable {
     public let value: Double
     public let delivered: Bool
     public let suppressed: Bool
+}
+
+/// One row of `agent_activity_log` — see `HistoryStore.logAgentActivity`.
+public struct AgentActivityEvent: Equatable, Sendable {
+    public let timestamp: Date
+    public let clientName: String
+    public let tool: String
+
+    public init(timestamp: Date, clientName: String, tool: String) {
+        self.timestamp = timestamp
+        self.clientName = clientName
+        self.tool = tool
+    }
 }

@@ -252,3 +252,32 @@ public struct ControlStatus: Codable, Sendable, Equatable {
         self.updatedAt = updatedAt
     }
 }
+
+// MARK: - AlertPush
+
+/// Mac → iPhone: one record per fired `AlertAction.pushToPhone` (AI-agent-
+/// integration pass — see MacStat-AI-Features-Research.md item #7, "an
+/// agent starting a long job calls `create_alert_rule` for 'job finished'
+/// with a `.pushToPhone` action, so the user gets notified away from their
+/// desk"). Same "model layer is real, transport is gated on enrollment"
+/// split as every other type in this file: `AlertEngine.phonePushRecorder`
+/// (see its doc comment) already turns a fired `.pushToPhone` action into
+/// one of these locally today; only `SyncService` actually uploading it to
+/// CloudKit (so the iPhone app can turn it into a local notification on
+/// its next sync) is blocked on Apple Developer Program enrollment.
+public struct AlertPush: Codable, Sendable, Equatable {
+    /// Reference → `Device`.
+    public var deviceID: String
+    public var ruleName: String
+    public var title: String
+    public var body: String
+    public var firedAt: Date
+
+    public init(deviceID: String, ruleName: String, title: String, body: String, firedAt: Date) {
+        self.deviceID = deviceID
+        self.ruleName = ruleName
+        self.title = title
+        self.body = body
+        self.firedAt = firedAt
+    }
+}

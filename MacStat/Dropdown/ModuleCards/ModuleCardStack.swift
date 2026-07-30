@@ -83,6 +83,9 @@ struct ModuleCardStack: View {
         case .thermal:
             MetricCard(metric: metric, series: series, headlineValue: headline, subtitle: thermalSubtitle) {
                 MetricDetailRow(label: "Throttling", value: thermalThrottling)
+                ForEach(perSensorReadings, id: \.name) { reading in
+                    MetricDetailRow(label: reading.name, value: String(format: "%.0f°C", reading.celsius))
+                }
                 ForEach(Array(fanRPMs.enumerated()), id: \.offset) { index, rpm in
                     MetricDetailRow(label: "Fan \(index + 1)", value: "\(Int(rpm.rounded())) RPM")
                 }
@@ -143,6 +146,14 @@ struct ModuleCardStack: View {
 
     private var fanRPMs: [Double] {
         snapshot?.thermal?.fanRPMs ?? []
+    }
+
+    /// Capped at 4 rows so a Mac with many matched sensor services doesn't
+    /// blow out the dropdown's height — the hottest readings are what a
+    /// user actually wants to see, and the list is already sorted hottest
+    /// first by `HIDSensorBridge.readAllTemperatures()`.
+    private var perSensorReadings: [ThermalSensorReading] {
+        Array((snapshot?.thermal?.perSensorCelsius ?? []).prefix(4))
     }
 }
 

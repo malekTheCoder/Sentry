@@ -40,7 +40,8 @@ public final class ThermalCollector: Collector {
             socTemperatureCelsius: hidBridge.readTemperature(),
             fanRPMs: hidBridge.readFanRPMs(),
             pressureLevel: pressureLevel,
-            isThrottling: isThrottling
+            isThrottling: isThrottling,
+            perSensorCelsius: hidBridge.readAllTemperatures()
         )
     }
 
@@ -100,12 +101,14 @@ final class HIDSensorBridge {
     private typealias ClientCopyServicesFn = @convention(c) (CFTypeRef) -> Unmanaged<CFArray>?
     private typealias ServiceCopyEventFn = @convention(c) (CFTypeRef, Int64, Int32, Int64) -> Unmanaged<CFTypeRef>?
     private typealias EventGetFloatValueFn = @convention(c) (CFTypeRef, Int32) -> Double
+    private typealias ServiceCopyPropertyFn = @convention(c) (CFTypeRef, CFString) -> Unmanaged<CFTypeRef>?
 
     private let clientCreate: ClientCreateFn?
     private let clientSetMatching: ClientSetMatchingFn?
     private let clientCopyServices: ClientCopyServicesFn?
     private let serviceCopyEvent: ServiceCopyEventFn?
     private let eventGetFloatValue: EventGetFloatValueFn?
+    private let serviceCopyProperty: ServiceCopyPropertyFn?
 
     private init() {
         // dlopen is refcounted and idempotent: IOKit.framework is already
@@ -121,6 +124,7 @@ final class HIDSensorBridge {
             clientCopyServices = nil
             serviceCopyEvent = nil
             eventGetFloatValue = nil
+            serviceCopyProperty = nil
             return
         }
 
@@ -134,6 +138,11 @@ final class HIDSensorBridge {
         clientCopyServices = load("IOHIDEventSystemClientCopyServices", as: ClientCopyServicesFn.self)
         serviceCopyEvent = load("IOHIDServiceClientCopyEvent", as: ServiceCopyEventFn.self)
         eventGetFloatValue = load("IOHIDEventGetFloatValue", as: EventGetFloatValueFn.self)
+        // Best-effort only — `readAllTemperatures()` falls back to a
+        // positional "Sensor N" label if this symbol is missing, so it's
+        // not part of the "every symbol must resolve" gate the other
+        // methods use.
+        serviceCopyProperty = load("IOHIDServiceClientCopyProperty", as: ServiceCopyPropertyFn.self)
     }
 
     /// Returns the hottest plausible SoC temperature reading across all
@@ -187,6 +196,58 @@ final class HIDSensorBridge {
         }
 
         return hottest
+    }
+
+    /// Every plausible reading behind `readTemperature()`'s single max —
+    /// Apple Silicon exposes one sensor per cluster (E-cluster, P-cluster0,
+    /// P-cluster1, GPU, etc.), not one per physical core, so this is a
+    /// per-sensor breakdown, not literally per-core. Named via
+    /// `IOHIDServiceClientCopyProperty("Product")` where that symbol
+    /// resolved and returned a non-empty string; falls back to a positional
+    /// "Sensor N" label otherwise, same "degrade a field, don't drop the
+    /// whole read" posture as `readTemperature()`.
+    func readAllTemperatures() -> [ThermalSensorReading] {
+        guard let clientCreate, let clientSetMatching, let clientCopyServices,
+              let serviceCopyEvent, let eventGetFloatValue
+        else {
+            return []
+        }
+
+        guard let clientRef = clientCreate(nil)?.takeRetainedValue() else { return [] }
+
+        let matching: CFDictionary = [
+            "PrimaryUsagePage": Self.appleVendorPage,
+            "PrimaryUsage": Self.temperatureUsage
+        ] as CFDictionary
+        clientSetMatching(clientRef, matching)
+
+        guard let servicesRef = clientCopyServices(clientRef)?.takeRetainedValue() else { return [] }
+
+        let count = min(CFArrayGetCount(servicesRef), Self.maxIterations)
+        guard count > 0 else { return [] }
+
+        var readings: [ThermalSensorReading] = []
+        for index in 0..<count {
+            guard let rawService = CFArrayGetValueAtIndex(servicesRef, index) else { continue }
+            let service = Unmanaged<CFTypeRef>.fromOpaque(rawService).takeUnretainedValue()
+
+            guard let eventRef = serviceCopyEvent(
+                service, Self.temperatureEventType, 0, 0
+            )?.takeRetainedValue() else { continue }
+
+            let value = eventGetFloatValue(eventRef, Self.temperatureField)
+            guard value.isFinite, Self.plausibleRange.contains(value) else { continue }
+
+            let name = serviceCopyProperty.flatMap { copyProperty -> String? in
+                guard let nameRef = copyProperty(service, "Product" as CFString)?.takeRetainedValue() else { return nil }
+                let name = nameRef as? String
+                return (name?.isEmpty ?? true) ? nil : name
+            } ?? "Sensor \(index + 1)"
+
+            readings.append(ThermalSensorReading(name: name, celsius: value))
+        }
+
+        return readings.sorted { $0.celsius > $1.celsius }
     }
 
     /// Phase 1.5: intentionally unimplemented. See the type-level doc

@@ -403,4 +403,104 @@ final class AlertEngineTests: XCTestCase {
         // action wired up; this is a defensive-nil-handling regression
         // guard for evaluateSlowCharging's guard-let chain.
     }
+
+    // MARK: - pushToPhone / runShortcut (AI-agent-integration pass)
+
+    func testPushToPhoneCallsPhonePushRecorderWithNotificationText() {
+        let now = Date()
+        let rule = AlertRule(
+            name: "Critical battery",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 0,
+            cooldown: 60,
+            actions: [
+                .notification(title: "Critical Battery", body: "Battery is below 10%.", sound: true),
+                .pushToPhone
+            ]
+        )
+        let engine = AlertEngine(rules: [rule], clock: { now })
+        var recorded: AlertPush?
+        engine.phonePushRecorder = { recorded = $0 }
+
+        engine.evaluate(SystemSnapshot(deviceID: "device-42", cpu: CPUStats(totalPercent: 95)))
+
+        XCTAssertEqual(recorded?.deviceID, "device-42")
+        XCTAssertEqual(recorded?.ruleName, "Critical battery")
+        XCTAssertEqual(recorded?.title, "Critical Battery")
+        XCTAssertEqual(recorded?.body, "Battery is below 10%.")
+    }
+
+    func testPushToPhoneWithoutNotificationActionDoesNotRecord() {
+        let now = Date()
+        let rule = AlertRule(
+            name: "Silent push",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 0,
+            cooldown: 60,
+            actions: [.pushToPhone]
+        )
+        let engine = AlertEngine(rules: [rule], clock: { now })
+        var recordCount = 0
+        engine.phonePushRecorder = { _ in recordCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(recordCount, 0, "a rule with no .notification action has no text to send yet")
+    }
+
+    func testRunShortcutCallsShortcutRunnerWithName() {
+        let now = Date()
+        let rule = AlertRule(
+            name: "Resume build",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 0,
+            cooldown: 60,
+            actions: [.runShortcut(name: "Resume Build")]
+        )
+        let engine = AlertEngine(rules: [rule], clock: { now })
+        var ranNames: [String] = []
+        engine.shortcutRunner = { ranNames.append($0) }
+
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(ranNames, ["Resume Build"])
+    }
+
+    func testPushToPhoneRespectsGlobalRateCap() {
+        var now = Date()
+        // Same three-independent-rules shape as
+        // testGlobalRateCapSuppressesDeliveryButStillLogs, but with
+        // .pushToPhone actions — regression guard for the bug where
+        // .pushToPhone was exempted from withinRateCap entirely, so a
+        // misconfigured rapidly-refiring rule could queue an unbounded
+        // stream of phone pushes even while its .notification sibling was
+        // being suppressed by the same cap.
+        let rules = (0..<3).map { index in
+            AlertRule(
+                name: "Rate cap rule \(index)",
+                metric: .cpuTotalPercent,
+                comparison: .above,
+                threshold: Double(index),
+                sustainedFor: 0,
+                cooldown: 0,
+                actions: [
+                    .notification(title: "t", body: "b", sound: false),
+                    .pushToPhone
+                ]
+            )
+        }
+        let engine = AlertEngine(rules: rules, rateCapPerHour: 2, clock: { now })
+        var pushCount = 0
+        engine.phonePushRecorder = { _ in pushCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(pushCount, 2, "pushToPhone must respect the same rate cap as every other user-perceptible action")
+    }
 }

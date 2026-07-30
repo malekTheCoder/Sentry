@@ -180,4 +180,139 @@ public enum MCPPayloads {
             )
         }
     }
+
+    /// `wait_until_ready`'s result — whether `WaitCondition` was satisfied
+    /// before the (capped) timeout, how long the call actually blocked, and
+    /// the snapshot the decision was made against, so a caller doesn't need
+    /// a follow-up `get_system_snapshot` call just to see what changed.
+    public struct WaitResult: Codable, Sendable {
+        public var satisfied: Bool
+        public var timedOut: Bool
+        public var waitedSeconds: Double
+        public var finalSnapshot: SystemSnapshot
+
+        public init(satisfied: Bool, timedOut: Bool, waitedSeconds: Double, finalSnapshot: SystemSnapshot) {
+            self.satisfied = satisfied
+            self.timedOut = timedOut
+            self.waitedSeconds = waitedSeconds
+            self.finalSnapshot = finalSnapshot
+        }
+    }
+
+    /// `get_resource_events_since`: alert firings plus a peak/notable-value
+    /// summary over the requested window, for an agent doing root-cause
+    /// analysis on a flaky/failed run ("was anything anomalous on this
+    /// machine recently").
+    public struct ResourceEventsSummary: Codable, Sendable {
+        public var since: Date
+        public var alertFirings: [AlertHistoryEntry]
+        public var peakSoCTemperatureCelsius: Double?
+        public var peakCPUPercent: Double?
+        public var peakMemoryPressurePercent: Double?
+        public var minDiskFreeBytes: Double?
+        public var anyThrottling: Bool
+
+        public init(
+            since: Date,
+            alertFirings: [AlertHistoryEntry],
+            peakSoCTemperatureCelsius: Double?,
+            peakCPUPercent: Double?,
+            peakMemoryPressurePercent: Double?,
+            minDiskFreeBytes: Double?,
+            anyThrottling: Bool
+        ) {
+            self.since = since
+            self.alertFirings = alertFirings
+            self.peakSoCTemperatureCelsius = peakSoCTemperatureCelsius
+            self.peakCPUPercent = peakCPUPercent
+            self.peakMemoryPressurePercent = peakMemoryPressurePercent
+            self.minDiskFreeBytes = minDiskFreeBytes
+            self.anyThrottling = anyThrottling
+        }
+    }
+
+    /// `get_agent_capacity`: a rough go/no-go for starting `requestedAgents`
+    /// more local processes, given current free memory and CPU headroom.
+    /// Deliberately a heuristic, not a promise — `reasoning` explains the
+    /// arithmetic so a model can sanity-check it rather than treat the
+    /// boolean as gospel.
+    public struct AgentCapacity: Codable, Sendable {
+        public var requestedAgents: Int
+        public var hasCapacity: Bool
+        public var freeMemoryBytes: UInt64
+        public var estimatedBytesPerAgent: UInt64
+        public var cpuHeadroomPercent: Double
+        public var reasoning: String
+
+        public init(
+            requestedAgents: Int,
+            hasCapacity: Bool,
+            freeMemoryBytes: UInt64,
+            estimatedBytesPerAgent: UInt64,
+            cpuHeadroomPercent: Double,
+            reasoning: String
+        ) {
+            self.requestedAgents = requestedAgents
+            self.hasCapacity = hasCapacity
+            self.freeMemoryBytes = freeMemoryBytes
+            self.estimatedBytesPerAgent = estimatedBytesPerAgent
+            self.cpuHeadroomPercent = cpuHeadroomPercent
+            self.reasoning = reasoning
+        }
+    }
+
+    /// One row of `get_agent_activity` — a thin `Codable` mirror of
+    /// `MCPActivityLogEntry` (which stays non-`Codable` on purpose, see its
+    /// own doc comment) for the one call site that needs to cross the XPC
+    /// boundary.
+    public struct AgentActivityEntry: Codable, Sendable {
+        public var timestamp: Date
+        public var clientName: String
+        public var tool: String
+        public var argumentsSummary: String
+        public var decision: String
+
+        public init(timestamp: Date, clientName: String, tool: String, argumentsSummary: String, decision: String) {
+            self.timestamp = timestamp
+            self.clientName = clientName
+            self.tool = tool
+            self.argumentsSummary = argumentsSummary
+            self.decision = decision
+        }
+    }
+
+    /// `get_session_resource_report`: an approximate "cost of this run"
+    /// summary over a wall-clock window — average/peak CPU, peak memory
+    /// pressure, thermal excursions — computed from `HistoryStore` samples
+    /// already being persisted for other reasons.
+    public struct SessionResourceReport: Codable, Sendable {
+        public var windowStart: Date
+        public var windowEnd: Date
+        public var averageCPUPercent: Double?
+        public var peakCPUPercent: Double?
+        public var peakSoCTemperatureCelsius: Double?
+        public var secondsThrottling: Double
+        public var peakMemoryPressurePercent: Double?
+        public var alertsFired: Int
+
+        public init(
+            windowStart: Date,
+            windowEnd: Date,
+            averageCPUPercent: Double?,
+            peakCPUPercent: Double?,
+            peakSoCTemperatureCelsius: Double?,
+            secondsThrottling: Double,
+            peakMemoryPressurePercent: Double?,
+            alertsFired: Int
+        ) {
+            self.windowStart = windowStart
+            self.windowEnd = windowEnd
+            self.averageCPUPercent = averageCPUPercent
+            self.peakCPUPercent = peakCPUPercent
+            self.peakSoCTemperatureCelsius = peakSoCTemperatureCelsius
+            self.secondsThrottling = secondsThrottling
+            self.peakMemoryPressurePercent = peakMemoryPressurePercent
+            self.alertsFired = alertsFired
+        }
+    }
 }

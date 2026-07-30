@@ -240,4 +240,27 @@ final class CKMapperTests: XCTestCase {
         let record = CKRecord(recordType: CKMapper.RecordType.snapshot, recordID: CKRecord.ID(recordName: UUID().uuidString, zoneID: zoneID))
         XCTAssertThrowsError(try CKMapper.snapshotRecord(from: record))
     }
+
+    // MARK: - AlertPush
+
+    func testAlertPushRoundTrips() throws {
+        let push = AlertPush(
+            deviceID: "device-source",
+            ruleName: "Critical battery",
+            title: "Critical Battery",
+            body: "Battery is below 10%.",
+            firedAt: Date(timeIntervalSince1970: 1_700_002_000)
+        )
+
+        let record = CKMapper.record(from: push, zoneID: zoneID)
+        XCTAssertEqual(record.recordType, CKMapper.RecordType.alertPush)
+
+        let decoded = try CKMapper.alertPush(from: record)
+        XCTAssertEqual(decoded, push)
+    }
+
+    func testDecodingAlertPushWithoutDeviceRefThrows() {
+        let record = CKRecord(recordType: CKMapper.RecordType.alertPush, recordID: CKRecord.ID(recordName: UUID().uuidString, zoneID: zoneID))
+        XCTAssertThrowsError(try CKMapper.alertPush(from: record))
+    }
 }

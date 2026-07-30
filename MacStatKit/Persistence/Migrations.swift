@@ -80,6 +80,26 @@ public enum Migrations {
             }
         }
 
+        // AI-agent-integration pass (see MacStat-AI-Features-Research.md
+        // item #15): a durable log of executed write-tool MCP calls, so the
+        // Dashboard's "agent activity" panel can answer "was an agent
+        // active recently" over a real window (days/weeks) instead of only
+        // the session-scoped, in-memory `MCPActivityLog` (which is what
+        // powers the live dropdown/AI-Access-pane views and intentionally
+        // does not persist — see its own doc comment). Kept forever, same
+        // as `alert_log`: this is a discrete-event log, not a time series,
+        // and volume is inherently low (only *executed* write-tool calls,
+        // not every read).
+        migrator.registerMigration("v3AgentActivityLog") { db in
+            try db.create(table: "agent_activity_log") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("ts", .double).notNull()
+                t.column("client_name", .text).notNull()
+                t.column("tool", .text).notNull()
+            }
+            try db.create(index: "idx_agent_activity_ts", on: "agent_activity_log", columns: ["ts"])
+        }
+
         return migrator
     }
 }

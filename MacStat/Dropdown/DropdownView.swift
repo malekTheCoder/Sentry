@@ -13,6 +13,12 @@ struct DropdownView: View {
     /// changes propagate; the service is owned by the AppDelegate composition
     /// root, same as the view model.
     @ObservedObject private var powerControl: PowerControlService
+    /// Drives the header's "Agent active" indicator (see
+    /// `DropdownHeader.agentActivityPill`) — a live, user-visible signal
+    /// that an MCP client is currently doing something to this Mac, which no
+    /// headless competitor MCP server (thermo-control-mcp, mac-monitor-mcp)
+    /// can show since none of them have a menu bar at all.
+    @ObservedObject private var activityLog: MCPActivityLog
     @Environment(\.colorScheme) private var systemColorScheme
 
     private let theme: Theme
@@ -37,6 +43,7 @@ struct DropdownView: View {
         // instances would each try to reconcile (and re-create) the other's
         // assertion on wake. The composition root owns exactly one.
         powerControl: PowerControlService,
+        activityLog: MCPActivityLog,
         theme: Theme = .terminal,
         enabledModules: Set<MetricModule> = Set(MetricModule.allCases),
         // Callers pass the actual anchor screen's height so this scales with
@@ -51,6 +58,7 @@ struct DropdownView: View {
     ) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self._powerControl = ObservedObject(wrappedValue: powerControl)
+        self._activityLog = ObservedObject(wrappedValue: activityLog)
         self.theme = theme
         self.enabledModules = enabledModules
         self.cardListMaxHeight = cardListMaxHeight
@@ -65,7 +73,7 @@ struct DropdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
-            DropdownHeader(thermal: viewModel.snapshot?.thermal)
+            DropdownHeader(thermal: viewModel.snapshot?.thermal, latestActivity: activityLog.entries.first)
             BatteryHeroCard(
                 battery: viewModel.snapshot?.battery,
                 powerSeries: viewModel.series(for: .power)
@@ -106,12 +114,28 @@ private struct DropdownHeader: View {
     @Environment(\.themePalette) private var palette
 
     let thermal: ThermalStats?
+    /// Most recent MCP activity-log entry, if any — used to show a brief
+    /// "agent active" pill right after a write tool executes. `nil` (no
+    /// entries yet) and an old/read-only entry both render nothing; see
+    /// `showsAgentActivity`.
+    let latestActivity: MCPActivityLogEntry?
 
     /// Recomputed per body evaluation (i.e. per snapshot) rather than on a
     /// timer of its own — a minute-resolution readout doesn't justify a
     /// second wakeup source.
     private var uptime: String {
         MetricFormatting.uptime(ProcessInfo.processInfo.systemUptime)
+    }
+
+    /// Only write-tool calls that actually executed (`.allow`), and only for
+    /// a short window after the fact — this is meant to read as "something
+    /// just happened," not as a permanent "an agent is connected" badge
+    /// (which `get_agent_activity`/the AI Access pane already cover for a
+    /// full history). 20s comfortably covers one dropdown-open glance after
+    /// a `keep_awake`/`create_alert_rule`/etc. call without lingering stale.
+    private var showsAgentActivity: Bool {
+        guard let latestActivity, latestActivity.tool.isWrite, latestActivity.decision == .allow else { return false }
+        return Date().timeIntervalSince(latestActivity.timestamp) < 20
     }
 
     private var machineName: String {
@@ -133,9 +157,30 @@ private struct DropdownHeader: View {
                     .foregroundStyle(palette.textTertiary)
             }
             Spacer(minLength: palette.spacing)
+            if showsAgentActivity, let latestActivity {
+                agentActivityPill(latestActivity)
+            }
             thermalPill
         }
         .padding(.horizontal, 2)
+    }
+
+    @ViewBuilder
+    private func agentActivityPill(_ entry: MCPActivityLogEntry) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 9))
+            Text(entry.clientName)
+                .font(palette.font(size: 10, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(palette.accent)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(palette.accent.opacity(0.15))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(palette.accent.opacity(0.4), lineWidth: 1))
+        .accessibilityLabel("\(entry.clientName) just used \(entry.tool.displayName) on this Mac")
     }
 
     @ViewBuilder
@@ -219,6 +264,7 @@ private struct DropdownFooter: View {
         // Throwaway suite so the preview never reads or writes the real app's
         // persisted assertion record.
         powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.dropdown")!),
+        activityLog: MCPActivityLog(),
         theme: .terminal,
         onOpenSettings: {},
         onOpenHistory: {},
