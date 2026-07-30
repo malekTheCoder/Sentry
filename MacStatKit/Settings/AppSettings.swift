@@ -149,6 +149,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// defeat the point of having a cap at all.
     public var mcpRateLimitPerMinute: Int
 
+    /// Master switch for `MCPRemoteServer` (`MacStat/App/MCPRemoteServer.swift`)
+    /// — an in-app HTTP transport reachable from other devices on the LAN,
+    /// distinct from `mcpServerEnabled`'s local-only stdio `MacStatMCP`
+    /// binary. Off by default: this is the one MCP-related switch that
+    /// actually changes MacStat's network posture (see `AIAccessPane`'s
+    /// "Privacy" section, which stops being an unconditional "zero network"
+    /// claim once this is `true`), so it doesn't inherit `mcpServerEnabled`'s
+    /// gate — a user who already turned on local MCP access hasn't thereby
+    /// agreed to a LAN-reachable one.
+    public var mcpRemoteAccessEnabled: Bool
+
+    /// Port `MCPRemoteServer` binds on all interfaces when
+    /// `mcpRemoteAccessEnabled` is on. No clamping here for the same
+    /// no-clamp-at-the-model-layer convention as `globalRefreshInterval` —
+    /// `MCPRemoteServer` owns validating this at bind time.
+    public var mcpRemotePort: Int
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -218,6 +235,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mcpEnabledToolIDs: Set<String> = AppSettings.defaultMCPEnabledToolIDs,
         mcpConfirmationRequiredToolIDs: Set<String> = [],
         mcpRateLimitPerMinute: Int = 20,
+        mcpRemoteAccessEnabled: Bool = false,
+        mcpRemotePort: Int = 8642,
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -241,6 +260,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mcpEnabledToolIDs = mcpEnabledToolIDs
         self.mcpConfirmationRequiredToolIDs = mcpConfirmationRequiredToolIDs
         self.mcpRateLimitPerMinute = mcpRateLimitPerMinute
+        self.mcpRemoteAccessEnabled = mcpRemoteAccessEnabled
+        self.mcpRemotePort = mcpRemotePort
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -277,6 +298,8 @@ extension AppSettings {
         case mcpEnabledToolIDs
         case mcpConfirmationRequiredToolIDs
         case mcpRateLimitPerMinute
+        case mcpRemoteAccessEnabled
+        case mcpRemotePort
         case updateCheckDaily
         case schemaVersion
     }
@@ -350,6 +373,10 @@ extension AppSettings {
                 ?? fallback.mcpConfirmationRequiredToolIDs,
             mcpRateLimitPerMinute: try container.decodeIfPresent(Int.self, forKey: .mcpRateLimitPerMinute)
                 ?? fallback.mcpRateLimitPerMinute,
+            mcpRemoteAccessEnabled: try container.decodeIfPresent(Bool.self, forKey: .mcpRemoteAccessEnabled)
+                ?? fallback.mcpRemoteAccessEnabled,
+            mcpRemotePort: try container.decodeIfPresent(Int.self, forKey: .mcpRemotePort)
+                ?? fallback.mcpRemotePort,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;
