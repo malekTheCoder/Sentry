@@ -502,9 +502,17 @@ public final class SyncService: @unchecked Sendable {
         )
     }
 
+    /// Delegates to `HeartbeatTracker` rather than re-deriving the same
+    /// "how long since we last heard from the phone" comparison privately —
+    /// an earlier version of this method did exactly that, duplicating
+    /// `HeartbeatTracker.isFastCadence`'s logic in a second,
+    /// independently-tested place with no static guarantee the two would
+    /// stay in sync. `lastIPhoneActivityAt` here is a local cache
+    /// (`recordIPhoneActivity(at:)`), not necessarily `Device.lastViewedAt`
+    /// itself — once the real transport reads that field from CloudKit,
+    /// this is also the seam where it should start feeding in.
     private func isIPhoneRecentlyActive() -> Bool {
-        guard let lastIPhoneActivityAt else { return false }
-        return clock().timeIntervalSince(lastIPhoneActivityAt) < iPhoneActiveWindow
+        HeartbeatTracker.isFastCadence(lastViewedAt: lastIPhoneActivityAt, now: clock(), window: iPhoneActiveWindow)
     }
 
     /// One upload cycle. Runs on `queue` up to the point of dispatching the

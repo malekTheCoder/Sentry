@@ -35,12 +35,21 @@ public enum HeartbeatTracker {
     /// `nil` (never observed / not yet foregrounded since this process
     /// started tracking it) means "not recently active" — `false`, not an
     /// error. The boundary is inclusive of the window and exclusive at its
-    /// edge: `now - lastViewedAt < fastCadenceWindow`, so a heartbeat from
-    /// *exactly* 10 minutes ago has just fallen out of fast-cadence mode
-    /// (mirrors `RollupJob`'s `ts < cutoff` convention for "how long ago is
-    /// still in-window" — see that file's hourly/daily rollup cutoff math).
-    public static func isFastCadence(lastViewedAt: Date?, now: Date = Date()) -> Bool {
+    /// edge: `now - lastViewedAt < window`, so a heartbeat from *exactly*
+    /// the window's edge has just fallen out of fast-cadence mode (mirrors
+    /// `RollupJob`'s `ts < cutoff` convention for "how long ago is still
+    /// in-window" — see that file's hourly/daily rollup cutoff math).
+    ///
+    /// - Parameter window: defaults to `fastCadenceWindow`, but overridable
+    ///   so a caller that already exposes its own configurable window (e.g.
+    ///   `SyncService.iPhoneActiveWindow`, so tests don't have to wait on
+    ///   real wall-clock minutes) can delegate here instead of re-deriving
+    ///   the same comparison privately — which is exactly what an earlier
+    ///   version of `SyncService` did, duplicating this logic in a second,
+    ///   independently-tested place with no static guarantee the two
+    ///   would stay in sync as either evolved.
+    public static func isFastCadence(lastViewedAt: Date?, now: Date = Date(), window: TimeInterval = fastCadenceWindow) -> Bool {
         guard let lastViewedAt else { return false }
-        return now.timeIntervalSince(lastViewedAt) < fastCadenceWindow
+        return now.timeIntervalSince(lastViewedAt) < window
     }
 }
