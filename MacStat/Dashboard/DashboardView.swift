@@ -86,6 +86,7 @@ struct DashboardView: View {
                     historyStore: historyStore,
                     currentCycleCount: viewModel.snapshot?.battery?.cycleCount
                 )
+                AnomaliesCard(anomalies: viewModel.anomalies)
                 AgentActivityCard(summary: viewModel.agentActivity)
                 TopProcessesCard(processes: processMonitor.topProcesses)
                 DashboardGrid(

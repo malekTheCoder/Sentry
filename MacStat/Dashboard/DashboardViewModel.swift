@@ -94,6 +94,13 @@ final class DashboardViewModel: ObservableObject {
     /// as `series`.
     @Published private(set) var agentActivity: AgentActivitySummary?
 
+    /// Plan §17 Phase 8 — see `AnomalyDetector`. Empty (not nil) until
+    /// `refresh()` has run, same "absent means not queried yet vs. queried
+    /// and genuinely clean" contract `series`/`agentActivity` already use;
+    /// an empty array here means "queried, nothing stood out," which is the
+    /// expected common case, not an error state.
+    @Published private(set) var anomalies: [MetricAnomaly] = []
+
     /// Which modules' charts to query. Reuses `AppSettings.enabledModules`'s
     /// concept (the same set, not a copy of its logic) rather than
     /// hardcoding "chart everything" — a module the user turned off in
@@ -192,6 +199,43 @@ final class DashboardViewModel: ObservableObject {
         }
         series = next
         agentActivity = Self.summarize(historyStore.agentActivityEvents(since: since))
+        anomalies = refreshAnomalies(now: now)
+    }
+
+    /// Plan §17 Phase 8: "anomaly detection / baselining." Independent of
+    /// `timeRange` — a baseline is always the trailing `baselineWindowDays`
+    /// full days, not whatever range the charts above happen to be showing
+    /// (same "this card manages its own query, not the picker's" reasoning
+    /// `BatteryHealthTrendCard` gives for its own all-time query).
+    private static let baselineWindowDays = 14
+
+    private func refreshAnomalies(now: Date) -> [MetricAnomaly] {
+        guard let snapshot else { return [] }
+
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
+        let since = calendar.date(byAdding: .day, value: -Self.baselineWindowDays, to: now) ?? now.addingTimeInterval(-Double(Self.baselineWindowDays) * 86400)
+
+        var baselines: [MetricID: AnomalyDetector.Baseline] = [:]
+        var currentValues: [MetricID: Double] = [:]
+        for metricID in AnomalyDetector.candidateMetrics {
+            // Excludes today's (partial) day — comparing a still-accumulating
+            // day's rollup against itself would be circular, not a baseline.
+            let dailyValues = historyStore.samples(metric: metricID.rawValue, since: since, tier: .daily)
+                .filter { $0.timestamp < todayStart }
+                .map(\.value)
+            if !dailyValues.isEmpty {
+                baselines[metricID] = AnomalyDetector.Baseline(
+                    averageValue: dailyValues.reduce(0, +) / Double(dailyValues.count),
+                    sampleDayCount: dailyValues.count
+                )
+            }
+            if let value = snapshot.value(for: metricID) {
+                currentValues[metricID] = value
+            }
+        }
+
+        return AnomalyDetector.detect(currentValues: currentValues, baselines: baselines)
     }
 
     /// Pure so it's independently testable without a real `HistoryStore` —

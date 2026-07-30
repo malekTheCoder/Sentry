@@ -240,4 +240,39 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.agentActivity?.eventCount, 1)
         XCTAssertEqual(viewModel.agentActivity?.mostActiveClient, "Claude Code")
     }
+
+    // MARK: - refreshAnomalies (AI-agent-integration / Phase 8 pass)
+
+    func testRefreshFlagsAnAnomalyAgainstDailyBaseline() throws {
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        // 7 days of "normal" CPU around 40%, oldest first, all strictly
+        // before `now`'s calendar day so they count as baseline history.
+        for daysAgo in 1...7 {
+            let dayStart = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Calendar.current.startOfDay(for: now))!
+            try dbQueue.write { db in
+                try db.execute(
+                    sql: "INSERT INTO sample_daily (day_start, metric, min_value, max_value, avg_value, sample_count) VALUES (?, ?, ?, ?, ?, ?)",
+                    arguments: [dayStart.timeIntervalSince1970, "cpu.total_percent", 30, 50, 40, 100]
+                )
+            }
+        }
+
+        let viewModel = DashboardViewModel(historyStore: store, timeRange: .day)
+        // A live snapshot with CPU way above the 40% baseline.
+        viewModel.ingest(SystemSnapshot(deviceID: "test", cpu: CPUStats(totalPercent: 90)))
+        viewModel.refresh(now: now)
+
+        XCTAssertTrue(viewModel.anomalies.contains { $0.metricID == .cpuTotalPercent })
+    }
+
+    func testRefreshReportsNoAnomaliesWithoutBaselineHistory() {
+        let store = tempHistoryStore()
+        let viewModel = DashboardViewModel(historyStore: store, timeRange: .day)
+        viewModel.ingest(SystemSnapshot(deviceID: "test", cpu: CPUStats(totalPercent: 95)))
+
+        viewModel.refresh(now: now)
+
+        XCTAssertTrue(viewModel.anomalies.isEmpty, "no daily history yet means no trustworthy baseline")
+    }
 }
