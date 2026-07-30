@@ -65,18 +65,29 @@ public final class SettingsStore: ObservableObject {
         pendingLock.unlock()
     }
 
-    /// `~/Library/Application Support/MacStat/settings.json` — the same
-    /// directory `HistoryStore` uses. Duplicated rather than shared because
-    /// `HistoryStore` is owned by another module area and isn't ours to edit;
-    /// if a third consumer appears, this belongs in one small shared helper.
+    /// `~/Library/Application Support/MacStat/settings.json` on macOS; the
+    /// app's sandboxed Application Support directory on iOS (same API, a
+    /// different real path under the hood — `.applicationSupportDirectory`
+    /// resolves correctly on both). The same directory `HistoryStore` uses.
+    /// Duplicated rather than shared because `HistoryStore` is owned by
+    /// another module area and isn't ours to edit; if a third consumer
+    /// appears, this belongs in one small shared helper.
+    ///
+    /// The fallback deliberately isn't `homeDirectoryForCurrentUser` —
+    /// that API is unavailable on iOS at all (not just sandboxed away, an
+    /// actual compile error), and `MacStatKit` is a shared cross-platform
+    /// module (plan §12, Phase 5's iOS app). `temporaryDirectory` is
+    /// available on both and, in the extremely rare case the primary call
+    /// actually throws, is no worse a place to lose settings than any other
+    /// guess — the point of a fallback here is "never crash," not "pick
+    /// the most durable possible location."
     public static func defaultSettingsURL() -> URL {
         let appSupport = (try? FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        )) ?? FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support")
+        )) ?? FileManager.default.temporaryDirectory
 
         return appSupport
             .appendingPathComponent("MacStat", isDirectory: true)

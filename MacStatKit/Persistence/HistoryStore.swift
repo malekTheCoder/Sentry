@@ -80,14 +80,19 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     /// `~/Library/Application Support/MacStat/history.sqlite` (plan §14.3).
+    ///
+    /// The fallback isn't `homeDirectoryForCurrentUser` — that's unavailable
+    /// on iOS at all (a compile error, not just sandboxed away), and
+    /// `MacStatKit` is a shared cross-platform module (plan §12, Phase 5's
+    /// iOS app). See `SettingsStore.defaultSettingsURL()`'s doc comment for
+    /// the same reasoning, applied identically here.
     public static func defaultDatabaseURL() -> URL {
         let appSupport = (try? FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        )) ?? FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support")
+        )) ?? FileManager.default.temporaryDirectory
 
         return appSupport
             .appendingPathComponent("MacStat", isDirectory: true)

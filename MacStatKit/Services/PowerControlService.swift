@@ -5,17 +5,13 @@ import os
 import IOKit.pwr_mgt
 import AppKit
 
-/// The three sleep-prevention modes exposed to the UI (plan §10.1).
-/// `assertionType` maps each case to the real `IOKit.pwr_mgt` assertion-type
+/// Maps each `AwakeMode` case to the real `IOKit.pwr_mgt` assertion-type
 /// constant `PowerControlService` passes to `IOPMAssertionCreateWithProperties`.
-public enum AwakeMode: String, Codable, CaseIterable, Sendable {
-    /// Screen stays on. Implies system stays awake too.
-    case displayAndSystem
-    /// System stays awake; display may sleep. Good for long downloads/builds.
-    case systemOnly
-    /// Prevent sleep only while on AC power (Apple's recommended type for this).
-    case systemWhileOnAC
-
+/// A computed extension, not a member of the enum itself, because
+/// `IOKit.pwr_mgt` only exists on macOS — see `AwakeMode`'s own doc comment
+/// (`MacStatKit/Models/AwakeMode.swift`) for why the enum had to move out of
+/// this `#if os(macOS)` block in the first place.
+extension AwakeMode {
     var assertionType: String {
         switch self {
         case .displayAndSystem: return kIOPMAssertionTypeNoDisplaySleep
