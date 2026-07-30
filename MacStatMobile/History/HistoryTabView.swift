@@ -54,25 +54,30 @@ struct HistoryTabView: View {
     @Environment(\.themePalette) private var palette
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
-                    demoDataBanner
-                    HistoryRangeSelector(selection: $viewModel.selectedRange)
-                    batteryHealthCard
-                    CycleCountSection(series: viewModel.dailyHealth)
-                    chargeSessionGapNotice
-                    PerMetricHistoryBrowser(snapshot: viewModel.latestSnapshot)
-                }
-                .padding(palette.spacing * 2)
+        ScrollView {
+            VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
+                title
+                demoDataBanner
+                HistoryRangeSelector(selection: $viewModel.selectedRange)
+                batteryHealthCard
+                chargeSessionGapNotice
+                PerMetricHistoryBrowser(snapshot: viewModel.latestSnapshot)
             }
-            .background(palette.background)
-            .navigationTitle("History")
+            .padding(palette.spacing * 2)
         }
+        .background(palette.background)
         .task { await viewModel.start() }
         .onChange(of: viewModel.selectedRange) { _, _ in
             Task { await viewModel.reloadDailyHealth() }
         }
+    }
+
+    // MARK: - Title
+
+    private var title: some View {
+        Text("History")
+            .font(palette.font(size: 20, weight: .semibold))
+            .foregroundStyle(palette.textPrimary)
     }
 
     // MARK: - Demo data disclosure
@@ -94,24 +99,20 @@ struct HistoryTabView: View {
 
     // MARK: - Battery health
 
+    /// Nocturne redesign spec: "Battery health · 92%" as a single headline
+    /// line, the trend chart below it, and a "312 cycles" caption below
+    /// that — folding what used to be two separate cards (this one, plus
+    /// `CycleCountSection` rendered as its own elevated card underneath)
+    /// into one. `CycleCountSection` itself is restyled to a slim inline
+    /// caption for this (see that file) rather than duplicated here, so its
+    /// range-delta logic stays in one place.
     private var batteryHealthCard: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Battery Health")
-                        .font(palette.font(size: 13, weight: .semibold))
-                        .foregroundStyle(palette.textPrimary)
-                    Text("Synthetic trend — \(viewModel.dailyHealth.count) day(s)")
-                        .font(palette.font(size: 10))
-                        .foregroundStyle(palette.textTertiary)
-                }
-                Spacer(minLength: palette.spacing)
-                Text(MetricFormatting.percent(viewModel.dailyHealth.last?.healthPercent, decimals: 1))
-                    .font(palette.font(size: 14, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textPrimary)
-            }
+            Text(batteryHealthHeadline)
+                .font(palette.font(size: 13, weight: .semibold))
+                .foregroundStyle(palette.textPrimary)
             BatteryHealthTrendChart(series: viewModel.dailyHealth)
+            CycleCountSection(series: viewModel.dailyHealth)
         }
         .padding(palette.spacing * 1.6)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,22 +124,31 @@ struct HistoryTabView: View {
         )
     }
 
+    private var batteryHealthHeadline: String {
+        let percent = MetricFormatting.percent(viewModel.dailyHealth.last?.healthPercent, decimals: 0)
+        return "Battery health · \(percent)"
+    }
+
     // MARK: - Charge/discharge sessions (deliberately not built — see type doc comment)
 
+    /// Nocturne redesign spec: a muted, *intentional*-looking disclosure —
+    /// small outlined circle + one line of tertiary text — not the
+    /// dashed-border callout box this used to be. The full "why" (no
+    /// collector anywhere records session boundaries; `SystemSnapshot` is
+    /// point-in-time, `DailyHealth` is a once-a-day aggregate) still lives
+    /// as an accessibility hint, so it isn't lost for anyone who needs it,
+    /// but the visible row is short enough to read as a deliberate design
+    /// choice rather than a placeholder that broke.
     private var chargeSessionGapNotice: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Charge / Discharge Sessions", systemImage: "bolt.horizontal")
-                .font(palette.font(size: 13, weight: .semibold))
-                .foregroundStyle(palette.textPrimary)
-            Text("Not available yet. No collector in this codebase records discrete charge/discharge session boundaries — SystemSnapshot is point-in-time and DailyHealth is a once-a-day aggregate, neither of which has a session start/end to report. This section is left honest about that gap rather than showing invented session data.")
-                .font(.caption)
+        HStack(spacing: 6) {
+            Image(systemName: "circle")
+                .font(.system(size: 9))
+                .foregroundStyle(palette.textTertiary)
+            Text("Charge sessions — not available yet on this build")
+                .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
         }
-        .padding(palette.spacing * 1.6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: palette.cornerRadius)
-                .strokeBorder(palette.separator, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-        )
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("No collector in this codebase records discrete charge or discharge session boundaries — SystemSnapshot is point-in-time and DailyHealth is a once-a-day aggregate.")
     }
 }

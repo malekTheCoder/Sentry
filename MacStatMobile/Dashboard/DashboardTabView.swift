@@ -38,17 +38,42 @@ struct DashboardTabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
+                title
+                // Nocturne redesign spec: "if keep-awake is active, a card
+                // AT THE TOP." When inactive, `SleepStatusCard` stays in its
+                // prior spot after the battery hero card — the "top" ask is
+                // specifically about surfacing an *active* countdown before
+                // anything else competes for attention, not about the card's
+                // position when it has nothing urgent to report.
+                if isSleepActive {
+                    SleepStatusCard(assertion: viewModel.latestSnapshot?.sleepAssertion)
+                }
                 demoDataBanner
                 devicePicker
                 freshnessBanner
                 BatteryHeroCard(battery: viewModel.latestSnapshot?.battery)
-                SleepStatusCard(assertion: viewModel.latestSnapshot?.sleepAssertion)
+                if !isSleepActive {
+                    SleepStatusCard(assertion: viewModel.latestSnapshot?.sleepAssertion)
+                }
                 metricCardsGrid
             }
             .padding(palette.spacing * 2)
         }
         .background(palette.background)
         .task { await viewModel.start() }
+    }
+
+    // MARK: - Title
+
+    private var title: some View {
+        Text("Dashboard")
+            .font(palette.font(size: 20, weight: .semibold))
+            .foregroundStyle(palette.textPrimary)
+    }
+
+    private var isSleepActive: Bool {
+        if case .active = viewModel.latestSnapshot?.sleepAssertion { return true }
+        return false
     }
 
     // MARK: - Demo data disclosure

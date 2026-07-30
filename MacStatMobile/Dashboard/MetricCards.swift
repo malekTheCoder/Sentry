@@ -35,19 +35,25 @@ struct DashboardMetricCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
+            // Nocturne redesign spec: "compact style: 10px uppercase label +
+            // small colored status dot, 16px SF Mono value." The dot replaces
+            // the previous SF Symbol as the color cue (a colored dot reads
+            // faster at this size than a tinted glyph), and the headline
+            // moves to explicit `design: .monospaced` (true SF Mono) at 16px
+            // rather than `.monospacedDigit()` on the system font, matching
+            // every other "big numeric readout" on this tab.
             HStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(tint)
-                    .font(.system(size: 12))
-                Text(title)
-                    .font(palette.font(size: 12, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
+                Circle()
+                    .fill(tint)
+                    .frame(width: 6, height: 6)
+                Text(title.uppercased())
+                    .font(palette.font(size: 10, weight: .semibold))
+                    .foregroundStyle(palette.textSecondary)
                 Spacer(minLength: 4)
-                Text(headlineValue)
-                    .font(palette.font(size: 13, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textPrimary)
             }
+            Text(headlineValue)
+                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                .foregroundStyle(palette.textPrimary)
             if rows.isEmpty {
                 Text("Unavailable")
                     .font(palette.font(size: 10))

@@ -71,9 +71,12 @@ struct BatteryHeroCard: View {
                 .rotationEffect(.degrees(-90))  // 12 o'clock start, matches Mac arc
                 .animation(.easeInOut(duration: 0.3), value: fraction)
             VStack(spacing: 0) {
+                // Big numeric readout — true SF Mono (`design: .monospaced`),
+                // not just `.monospacedDigit()` on the system font, per the
+                // Nocturne redesign spec's "SF Mono tabular for every
+                // numeric readout."
                 Text(MetricFormatting.percent(battery.chargePercent))
-                    .font(palette.font(size: 20, weight: .semibold))
-                    .monospacedDigit()
+                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
                     .foregroundStyle(palette.textPrimary)
                 if battery.isCharging {
                     // Paired icon so charge state isn't color-only.
