@@ -101,6 +101,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         theme: settingsStore.resolvedTheme()
     )
 
+    /// Backs the Dashboard's "Top Processes" card (plan §17 Phase 8). Lazy
+    /// for the same reason `dashboardViewModel` is — cheap to construct,
+    /// but its `Timer` (started via `historyWindowController`'s `onShow`
+    /// below) should only run while the Dashboard window is actually open.
+    private lazy var processMonitor = ProcessMonitor()
+
     // MARK: - Dashboard window
     //
     // Same lazy-singleton pattern as `settingsWindowController`/
@@ -123,12 +129,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return AnyView(
                 DashboardView(
                     viewModel: self.dashboardViewModel,
-                    historyStore: self.historyStore
+                    historyStore: self.historyStore,
+                    processMonitor: self.processMonitor
                 )
             )
         },
         onShow: { [weak self] in
             self?.dashboardViewModel.refresh()
+            self?.processMonitor.start()
+        },
+        onHide: { [weak self] in
+            self?.processMonitor.stop()
         }
     )
 

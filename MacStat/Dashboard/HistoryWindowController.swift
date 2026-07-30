@@ -32,6 +32,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate {
 
     private let rootView: () -> AnyView
     private let onShow: (() -> Void)?
+    private let onHide: (() -> Void)?
 
     /// - Parameters:
     ///   - rootView: builds the window's SwiftUI content, evaluated once on
@@ -47,9 +48,17 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate {
     ///     picker). `AppDelegate` wires this to re-run
     ///     `DashboardViewModel.refresh()` so reopening the window always
     ///     re-queries, independent of `rootView`'s one-time construction.
-    init(rootView: @escaping () -> AnyView, onShow: (() -> Void)? = nil) {
+    ///   - onHide: called from `windowWillClose` — the counterpart to
+    ///     `onShow` for anything that should stop running while the
+    ///     Dashboard isn't visible. Exists because the same "content view
+    ///     never tears down" reuse that makes `onShow` necessary also means
+    ///     SwiftUI's `.onDisappear` never fires here — there's no other
+    ///     signal a hosted `View` could use to notice this window closed.
+    ///     `AppDelegate` wires this to `ProcessMonitor.stop()`.
+    init(rootView: @escaping () -> AnyView, onShow: (() -> Void)? = nil, onHide: (() -> Void)? = nil) {
         self.rootView = rootView
         self.onShow = onShow
+        self.onHide = onHide
         super.init(window: nil)
     }
 
@@ -71,6 +80,14 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow.makeKeyAndOrderFront(nil)
         onShow?()
+    }
+
+    /// `NSWindowDelegate` — fires when the user closes the Dashboard window
+    /// (the red button, ⌘W, etc). See `onHide`'s doc comment for why this,
+    /// not SwiftUI's `.onDisappear`, is the only real signal available for
+    /// "the Dashboard just became invisible."
+    func windowWillClose(_ notification: Notification) {
+        onHide?()
     }
 
     private func makeWindow() -> NSWindow {

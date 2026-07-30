@@ -31,12 +31,23 @@ struct DashboardView: View {
     /// model just to unwrap it back out here.
     private let historyStore: HistoryStore
 
+    /// Owned by `AppDelegate`, not this view: the Dashboard window is a
+    /// reused singleton whose content view never truly disappears (see
+    /// `HistoryWindowController`'s doc comment), so SwiftUI's own
+    /// `.onDisappear` never fires here and a `@StateObject` tied to this
+    /// view's lifetime couldn't stop the monitor when the window closes.
+    /// `AppDelegate` starts/stops it via `HistoryWindowController`'s
+    /// `onShow`/`onHide` hooks instead — this view just renders whatever
+    /// it's currently publishing.
+    @ObservedObject private var processMonitor: ProcessMonitor
+
     /// `@MainActor` for the same reason `DropdownView.init` is — `viewModel`
     /// is main-actor isolated, and every real caller (AppDelegate, a
     /// `#Preview`) already is too.
     @MainActor
-    init(viewModel: DashboardViewModel, historyStore: HistoryStore) {
+    init(viewModel: DashboardViewModel, historyStore: HistoryStore, processMonitor: ProcessMonitor) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
+        self._processMonitor = ObservedObject(wrappedValue: processMonitor)
         self.historyStore = historyStore
     }
 
@@ -63,6 +74,7 @@ struct DashboardView: View {
                     currentCycleCount: viewModel.snapshot?.battery?.cycleCount
                 )
                 AgentActivityCard(summary: viewModel.agentActivity)
+                TopProcessesCard(processes: processMonitor.topProcesses)
                 DashboardGrid(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
