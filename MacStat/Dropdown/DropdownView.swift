@@ -1,11 +1,20 @@
 import SwiftUI
 import MacStatKit
 
-/// Root of the menu-bar dropdown, laid out top-to-bottom per plan §8.3:
-/// header, battery hero card, module cards, footer.
+/// Root of the menu-bar dropdown: header, a 2×2 headline-metric glance grid,
+/// the keep-awake control, and a single "Open Dashboard" button.
 ///
-/// The footer actions are injected closures rather than AppKit calls so the
-/// AppDelegate stays the composition root and this view stays previewable.
+/// This is the "lighter" Nocturne-redesign pass over the dropdown: the old
+/// per-module scroll stack (7 cards with sparklines) and the battery hero
+/// card are cut from *this view's body* on purpose, so a glance at the menu
+/// bar doesn't require scrolling — but their types (`ModuleCardStack`,
+/// `BatteryHeroCard`) are left intact since the Dashboard still uses them.
+/// Depth now lives one click away, behind "Open Dashboard," rather than
+/// spread across this popover.
+///
+/// The footer/dashboard actions are injected closures rather than AppKit
+/// calls so the AppDelegate stays the composition root and this view stays
+/// previewable.
 struct DropdownView: View {
     @ObservedObject private var viewModel: DropdownViewModel
     /// Observed here rather than only inside `SleepControlCard` so the card's
@@ -74,34 +83,39 @@ struct DropdownView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             DropdownHeader(thermal: viewModel.snapshot?.thermal, latestActivity: activityLog.entries.first)
-            BatteryHeroCard(
-                battery: viewModel.snapshot?.battery,
-                powerSeries: viewModel.series(for: .power)
-            )
-            // Above the scroll view, not inside it: a control the user came
-            // to press shouldn't be reachable only after scrolling past the
-            // metric cards, and the live countdown is the one thing here
-            // worth keeping permanently visible.
+            HeadlineMetricGrid(snapshot: viewModel.snapshot)
+            // A control the user came to press, not something to cut for
+            // lightness — the live countdown is worth keeping permanently
+            // visible even in the lighter layout.
             SleepControlCard(powerControl: powerControl)
-            ScrollView(.vertical, showsIndicators: false) {
-                ModuleCardStack(
-                    snapshot: viewModel.snapshot,
-                    history: viewModel.history,
-                    enabledModules: enabledModules
-                )
-                .padding(.bottom, 2)
-            }
-            .frame(maxHeight: cardListMaxHeight)
-            DropdownFooter(
-                onOpenSettings: onOpenSettings,
-                onOpenHistory: onOpenHistory,
-                onQuit: onQuit
-            )
+            openDashboardButton
         }
         .padding(palette.spacing * 1.5)
         .frame(width: 320)
         .background(palette.background)
         .environment(\.themePalette, palette)
+    }
+
+    /// The only way to reach depth (module detail, history, sparklines) from
+    /// this popover now — everything the old scroll stack showed inline
+    /// lives one click away in the Dashboard window instead. Outlined, not
+    /// filled: this is a navigation action, not the primary control on the
+    /// card (that's the keep-awake toggle above it).
+    private var openDashboardButton: some View {
+        Button(action: onOpenHistory) {
+            Text("Open Dashboard")
+                .font(palette.font(size: 12, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(palette.textPrimary)
+        .overlay(
+            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                .stroke(palette.textSecondary.opacity(0.5), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
+        .accessibilityLabel("Open Dashboard")
     }
 }
 
@@ -213,46 +227,6 @@ private struct DropdownHeader: View {
         case .fair: return palette.warning
         case .serious, .critical: return palette.danger
         }
-    }
-}
-
-// MARK: - Footer
-
-/// Plan §8.3 item 5.
-private struct DropdownFooter: View {
-    @Environment(\.themePalette) private var palette
-
-    let onOpenSettings: () -> Void
-    let onOpenHistory: () -> Void
-    let onQuit: () -> Void
-
-    var body: some View {
-        VStack(spacing: palette.spacing) {
-            Rectangle()
-                .fill(palette.separator)
-                .frame(height: 1)
-            HStack(spacing: palette.spacing) {
-                footerButton("Settings…", symbol: "gearshape", action: onOpenSettings)
-                footerButton("History", symbol: "clock.arrow.circlepath", action: onOpenHistory)
-                Spacer(minLength: 0)
-                footerButton("Quit MacStat", symbol: "power", action: onQuit)
-            }
-        }
-    }
-
-    private func footerButton(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 10))
-                Text(title).font(palette.font(size: 11))
-            }
-            .foregroundStyle(palette.textSecondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 }
 
