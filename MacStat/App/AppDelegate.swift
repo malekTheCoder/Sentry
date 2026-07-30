@@ -459,7 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // still the *old* value at emission time. It happens to work today
         // only because the async hop lands after the assignment — not
         // something a theme switch should depend on.
-        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .terminal
+        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .slate
 
         statusItemController?.apply(layout: settings.menuBarLayout)
         statusItemController?.apply(theme: theme)

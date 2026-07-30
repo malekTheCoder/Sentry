@@ -44,7 +44,7 @@ struct DropdownView: View {
         // assertion on wake. The composition root owns exactly one.
         powerControl: PowerControlService,
         activityLog: MCPActivityLog,
-        theme: Theme = .terminal,
+        theme: Theme = .slate,
         enabledModules: Set<MetricModule> = Set(MetricModule.allCases),
         // Callers pass the actual anchor screen's height so this scales with
         // the display the status item lives on rather than a guess — a
@@ -265,7 +265,7 @@ private struct DropdownFooter: View {
         // persisted assertion record.
         powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.dropdown")!),
         activityLog: MCPActivityLog(),
-        theme: .terminal,
+        theme: .slate,
         onOpenSettings: {},
         onOpenHistory: {},
         onQuit: {}

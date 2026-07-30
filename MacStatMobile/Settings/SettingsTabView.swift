@@ -35,7 +35,7 @@ import MacStatKit
 /// data, static rule names, a stub file), so a reader can tell these apart
 /// from three genuinely different kinds of "not done."
 struct SettingsTabView: View {
-    /// Backs the theme picker below. Default matches `Theme.terminal.id` —
+    /// Backs the theme picker below. Default matches `Theme.slate.id` —
     /// the same default `AppSettings.themeID` uses on the Mac side
     /// (`MacStatKit/Settings/AppSettings.swift`) — so a phone that has never
     /// had this key written resolves to the same theme the Mac ships with,
@@ -45,7 +45,7 @@ struct SettingsTabView: View {
     /// a binding passed down — see `RootTabView`'s doc comment for why the
     /// string key (not a shared Swift symbol) is what actually keeps them in
     /// sync, and why that's an accepted duplication rather than an oversight.
-    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.terminal.id
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.slate.id
 
     /// The one mock Mac this build has anything to say about. Built directly
     /// here rather than threaded through a view model — this tab makes

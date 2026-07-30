@@ -198,7 +198,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     )
 
     public init(
-        themeID: String = Theme.terminal.id,
+        themeID: String = Theme.slate.id,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
         launchAtLogin: Bool = false,

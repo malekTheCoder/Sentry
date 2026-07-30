@@ -101,7 +101,7 @@ public final class SettingsStore: ObservableObject {
     /// file that references a custom theme the user has since deleted, or one
     /// written by a build that shipped a preset this one doesn't have.
     public func resolvedTheme() -> Theme {
-        Theme.builtInPresets.first { $0.id == settings.themeID } ?? .terminal
+        Theme.builtInPresets.first { $0.id == settings.themeID } ?? .slate
     }
 
     // MARK: - Persistence

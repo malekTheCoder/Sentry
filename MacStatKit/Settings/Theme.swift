@@ -202,191 +202,94 @@ public struct Theme: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
-// MARK: - Built-in presets (plan §9.2)
+// MARK: - Built-in presets (Nocturne redesign — 2 minimal defaults + 5 IDE-inspired)
 
 extension Theme {
-    /// Terminal — near-black background, phosphor-green accents, monospaced
-    /// digits, subtle glow, thin line charts. The default theme.
-    public static let terminal = Theme(
-        id: "builtin.terminal",
-        name: "Terminal",
+    /// Shared per-theme metric→role mapping: CPU/Disk track accent, GPU/Network
+    /// track success, Memory tracks warning, Thermal tracks danger — the same
+    /// semantic pattern the Dashboard mock uses for its 6-module grid, so every
+    /// theme reuses its own 4 semantic tokens rather than carrying a 5th/6th
+    /// bespoke hue nobody asked for.
+    fileprivate static func nocturneMetricColors(
+        accent: ThemeColor, success: ThemeColor, warning: ThemeColor, danger: ThemeColor
+    ) -> [String: ThemeColor] {
+        [
+            "cpu.total_percent": accent,
+            "gpu.utilization_percent": success,
+            "memory.used_bytes": warning,
+            "disk.read_bytes_per_sec": accent,
+            "network.rx_bytes_per_sec": success,
+            "thermal.soc_temp_c": danger,
+        ]
+    }
+
+    /// Slate — minimal default, dark. The app's default theme.
+    public static let slate = Theme(
+        id: "builtin.slate",
+        name: "Slate",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#0A0D0A"),
-        surface: ThemeColor(hex: "#10140F"),
-        surfaceElevated: ThemeColor(hex: "#161C15"),
-        textPrimary: ThemeColor(hex: "#E8FFE9"),       // ~16.8:1 on background
-        textSecondary: ThemeColor(hex: "#9FCBA3"),     // ~7.9:1 on background
-        textTertiary: ThemeColor(hex: "#6E8F70"),      // ~4.6:1 on background
-        accent: ThemeColor(hex: "#33FF66"),
-        success: ThemeColor(hex: "#33FF66"),
-        warning: ThemeColor(hex: "#FFD166"),
-        danger: ThemeColor(hex: "#FF5C5C"),
-        chartGrid: ThemeColor(hex: "#1E2B1E", opacity: 0.6),
-        chartFill: [ThemeColor(hex: "#33FF66", opacity: 0.35), ThemeColor(hex: "#33FF66", opacity: 0.0)],
-        separator: ThemeColor(hex: "#1C261C"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#33FF66"),
-            "gpu.utilization_percent": ThemeColor(hex: "#33D6FF"),
-            "memory.used_bytes": ThemeColor(hex: "#D6FF33"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#33FFC7"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#B366FF"),
-            "battery.charge_percent": ThemeColor(hex: "#FFD166"),
-        ],
-        fontFamily: .systemMono,
+        background: ThemeColor(hex: "#0D0E12"),
+        surface: ThemeColor(hex: "#181A21"),
+        surfaceElevated: ThemeColor(hex: "#1F212B"),
+        textPrimary: ThemeColor(hex: "#E7E7EA"),
+        textSecondary: ThemeColor(hex: "#9A9CA8"),
+        textTertiary: ThemeColor(hex: "#6B6D78"),
+        accent: ThemeColor(hex: "#7C8CF0"),
+        success: ThemeColor(hex: "#5FCE8F"),
+        warning: ThemeColor(hex: "#E0A851"),
+        danger: ThemeColor(hex: "#E0616B"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        chartFill: [ThemeColor(hex: "#7C8CF0", opacity: 0.35), ThemeColor(hex: "#7C8CF0", opacity: 0.0)],
+        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#7C8CF0"), success: ThemeColor(hex: "#5FCE8F"),
+            warning: ThemeColor(hex: "#E0A851"), danger: ThemeColor(hex: "#E0616B")
+        ),
+        fontFamily: .system,
         barFontSize: 11,
         barFontWeight: .medium,
         numericStyle: .monospacedDigit,
-        cornerRadius: 4,
+        cornerRadius: 6,
         density: .compact,
-        chartStyle: .line,
+        chartStyle: .area,
         chartLineWidth: 1.0,
         showChartGrid: false,
         barGraphWidth: 40,
         useMaterialBackground: false,
         materialStyle: .menu,
-        glowIntensity: 0.25,
-        scanlineOverlay: false
-    )
-
-    /// Nocturne — deep navy/slate, cyan + magenta metric colors, area charts.
-    public static let nocturne = Theme(
-        id: "builtin.nocturne",
-        name: "Nocturne",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#0B1120"),
-        surface: ThemeColor(hex: "#121A2E"),
-        surfaceElevated: ThemeColor(hex: "#1A2440"),
-        textPrimary: ThemeColor(hex: "#F1F5FF"),        // ~16.9:1 on background
-        textSecondary: ThemeColor(hex: "#AAB8DA"),      // ~7.6:1 on background
-        textTertiary: ThemeColor(hex: "#7686AC"),       // ~4.6:1 on background
-        accent: ThemeColor(hex: "#38BDF8"),
-        success: ThemeColor(hex: "#34D399"),
-        warning: ThemeColor(hex: "#FBBF24"),
-        danger: ThemeColor(hex: "#FB7185"),
-        chartGrid: ThemeColor(hex: "#25325A", opacity: 0.6),
-        chartFill: [ThemeColor(hex: "#38BDF8", opacity: 0.4), ThemeColor(hex: "#38BDF8", opacity: 0.0)],
-        separator: ThemeColor(hex: "#22304F"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#38BDF8"),   // cyan
-            "gpu.utilization_percent": ThemeColor(hex: "#E879F9"), // magenta
-            "memory.used_bytes": ThemeColor(hex: "#A78BFA"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#34D399"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#FBBF24"),
-            "battery.charge_percent": ThemeColor(hex: "#FB7185"),
-        ],
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .regular,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 8,
-        density: .comfortable,
-        chartStyle: .area,
-        chartLineWidth: 1.5,
-        showChartGrid: true,
-        barGraphWidth: 44,
-        useMaterialBackground: true,
-        materialStyle: .hudWindow,
-        glowIntensity: 0.1,
-        scanlineOverlay: false
-    )
-
-    /// System — approximates stock macOS appearance (light/dark semantic grays,
-    /// systemBlue-like accent). Cannot literally bind to `NSColor.controlAccentColor`
-    /// at the data-model level (that dynamic resolution is a rendering concern),
-    /// so the light/dark hex pair below is a static approximation of the default
-    /// macOS accent + label colors.
-    public static let system = Theme(
-        id: "builtin.system",
-        name: "System",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#FFFFFF", dark: "#1E1E1E"),
-        surface: ThemeColor(light: "#F5F5F7", dark: "#2C2C2E"),
-        surfaceElevated: ThemeColor(light: "#FFFFFF", dark: "#3A3A3C"),
-        textPrimary: ThemeColor(light: "#1D1D1F", dark: "#F5F5F7"),     // ~15.6:1 both ways
-        textSecondary: ThemeColor(light: "#6E6E73", dark: "#AEAEB2"),  // ~4.6:1 / ~7.5:1
-        // Independent review computed the actual contrast (not eyeballed)
-        // and found the original #8E8E93 light value was 3.26:1 against
-        // this preset's white background — a real WCAG AA failure despite
-        // its inline comment claiming 4.5:1. #767676 is the well-known
-        // canonical "exactly at the 4.5:1 boundary on white" gray; dark
-        // mode's #8E8E93 (5.11:1 on #1E1E1E) was already fine and unchanged.
-        textTertiary: ThemeColor(light: "#767676", dark: "#8E8E93"),
-        accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
-        // Apple's stock systemGreen/Orange/Red (used here for their light
-        // variants originally) are legitimately sub-AA for text on white —
-        // that's why Apple itself only uses them for icons/fills, never body
-        // text. Plan §9.4 explicitly expects "a red battery number" to be
-        // legible text, so the light variants use darker, text-safe
-        // equivalents (matching the values already used in the Paper preset
-        // below, which independent review did not flag) rather than the
-        // vivid stock colors. Dark variants keep the vivid stock colors —
-        // those read fine against this preset's dark backgrounds.
-        success: ThemeColor(light: "#1E7E34", dark: "#30D158"),
-        warning: ThemeColor(light: "#8A5B00", dark: "#FF9F0A"),
-        danger: ThemeColor(light: "#B00020", dark: "#FF453A"),
-        chartGrid: ThemeColor(light: "#D1D1D6", dark: "#3A3A3C", opacity: 0.7),
-        chartFill: [
-            ThemeColor(light: "#007AFF", dark: "#0A84FF", opacity: 0.35),
-            ThemeColor(light: "#007AFF", dark: "#0A84FF", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#E5E5EA", dark: "#38383A"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(light: "#007AFF", dark: "#0A84FF"),
-            "gpu.utilization_percent": ThemeColor(light: "#AF52DE", dark: "#BF5AF2"),
-            "memory.used_bytes": ThemeColor(light: "#34C759", dark: "#30D158"),
-            "network.rx_bytes_per_sec": ThemeColor(light: "#5AC8FA", dark: "#64D2FF"),
-            "disk.read_bytes_per_sec": ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
-            "battery.charge_percent": ThemeColor(light: "#34C759", dark: "#30D158"),
-        ],
-        fontFamily: .system,
-        barFontSize: 12,
-        barFontWeight: .regular,
-        numericStyle: .proportional,
-        cornerRadius: 10,
-        density: .comfortable,
-        chartStyle: .line,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 44,
-        useMaterialBackground: true,
-        materialStyle: .sidebar,
         glowIntensity: 0.0,
         scanlineOverlay: false
     )
 
-    /// Paper — light, high-contrast, minimal chrome, no glow.
+    /// Paper — minimal default, light.
     public static let paper = Theme(
         id: "builtin.paper",
         name: "Paper",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#FFFFFF"),
-        surface: ThemeColor(hex: "#FAFAFA"),
-        surfaceElevated: ThemeColor(hex: "#F0F0F0"),
-        textPrimary: ThemeColor(hex: "#111111"),        // ~18.6:1 on background
-        textSecondary: ThemeColor(hex: "#4A4A4A"),      // ~8.9:1 on background
-        textTertiary: ThemeColor(hex: "#6B6B6B"),       // ~5.4:1 on background
-        accent: ThemeColor(hex: "#1A1A1A"),
-        success: ThemeColor(hex: "#1E7E34"),
-        warning: ThemeColor(hex: "#8A5B00"),
-        danger: ThemeColor(hex: "#B00020"),
-        chartGrid: ThemeColor(hex: "#DDDDDD"),
-        chartFill: [ThemeColor(hex: "#1A1A1A", opacity: 0.12), ThemeColor(hex: "#1A1A1A", opacity: 0.0)],
-        separator: ThemeColor(hex: "#E2E2E2"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#1E7E34"),
-            "gpu.utilization_percent": ThemeColor(hex: "#5B3AA0"),
-            "memory.used_bytes": ThemeColor(hex: "#8A5B00"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#0B6E99"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#B00020"),
-            "battery.charge_percent": ThemeColor(hex: "#1E7E34"),
-        ],
+        background: ThemeColor(hex: "#F7F6F3"),
+        surface: ThemeColor(hex: "#ECE9E3"),
+        surfaceElevated: ThemeColor(hex: "#E3DED4"),
+        textPrimary: ThemeColor(hex: "#232220"),
+        textSecondary: ThemeColor(hex: "#5A584F"),
+        textTertiary: ThemeColor(hex: "#86837A"),
+        accent: ThemeColor(hex: "#5B57C9"),
+        success: ThemeColor(hex: "#2F9E5C"),
+        warning: ThemeColor(hex: "#B5791C"),
+        danger: ThemeColor(hex: "#C4404B"),
+        chartGrid: ThemeColor(hex: "#000000", opacity: 0.07),
+        chartFill: [ThemeColor(hex: "#5B57C9", opacity: 0.27), ThemeColor(hex: "#5B57C9", opacity: 0.0)],
+        separator: ThemeColor(hex: "#000000", opacity: 0.07),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#5B57C9"), success: ThemeColor(hex: "#2F9E5C"),
+            warning: ThemeColor(hex: "#B5791C"), danger: ThemeColor(hex: "#C4404B")
+        ),
         fontFamily: .system,
         barFontSize: 11,
         barFontWeight: .medium,
-        numericStyle: .proportional,
+        numericStyle: .monospacedDigit,
         cornerRadius: 6,
         density: .compact,
-        chartStyle: .bars,
+        chartStyle: .area,
         chartLineWidth: 1.0,
         showChartGrid: false,
         barGraphWidth: 36,
@@ -396,89 +299,36 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Neon — high-saturation gradients, thick charts, strong glow.
-    public static let neon = Theme(
-        id: "builtin.neon",
-        name: "Neon",
+    /// Nord — IDE-inspired.
+    public static let nord = Theme(
+        id: "builtin.nord",
+        name: "Nord",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#08060F"),
-        surface: ThemeColor(hex: "#120C22"),
-        surfaceElevated: ThemeColor(hex: "#1C1333"),
-        textPrimary: ThemeColor(hex: "#F5F0FF"),        // ~17.8:1 on background
-        textSecondary: ThemeColor(hex: "#C9B8F5"),      // ~10.0:1 on background
-        textTertiary: ThemeColor(hex: "#9585C4"),       // ~5.6:1 on background
-        accent: ThemeColor(hex: "#FF2DD4"),
-        success: ThemeColor(hex: "#39FF88"),
-        warning: ThemeColor(hex: "#FFE94D"),
-        danger: ThemeColor(hex: "#FF3860"),
-        chartGrid: ThemeColor(hex: "#3A2A5C", opacity: 0.5),
-        chartFill: [
-            ThemeColor(hex: "#FF2DD4", opacity: 0.55),
-            ThemeColor(hex: "#7B2FFF", opacity: 0.25),
-            ThemeColor(hex: "#00E5FF", opacity: 0.0),
-        ],
-        separator: ThemeColor(hex: "#2C1F4A"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#FF2DD4"),
-            "gpu.utilization_percent": ThemeColor(hex: "#00E5FF"),
-            "memory.used_bytes": ThemeColor(hex: "#39FF88"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#7B2FFF"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#FFE94D"),
-            "battery.charge_percent": ThemeColor(hex: "#FF3860"),
-        ],
-        fontFamily: .rounded,
-        barFontSize: 12,
-        barFontWeight: .bold,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 12,
-        density: .spacious,
-        chartStyle: .area,
-        chartLineWidth: 2.5,
-        showChartGrid: false,
-        barGraphWidth: 48,
-        useMaterialBackground: false,
-        materialStyle: .popover,
-        glowIntensity: 0.85,
-        scanlineOverlay: false
-    )
-
-    /// Monochrome — pure grayscale. Metric differentiation at the data level
-    /// comes from genuinely distinct gray shades/opacities (rendering-level
-    /// differentiation by line weight + dash pattern is a later, out-of-scope
-    /// concern per the plan).
-    public static let monochrome = Theme(
-        id: "builtin.monochrome",
-        name: "Monochrome",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#000000"),
-        surface: ThemeColor(hex: "#141414"),
-        surfaceElevated: ThemeColor(hex: "#1F1F1F"),
-        textPrimary: ThemeColor(hex: "#FFFFFF"),        // 21:1 on background
-        textSecondary: ThemeColor(hex: "#BFBFBF"),      // ~10.3:1 on background
-        textTertiary: ThemeColor(hex: "#8A8A8A"),       // ~4.9:1 on background
-        accent: ThemeColor(hex: "#FFFFFF"),
-        success: ThemeColor(hex: "#E0E0E0"),
-        warning: ThemeColor(hex: "#A0A0A0"),
-        danger: ThemeColor(hex: "#FFFFFF"),
-        chartGrid: ThemeColor(hex: "#3A3A3A", opacity: 0.6),
-        chartFill: [ThemeColor(hex: "#FFFFFF", opacity: 0.25), ThemeColor(hex: "#FFFFFF", opacity: 0.0)],
-        separator: ThemeColor(hex: "#2A2A2A"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#FFFFFF", opacity: 1.0),
-            "gpu.utilization_percent": ThemeColor(hex: "#D6D6D6", opacity: 1.0),
-            "memory.used_bytes": ThemeColor(hex: "#ADADAD", opacity: 1.0),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#FFFFFF", opacity: 0.65),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#D6D6D6", opacity: 0.65),
-            "battery.charge_percent": ThemeColor(hex: "#8A8A8A", opacity: 1.0),
-        ],
-        fontFamily: .systemMono,
+        background: ThemeColor(hex: "#2E3440"),
+        surface: ThemeColor(hex: "#3B4252"),
+        surfaceElevated: ThemeColor(hex: "#434C5E"),
+        textPrimary: ThemeColor(hex: "#ECEFF4"),
+        textSecondary: ThemeColor(hex: "#D8DEE9"),
+        textTertiary: ThemeColor(hex: "#7B88A1"),
+        accent: ThemeColor(hex: "#88C0D0"),
+        success: ThemeColor(hex: "#A3BE8C"),
+        warning: ThemeColor(hex: "#EBCB8B"),
+        danger: ThemeColor(hex: "#BF616A"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        chartFill: [ThemeColor(hex: "#88C0D0", opacity: 0.35), ThemeColor(hex: "#88C0D0", opacity: 0.0)],
+        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#88C0D0"), success: ThemeColor(hex: "#A3BE8C"),
+            warning: ThemeColor(hex: "#EBCB8B"), danger: ThemeColor(hex: "#BF616A")
+        ),
+        fontFamily: .system,
         barFontSize: 11,
-        barFontWeight: .semibold,
+        barFontWeight: .medium,
         numericStyle: .monospacedDigit,
-        cornerRadius: 4,
+        cornerRadius: 6,
         density: .compact,
-        chartStyle: .stepped,
-        chartLineWidth: 1.25,
+        chartStyle: .area,
+        chartLineWidth: 1.0,
         showChartGrid: false,
         barGraphWidth: 40,
         useMaterialBackground: false,
@@ -487,9 +337,162 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// All built-in presets, in the display order given by plan §9.2.
+    /// Dracula — IDE-inspired.
+    public static let dracula = Theme(
+        id: "builtin.dracula",
+        name: "Dracula",
+        isBuiltIn: true,
+        background: ThemeColor(hex: "#282A36"),
+        surface: ThemeColor(hex: "#343746"),
+        surfaceElevated: ThemeColor(hex: "#3D4052"),
+        textPrimary: ThemeColor(hex: "#F8F8F2"),
+        textSecondary: ThemeColor(hex: "#C7C9D1"),
+        textTertiary: ThemeColor(hex: "#6272A4"),
+        accent: ThemeColor(hex: "#BD93F9"),
+        success: ThemeColor(hex: "#50FA7B"),
+        warning: ThemeColor(hex: "#F1FA8C"),
+        danger: ThemeColor(hex: "#FF5555"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        chartFill: [ThemeColor(hex: "#BD93F9", opacity: 0.35), ThemeColor(hex: "#BD93F9", opacity: 0.0)],
+        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#BD93F9"), success: ThemeColor(hex: "#50FA7B"),
+            warning: ThemeColor(hex: "#F1FA8C"), danger: ThemeColor(hex: "#FF5555")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 6,
+        density: .compact,
+        chartStyle: .area,
+        chartLineWidth: 1.0,
+        showChartGrid: false,
+        barGraphWidth: 40,
+        useMaterialBackground: false,
+        materialStyle: .menu,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Solarized Dark — IDE-inspired.
+    public static let solarizedDark = Theme(
+        id: "builtin.solarizedDark",
+        name: "Solarized Dark",
+        isBuiltIn: true,
+        background: ThemeColor(hex: "#002B36"),
+        surface: ThemeColor(hex: "#073642"),
+        surfaceElevated: ThemeColor(hex: "#0A4A58"),
+        textPrimary: ThemeColor(hex: "#EEE8D5"),
+        textSecondary: ThemeColor(hex: "#93A1A1"),
+        textTertiary: ThemeColor(hex: "#586E75"),
+        accent: ThemeColor(hex: "#2AA198"),
+        success: ThemeColor(hex: "#859900"),
+        warning: ThemeColor(hex: "#B58900"),
+        danger: ThemeColor(hex: "#DC322F"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        chartFill: [ThemeColor(hex: "#2AA198", opacity: 0.35), ThemeColor(hex: "#2AA198", opacity: 0.0)],
+        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#2AA198"), success: ThemeColor(hex: "#859900"),
+            warning: ThemeColor(hex: "#B58900"), danger: ThemeColor(hex: "#DC322F")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 6,
+        density: .compact,
+        chartStyle: .area,
+        chartLineWidth: 1.0,
+        showChartGrid: false,
+        barGraphWidth: 40,
+        useMaterialBackground: false,
+        materialStyle: .menu,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Tokyo Night — IDE-inspired.
+    public static let tokyoNight = Theme(
+        id: "builtin.tokyoNight",
+        name: "Tokyo Night",
+        isBuiltIn: true,
+        background: ThemeColor(hex: "#1A1B26"),
+        surface: ThemeColor(hex: "#24283B"),
+        surfaceElevated: ThemeColor(hex: "#2C3149"),
+        textPrimary: ThemeColor(hex: "#C0CAF5"),
+        textSecondary: ThemeColor(hex: "#A9B1D6"),
+        textTertiary: ThemeColor(hex: "#565F89"),
+        accent: ThemeColor(hex: "#7AA2F7"),
+        success: ThemeColor(hex: "#9ECE6A"),
+        warning: ThemeColor(hex: "#E0AF68"),
+        danger: ThemeColor(hex: "#F7768E"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        chartFill: [ThemeColor(hex: "#7AA2F7", opacity: 0.35), ThemeColor(hex: "#7AA2F7", opacity: 0.0)],
+        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#7AA2F7"), success: ThemeColor(hex: "#9ECE6A"),
+            warning: ThemeColor(hex: "#E0AF68"), danger: ThemeColor(hex: "#F7768E")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 6,
+        density: .compact,
+        chartStyle: .area,
+        chartLineWidth: 1.0,
+        showChartGrid: false,
+        barGraphWidth: 40,
+        useMaterialBackground: false,
+        materialStyle: .menu,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Monokai — IDE-inspired.
+    public static let monokai = Theme(
+        id: "builtin.monokai",
+        name: "Monokai",
+        isBuiltIn: true,
+        background: ThemeColor(hex: "#272822"),
+        surface: ThemeColor(hex: "#3E3D32"),
+        surfaceElevated: ThemeColor(hex: "#49483E"),
+        textPrimary: ThemeColor(hex: "#F8F8F2"),
+        textSecondary: ThemeColor(hex: "#A9A99C"),
+        textTertiary: ThemeColor(hex: "#75715E"),
+        accent: ThemeColor(hex: "#FD971F"),
+        success: ThemeColor(hex: "#A6E22E"),
+        warning: ThemeColor(hex: "#E6DB74"),
+        danger: ThemeColor(hex: "#F92672"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        chartFill: [ThemeColor(hex: "#FD971F", opacity: 0.35), ThemeColor(hex: "#FD971F", opacity: 0.0)],
+        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(hex: "#FD971F"), success: ThemeColor(hex: "#A6E22E"),
+            warning: ThemeColor(hex: "#E6DB74"), danger: ThemeColor(hex: "#F92672")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 6,
+        density: .compact,
+        chartStyle: .area,
+        chartLineWidth: 1.0,
+        showChartGrid: false,
+        barGraphWidth: 40,
+        useMaterialBackground: false,
+        materialStyle: .menu,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// All built-in presets, in the design doc's display order: 2 minimal
+    /// defaults followed by 5 IDE-inspired themes. `.slate` is the default.
     public static let builtInPresets: [Theme] = [
-        .terminal, .nocturne, .system, .paper, .neon, .monochrome,
+        .slate, .paper, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
     ]
 }
 
