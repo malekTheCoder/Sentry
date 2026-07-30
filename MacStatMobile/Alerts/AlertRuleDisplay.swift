@@ -56,3 +56,41 @@ enum AlertRuleDisplay {
         }
     }
 }
+
+// MARK: - AlertCategory
+
+/// Section grouping for `AlertsTabView`'s rule list (Nocturne redesign
+/// spec: "Grouped by category (Battery, Thermal, Performance, Disk) with a
+/// small section header per group"). Derived from `AlertRule.metric.module`
+/// (`MetricID.module`, `MacStatKit/Models/MetricID.swift`) rather than a
+/// hand-maintained per-rule category field, so a rule categorizes itself
+/// correctly just by which metric it reads. `MetricModule` has nine cases
+/// (battery/cpu/gpu/ane/memory/disk/network/thermal/system); the spec's
+/// four groups are coarser, so CPU/GPU/ANE/Memory/Network/System all fold
+/// into "Performance" — none of `AppSettings.defaultAlertRules` reads a
+/// network or system metric today, but the fallback keeps this exhaustive
+/// against a future rule that does, rather than silently dropping it from
+/// every section.
+enum AlertCategory: String, CaseIterable, Identifiable {
+    case battery, thermal, performance, disk
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .battery: return "Battery"
+        case .thermal: return "Thermal"
+        case .performance: return "Performance"
+        case .disk: return "Disk"
+        }
+    }
+
+    init(module: MetricModule) {
+        switch module {
+        case .battery: self = .battery
+        case .thermal: self = .thermal
+        case .disk: self = .disk
+        case .cpu, .gpu, .ane, .memory, .network, .system: self = .performance
+        }
+    }
+}

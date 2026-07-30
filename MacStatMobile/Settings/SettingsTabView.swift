@@ -16,13 +16,11 @@ import MacStatKit
 /// prior bug by name: "a settings slider that silently did nothing").
 ///
 /// **What's real: the theme picker.** `Theme.builtInPresets`
-/// (`MacStatKit/Settings/Theme.swift`) is the exact same six presets the Mac
-/// app ships, and selecting one here actually re-themes all four tabs — see
-/// `RootTabView`'s doc comment for how the selection propagates via
+/// (`MacStatKit/Settings/Theme.swift`) is the exact same set of presets the
+/// Mac app ships, and selecting one here actually re-themes all four tabs —
+/// see `RootTabView`'s doc comment for how the selection propagates via
 /// `@AppStorage` + `.environment(\.themePalette:)`. This is a genuine,
-/// working, "shares Theme tokens with the Mac app" feature, which is why
-/// it's the only section below written like a normal preferences screen
-/// rather than a disclosure.
+/// working, "shares Theme tokens with the Mac app" feature.
 ///
 /// **What's honest-but-inert: devices & sync, notifications, widgets.** Each
 /// is gated on the same missing piece — no enrolled Apple Developer Program
@@ -34,6 +32,16 @@ import MacStatKit
 /// section says specifically what's missing and what's shown instead (mock
 /// data, static rule names, a stub file), so a reader can tell these apart
 /// from three genuinely different kinds of "not done."
+///
+/// **Nocturne redesign restyle.** Was a native `Form`/`Section` screen (the
+/// theme picker was a `.pickerStyle(.navigationLink)` row into a full
+/// sub-screen, not a preview-able swatch). Rebuilt as a themed `ScrollView`
+/// matching the other three tabs: a horizontally scrollable row of 44×44pt
+/// theme swatches (each rendering *that* theme's own colors, not the
+/// ambient one, so tapping through actually previews before committing), a
+/// compact paired-device card, and the honest-disclosure pattern shared
+/// with History's charge-session row and Alerts' history row for the
+/// sections that don't do anything real yet.
 struct SettingsTabView: View {
     /// Backs the theme picker below. Default matches `Theme.terminal.id` —
     /// the same default `AppSettings.themeID` uses on the Mac side
@@ -47,6 +55,9 @@ struct SettingsTabView: View {
     /// sync, and why that's an accepted duplication rather than an oversight.
     @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.terminal.id
 
+    @Environment(\.themePalette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
+
     /// The one mock Mac this build has anything to say about. Built directly
     /// here rather than threaded through a view model — this tab makes
     /// exactly one read (`mockDevice`, a `let` property `MockDataSource`
@@ -58,66 +69,111 @@ struct SettingsTabView: View {
     private var device: Device { dataSource.mockDevice }
 
     var body: some View {
-        NavigationStack {
-            Form {
+        ScrollView {
+            VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
+                title
                 themeSection
-                devicesSection
-                syncStatusSection
+                deviceCard
+                syncStatusRow
                 notificationsSection
                 widgetsSection
             }
-            .navigationTitle("Settings")
+            .padding(palette.spacing * 2)
         }
+        .background(palette.background)
+    }
+
+    // MARK: - Title
+
+    private var title: some View {
+        Text("Settings")
+            .font(palette.font(size: 20, weight: .semibold))
+            .foregroundStyle(palette.textPrimary)
     }
 
     // MARK: - Theme (the real, working section)
 
     private var themeSection: some View {
-        Section {
-            Picker("Theme", selection: $selectedThemeID) {
-                ForEach(Theme.builtInPresets) { theme in
-                    Text(theme.name).tag(theme.id)
+        VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
+            Text("THEME")
+                .font(palette.font(size: 10, weight: .semibold))
+                .foregroundStyle(palette.textTertiary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: palette.spacing) {
+                    ForEach(Theme.builtInPresets) { theme in
+                        themeSwatch(theme)
+                    }
                 }
+                .padding(.vertical, 2)
             }
-            .pickerStyle(.navigationLink)
-        } header: {
-            Text("Theme")
-        } footer: {
-            Text("The same six presets as the Mac app (MacStatKit/Settings/Theme.swift), applied to Dashboard and History — Alerts and Settings use standard iOS list styling instead. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.")
+            Text("The same presets as the Mac app (MacStatKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.")
+                .font(palette.font(size: 10.5))
+                .foregroundStyle(palette.textTertiary)
         }
     }
 
-    // MARK: - Devices (mock data, clearly labeled)
-
-    /// Plan §12.1's "Devices" half. Renders the one `Device` this build can
-    /// ever produce, through the exact same `FreshnessBadge`/`Freshness`
-    /// pipeline `DashboardTabView.freshnessBanner` uses — per
-    /// `MockDataSource`'s own doc comment, no screen is allowed to
-    /// special-case the mock device out of that discipline, this one
-    /// included.
-    private var devicesSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(device.deviceName)
-                    .font(.headline)
-                Text(device.model)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text(device.chip)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(device.osVersion)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 2)
-
-            FreshnessBadge(lastSeen: device.lastSeen)
-        } header: {
-            Text("Devices")
-        } footer: {
-            Text("This is demo data from MockDataSource, not a real Mac (see that type's doc comment) — there is no Mac on the other end reporting in. Adding or removing a Mac isn't possible in this build: there is only ever this one mock device, and the list never changes.")
+    /// One 44×44pt rounded swatch per built-in preset (9px corner radius,
+    /// per the redesign spec), tappable to apply. Deliberately renders
+    /// *that* theme's own `background`/`separator` colors rather than the
+    /// ambient `palette` — the point of a swatch picker is previewing the
+    /// themes you're not currently using, so reusing the injected
+    /// `ThemePalette` here would make every swatch look identical.
+    private func themeSwatch(_ theme: Theme) -> some View {
+        let isSelected = theme.id == selectedThemeID
+        let background = theme.background.color(for: colorScheme)
+        let border = theme.separator.color(for: colorScheme)
+        let accent = theme.accent.color(for: colorScheme)
+        return Button {
+            selectedThemeID = theme.id
+        } label: {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(background)
+                .frame(width: 44, height: 44)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(isSelected ? accent : border, lineWidth: isSelected ? 2 : 1)
+                )
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(theme.name)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    // MARK: - Paired device (mock data, honestly labeled)
+
+    /// Plan §12.1's "Devices" half. Two-line card (name + meta caption) per
+    /// the redesign spec's shape. The spec's literal mock text for the meta
+    /// line is "Paired · Last synced 2m ago" — not used verbatim here,
+    /// deliberately: this build has no sync channel at all (see
+    /// `syncStatusRow` right below this card), and every other honesty
+    /// discipline in this codebase (`SyncPane.swift`, `demoDataBanner` on
+    /// Dashboard/History, this same file's own doc comment) exists
+    /// specifically to stop a screen from claiming a sync event that never
+    /// happened. Showing "Last synced 2m ago" one card above "iCloud sync
+    /// isn't available in this build yet" would be a direct, visible
+    /// self-contradiction on the same screen. The meta line instead reports
+    /// the one true thing this build knows about the device (its model)
+    /// plus the honest state, keeping the intended two-line visual shape
+    /// without inventing a sync timestamp.
+    private var deviceCard: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(device.deviceName)
+                .font(palette.font(size: 12.5, weight: .medium))
+                .foregroundStyle(palette.textPrimary)
+            Text("\(device.model) · Demo device, not synced")
+                .font(palette.font(size: 10.5))
+                .foregroundStyle(palette.textTertiary)
+        }
+        .padding(palette.spacing * 1.6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                .stroke(palette.separator, lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("This is demo data from MockDataSource, not a real Mac — there is no Mac on the other end reporting in.")
     }
 
     // MARK: - Sync status (SyncPane's tone, mobile side)
@@ -129,23 +185,21 @@ struct SettingsTabView: View {
     /// same underlying fact: this build has no iCloud container, no
     /// `CKContainer`, no push subscription, on either platform, for the same
     /// reason (`MacStat` isn't enrolled in the Apple Developer Program).
-    private var syncStatusSection: some View {
-        Section {
-            Label {
-                Text("iCloud sync isn't available in this build")
-                    .fontWeight(.semibold)
-            } icon: {
-                Image(systemName: "icloud.slash")
-                    .foregroundStyle(.secondary)
-            }
-
-            Text("MacStat isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced to or from a real Mac, and nothing is attempting to. This isn't a per-device setting or a bug to troubleshoot; it's true for every copy of this build.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        } header: {
-            Text("Sync Status")
+    /// Same muted "honest disclosure" row style as History's
+    /// `chargeSessionGapNotice` and Alerts' `historyDisclosure` — a small
+    /// outlined circle + one line of tertiary text, full explanation in the
+    /// accessibility hint.
+    private var syncStatusRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "circle")
+                .font(.system(size: 9))
+                .foregroundStyle(palette.textTertiary)
+            Text("iCloud sync isn't available in this build yet.")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("MacStat isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced to or from a real Mac.")
     }
 
     // MARK: - Notifications (informational only — no working preferences)
@@ -161,18 +215,23 @@ struct SettingsTabView: View {
     /// prior mistake. Instead this section lists the categories a real
     /// build *would* notify about — read directly from
     /// `AlertEngine.defaultRules(cooldown:)` rather than a hand-copied list,
-    /// so it can't drift out of sync with the Mac app's actual 11 default
+    /// so it can't drift out of sync with the Mac app's actual default
     /// rules — as plain, non-interactive reference text.
     private var notificationsSection: some View {
-        Section {
-            ForEach(Self.notificationCategoryNames, id: \.self) { name in
-                Text(name)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
+            Text("NOTIFICATION CATEGORIES")
+                .font(palette.font(size: 10, weight: .semibold))
+                .foregroundStyle(palette.textTertiary)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Self.notificationCategoryNames, id: \.self) { name in
+                    Text(name)
+                        .font(palette.font(size: 11.5))
+                        .foregroundStyle(palette.textSecondary)
+                }
             }
-        } header: {
-            Text("Notification Categories")
-        } footer: {
             Text("These mirror the Mac app's alert rules (AlertRule/AlertAction, MacStatKit/Services/AlertRule.swift) — shown for reference, not as working preferences. Notifications require a live sync connection this build doesn't have, so there's nothing here to turn on or off yet.")
+                .font(palette.font(size: 10.5))
+                .foregroundStyle(palette.textTertiary)
         }
     }
 
@@ -193,25 +252,18 @@ struct SettingsTabView: View {
     /// `MacStatKit` at all. There is no widget configuration surface to
     /// build against, so this section doesn't invent one (e.g. a fake "which
     /// metrics to show" picker with nothing behind it) — it says the gap
-    /// outright, the same "labeled stub beats fabricated UI" reasoning
-    /// `DashboardTabView.PlaceholderCard`'s doc comment already establishes
-    /// for this codebase.
+    /// outright, same muted honest-disclosure row style as the sections
+    /// above it.
     private var widgetsSection: some View {
-        Section {
-            Label {
-                Text("Widgets aren't available in this build yet")
-                    .fontWeight(.semibold)
-            } icon: {
-                Image(systemName: "square.dashed")
-                    .foregroundStyle(.secondary)
-            }
-
-            Text("MacStatWidget is still the unconfigured Xcode template it started as — a single static placeholder, no data pipeline, no App Group shared with this app. There's nothing to configure yet, so this section doesn't offer options that wouldn't do anything.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        } header: {
-            Text("Widgets")
+        HStack(spacing: 6) {
+            Image(systemName: "circle")
+                .font(.system(size: 9))
+                .foregroundStyle(palette.textTertiary)
+            Text("Widgets aren't available in this build yet.")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("MacStatWidget is still the unconfigured Xcode template it started as — a single static placeholder, no data pipeline, no App Group shared with this app.")
     }
 }

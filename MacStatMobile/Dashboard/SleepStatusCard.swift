@@ -70,21 +70,40 @@ struct SleepStatusCard: View {
         return false
     }
 
+    /// Nocturne redesign spec: when active, this card leads with "Preventing
+    /// sleep" + an "● Active" status pill in the accent color — the header
+    /// used to always say "Sleep Prevention" regardless of state, with the
+    /// active/inactive distinction buried in a 10px subtitle underneath.
     private var header: some View {
         HStack(spacing: palette.spacing) {
             Image(systemName: isActive ? "moon.zzz.fill" : "moon.zzz")
                 .foregroundStyle(isActive ? palette.accent : palette.textSecondary)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Sleep Prevention")
+                Text(isActive ? "Preventing sleep" : "Sleep Prevention")
                     .font(palette.font(size: 13, weight: .semibold))
                     .foregroundStyle(palette.textPrimary)
-                Text(isActive ? "Preventing sleep" : "Reporting from your Mac")
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
+                if !isActive {
+                    Text("Reporting from your Mac")
+                        .font(palette.font(size: 10))
+                        .foregroundStyle(palette.textTertiary)
+                }
             }
             Spacer(minLength: palette.spacing)
+            if isActive {
+                activeStatusPill
+            }
         }
+    }
+
+    private var activeStatusPill: some View {
+        HStack(spacing: 4) {
+            Text("●")
+                .font(.system(size: 8))
+            Text("Active")
+                .font(palette.font(size: 11, weight: .semibold))
+        }
+        .foregroundStyle(palette.accent)
     }
 
     @ViewBuilder
@@ -94,10 +113,18 @@ struct SleepStatusCard: View {
                 // SwiftUI's `.timer` text style redraws itself every second
                 // and counts down to `expiresAt` on its own — no local
                 // `TimelineView`/tick logic needed to match the Mac card's
-                // live countdown.
-                DashboardDetailRowText(label: "Ends", value: Text(expiresAt, style: .timer))
+                // live countdown. Explicit `design: .monospaced` (true SF
+                // Mono), not just `.monospacedDigit()` on the system font,
+                // per the redesign spec's "SF Mono tabular for every
+                // numeric readout" — this is the one big/hero numeric value
+                // on this card, so it gets the 24px treatment.
+                Text(expiresAt, style: .timer)
+                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(palette.textPrimary)
             } else {
-                DashboardDetailRow(label: "Ends", value: "When turned off on the Mac")
+                Text("No countdown — ends when turned off on the Mac")
+                    .font(palette.font(size: 11))
+                    .foregroundStyle(palette.textTertiary)
             }
             DashboardDetailRow(label: "Mode", value: mode.mobileShortLabel)
             Text(reason)
@@ -118,31 +145,6 @@ struct SleepStatusCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(palette.textTertiary)
-    }
-}
-
-// MARK: - DashboardDetailRowText
-
-/// Countdown-flavored sibling of `DashboardDetailRow` (defined in
-/// `BatteryHeroCard.swift`) for the one row whose value is a live
-/// `Text(_:style:)`, not a pre-formatted string — `DashboardDetailRow`'s
-/// `String` value can't represent "redraws itself every second."
-private struct DashboardDetailRowText: View {
-    @Environment(\.themePalette) private var palette
-    let label: String
-    let value: Text
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(palette.font(size: 11))
-                .foregroundStyle(palette.textTertiary)
-            Spacer(minLength: palette.spacing)
-            value
-                .font(palette.font(size: 11))
-                .monospacedDigit()
-                .foregroundStyle(palette.textSecondary)
-        }
     }
 }
 
