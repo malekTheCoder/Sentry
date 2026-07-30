@@ -41,6 +41,10 @@ targets:
         embed: false
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.systemmetricskit
+      # Frameworks embedded into an .app must carry an Info.plist — Xcode
+      # validates this at the embed step and fails the build without it.
+      # Matches the equivalent setting on MacStatKit_iOS below.
+      GENERATE_INFOPLIST_FILE: YES
 
   MacStatKit_macOS:
     type: framework
@@ -53,6 +57,9 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
       PRODUCT_NAME: MacStatKit
       PRODUCT_MODULE_NAME: MacStatKit
+      # See the note on SystemMetricsKit above — embedded frameworks need an
+      # Info.plist or the MacStat app target fails at the embed step.
+      GENERATE_INFOPLIST_FILE: YES
 
   MacStatKit_iOS:
     type: framework

@@ -540,5 +540,5 @@ extension AwakeMode {
     SleepControlCard(powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.sleepcard")!))
         .padding()
         .frame(width: 320)
-        .background(ThemePalette(theme: .slate, scheme: .dark).background)
+        .background(ThemePalette(theme: .defaultTheme, scheme: .dark).background)
 }

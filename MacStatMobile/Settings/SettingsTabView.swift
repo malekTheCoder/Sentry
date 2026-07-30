@@ -43,7 +43,7 @@ import MacStatKit
 /// with History's charge-session row and Alerts' history row for the
 /// sections that don't do anything real yet.
 struct SettingsTabView: View {
-    /// Backs the theme picker below. Default matches `Theme.slate.id` —
+    /// Backs the theme picker below. Default matches `Theme.defaultTheme.id` —
     /// the same default `AppSettings.themeID` uses on the Mac side
     /// (`MacStatKit/Settings/AppSettings.swift`) — so a phone that has never
     /// had this key written resolves to the same theme the Mac ships with,
@@ -53,7 +53,7 @@ struct SettingsTabView: View {
     /// a binding passed down — see `RootTabView`'s doc comment for why the
     /// string key (not a shared Swift symbol) is what actually keeps them in
     /// sync, and why that's an accepted duplication rather than an oversight.
-    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.slate.id
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.defaultTheme.id
 
     @Environment(\.themePalette) private var palette
     @Environment(\.colorScheme) private var colorScheme

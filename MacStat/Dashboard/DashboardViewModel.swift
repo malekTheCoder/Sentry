@@ -149,7 +149,7 @@ final class DashboardViewModel: ObservableObject {
         historyStore: HistoryStore,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         timeRange: TimeRangePicker = .day,
-        theme: Theme = .slate
+        theme: Theme = .defaultTheme
     ) {
         self.historyStore = historyStore
         self.enabledModules = enabledModules

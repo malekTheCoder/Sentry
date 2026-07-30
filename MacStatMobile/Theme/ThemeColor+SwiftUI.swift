@@ -163,7 +163,7 @@ struct ThemePalette: Equatable {
 // MARK: - Environment
 
 private struct ThemePaletteKey: EnvironmentKey {
-    static let defaultValue = ThemePalette(theme: .slate, scheme: .dark)
+    static let defaultValue = ThemePalette(theme: .defaultTheme, scheme: .dark)
 }
 
 extension EnvironmentValues {
