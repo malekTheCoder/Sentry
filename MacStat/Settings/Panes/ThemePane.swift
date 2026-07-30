@@ -8,6 +8,18 @@ struct ThemePane: View {
 
     @ObservedObject var store: SettingsStore
 
+    /// Simplest persistence path consistent with the iOS side's
+    /// `SettingsTabView.selectedThemeID` (`@AppStorage`, no store round-trip)
+    /// — see that file for the precedent. This toggle is wired to read/write
+    /// a persisted preference; it does not yet drive live switching between
+    /// presets when the OS appearance changes, since doing that for real
+    /// means resolving "system light/dark -> which preset" somewhere both
+    /// the dropdown and dashboard read from, which lives outside
+    /// `MacStat/Settings/` (this slice's scope) and is left as a follow-up.
+    @AppStorage("matchSystemAppearance") private var matchSystemAppearance: Bool = false
+
+    @Environment(\.themePalette) private var palette
+
     private let columns = [GridItem(.adaptive(minimum: 190), spacing: 14)]
 
     var body: some View {
@@ -22,6 +34,20 @@ struct ThemePane: View {
                             store.settings.themeID = theme.id
                         }
                     }
+                }
+
+                Rectangle()
+                    .fill(palette.separator)
+                    .frame(height: 1)
+
+                HStack {
+                    Text("Match system appearance")
+                        .font(.system(size: 13))
+                        .foregroundStyle(palette.textSecondary)
+                    Spacer()
+                    Toggle("", isOn: $matchSystemAppearance)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
                 }
 
                 GroupBox {
