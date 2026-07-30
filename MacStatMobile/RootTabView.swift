@@ -7,7 +7,46 @@ import MacStatKit
 /// `NavigationStack` requirements specified per tab yet), and each tab view
 /// owns whatever navigation it needs internally once its real content
 /// lands.
+///
+/// **Theme propagation (plan §12.1's "Theme (shares Theme tokens with the
+/// Mac app)," built out by the Settings tab).** Before the Settings tab
+/// existed, `DashboardTabView` computed its own `ThemePalette` locally and
+/// hardcoded `.terminal` — its own doc comment said outright "No theme
+/// picker exists yet on this platform." Now that one does, the selection
+/// has to reach every tab, not just Dashboard, so it's read and resolved
+/// once here, at the one view that is an ancestor of all four tabs, and
+/// pushed down via `.environment(\.themePalette:)`. `PlaceholderCard`
+/// (`Dashboard/DashboardTabView.swift`) already reads `\.themePalette` from
+/// the environment rather than being passed one explicitly, so this is
+/// exactly the mechanism the codebase already expected a theme source to
+/// use — it just had nothing upstream setting it to anything but the
+/// environment's default (`Theme.terminal`, dark) before now.
+///
+/// **Why the `@AppStorage` key is duplicated here and in
+/// `Settings/SettingsTabView.swift` rather than sharing a constant.** Both
+/// need to read/write the exact same `UserDefaults` key (`"selectedThemeID"`)
+/// for `@AppStorage` to keep them in sync — SwiftUI's `@AppStorage`
+/// resolves by string key against the default suite, not by any shared
+/// Swift symbol. A shared constant would be the cleaner fix, but every
+/// existing candidate file for it (`Theme/ThemeColor+SwiftUI.swift`,
+/// `MacStatKit`) sits outside this task's `MacStatMobile/Settings/` +
+/// `RootTabView.swift`/`MacStatMobileApp.swift` boundary with three other
+/// agents concurrently building neighboring tabs — introducing a new shared
+/// symbol elsewhere is a bigger footprint than this task's theme-plumbing
+/// mandate calls for. The literal must simply match in both places; if it
+/// ever drifts, the fix is one file, not an architectural one.
 struct RootTabView: View {
+    /// Persisted locally on this phone only — see `SettingsTabView`'s theme
+    /// section doc comment for why this is deliberately not synced to the
+    /// Mac (no sync channel exists to carry it).
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.terminal.id
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    private var palette: ThemePalette {
+        let theme = Theme.builtInPresets.first { $0.id == selectedThemeID } ?? .terminal
+        return ThemePalette(theme: theme, scheme: systemColorScheme)
+    }
+
     var body: some View {
         TabView {
             DashboardTabView()
@@ -22,6 +61,7 @@ struct RootTabView: View {
             SettingsTabView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
+        .environment(\.themePalette, palette)
     }
 }
 

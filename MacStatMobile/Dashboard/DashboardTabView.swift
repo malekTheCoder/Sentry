@@ -1,13 +1,13 @@
 import SwiftUI
 import MacStatKit
 
-/// Tab 1 — Dashboard (plan §12.1). This task owns the navigation shell and
-/// this tab's layout skeleton: device picker, freshness banner, and the
-/// placeholder slots for the Battery hero / Sleep-prevention / metric cards
-/// that other in-flight work builds out. Everything below `metricCardsGrid`
-/// is intentionally a `PlaceholderCard`, not a real card — see that view's
-/// doc comment for why a labeled stub beats either an empty space or a
-/// fabricated-looking fake card.
+/// Tab 1 — Dashboard (plan §12.1): device picker, freshness banner, the
+/// `BatteryHeroCard`, `SleepStatusCard`, and the 7-card `metricCardsGrid`
+/// (CPU/GPU/ANE/Memory/Disk/Network/Thermals), all bound to
+/// `viewModel.latestSnapshot`. See `BatteryHeroCard.swift`,
+/// `SleepStatusCard.swift`, and `MetricCards.swift` for the individual
+/// cards' rationale — this file's job is just assembling them under the
+/// shell below.
 ///
 /// **The demo-data banner is not optional chrome.** Plan §12.2's freshness
 /// discipline covers "how old is this reading," but this build has a second,
@@ -24,15 +24,16 @@ import MacStatKit
 /// broken one.
 struct DashboardTabView: View {
     @StateObject private var viewModel = DashboardViewModel()
-    @Environment(\.colorScheme) private var systemColorScheme
 
-    /// No theme picker exists yet on this platform (Settings tab, plan
-    /// §12.1, is another agent's work) — `.terminal` matches the Mac app's
-    /// own default (`Theme.terminal`'s doc comment), so a first launch looks
-    /// intentional rather than arbitrary.
-    private var palette: ThemePalette {
-        ThemePalette(theme: .terminal, scheme: systemColorScheme)
-    }
+    /// Now sourced from the environment rather than hardcoded. Until the
+    /// Settings tab existed, this was `ThemePalette(theme: .terminal, ...)`
+    /// computed locally, with a doc comment noting "no theme picker exists
+    /// yet on this platform." `RootTabView` (the shared ancestor of all four
+    /// tabs) now resolves the user's `@AppStorage("selectedThemeID")`
+    /// selection once and injects it via `.environment(\.themePalette:)`, so
+    /// this view reads it the same way `PlaceholderCard` below already did
+    /// — no local `ColorScheme` plumbing or hardcoded theme left here.
+    @Environment(\.themePalette) private var palette
 
     var body: some View {
         ScrollView {
@@ -40,14 +41,13 @@ struct DashboardTabView: View {
                 demoDataBanner
                 devicePicker
                 freshnessBanner
-                PlaceholderCard(title: "Battery", systemImage: "battery.75")
-                PlaceholderCard(title: "Sleep Prevention", systemImage: "moon.zzz")
+                BatteryHeroCard(battery: viewModel.latestSnapshot?.battery)
+                SleepStatusCard(assertion: viewModel.latestSnapshot?.sleepAssertion)
                 metricCardsGrid
             }
             .padding(palette.spacing * 2)
         }
         .background(palette.background)
-        .environment(\.themePalette, palette)
         .task { await viewModel.start() }
     }
 
@@ -106,56 +106,23 @@ struct DashboardTabView: View {
 
     // MARK: - Metric cards (plan §12.1)
 
+    /// Built fresh from `viewModel.latestSnapshot` on every render via
+    /// `DashboardMetricCardFactory` (`MetricCards.swift`) — each factory
+    /// method takes the relevant optional sub-struct straight off the
+    /// snapshot, so a module a Mac doesn't support (or hasn't reported yet)
+    /// renders its own card as honestly "Unavailable" rather than the whole
+    /// grid needing a placeholder fallback.
     private var metricCardsGrid: some View {
+        let snapshot = viewModel.latestSnapshot
         let columns = [GridItem(.adaptive(minimum: 150), spacing: palette.spacing)]
         return LazyVGrid(columns: columns, spacing: palette.spacing) {
-            ForEach(Self.metricPlaceholders, id: \.title) { placeholder in
-                PlaceholderCard(title: placeholder.title, systemImage: placeholder.systemImage)
-            }
+            DashboardMetricCardFactory.cpu(snapshot?.cpu, palette: palette)
+            DashboardMetricCardFactory.gpu(snapshot?.gpu, palette: palette)
+            DashboardMetricCardFactory.ane(snapshot?.ane, palette: palette)
+            DashboardMetricCardFactory.memory(snapshot?.memory, palette: palette)
+            DashboardMetricCardFactory.disk(snapshot?.disk, palette: palette)
+            DashboardMetricCardFactory.network(snapshot?.network, palette: palette)
+            DashboardMetricCardFactory.thermal(snapshot?.thermal, palette: palette)
         }
-    }
-
-    private static let metricPlaceholders: [(title: String, systemImage: String)] = [
-        ("CPU", "cpu"),
-        ("GPU", "square.stack.3d.up"),
-        ("ANE", "brain"),
-        ("Memory", "memorychip"),
-        ("Disk", "internaldrive"),
-        ("Network", "network"),
-        ("Thermals", "thermometer.medium"),
-    ]
-}
-
-// MARK: - PlaceholderCard
-
-/// A clearly-labeled stand-in for a card this task deliberately doesn't
-/// build out. Rejected alternatives: leaving blank space (looks like a
-/// layout bug, not an intentional gap) and a fabricated-looking card with
-/// invented numbers (this codebase's house rule, per `SyncPane`'s doc
-/// comment, is "never overclaim" — a fake battery percentage in a
-/// not-yet-real card is exactly the kind of confident-looking lie that rule
-/// exists to prevent). A dashed border and "Coming soon" caption make the
-/// gap legible to whoever opens this screen next, including the other
-/// agents building the real version.
-struct PlaceholderCard: View {
-    let title: String
-    let systemImage: String
-    @Environment(\.themePalette) private var palette
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: systemImage)
-                .font(palette.font(size: 13, weight: .semibold))
-                .foregroundStyle(palette.textPrimary)
-            Text("Coming soon")
-                .font(.caption2)
-                .foregroundStyle(palette.textTertiary)
-        }
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .padding(palette.spacing)
-        .background(
-            RoundedRectangle(cornerRadius: palette.cornerRadius)
-                .strokeBorder(palette.separator, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-        )
     }
 }

@@ -96,6 +96,26 @@ public actor MockDataSource: StatsTransport {
         [mockDevice]
     }
 
+    /// Fabricates a `DailyHealth` series for the History tab's battery
+    /// health/cycle-count charts (plan §12.1). Not part of `StatsTransport`
+    /// for the same reason `devices()` above isn't: the plan never
+    /// specifies how the iPhone app is meant to fetch `DailyHealth` records
+    /// — `CKMapper` (`MacStatKit/Sync/CKMapper.swift`) can round-trip one
+    /// to/from a `CKRecord`, but no `CKQuery` for the record type exists
+    /// anywhere in this tree, and designing that fetch API is separate,
+    /// later work this task doesn't own.
+    ///
+    /// The actual fabrication math lives in `SyntheticDailyHealth`
+    /// (`MacStatKit/History/SyntheticDailyHealth.swift`), not here — see
+    /// that type's doc comment for why (short version: `MacStatTests` can't
+    /// see anything defined inside `MacStatMobile`, so the testable part has
+    /// to live in `MacStatKit`). This method is just the actor-isolated
+    /// call site that exposes it as part of the mock transport, matching
+    /// `devices()`'s own shape immediately above.
+    public func dailyHealthHistory(deviceID: String, dayCount: Int) async -> [DailyHealth] {
+        SyntheticDailyHealth.series(deviceID: deviceID, dayCount: dayCount)
+    }
+
     // MARK: - StatsTransport
 
     /// Emits one synthetic `SystemSnapshot` immediately, then one every
