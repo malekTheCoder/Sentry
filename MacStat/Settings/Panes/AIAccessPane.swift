@@ -11,18 +11,19 @@ import MacStatKit
 /// job is to make the *current* enforcement state legible, not to enforce
 /// anything itself.
 ///
-/// **"Zero network," said loudly and truthfully (plan §13.4).** `MacStatMCP`
-/// (`MacStatMCP/main.swift`) talks to Claude over the stdio pipes its parent
-/// process already owns, and to `MacStat.app` over a local `NSXPCConnection`
-/// to a Mach service — neither is a socket that leaves this Mac. Nothing in
-/// `MacStatMCP`, `MCPXPCService`, or `MCPAccessController` imports
-/// `URLSession`, `Network`, or any other networking API, and nothing here
-/// needs to: every tool call is answered from data `StatsCoordinator`/
-/// `HistoryStore`/`AlertEngine`/`PowerControlService` already have in this
-/// process. Saying so here is a factual claim about this build, held to the
-/// same "never overclaim" standard `SyncPane`'s doc comment sets for the
-/// opposite situation (a feature that doesn't work yet) — this one actually
-/// does work, and still makes no outbound connection.
+/// **"Zero network," said loudly and truthfully — and now conditionally
+/// (plan §13.4).** `MacStatMCP` (`MacStatMCP/main.swift`) talks to Claude
+/// over the stdio pipes its parent process already owns, and to
+/// `MacStat.app` over a local `NSXPCConnection` to a Mach service — neither
+/// is a socket that leaves this Mac, and that claim was originally
+/// unconditional. It no longer can be: "Remote Access" below
+/// (`MCPRemoteServer`) is a real, LAN-reachable HTTP transport, off by
+/// default. The Privacy section's copy switches based on
+/// `mcpRemoteAccessEnabled` rather than leaving the old absolute claim in
+/// place once it would be false — the same "never overclaim" standard
+/// `SyncPane`'s doc comment sets for the opposite situation (a feature that
+/// doesn't work yet). Local/stdio MCP genuinely still makes zero network
+/// connections regardless of this toggle; only Remote Access changes that.
 struct AIAccessPane: View {
 
     @ObservedObject var store: SettingsStore
@@ -40,21 +41,32 @@ struct AIAccessPane: View {
     }
 
     @State private var copiedConfig = false
+    @State private var copiedRemoteConfig = false
+    @State private var remoteAPIKey: String?
+    @State private var showAPIKey = false
 
     var body: some View {
         Form {
             Section {
                 Label {
-                    Text("MacStat makes zero network connections for MCP")
-                        .fontWeight(.semibold)
+                    Text(
+                        store.settings.mcpRemoteAccessEnabled
+                            ? "Local MCP still makes zero network connections — Remote Access below is separate"
+                            : "MacStat makes zero network connections for MCP"
+                    )
+                    .fontWeight(.semibold)
                 } icon: {
-                    Image(systemName: "network.slash")
+                    Image(systemName: store.settings.mcpRemoteAccessEnabled ? "network" : "network.slash")
                         .foregroundStyle(.secondary)
                 }
-                Text("An MCP client (Claude Desktop, Claude Code, Cursor, …) spawns MacStatMCP as a local subprocess and talks to it over stdio. MacStatMCP talks to this app over local XPC only. Neither hop ever leaves this Mac — there is no server, no account, and nothing to intercept.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    store.settings.mcpRemoteAccessEnabled
+                        ? "An MCP client spawned locally (Claude Desktop, Claude Code, Cursor, …) still talks to MacStatMCP over stdio only — that hop never leaves this Mac. Remote Access, enabled below, is a separate, LAN-reachable HTTP server gated by its own API key. It's the one thing on this pane that does leave this Mac, by design, only while you have it turned on."
+                        : "An MCP client (Claude Desktop, Claude Code, Cursor, …) spawns MacStatMCP as a local subprocess and talks to it over stdio. MacStatMCP talks to this app over local XPC only. Neither hop ever leaves this Mac — there is no server, no account, and nothing to intercept."
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Privacy")
             }
@@ -142,6 +154,59 @@ struct AIAccessPane: View {
             }
 
             Section {
+                Toggle("Allow remote access over your local network", isOn: remoteAccessToggleBinding)
+                    .accessibilityLabel("Allow remote access over your local network")
+                    .accessibilityValue(store.settings.mcpRemoteAccessEnabled ? "On" : "Off")
+
+                if store.settings.mcpRemoteAccessEnabled {
+                    LabeledContent("Address", value: remoteAddress)
+                        .textSelection(.enabled)
+
+                    Stepper(value: $store.settings.mcpRemotePort, in: 1024...65535) {
+                        LabeledContent("Port", value: "\(store.settings.mcpRemotePort)")
+                    }
+                    .accessibilityLabel("Remote access port")
+                    .accessibilityValue("\(store.settings.mcpRemotePort)")
+
+                    HStack {
+                        Text("API Key")
+                        Spacer()
+                        Text(showAPIKey ? (remoteAPIKey ?? "—") : maskedAPIKey)
+                            .font(.system(.callout, design: .monospaced))
+                            .textSelection(.enabled)
+                        Button(showAPIKey ? "Hide" : "Reveal") {
+                            showAPIKey.toggle()
+                        }
+                        Button("Regenerate") {
+                            remoteAPIKey = MCPRemoteAccessKey.regenerate()
+                            copiedRemoteConfig = false
+                        }
+                    }
+
+                    Button {
+                        copyRemoteConfig()
+                    } label: {
+                        Label(copiedRemoteConfig ? "Copied!" : "Copy Remote Config", systemImage: copiedRemoteConfig ? "checkmark" : "doc.on.doc")
+                    }
+                    .accessibilityLabel("Copy remote MCP configuration JSON")
+
+                    Text(remoteConfigJSON())
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.12)))
+                }
+            } header: {
+                Text("Remote Access")
+            } footer: {
+                Text("Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call MacStat's tools; regenerate it if it's ever shared by mistake.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
                 if let activityLog = activityLogHolder.activityLog {
                     if activityLog.entries.isEmpty {
                         Text("No MCP calls yet this session.")
@@ -169,6 +234,67 @@ struct AIAccessPane: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            remoteAPIKey = MCPRemoteAccessKey.current()
+        }
+    }
+
+    // MARK: - Remote Access
+
+    /// Turning this on generates a key immediately if none exists yet — the
+    /// URL/config below need a real key to display, and a toggle that's "on"
+    /// with no key would mean `MCPRemoteServer` refuses to start at all (see
+    /// its own `.noAdjustableAssertion`-style guard) with no visible
+    /// explanation in this pane for why.
+    private var remoteAccessToggleBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.mcpRemoteAccessEnabled },
+            set: { newValue in
+                if newValue, remoteAPIKey == nil {
+                    remoteAPIKey = MCPRemoteAccessKey.regenerate()
+                }
+                store.settings.mcpRemoteAccessEnabled = newValue
+            }
+        )
+    }
+
+    private var remoteAddress: String {
+        "http://\(ProcessInfo.processInfo.hostName):\(store.settings.mcpRemotePort)/mcp"
+    }
+
+    private var maskedAPIKey: String {
+        guard let remoteAPIKey, !remoteAPIKey.isEmpty else { return "—" }
+        return String(repeating: "•", count: min(remoteAPIKey.count, 24))
+    }
+
+    private func copyRemoteConfig() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(remoteConfigJSON(), forType: .string)
+        copiedRemoteConfig = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            copiedRemoteConfig = false
+        }
+    }
+
+    /// Second variant of `mcpConfigJSON()` — `url`+bearer-token shaped
+    /// rather than `command`-shaped, for a client that can only reach
+    /// MacStat over the network (e.g. a web-based custom connector), not by
+    /// spawning a local subprocess.
+    private func remoteConfigJSON() -> String {
+        let key = remoteAPIKey ?? "<no key generated yet>"
+        return """
+        {
+          "mcpServers": {
+            "MacStat-Remote": {
+              "url": "\(remoteAddress)",
+              "headers": {
+                "Authorization": "Bearer \(key)"
+              }
+            }
+          }
+        }
+        """
     }
 
     // MARK: - Rows
