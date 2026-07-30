@@ -168,6 +168,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     )
     private var mcpListener: NSXPCListener?
 
+    /// Off by default, unlike `mcpListener`/`localSyncServer` below (both
+    /// started unconditionally, gated internally) — this one actually
+    /// changes the Mac's network posture (LAN-reachable, not just an inert
+    /// local listener), so it stays fully stopped, not just silently
+    /// denying, until `mcpRemoteAccessEnabled` is on. See
+    /// `MCPRemoteServer`'s doc comment.
+    private let mcpRemoteServer = MCPRemoteServer()
+
     // MARK: - Local-network sync (plan §7.1's "v4" fast path)
     //
     // `LocalSyncServer` (`MacStatKit/LocalSync/LocalSyncServer.swift`) is the
@@ -373,6 +381,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         historyStore.flush()
         settingsStore.save()
         localSyncServer.stop()
+        // Best-effort: NIO's own graceful shutdown, not something worth
+        // blocking app termination on if it's slow. See `MCPRemoteServer
+        // .stop()`'s doc comment — idempotent either way.
+        let remoteServer = mcpRemoteServer
+        Task { await remoteServer.stop() }
     }
 
     // MARK: - Popover
@@ -526,6 +539,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // construction it would do nothing until relaunch.
         alertEngine.rateCapPerHour = settings.notificationRateCapPerHour
         alertEngine.doNotDisturb = settings.doNotDisturb
+
+        // MCPRemoteServer start/stop is async (binding/tearing down a real
+        // socket); `applySettings` itself isn't, so this hops into a
+        // detached `Task` rather than blocking whatever triggered the
+        // settings change (a Settings-pane toggle, a hand-edited file
+        // reload). `start(port:)` itself no-ops if already listening on the
+        // same port, so a settings emission unrelated to these two fields
+        // doesn't tear down and rebind a live server.
+        let remoteAccessEnabled = settings.mcpRemoteAccessEnabled
+        let remotePort = settings.mcpRemotePort
+        Task { [mcpRemoteServer] in
+            if remoteAccessEnabled {
+                await mcpRemoteServer.start(port: remotePort)
+            } else {
+                await mcpRemoteServer.stop()
+            }
+        }
 
         // Then report any disabled→enabled transition, which is what drives
         // §11.3's lazy notification authorization.
