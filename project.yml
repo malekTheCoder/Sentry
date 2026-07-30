@@ -29,6 +29,15 @@ packages:
   MCP:
     url: https://github.com/modelcontextprotocol/swift-sdk.git
     from: 0.11.0
+  # For MCPRemoteServer (MacStat/App/MCPRemoteServer.swift) — the TCP+HTTP/1.1
+  # framing layer under the MCP SDK's framework-agnostic HTTPRequest/
+  # HTTPResponse types, which ship no socket listener of their own. Standard
+  # SSWG-maintained choice rather than a hand-rolled HTTP parser over
+  # NWListener, given this is a security-relevant surface (see
+  # MCPRemoteServer's doc comment).
+  SwiftNIO:
+    url: https://github.com/apple/swift-nio.git
+    from: 2.65.0
 
 targets:
   SystemMetricsKit:
@@ -92,6 +101,22 @@ targets:
       - package: Sparkle
         embed: false
         link: false
+      - package: MCP
+        product: MCP
+        embed: false
+        link: true
+      - package: SwiftNIO
+        product: NIOCore
+        embed: false
+        link: true
+      - package: SwiftNIO
+        product: NIOPosix
+        embed: false
+        link: true
+      - package: SwiftNIO
+        product: NIOHTTP1
+        embed: false
+        link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
       MARKETING_VERSION: "0.1.0"
@@ -212,6 +237,14 @@ targets:
       - target: MacStat
       - target: MacStatKit_macOS
       - target: SystemMetricsKit
+      # For APIKeyValidatorTests, which constructs real MCP-SDK HTTPRequest/
+      # HTTPValidationContext values — MacStatKit_macOS links MCP too, but
+      # this target imports it directly rather than relying on transitive
+      # module visibility through the framework.
+      - package: MCP
+        product: MCP
+        embed: false
+        link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.tests
 
