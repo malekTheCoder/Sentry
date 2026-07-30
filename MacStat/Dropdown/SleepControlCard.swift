@@ -221,6 +221,12 @@ struct SleepControlCard: View {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     countdownRow(remaining: expiresAt.timeIntervalSince(context.date))
                 }
+                // Extend/truncate only mean something with an `expiresAt` to
+                // adjust — an indefinite hold or a conditional trigger (both
+                // `expiresAt == nil`) has no clock for these buttons to move,
+                // matching `PowerControlService.adjustAssertion(bySeconds:)`'s
+                // own `.noAdjustableAssertion` guard.
+                adjustRow
             } else {
                 MetricDetailRow(label: "Ends", value: "When you turn it off")
             }
@@ -234,7 +240,45 @@ struct SleepControlCard: View {
                 .foregroundStyle(palette.textTertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+            endNowButton
         }
+    }
+
+    /// Quick +/- adjustments to the running countdown. `-15m` is allowed to
+    /// end the assertion outright (via `adjustAssertion`'s own below-zero
+    /// clamp) rather than being disabled once remaining time drops under 15
+    /// minutes — matching the "truncate" half of "extended or truncated or
+    /// ended" the way a user would actually expect it to behave.
+    private var adjustRow: some View {
+        HStack(spacing: palette.spacing * 0.6) {
+            adjustButton("-15m", delta: -15 * 60)
+            adjustButton("+15m", delta: 15 * 60)
+            adjustButton("+1h", delta: 60 * 60)
+        }
+    }
+
+    private func adjustButton(_ title: String, delta: TimeInterval) -> some View {
+        Button(title) { adjust(bySeconds: delta) }
+            .buttonStyle(.plain)
+            .font(palette.font(size: 10, weight: .medium))
+            .foregroundStyle(palette.textSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius * 0.6, style: .continuous))
+            .accessibilityLabel(delta < 0 ? "Shorten by \(SleepCountdownFormatting.presetLabel(-delta))" : "Extend by \(SleepCountdownFormatting.presetLabel(delta))")
+    }
+
+    /// Explicit end control, distinct from the header toggle — the toggle
+    /// still works too (`toggleBinding`'s `set` calls the same `stop()`), but
+    /// a labeled button next to the extend/truncate row is the discoverable
+    /// version of "ended" once the countdown/adjust controls are already the
+    /// visual focus of this state.
+    private var endNowButton: some View {
+        Button("End Now", action: stop)
+            .buttonStyle(.plain)
+            .font(palette.font(size: 10, weight: .medium))
+            .foregroundStyle(palette.danger)
     }
 
     private func countdownRow(remaining: TimeInterval) -> some View {
@@ -297,6 +341,15 @@ struct SleepControlCard: View {
     private func stop() {
         powerControl.releaseAssertion()
         startError = nil
+    }
+
+    private func adjust(bySeconds delta: TimeInterval) {
+        do {
+            try powerControl.adjustAssertion(bySeconds: delta)
+            startError = nil
+        } catch {
+            startError = error.localizedDescription
+        }
     }
 }
 

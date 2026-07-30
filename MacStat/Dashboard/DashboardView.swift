@@ -41,13 +41,25 @@ struct DashboardView: View {
     /// it's currently publishing.
     @ObservedObject private var processMonitor: ProcessMonitor
 
+    /// Same singleton `AppDelegate` hands `DropdownView` — one live service,
+    /// not a Dashboard-local copy, so extending/truncating/ending a session
+    /// from this window and from the menu bar dropdown always agree (there's
+    /// exactly one `IOPMAssertionID` to describe either way).
+    @ObservedObject private var powerControl: PowerControlService
+
     /// `@MainActor` for the same reason `DropdownView.init` is — `viewModel`
     /// is main-actor isolated, and every real caller (AppDelegate, a
     /// `#Preview`) already is too.
     @MainActor
-    init(viewModel: DashboardViewModel, historyStore: HistoryStore, processMonitor: ProcessMonitor) {
+    init(
+        viewModel: DashboardViewModel,
+        historyStore: HistoryStore,
+        processMonitor: ProcessMonitor,
+        powerControl: PowerControlService
+    ) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self._processMonitor = ObservedObject(wrappedValue: processMonitor)
+        self._powerControl = ObservedObject(wrappedValue: powerControl)
         self.historyStore = historyStore
     }
 
@@ -68,6 +80,7 @@ struct DashboardView: View {
                     battery: viewModel.snapshot?.battery,
                     powerSeries: nil
                 )
+                SleepControlCard(powerControl: powerControl)
                 TimeRangePickerView(selection: $viewModel.timeRange)
                 BatteryHealthTrendCard(
                     historyStore: historyStore,

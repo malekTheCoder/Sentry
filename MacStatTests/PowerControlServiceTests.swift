@@ -145,6 +145,88 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .inactive)
     }
 
+    // MARK: - adjustAssertion(bySeconds:)
+
+    func testAdjustAssertionExtendsRemainingDuration() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustExtend"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 60, reason: "extend test")
+        guard case .active(_, let before, _) = service.state, let before else {
+            return XCTFail("expected a timed assertion")
+        }
+
+        try service.adjustAssertion(bySeconds: 300)
+
+        guard case .active(let mode, let after, let reason) = service.state, let after else {
+            return XCTFail("expected a timed assertion after extending")
+        }
+        XCTAssertEqual(mode, .systemOnly)
+        XCTAssertEqual(reason, "extend test")
+        // Allow slack for the wall-clock time elapsed between the two state reads.
+        XCTAssertGreaterThan(after.timeIntervalSince(before), 290)
+    }
+
+    func testAdjustAssertionTruncatesRemainingDuration() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustTruncate"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 600, reason: "truncate test")
+        try service.adjustAssertion(bySeconds: -540)
+
+        guard case .active(_, let after, _) = service.state, let after else {
+            return XCTFail("expected a timed assertion after truncating")
+        }
+        let remaining = after.timeIntervalSinceNow
+        XCTAssertGreaterThan(remaining, 0)
+        XCTAssertLessThan(remaining, 65)
+    }
+
+    func testAdjustAssertionTruncationBelowZeroReleasesImmediately() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustTruncateToZero"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 60, reason: "truncate to zero test")
+        try service.adjustAssertion(bySeconds: -600)
+
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    func testAdjustAssertionThrowsWhenNoAssertionActive() {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustNoneActive"))
+        defer { service.releaseAssertion() }
+
+        XCTAssertThrowsError(try service.adjustAssertion(bySeconds: 60)) { error in
+            XCTAssertEqual(error as? PowerControlError, .noAdjustableAssertion)
+        }
+    }
+
+    func testAdjustAssertionThrowsForIndefiniteAssertion() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustIndefinite"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "indefinite test")
+
+        XCTAssertThrowsError(try service.adjustAssertion(bySeconds: 60)) { error in
+            XCTAssertEqual(error as? PowerControlError, .noAdjustableAssertion)
+        }
+    }
+
+    func testAdjustAssertionThrowsForConditionalAssertion() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustConditional"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .batteryBelowPercent(20),
+            reason: "conditional test"
+        )
+
+        XCTAssertThrowsError(try service.adjustAssertion(bySeconds: 60)) { error in
+            XCTAssertEqual(error as? PowerControlError, .noAdjustableAssertion)
+        }
+    }
+
     // MARK: - Persistence / reconciliation round-trip
 
     func testReconciliationWithNoPersistedRecordStartsInactive() {

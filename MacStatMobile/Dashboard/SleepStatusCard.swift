@@ -2,7 +2,18 @@ import SwiftUI
 import MacStatKit
 
 /// Plan §12.1 asks for a "Sleep-prevention control card (toggle + duration +
-/// countdown)." This is deliberately *not* a control — it's read-only status.
+/// countdown)." Historically this was deliberately *not* a control — see the
+/// "Why no toggle" section below for the reasoning that still applies to
+/// *why a silent no-op button is worse than no button*. What changed: this
+/// card now offers extend/truncate/end buttons anyway, because the
+/// established `KeepAwakeIntent`/`ReleaseAwakeIntent` precedent
+/// (`MacStatMobile/Intents/MacStatIntents.swift`) shows the actual failure
+/// mode isn't "a button exists" — it's "a button silently does nothing." A
+/// button that visibly, immediately reports "not sent — no connection to
+/// your Mac yet" on every tap (see `feedback`/`sendCommand(_:)` below) is the
+/// honest version of "coming soon, and here's the control that'll work the
+/// day it ships" — the same shape Siri's spoken dialog already uses for
+/// `KeepAwakeIntent`.
 ///
 /// **Why no toggle.** A toggle here would need to round-trip a
 /// `ControlCommand` to the Mac and observe a `ControlStatus` reply through a
@@ -14,20 +25,16 @@ import MacStatKit
 /// explains why it deliberately leaves `AppSettings.cloudKitSyncEnabled`
 /// unexposed rather than wiring it to a toggle that "has no reader anywhere
 /// in the app" — flipping it would "manufacture exactly that bug," the
-/// textbook P5 violation of a control that silently does nothing. A sleep
-/// toggle here — even disabled, even captioned — is worse than that toggle:
-/// an *enabled-looking* switch invites a tap, and a tap that changes nothing
-/// on the actual Mac is the exact "the app feels broken" failure `Freshness`'s
-/// doc comment (`MacStatKit/Sync/Freshness.swift`) says this whole codebase
-/// exists to avoid. Omitting the control entirely, with a one-line
-/// explanation of why, is the honest version of "coming soon."
+/// textbook P5 violation of a control that silently does nothing. A toggle
+/// specifically is still omitted (it has no natural "here's what happened"
+/// moment the way a button-plus-inline-feedback does); the extend/truncate/
+/// end buttons below are the honest alternative, not a reversal of the rule.
 ///
 /// **What's real and shown:** the *current* sleep-assertion state as last
 /// reported by the Mac, read straight off `SystemSnapshot.sleepAssertion` —
 /// formatted with the same vocabulary `SleepControlCard`'s `activeDetail(for:)`
 /// uses on the Mac side (mode label, reason string, countdown/"until turned
-/// off"), so a user who has both apps open sees matching text, just without
-/// any button to press on the phone.
+/// off").
 struct SleepStatusCard: View {
     @Environment(\.themePalette) private var palette
 
@@ -37,6 +44,21 @@ struct SleepStatusCard: View {
     /// "Unavailable," never folded into the inactive case, so the two
     /// meanings ("we know it's off" vs "we don't know") stay distinguishable.
     let assertion: SleepAssertionState?
+
+    /// The Mac this card's buttons would target — `Device.deviceID` from
+    /// `DashboardViewModel.selectedDevice`, mirroring `ControlCommand
+    /// .deviceID`'s doc comment ("Target Mac"). Falls back to `"unknown"`,
+    /// the same placeholder `MacStatIntents.swift`'s two intents already use
+    /// when nothing better is available — there's no live pairing/device
+    /// picker result to be more specific with yet either.
+    var deviceID: String = "unknown"
+
+    /// Non-nil for a few seconds right after a button tap — see
+    /// `sendCommand(_:)`. Never claims success; always the honest "not
+    /// connected yet" line, so a tap always gets a visible reaction instead
+    /// of silently doing nothing.
+    @State private var feedback: String?
+    @State private var feedbackTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
@@ -53,7 +75,14 @@ struct SleepStatusCard: View {
                     .font(palette.font(size: 11))
                     .foregroundStyle(palette.textTertiary)
             }
-            remoteControlNote
+            if let feedback {
+                Text(feedback)
+                    .font(palette.font(size: 10, weight: .medium))
+                    .foregroundStyle(palette.warning)
+                    .transition(.opacity)
+            } else {
+                remoteControlNote
+            }
         }
         .padding(palette.spacing * 1.4)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,6 +92,7 @@ struct SleepStatusCard: View {
             RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
                 .stroke(isActive ? palette.accent.opacity(0.5) : palette.separator, lineWidth: 1)
         )
+        .animation(.default, value: feedback)
     }
 
     private var isActive: Bool {
@@ -121,6 +151,7 @@ struct SleepStatusCard: View {
                 Text(expiresAt, style: .timer)
                     .font(.system(size: 24, weight: .semibold, design: .monospaced))
                     .foregroundStyle(palette.textPrimary)
+                adjustRow
             } else {
                 Text("No countdown — ends when turned off on the Mac")
                     .font(palette.font(size: 11))
@@ -132,6 +163,75 @@ struct SleepStatusCard: View {
                 .foregroundStyle(palette.textTertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+            endNowButton
+        }
+    }
+
+    /// Extend/truncate only apply to a timed hold (an `expiresAt` to move) —
+    /// same scoping `PowerControlService.adjustAssertion(bySeconds:)` enforces
+    /// on the Mac side, so a tap here would ask for exactly what that method
+    /// would accept once a real command reaches it.
+    private var adjustRow: some View {
+        HStack(spacing: palette.spacing * 0.6) {
+            adjustButton("-15m", commandType: "truncateAwake", seconds: -15 * 60)
+            adjustButton("+15m", commandType: "extendAwake", seconds: 15 * 60)
+            adjustButton("+1h", commandType: "extendAwake", seconds: 60 * 60)
+        }
+    }
+
+    private func adjustButton(_ title: String, commandType: String, seconds: TimeInterval) -> some View {
+        Button(title) {
+            sendCommand(
+                ControlCommand(
+                    deviceID: deviceID,
+                    issuedAt: Date(),
+                    commandType: commandType,
+                    parametersJSON: #"{"deltaSeconds":\#(Int(seconds))}"#,
+                    nonce: UUID().uuidString,
+                    expiresAt: Date().addingTimeInterval(5 * 60)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .font(palette.font(size: 10, weight: .medium))
+        .foregroundStyle(palette.textSecondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(palette.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius * 0.6, style: .continuous))
+    }
+
+    private var endNowButton: some View {
+        Button("End Now") {
+            sendCommand(
+                ControlCommand(
+                    deviceID: deviceID,
+                    issuedAt: Date(),
+                    commandType: "releaseAwake",
+                    parametersJSON: "{}",
+                    nonce: UUID().uuidString,
+                    expiresAt: Date().addingTimeInterval(5 * 60)
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .font(palette.font(size: 10, weight: .medium))
+        .foregroundStyle(palette.danger)
+    }
+
+    /// Constructs and "sends" a real `ControlCommand` — through the same
+    /// no-op `MockDataSource.send(command:)` every other call site in this
+    /// app uses (see that method's doc comment) — then always shows the
+    /// honest result, never a fabricated success. Mirrors `KeepAwakeIntent
+    /// .perform()`'s "construct, send, report what actually happened" shape.
+    private func sendCommand(_ command: ControlCommand) {
+        feedbackTask?.cancel()
+        feedback = "Not sent — no connection to your Mac yet."
+        feedbackTask = Task {
+            try? await MockDataSource().send(command: command)
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            feedback = nil
         }
     }
 

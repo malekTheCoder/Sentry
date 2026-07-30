@@ -46,14 +46,20 @@ struct DashboardTabView: View {
                 // anything else competes for attention, not about the card's
                 // position when it has nothing urgent to report.
                 if isSleepActive {
-                    SleepStatusCard(assertion: viewModel.latestSnapshot?.sleepAssertion)
+                    SleepStatusCard(
+                        assertion: viewModel.latestSnapshot?.sleepAssertion,
+                        deviceID: viewModel.selectedDevice?.deviceID ?? "unknown"
+                    )
                 }
                 demoDataBanner
                 devicePicker
                 freshnessBanner
                 BatteryHeroCard(battery: viewModel.latestSnapshot?.battery)
                 if !isSleepActive {
-                    SleepStatusCard(assertion: viewModel.latestSnapshot?.sleepAssertion)
+                    SleepStatusCard(
+                        assertion: viewModel.latestSnapshot?.sleepAssertion,
+                        deviceID: viewModel.selectedDevice?.deviceID ?? "unknown"
+                    )
                 }
                 metricCardsGrid
             }

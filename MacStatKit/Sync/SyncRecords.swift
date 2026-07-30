@@ -193,9 +193,14 @@ public struct ControlCommand: Codable, Sendable, Equatable {
     /// Target Mac. Reference → `Device`.
     public var deviceID: String
     public var issuedAt: Date
-    /// `keepAwake` / `releaseAwake` / `refreshNow` / `setSetting`.
+    /// `keepAwake` / `releaseAwake` / `extendAwake` / `truncateAwake` /
+    /// `refreshNow` / `setSetting`. `extendAwake`/`truncateAwake` mirror
+    /// `PowerControlService.adjustAssertion(bySeconds:)` on the Mac side —
+    /// same "extend positive, truncate negative" split, carried in
+    /// `parametersJSON`'s `deltaSeconds`.
     public var commandType: String
-    /// e.g. `{"durationSeconds":3600,"mode":"system"}`.
+    /// e.g. `{"durationSeconds":3600,"mode":"system"}` for `keepAwake`, or
+    /// `{"deltaSeconds":900}` for `extendAwake`/`truncateAwake`.
     public var parametersJSON: String
     /// Idempotency key — the Mac ignores a nonce it has already run.
     public var nonce: String

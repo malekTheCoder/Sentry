@@ -130,7 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 DashboardView(
                     viewModel: self.dashboardViewModel,
                     historyStore: self.historyStore,
-                    processMonitor: self.processMonitor
+                    processMonitor: self.processMonitor,
+                    powerControl: self.powerControl
                 )
             )
         },

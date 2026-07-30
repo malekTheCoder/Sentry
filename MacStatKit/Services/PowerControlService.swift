@@ -37,13 +37,18 @@ public enum ReleaseCondition: Codable, Equatable, Sendable {
 }
 
 /// Wraps an `IOReturn` failure from `IOPMAssertionCreateWithProperties`.
-public enum PowerControlError: Error, LocalizedError, Sendable {
+public enum PowerControlError: Error, LocalizedError, Sendable, Equatable {
     case assertionFailed(IOReturn)
+    /// Thrown by `adjustAssertion(bySeconds:)` when there's nothing to
+    /// adjust — see that method's doc comment for the three cases this covers.
+    case noAdjustableAssertion
 
     public var errorDescription: String? {
         switch self {
         case .assertionFailed(let code):
             return "Couldn't prevent sleep (IOKit error \(code))."
+        case .noAdjustableAssertion:
+            return "No timed keep-awake session is running to adjust."
         }
     }
 }
@@ -203,6 +208,29 @@ public final class PowerControlService: ObservableObject {
         conditionSustainedSince = nil
         state = .inactive
         persistState()
+    }
+
+    /// Extends (positive `delta`) or truncates (negative `delta`) the
+    /// remaining duration of the currently active assertion, preserving its
+    /// mode and reason. Throws `.noAdjustableAssertion` when there's nothing
+    /// to adjust: no assertion is active, the active one is indefinite (no
+    /// `expiresAt` for "remaining time" to mean anything), or it's a
+    /// conditional trigger (governed by `activeCondition`/`evaluate(_:)`, not
+    /// a clock — see `ReleaseCondition`). A truncation that lands at or
+    /// before now releases the assertion immediately rather than starting a
+    /// new one with a zero-or-negative duration.
+    public func adjustAssertion(bySeconds delta: TimeInterval) throws {
+        guard case .active(let mode, let expiresAt, let reason) = state,
+              let expiresAt,
+              activeCondition == nil else {
+            throw PowerControlError.noAdjustableAssertion
+        }
+        let newRemaining = expiresAt.timeIntervalSinceNow + delta
+        guard newRemaining > 0 else {
+            releaseAssertion()
+            return
+        }
+        try startAssertionInternal(mode: mode, duration: newRemaining, reason: reason, condition: nil)
     }
 
     /// Feeds a fresh `SystemSnapshot` from the app's single poll loop (plan
