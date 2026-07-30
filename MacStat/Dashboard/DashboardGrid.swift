@@ -193,11 +193,14 @@ struct DashboardGrid: View {
 
 // MARK: - Card shell
 
-/// One grid cell: header (icon, title, subtitle, live headline value), a
-/// full-size `DashboardChart`, then the caller-supplied detail rows. Unlike
-/// `MetricCard`, there's no collapse/expand toggle — a grid cell isn't
-/// competing with a footer for vertical space the way a dropdown card list
-/// is, so there's no reason to hide a card's own content by default.
+/// One grid cell, per the Nocturne Dashboard mock: a secondary-color label
+/// with a small module-tinted status dot, a large SF Mono headline value, a
+/// 36px mini sparkline tinted in the module's own color, then the caller's
+/// subtitle/detail rows below for the depth the static mock doesn't show but
+/// this card already had before the redesign pass. Unlike `MetricCard`,
+/// there's no collapse/expand toggle — a grid cell isn't competing with a
+/// footer for vertical space the way a dropdown card list is, so there's no
+/// reason to hide a card's own content by default.
 private struct DashboardMetricCard<Detail: View>: View {
     @Environment(\.themePalette) private var palette
 
@@ -210,10 +213,27 @@ private struct DashboardMetricCard<Detail: View>: View {
     private var tint: Color { palette.metricColor(metric.colorID) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
+        VStack(alignment: .leading, spacing: 4) {
             header
-            DashboardChart(samples: samples, tint: tint, metricTitle: metric.title, height: 140)
-            detail()
+            Text(headline)
+                .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(palette.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            DashboardChart(samples: samples, tint: tint, metricTitle: metric.title, height: 36, compact: true)
+                .padding(.top, 2)
+            if let subtitle {
+                Text(subtitle)
+                    .font(palette.font(size: 10))
+                    .foregroundStyle(palette.textTertiary)
+                    .lineLimit(1)
+                    .padding(.top, 4)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                detail()
+            }
+            .padding(.top, subtitle == nil ? 6 : 2)
         }
         .padding(palette.spacing * 1.4)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -223,31 +243,20 @@ private struct DashboardMetricCard<Detail: View>: View {
             RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
                 .stroke(palette.separator, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(metric.title), \(headline)")
     }
 
     private var header: some View {
         HStack(spacing: palette.spacing) {
-            Image(systemName: metric.symbolName)
-                .foregroundStyle(tint)
-                .frame(width: 14)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(metric.title)
-                    .font(palette.font(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(palette.font(size: 10))
-                        .foregroundStyle(palette.textTertiary)
-                        .lineLimit(1)
-                }
-            }
+            Text(metric.title)
+                .font(palette.font(size: 12))
+                .foregroundStyle(palette.textSecondary)
+                .lineLimit(1)
             Spacer(minLength: palette.spacing)
-            Text(headline)
-                .font(palette.font(size: 14, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(palette.textPrimary)
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(metric.title), \(headline)")
     }
 }

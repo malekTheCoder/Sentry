@@ -80,27 +80,20 @@ struct BatteryHealthTrendCard: View {
         }
     }
 
+    /// Title + one combined meta line, matching the Nocturne mock's "Battery
+    /// health · 6 months" / "92% health · 312 cycles" pattern — this card's
+    /// own query is all-time rather than a fixed 6-month window (see the type
+    /// doc comment on why), so the title says so honestly instead of
+    /// borrowing the mock's specific span.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: palette.spacing) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Battery Health")
-                    .font(palette.font(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                Text("All-time trend")
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-            }
-            Spacer(minLength: palette.spacing)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(MetricFormatting.percent(samples.last?.avg, decimals: 1))
-                    .font(palette.font(size: 14, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textPrimary)
-                Text("\(MetricFormatting.integer(currentCycleCount)) cycles")
-                    .font(palette.font(size: 10))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textTertiary)
-            }
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Battery Health · all-time")
+                .font(palette.font(size: 14, weight: .semibold))
+                .foregroundStyle(palette.textPrimary)
+            Text("\(MetricFormatting.percent(samples.last?.avg, decimals: 1)) health · \(MetricFormatting.integer(currentCycleCount)) cycles")
+                .font(palette.font(size: 12))
+                .monospacedDigit()
+                .foregroundStyle(palette.textTertiary)
         }
     }
 

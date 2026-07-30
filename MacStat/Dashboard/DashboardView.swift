@@ -72,23 +72,46 @@ struct DashboardView: View {
         ThemePalette(theme: viewModel.theme, scheme: systemColorScheme)
     }
 
+    /// The 2-column row's approximate 1.3fr:1fr split (Nocturne mock's exact
+    /// ratio), expressed as `minWidth` hints rather than a `GeometryReader`
+    /// division: this row's height is driven by its tallest child (Battery
+    /// Health's chart vs. Agent Activity's stat row are genuinely different
+    /// heights depending on live data), and a `GeometryReader` would have to
+    /// be pinned to a fixed height to compute proportional widths, fighting
+    /// the natural intrinsic-height layout every other card in this scroll
+    /// view already relies on. `HStack` splits any width beyond these
+    /// minimums evenly, which keeps the same ~1.3:1 proportion at the
+    /// window's default size and only drifts from exact ratio (never from
+    /// "reads as bigger left column") as the window is resized wider.
+    private static let batteryHealthMinWidth: CGFloat = 340
+    private static let agentActivityMinWidth: CGFloat = 260
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 header
-                BatteryHeroCard(
-                    battery: viewModel.snapshot?.battery,
-                    powerSeries: nil
-                )
-                SleepControlCard(powerControl: powerControl)
-                TimeRangePickerView(selection: $viewModel.timeRange)
-                BatteryHealthTrendCard(
-                    historyStore: historyStore,
-                    currentCycleCount: viewModel.snapshot?.battery?.cycleCount
-                )
-                AnomaliesCard(anomalies: viewModel.anomalies)
-                AgentActivityCard(summary: viewModel.agentActivity)
-                TopProcessesCard(processes: processMonitor.topProcesses)
+                HStack(alignment: .top, spacing: palette.spacing * 1.5) {
+                    BatteryHeroCard(
+                        battery: viewModel.snapshot?.battery,
+                        powerSeries: nil
+                    )
+                    SleepControlCard(powerControl: powerControl)
+                }
+                HStack(alignment: .top, spacing: palette.spacing * 1.5) {
+                    BatteryHealthTrendCard(
+                        historyStore: historyStore,
+                        currentCycleCount: viewModel.snapshot?.battery?.cycleCount
+                    )
+                    .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
+                    AgentActivityCard(summary: viewModel.agentActivity)
+                        .frame(minWidth: Self.agentActivityMinWidth, maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(alignment: .top, spacing: palette.spacing * 1.5) {
+                    AnomaliesCard(anomalies: viewModel.anomalies)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    TopProcessesCard(processes: processMonitor.topProcesses)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 DashboardGrid(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
@@ -111,13 +134,28 @@ struct DashboardView: View {
 
     // MARK: - Header
 
+    /// Nocturne mock: "Dashboard" (19px/600) at top-left, the time-range
+    /// pill control at top-right. The machine name — genuinely useful
+    /// context on a window that isn't anchored to the menu bar the way the
+    /// dropdown is — moves to a small caption under the title rather than
+    /// being the title itself, matching the same title+caption pattern every
+    /// card on this window now uses.
     private var machineName: String {
         Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     }
 
     private var header: some View {
-        Text(machineName)
-            .font(palette.font(size: 18, weight: .semibold))
-            .foregroundStyle(palette.textPrimary)
+        HStack(alignment: .firstTextBaseline, spacing: palette.spacing) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Dashboard")
+                    .font(palette.font(size: 19, weight: .semibold))
+                    .foregroundStyle(palette.textPrimary)
+                Text(machineName)
+                    .font(palette.font(size: 11))
+                    .foregroundStyle(palette.textTertiary)
+            }
+            Spacer(minLength: palette.spacing)
+            TimeRangePickerView(selection: $viewModel.timeRange)
+        }
     }
 }
