@@ -122,6 +122,17 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Required for `LocalSyncClient` (`MacStatKit/LocalSync/LocalSyncClient.swift`)
+        # to browse for and connect to `LocalSyncServer` over Bonjour/
+        # `Network.framework` — iOS gates both local-network `NWBrowser`
+        # discovery and any Bonjour service lookup behind these two entries,
+        # prompting the user the first time either is used. See
+        # `StatsTransport.swift`'s doc comment for why this transport exists
+        # at all (CloudKit is blocked on Apple Developer Program enrollment;
+        # this one isn't).
+        NSLocalNetworkUsageDescription: "MacStat uses your local network to show live data from your Mac when you're on the same Wi-Fi."
+        NSBonjourServices:
+          - "_macstat._tcp"
 
   MacStatWidgetExtension:
     type: app-extension

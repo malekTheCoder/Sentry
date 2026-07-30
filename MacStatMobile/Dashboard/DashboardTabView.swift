@@ -25,6 +25,16 @@ import MacStatKit
 struct DashboardTabView: View {
     @StateObject private var viewModel = DashboardViewModel()
 
+    /// Backs `demoDataBanner`'s visibility below — the banner's whole point
+    /// is to disclose *fabricated* data, so it must disappear the moment
+    /// `AppDataSource` (`MacStatMobile/Data/AppDataSource.swift`) actually
+    /// finds a Mac over the local-network transport. Leaving it shown
+    /// unconditionally once a real connection exists would be exactly the
+    /// kind of overclaim-in-reverse this codebase's honesty discipline
+    /// exists to prevent — a screen falsely telling the user their real,
+    /// live data is fake.
+    @EnvironmentObject private var appDataSource: AppDataSource
+
     /// Now sourced from the environment rather than hardcoded. Until the
     /// Settings tab existed, this was `ThemePalette(theme: .terminal, ...)`
     /// computed locally, with a doc comment noting "no theme picker exists
@@ -51,7 +61,9 @@ struct DashboardTabView: View {
                         deviceID: viewModel.selectedDevice?.deviceID ?? "unknown"
                     )
                 }
-                demoDataBanner
+                if !appDataSource.isUsingLocalSync {
+                    demoDataBanner
+                }
                 devicePicker
                 freshnessBanner
                 BatteryHeroCard(battery: viewModel.latestSnapshot?.battery)
