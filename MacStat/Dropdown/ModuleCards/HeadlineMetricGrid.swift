@@ -77,5 +77,5 @@ struct HeadlineMetricGrid: View {
     HeadlineMetricGrid(snapshot: nil)
         .padding()
         .frame(width: 320)
-        .background(ThemePalette(theme: .terminal, scheme: .dark).background)
+        .background(ThemePalette(theme: .slate, scheme: .dark).background)
 }

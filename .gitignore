@@ -19,3 +19,6 @@ DerivedData/
 # Secrets / local config
 *.xcconfig.local
 .env
+
+# Claude Code local state (worktrees, agent scratch files) — never shared
+.claude/
