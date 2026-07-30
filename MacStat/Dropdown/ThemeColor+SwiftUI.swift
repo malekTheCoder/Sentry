@@ -104,6 +104,21 @@ struct ThemePalette: Equatable {
 
     // MARK: Typography
 
+    /// Typography for any number that changes while the user is looking at it.
+    ///
+    /// Honours `Theme.numericStyle` instead of hard-coding `.monospacedDigit()`
+    /// at every call site: with `.monospacedDigit` (what every built-in preset
+    /// picks, including the Notion default) a CPU readout stepping 9% → 10% →
+    /// 100% keeps a fixed glyph advance, so a right-aligned value column and a
+    /// 1 Hz countdown never shift the layout underneath the cursor. A theme
+    /// that explicitly opts into `.proportional` gets proportional figures —
+    /// that token exists to be obeyed, and the dropdown is the only surface
+    /// besides `BarModuleRenderer` that was ignoring it.
+    func numericFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let base = font(size: size, weight: weight)
+        return theme.numericStyle == .monospacedDigit ? base.monospacedDigit() : base
+    }
+
     func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         switch theme.fontFamily {
         case .system:
@@ -132,6 +147,46 @@ struct ThemePalette: Equatable {
         case .comfortable: return 9
         case .spacious: return 13
         }
+    }
+
+    // MARK: Spacing scale
+    //
+    // Named steps off `spacing` rather than `palette.spacing * 1.4`-style
+    // arithmetic scattered through the views. Three reasons: the multipliers
+    // in the old dropdown had drifted (1.4 here, 1.5 there, 1.6 in the
+    // battery card) so nothing lined up across cards; every step stays a
+    // whole-point value at all three densities, which keeps hairline
+    // separators from landing on half-pixels; and a reader can see the
+    // rhythm — 0.5 / 1 / 1.5 / 2 / 3 — in one place.
+
+    /// Gap inside a tightly coupled pair (icon → its label, value → its unit).
+    var spacingTight: CGFloat { (spacing * 0.5).rounded() }
+
+    /// Padding inside a grouped block, and the gap between sibling rows.
+    var spacingRow: CGFloat { spacing }
+
+    /// Padding around the dropdown's own edges and inside grouped surfaces.
+    var spacingBlock: CGFloat { (spacing * 1.5).rounded() }
+
+    /// Gap between major sections (header / vitals / keep-awake / actions).
+    var spacingSection: CGFloat { spacing * 2 }
+
+    // MARK: Motion
+    //
+    // "Subtle and fast": 140ms ease-out, nothing bouncy. Returning an
+    // Optional lets a call site pass the result straight to `withAnimation`
+    // and get *no* animation under Reduce Motion, rather than a shorter one —
+    // the accessibility setting asks for no movement, not less movement.
+
+    /// Standard disclosure/hover transition. `nil` under Reduce Motion.
+    static func motion(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.14)
+    }
+
+    /// Slightly slower step for content that changes size (a row expanding),
+    /// still inside the 120–180ms band.
+    static func disclosureMotion(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.18)
     }
 
     var glow: Double { min(max(theme.glowIntensity, 0), 1) }
