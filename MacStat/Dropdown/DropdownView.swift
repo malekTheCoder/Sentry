@@ -1,18 +1,34 @@
 import SwiftUI
 import MacStatKit
 
-/// Root of the menu-bar dropdown: header, a 2×2 headline-metric glance grid,
-/// the keep-awake control, and a single "Open Dashboard" button.
+/// Root of the menu-bar dropdown.
 ///
-/// This is the "lighter" Nocturne-redesign pass over the dropdown: the old
-/// per-module scroll stack (7 cards with sparklines) and the battery hero
-/// card are cut from *this view's body* on purpose, so a glance at the menu
-/// bar doesn't require scrolling — but their types (`ModuleCardStack`,
-/// `BatteryHeroCard`) are left intact since the Dashboard still uses them.
-/// Depth now lives one click away, behind "Open Dashboard," rather than
-/// spread across this popover.
+/// **The one job.** This popover opens under the cursor for a few seconds at a
+/// time, so the top of it has to answer "is my Mac OK?" before the user has
+/// finished focusing on it. That answer is a sentence — `SystemVitals.status`'s
+/// headline — and it is the only thing on this surface allowed to be large.
+/// Everything below it is the evidence for that sentence, in descending order:
+/// four vitals rows, the keep-awake control, then the way out to the Dashboard.
 ///
-/// The footer/dashboard actions are injected closures rather than AppKit
+/// **Restraint over chrome.** There are no cards here. The old layout wrapped
+/// each region in a filled, stroked, rounded rectangle, which turned a 320pt
+/// popover into six competing objects and spent six theme colors saying
+/// nothing. Sections are separated by whitespace and a hairline `separator`;
+/// hierarchy comes from the text ramp (`textPrimary` → `textSecondary` →
+/// `textTertiary`) at two sizes; and `warning`/`danger` appear only next to a
+/// reading that actually crossed a threshold. `accent` is reserved for
+/// interactive state — the keep-awake switch, a hovered action.
+///
+/// **What the lighter pass established, and what changed.** Commit "Redesign
+/// menu bar dropdown to a lighter headline-glance layout" cut the 7-card
+/// scrolling module stack so a glance never requires scrolling; that intent is
+/// kept — the resting height is still one screenful and the Dashboard is still
+/// where history lives. What it lost was any way to see a module's detail
+/// without leaving the popover, and `enabledModules` stopped being consulted at
+/// all (turning a module off in Settings had no visible effect here). Both come
+/// back as progressive disclosure rather than as permanently-open cards.
+///
+/// The Settings/Dashboard/Quit actions are injected closures rather than AppKit
 /// calls so the AppDelegate stays the composition root and this view stays
 /// previewable.
 struct DropdownView: View {
@@ -22,8 +38,7 @@ struct DropdownView: View {
     /// changes propagate; the service is owned by the AppDelegate composition
     /// root, same as the view model.
     @ObservedObject private var powerControl: PowerControlService
-    /// Drives the header's "Agent active" indicator (see
-    /// `DropdownHeader.agentActivityPill`) — a live, user-visible signal
+    /// Drives the header's agent-activity line — a live, user-visible signal
     /// that an MCP client is currently doing something to this Mac, which no
     /// headless competitor MCP server (thermo-control-mcp, mac-monitor-mcp)
     /// can show since none of them have a menu bar at all.
@@ -36,6 +51,11 @@ struct DropdownView: View {
     private let onOpenSettings: () -> Void
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
+
+    /// Measured height of the content, so `cardListMaxHeight` can cap the
+    /// popover without a `ScrollView` greedily claiming the full cap even when
+    /// there are only four collapsed rows to show. See `body`.
+    @State private var contentHeight: CGFloat = 0
 
     /// `@MainActor` because `PowerControlService` is main-actor isolated and
     /// this init stores one. Costs callers nothing: every one (AppDelegate,
@@ -80,76 +100,167 @@ struct DropdownView: View {
         ThemePalette(theme: theme, scheme: systemColorScheme)
     }
 
+    /// Text and rows both start here. The vitals and action rows draw a hover
+    /// highlight that has to bleed slightly past their text, so they inset by
+    /// `spacingBlock - spacingTight` and add `spacingTight` back inside — which
+    /// puts every left edge on the same 1× `spacingBlock` line regardless.
+    private var rowInset: CGFloat { palette.spacingBlock - palette.spacingTight }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
-            DropdownHeader(thermal: viewModel.snapshot?.thermal, latestActivity: activityLog.entries.first)
-            HeadlineMetricGrid(snapshot: viewModel.snapshot)
-            // A control the user came to press, not something to cut for
-            // lightness — the live countdown is worth keeping permanently
-            // visible even in the lighter layout.
-            SleepControlCard(powerControl: powerControl)
-            openDashboardButton
+        // A `ScrollView` sized to its own content rather than to its container.
+        // Left to itself a vertical `ScrollView` is greedy in its scroll axis,
+        // so `.frame(maxHeight:)` alone would pin the popover to the full
+        // `cardListMaxHeight` even when four collapsed rows need 300pt. Measuring
+        // the content and taking the min keeps the popover exactly as tall as it
+        // needs to be, and only starts scrolling once expanding rows push it past
+        // what the anchor screen can show — which is what `cardListMaxHeight` was
+        // always for, and what it stopped doing when the scroll stack was cut.
+        ScrollView(.vertical) {
+            content
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                    }
+                )
         }
-        .padding(palette.spacing * 1.5)
+        .scrollIndicators(.automatic)
+        .scrollDisabled(contentHeight <= cardListMaxHeight)
         .frame(width: 320)
+        .frame(height: cappedHeight)
+        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
         .background(palette.background)
         .environment(\.themePalette, palette)
     }
 
-    /// The only way to reach depth (module detail, history, sparklines) from
-    /// this popover now — everything the old scroll stack showed inline
-    /// lives one click away in the Dashboard window instead. Outlined, not
-    /// filled: this is a navigation action, not the primary control on the
-    /// card (that's the keep-awake toggle above it).
-    private var openDashboardButton: some View {
-        Button(action: onOpenHistory) {
-            Text("Open Dashboard")
-                .font(palette.font(size: 12, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
+    /// `nil` until the content has been measured, which deliberately leaves the
+    /// `ScrollView` unconstrained on the first layout pass: an unconstrained
+    /// scroll view reports its content's ideal height, so the popover opens at
+    /// the right size even if the measurement never arrives. Pinning it to a
+    /// placeholder height instead would flash a 1pt popover on every open — and
+    /// would fail *closed*, hiding the whole dropdown, if the preference ever
+    /// stopped propagating.
+    private var cappedHeight: CGFloat? {
+        contentHeight > 0 ? min(contentHeight, cardListMaxHeight) : nil
+    }
+
+    private var content: some View {
+        // `spacing: 0` throughout — every gap in this view is an explicit
+        // padding off the spacing scale, so the rhythm is readable in one place
+        // instead of being the sum of a stack spacing and four paddings.
+        VStack(alignment: .leading, spacing: 0) {
+            statusBlock
+                .padding(.horizontal, palette.spacingBlock)
+                .padding(.top, palette.spacingBlock)
+                .padding(.bottom, palette.spacingRow)
+
+            VitalsSection(
+                vitals: vitals,
+                isAwaitingFirstReading: viewModel.snapshot == nil,
+                isStale: isStale,
+                onOpenSettings: onOpenSettings
+            )
+            .padding(.horizontal, rowInset)
+            .padding(.bottom, palette.spacingTight)
+
+            hairline
+
+            // A control the user came here to press, not something to cut for
+            // lightness — a running keep-awake session is state the popover
+            // must always be able to show and end.
+            SleepControlCard(powerControl: powerControl)
+                .padding(.horizontal, rowInset)
+                .padding(.vertical, palette.spacingTight)
+
+            hairline
+
+            actionsRow
+                .padding(.horizontal, rowInset)
+                .padding(.vertical, palette.spacingTight)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(palette.textPrimary)
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.textSecondary.opacity(0.5), lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .accessibilityLabel("Open Dashboard")
-    }
-}
-
-// MARK: - Header
-
-/// Plan §8.3 item 1. The sync-status dot is deliberately absent — CloudKit
-/// sync doesn't exist yet, and a permanently gray dot would imply a state the
-/// app can't actually report.
-private struct DropdownHeader: View {
-    @Environment(\.themePalette) private var palette
-
-    let thermal: ThermalStats?
-    /// Most recent MCP activity-log entry, if any — used to show a brief
-    /// "agent active" pill right after a write tool executes. `nil` (no
-    /// entries yet) and an old/read-only entry both render nothing; see
-    /// `showsAgentActivity`.
-    let latestActivity: MCPActivityLogEntry?
-
-    /// Recomputed per body evaluation (i.e. per snapshot) rather than on a
-    /// timer of its own — a minute-resolution readout doesn't justify a
-    /// second wakeup source.
-    private var uptime: String {
-        MetricFormatting.uptime(ProcessInfo.processInfo.systemUptime)
     }
 
-    /// Only write-tool calls that actually executed (`.allow`), and only for
-    /// a short window after the fact — this is meant to read as "something
-    /// just happened," not as a permanent "an agent is connected" badge
-    /// (which `get_agent_activity`/the AI Access pane already cover for a
-    /// full history). 20s comfortably covers one dropdown-open glance after
-    /// a `keep_awake`/`create_alert_rule`/etc. call without lingering stale.
-    private var showsAgentActivity: Bool {
-        guard let latestActivity, latestActivity.tool.isWrite, latestActivity.decision == .allow else { return false }
-        return Date().timeIntervalSince(latestActivity.timestamp) < 20
+    /// Full-bleed rather than inset: at 320pt an inset rule reads as a floating
+    /// dash, while an edge-to-edge one reads as the section break it is.
+    private var hairline: some View {
+        Rectangle()
+            .fill(palette.separator)
+            .frame(height: 1)
+            .accessibilityHidden(true)
+    }
+
+    // MARK: - Status
+
+    private var vitals: [Vital] {
+        SystemVitals.vitals(for: viewModel.snapshot, enabledModules: enabledModules)
+    }
+
+    private var status: SystemStatus {
+        SystemVitals.status(for: viewModel.snapshot, vitals: vitals, enabledModules: enabledModules)
+    }
+
+    /// The answer, then the machine it's about, then why.
+    ///
+    /// Machine name and uptime sit *above* the verdict as a small caption, not
+    /// below it as a title: the user already knows whose Mac this is, and the
+    /// most valuable line deserves the top of the reading order.
+    private var statusBlock: some View {
+        // Re-evaluated on a slow clock so "the collector stopped" is
+        // detectable at all. Without it this view only redraws when a snapshot
+        // arrives — precisely the event that stops happening in the failure
+        // case it needs to report. 10s is far below the staleness threshold and
+        // far above anything that would count as an idle wakeup problem, and
+        // the timeline only exists while the popover is on screen.
+        TimelineView(.periodic(from: .now, by: 10)) { context in
+            VStack(alignment: .leading, spacing: 3) {
+                Text(captionLine(now: context.date))
+                    .font(palette.font(size: 10))
+                    .foregroundStyle(palette.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                headline
+
+                if !status.reasons.isEmpty {
+                    Text(status.reasons.prefix(2).joined(separator: " · "))
+                        .font(palette.font(size: 11))
+                        .foregroundStyle(palette.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if showsAgentActivity, let latest = activityLog.entries.first {
+                    agentActivityLine(latest)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// The surface's only large type, and the only `.semibold` on it.
+    private var headline: some View {
+        HStack(alignment: .firstTextBaseline, spacing: palette.spacingTight) {
+            // No glyph in the healthy state: an icon that is always present
+            // carries no information. It appears exactly when there is
+            // something to flag, which is what makes it worth looking at — and
+            // pairs the color so severity is never carried by hue alone.
+            if let symbol = status.level.symbolName {
+                Image(systemName: symbol)
+                    .font(.system(size: 11))
+            }
+            Text(status.headline)
+                .font(palette.font(size: 13, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(headlineColor)
+    }
+
+    private var headlineColor: Color {
+        switch status.level {
+        case .normal: return palette.textPrimary
+        case .warning: return palette.warning
+        case .critical: return palette.danger
+        }
     }
 
     private var machineName: String {
@@ -158,75 +269,188 @@ private struct DropdownHeader: View {
         Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     }
 
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: palette.spacing) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(machineName)
-                    .font(palette.font(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                    .lineLimit(1)
-                Text(uptime)
-                    .font(palette.font(size: 10))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textTertiary)
-            }
-            Spacer(minLength: palette.spacing)
-            if showsAgentActivity, let latestActivity {
-                agentActivityPill(latestActivity)
-            }
-            thermalPill
+    /// "Malek's MacBook Pro · up 3d 4h" — plus "· updated 2m ago" once the
+    /// readings are old enough to doubt.
+    private func captionLine(now: Date) -> String {
+        // Recomputed per body evaluation rather than on a timer of its own: a
+        // minute-resolution readout doesn't justify a second wakeup source, and
+        // the timeline above already ticks.
+        var parts = [machineName, MetricFormatting.uptime(ProcessInfo.processInfo.systemUptime)]
+        if let age = staleAge(now: now) {
+            parts.append("updated \(Self.age(age)) ago")
         }
-        .padding(.horizontal, 2)
+        return parts.joined(separator: " · ")
     }
 
-    @ViewBuilder
-    private func agentActivityPill(_ entry: MCPActivityLogEntry) -> some View {
+    // MARK: - Staleness
+
+    /// Beyond this, a reading is old enough that it may no longer describe the
+    /// machine. Deliberately above `StatsCoordinator`'s 60s ceiling: the fast
+    /// tier legitimately stretches that far under adaptive throttling (battery
+    /// × Low Power Mode), and a "stale" badge that fires on a Mac merely
+    /// running on battery would be crying wolf.
+    private static let staleAfter: TimeInterval = 75
+
+    private func staleAge(now: Date) -> TimeInterval? {
+        guard let timestamp = viewModel.snapshot?.timestamp else { return nil }
+        let age = now.timeIntervalSince(timestamp)
+        return age > Self.staleAfter ? age : nil
+    }
+
+    /// Dims the vitals rather than hiding them: old numbers are still the best
+    /// information available, they just shouldn't be trusted as current.
+    private var isStale: Bool {
+        staleAge(now: Date()) != nil
+    }
+
+    /// "2m" / "1h 5m". Local to the dropdown rather than in `MetricFormatting`
+    /// because this is an elapsed-time caption, not a metric value.
+    private static func age(_ interval: TimeInterval) -> String {
+        let total = Int(max(interval, 0))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        if hours > 0 { return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h" }
+        if minutes > 0 { return "\(minutes)m" }
+        return "\(total)s"
+    }
+
+    // MARK: - Agent activity
+
+    /// Only write-tool calls that actually executed (`.allow`), and only for a
+    /// short window after the fact — this is meant to read as "something just
+    /// happened," not as a permanent "an agent is connected" badge (which
+    /// `get_agent_activity`/the AI Access pane already cover for a full
+    /// history). 20s comfortably covers one dropdown-open glance after a
+    /// `keep_awake`/`create_alert_rule`/etc. call without lingering stale.
+    private var showsAgentActivity: Bool {
+        guard let latest = activityLog.entries.first,
+              latest.tool.isWrite,
+              latest.decision == .allow else { return false }
+        return Date().timeIntervalSince(latest.timestamp) < 20
+    }
+
+    /// A line of text, not a tinted capsule. The old pill had a fill, a stroke
+    /// and an accent tint for a transient informational note — three kinds of
+    /// emphasis for something that disappears after 20 seconds.
+    private func agentActivityLine(_ entry: MCPActivityLogEntry) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "bolt.fill")
+            Image(systemName: "bolt")
                 .font(.system(size: 9))
-            Text(entry.clientName)
-                .font(palette.font(size: 10, weight: .medium))
+            Text("\(entry.clientName) ran \(entry.tool.displayName)")
+                .font(palette.font(size: 10))
                 .lineLimit(1)
         }
-        .foregroundStyle(palette.accent)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(palette.accent.opacity(0.15))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(palette.accent.opacity(0.4), lineWidth: 1))
+        .foregroundStyle(palette.textTertiary)
         .accessibilityLabel("\(entry.clientName) just used \(entry.tool.displayName) on this Mac")
     }
 
-    @ViewBuilder
-    private var thermalPill: some View {
-        if let thermal {
-            let color = pillColor(for: thermal.pressureLevel)
-            HStack(spacing: 4) {
-                Image(systemName: thermal.isThrottling ? "exclamationmark.triangle.fill" : "thermometer.medium")
-                    .font(.system(size: 9))
-                Text(thermal.pressureLevel.displayName)
-                    .font(palette.font(size: 10, weight: .medium))
-            }
-            .foregroundStyle(color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.15))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(color.opacity(0.4), lineWidth: 1))
-            .accessibilityLabel("Thermal pressure \(thermal.pressureLevel.displayName)")
-        } else {
-            Text("Thermal —")
-                .font(palette.font(size: 10))
-                .foregroundStyle(palette.textTertiary)
+    // MARK: - Actions
+
+    /// Dashboard, Settings and Quit on one line. Settings and Quit stay
+    /// icon-only and unlabelled because they're app utility rather than
+    /// anything to do with the numbers above — but they stay *visible*, since
+    /// left- and right-click both open this popover and there is no separate
+    /// AppKit context menu to fall back on (see `StatusItemController`).
+    private var actionsRow: some View {
+        HStack(spacing: palette.spacingTight) {
+            DropdownTextAction(
+                title: "Open Dashboard",
+                symbol: "chevron.right",
+                action: onOpenHistory
+            )
+            Spacer(minLength: palette.spacingTight)
+            DropdownIconAction(symbol: "gearshape", label: "Settings", action: onOpenSettings)
+            DropdownIconAction(symbol: "power", label: "Quit MacStat", action: onQuit)
         }
     }
+}
 
-    private func pillColor(for level: ThermalStats.PressureLevel) -> Color {
-        switch level {
-        case .nominal: return palette.success
-        case .fair: return palette.warning
-        case .serious, .critical: return palette.danger
+// MARK: - Content measurement
+
+private struct ContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+// MARK: - Actions
+
+/// A labelled action that behaves like a row, not a button: no fill, no
+/// border, just a hover highlight and a trailing chevron. An outlined pill
+/// would be the third distinct container shape on a surface that is trying
+/// very hard to have none.
+struct DropdownTextAction: View {
+    @Environment(\.themePalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let title: String
+    let symbol: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(palette.font(size: 11, weight: .medium))
+                Image(systemName: symbol)
+                    .font(.system(size: 9, weight: .medium))
+            }
+            .foregroundStyle(isHovered ? palette.accent : palette.textPrimary)
+            .padding(.horizontal, palette.spacingTight)
+            // 28pt: the accessibility floor for a hit target, and the same
+            // height as a vitals row, so the two grids agree.
+            .frame(height: 28)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .background {
+            if isHovered {
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(ThemePalette.motion(reduceMotion: reduceMotion)) { isHovered = hovering }
+        }
+        .accessibilityLabel(title)
+    }
+}
+
+/// Icon-only sibling of `DropdownTextAction`, same 28pt hit target and same
+/// hover treatment, so the action row reads as one control group.
+struct DropdownIconAction: View {
+    @Environment(\.themePalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let symbol: String
+    let label: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12))
+                .foregroundStyle(isHovered ? palette.textPrimary : palette.textTertiary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            if isHovered {
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(ThemePalette.motion(reduceMotion: reduceMotion)) { isHovered = hovering }
+        }
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
 
