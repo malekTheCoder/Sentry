@@ -51,7 +51,7 @@ public enum ResourceCatalog {
         )
     ]
 
-    public static func read(uri: String, clientName: String, xpcClient: MacStatXPCClient) async throws -> ReadResource.Result {
+    public static func read(uri: String, clientName: String, xpcClient: any MCPServiceCalling) async throws -> ReadResource.Result {
         guard uri == systemSnapshotURI else {
             throw MCPError.invalidParams("Unknown resource URI '\(uri)'.")
         }
@@ -68,14 +68,14 @@ public enum ResourceCatalog {
 /// field advances — see `ResourceCatalog`'s doc comment for why polling
 /// happens here rather than this being a true push from `MacStat.app`.
 public actor ResourceSubscriptionPump {
-    private let xpcClient: MacStatXPCClient
+    private let xpcClient: any MCPServiceCalling
     private let clientName: String
     private let pollInterval: Duration
     private var subscriberCount = 0
     private var pumpTask: Task<Void, Never>?
     private var lastTimestamp: Date?
 
-    public init(xpcClient: MacStatXPCClient, clientName: String, pollInterval: Duration = .seconds(3)) {
+    public init(xpcClient: any MCPServiceCalling, clientName: String, pollInterval: Duration = .seconds(3)) {
         self.xpcClient = xpcClient
         self.clientName = clientName
         self.pollInterval = pollInterval

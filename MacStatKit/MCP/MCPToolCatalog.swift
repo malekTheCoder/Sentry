@@ -162,7 +162,7 @@ public enum MCPToolCatalog {
         name: String,
         arguments: [String: Value],
         clientName: String,
-        xpcClient: MacStatXPCClient
+        xpcClient: any MCPServiceCalling
     ) async -> CallTool.Result {
         guard let id = MCPToolID(rawValue: name) else {
             return errorResult("Unknown tool '\(name)'.")
@@ -246,7 +246,7 @@ public enum MCPToolCatalog {
     // MARK: - Result shaping
 
     private static func read(
-        _ xpcClient: MacStatXPCClient,
+        _ xpcClient: any MCPServiceCalling,
         _ body: @escaping (MacStatXPCServiceProtocol, @escaping (Data?, String?) -> Void) -> Void
     ) async -> CallTool.Result {
         let (data, message) = await xpcClient.readCall(body)
@@ -258,7 +258,7 @@ public enum MCPToolCatalog {
     }
 
     private static func write(
-        _ xpcClient: MacStatXPCClient,
+        _ xpcClient: any MCPServiceCalling,
         _ body: @escaping (MacStatXPCServiceProtocol, @escaping (Bool, String?) -> Void) -> Void
     ) async -> CallTool.Result {
         let (ok, message) = await xpcClient.writeCall(body)

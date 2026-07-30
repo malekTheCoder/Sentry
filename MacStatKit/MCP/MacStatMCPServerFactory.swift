@@ -23,7 +23,7 @@ public actor MCPClientIdentity {
 /// they hand to `server.start(transport:)`.
 public enum MacStatMCPServerFactory {
     public static func makeServer(
-        xpcClient: MacStatXPCClient,
+        xpcClient: any MCPServiceCalling,
         clientIdentity: MCPClientIdentity,
         subscriptionPump: ResourceSubscriptionPump
     ) async -> Server {

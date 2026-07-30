@@ -24,15 +24,18 @@ import os
 /// precisely for "non-localhost deployments where DNS rebinding isn't the
 /// threat model" (its doc comment).
 ///
-/// **Why every remote call still goes through `MCPXPCService`, not a direct
-/// in-process call into `StatsCoordinator`/`PowerControlService`/etc.** This
-/// class talks to the same Mach service (`MacStatXPCServiceName.machService`)
-/// `MacStatMCP` uses, over its own `MacStatXPCClient` — a process XPC-ing
-/// into its own Mach service. That keeps `MCPAccessController`'s per-tool
-/// gating, rate limiting, and (for write tools) the native confirmation
-/// `NSAlert` in the loop for every remote call exactly as they already are
-/// for local ones, rather than adding a second, easier-to-forget enforcement
-/// path that bypasses all of it.
+/// **Why every remote call still goes through `MCPXPCService`, not a
+/// bespoke shortcut into `StatsCoordinator`/`PowerControlService`/etc.**
+/// `start(port:serviceCaller:)` takes an injected `MCPServiceCalling` —
+/// `AppDelegate` passes a `LocalXPCServiceCaller` wrapping its existing
+/// `mcpXPCService` (a direct in-process call, no XPC transport; see that
+/// type's doc comment for why an actual `NSXPCConnection` self-connect to
+/// this process's own Mach service was tried first and failed). Either way,
+/// every call flows through the exact same `MCPAccessController` per-tool
+/// gating, rate limiting, and (for write tools) native confirmation
+/// `NSAlert` that local calls already get — there's no shortcut that
+/// bypasses any of it just because the call arrived over HTTP instead of
+/// stdio.
 ///
 /// **v1 scope:** `StatelessHTTPServerTransport` (request/response only, no
 /// SSE) — a remote caller can call tools and read resources, but doesn't get
@@ -58,7 +61,7 @@ public final class MCPRemoteServer: @unchecked Sendable {
     /// Settings UI is expected to generate one the first time this is
     /// enabled, but this is the last line of defense if that somehow didn't
     /// happen.
-    public func start(port: Int) async {
+    public func start(port: Int, serviceCaller: any MCPServiceCalling) async {
         if let boundPort, boundPort == port { return }
         await stop()
 
@@ -67,11 +70,10 @@ public final class MCPRemoteServer: @unchecked Sendable {
             return
         }
 
-        let xpcClient = MacStatXPCClient()
         let clientIdentity = MCPClientIdentity()
-        let subscriptionPump = ResourceSubscriptionPump(xpcClient: xpcClient, clientName: "MacStat (remote HTTP)")
+        let subscriptionPump = ResourceSubscriptionPump(xpcClient: serviceCaller, clientName: "MacStat (remote HTTP)")
         let mcpServer = await MacStatMCPServerFactory.makeServer(
-            xpcClient: xpcClient,
+            xpcClient: serviceCaller,
             clientIdentity: clientIdentity,
             subscriptionPump: subscriptionPump
         )

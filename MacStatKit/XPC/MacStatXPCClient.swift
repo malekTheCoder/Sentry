@@ -14,7 +14,7 @@ import Foundation
 /// are thin XPC clients with no direct access to
 /// `StatsCoordinator`/`HistoryStore`/etc., per `MacStatXPCServiceProtocol`'s
 /// doc comment.
-public final class MacStatXPCClient: @unchecked Sendable {
+public final class MacStatXPCClient: MCPServiceCalling, @unchecked Sendable {
     private let connection: NSXPCConnection
 
     public init() {

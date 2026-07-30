@@ -549,9 +549,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // doesn't tear down and rebind a live server.
         let remoteAccessEnabled = settings.mcpRemoteAccessEnabled
         let remotePort = settings.mcpRemotePort
-        Task { [mcpRemoteServer] in
+        Task { [mcpRemoteServer, mcpXPCService] in
             if remoteAccessEnabled {
-                await mcpRemoteServer.start(port: remotePort)
+                await mcpRemoteServer.start(port: remotePort, serviceCaller: LocalXPCServiceCaller(service: mcpXPCService))
             } else {
                 await mcpRemoteServer.stop()
             }
