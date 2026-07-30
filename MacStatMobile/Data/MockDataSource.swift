@@ -190,6 +190,28 @@ public actor MockDataSource: StatsTransport {
     /// picked to look like "a MacBook Pro doing ordinary background work,"
     /// not stress-test extremes — this is demo data for laying out a UI, not
     /// a battery-drain simulator.
+    /// A hardcoded `.inactive` here would mean `SleepStatusCard`'s `.active`
+    /// branch — including its live `Text(_:style:.timer)` countdown — is
+    /// never actually rendered by the running mock app, only exercised in
+    /// unit-test fixtures. That's not a fabrication risk (the card already
+    /// handles `.active` correctly whenever it's fed one, per its own doc
+    /// comment), but it does mean nobody looking at the running Simulator
+    /// build would ever see that branch work — a real gap in what this
+    /// mock demonstrates, caught in review. Cycling through all three states
+    /// based on wall-clock time (not `Bool.random()` per tick, which would
+    /// flicker between states every 15s and look broken) means a short demo
+    /// session actually shows the countdown at least once.
+    private static func syntheticSleepAssertion() -> SleepAssertionState {
+        let cycleSeconds = Int(Date().timeIntervalSinceReferenceDate) % 90
+        switch cycleSeconds {
+        case 0..<45:
+            return .inactive
+        default:
+            let expiresAt = Date().addingTimeInterval(TimeInterval(90 - cycleSeconds))
+            return .active(mode: .systemOnly, expiresAt: expiresAt, reason: "Demo: keep awake for build")
+        }
+    }
+
     private static func syntheticSnapshot(deviceID: String) -> SystemSnapshot {
         let cpuTotal = Double.random(in: 8...34)
         let memTotal: UInt64 = 36_000_000_000
@@ -263,7 +285,7 @@ public actor MockDataSource: StatsTransport {
                 pressureLevel: .nominal,
                 isThrottling: false
             ),
-            sleepAssertion: .inactive
+            sleepAssertion: syntheticSleepAssertion()
         )
     }
 }
