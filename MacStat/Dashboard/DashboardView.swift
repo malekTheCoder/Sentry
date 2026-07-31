@@ -176,11 +176,14 @@ struct DashboardView: View {
         Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     }
 
+    /// No "Dashboard" h1 — the nav bar's switcher already names the view,
+    /// and saying it twice within 60pt was pure noise. The header's job is
+    /// the two things the switcher can't say: whose Mac, and how fresh.
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: palette.spacing) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Dashboard")
-                    .font(palette.font(size: 19, weight: .semibold))
+                Text(machineName)
+                    .font(palette.font(size: 15, weight: .semibold))
                     .foregroundStyle(palette.textPrimary)
                 // Slow clock (10s) purely to age the caption — same
                 // pattern and reasoning as the dropdown's status block.
@@ -196,18 +199,13 @@ struct DashboardView: View {
         .padding(.bottom, palette.spacing * 0.5)
     }
 
-    /// "Aniketh's MacBook Pro · updated 4s ago" — the machine, then proof
-    /// the numbers are alive. No age clause until the first snapshot lands.
+    /// "updated 4s ago" — proof the numbers are alive. Quiet until the
+    /// first snapshot lands.
     private func headerCaption(now: Date) -> String {
-        guard let timestamp = viewModel.snapshot?.timestamp else { return machineName }
+        guard let timestamp = viewModel.snapshot?.timestamp else { return "starting up…" }
         let age = max(0, now.timeIntervalSince(timestamp))
-        let ageText: String
-        if age < 60 {
-            ageText = "updated \(Int(age))s ago"
-        } else {
-            ageText = "updated \(Int(age / 60))m ago"
-        }
-        return "\(machineName) · \(ageText)"
+        if age < 60 { return "updated \(Int(age))s ago" }
+        return "updated \(Int(age / 60))m ago"
     }
 
     /// The organizing device this window was missing: a small uppercase

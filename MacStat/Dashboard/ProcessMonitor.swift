@@ -40,7 +40,17 @@ public final class ProcessMonitor: ObservableObject {
 
     public func start() {
         guard timer == nil else { return }
+        // First pass primes the per-PID CPU-time baselines and necessarily
+        // reports 0% for everything; without a fast follow-up the card
+        // opens on a column of zeros for a full interval. One extra pass a
+        // second later turns the baselines into real percentages.
         refresh()
+        Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.timer != nil else { return }
+                self.refresh()
+            }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }

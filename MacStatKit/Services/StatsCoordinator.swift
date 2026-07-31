@@ -434,9 +434,16 @@ public final class StatsCoordinator: @unchecked Sendable {
     private func startPollingIfNeeded() {
         guard !isPolling else { return }
         isPolling = true
-        scheduleTimer(for: .fast)
-        scheduleTimer(for: .medium)
-        scheduleTimer(for: .slow)
+        // Sample every tier once RIGHT NOW, then fall into cadence. The
+        // timers' first deadlines are `now + interval`, which meant battery
+        // (slow tier, 30s) didn't exist for the first half-minute of every
+        // launch — the dropdown, Dashboard, and widget all opened looking
+        // broken. Already on `queue` (the only caller hops here first), so
+        // the synchronous ticks are safe and cost a few milliseconds once.
+        for tier in [Tier.fast, .medium, .slow] {
+            tick(tier: tier)
+            scheduleTimer(for: tier)
+        }
     }
 
     /// Self-rescheduling rather than a fixed `repeating:` interval, so a
