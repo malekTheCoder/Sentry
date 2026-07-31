@@ -75,7 +75,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: root)
 
         let settingsWindow = NSWindow(contentViewController: hosting)
-        settingsWindow.title = "MacStat Settings"
+        settingsWindow.title = String(localized: "MacStat Settings")
         settingsWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         settingsWindow.setContentSize(NSSize(width: 720, height: 520))
         settingsWindow.contentMinSize = NSSize(width: 640, height: 440)

@@ -58,6 +58,18 @@ targets:
   MacStatKit_macOS:
     type: framework
     platform: macOS
+    # MacStatKit/Resources/Localizable.xcstrings (String Catalog, source
+    # language en) lives under this same `sources: path` and is auto-detected
+    # by XcodeGen as a resource (not compiled Swift) purely from its
+    # extension — no separate `resources:` entry needed. Holds the shared
+    # vocabulary used by both apps: MetricID.shortLabel/MetricModule
+    # .displayName, HistoryRange.label/accessibilityLabel, MenuBarLayout's
+    # DisplayMode/SeparatorStyle.displayName, MCPTool.displayName/
+    # toolDescription/riskLabel. See MacStat/Resources/Localizable.xcstrings
+    # and MacStatMobile/Resources/Localizable.xcstrings for the per-app
+    # catalogs (Dropdown/Settings/Dashboard-window strings; iOS Alerts-tab
+    # strings) — kept separate per target rather than one shared catalog so
+    # each app only ships the strings it actually uses.
     sources:
       - path: MacStatKit
     dependencies:
@@ -98,6 +110,17 @@ targets:
   MacStat:
     type: application
     platform: macOS
+    # MacStat/Resources/Localizable.xcstrings — same auto-detected-by-
+    # extension mechanism as MacStatKit_macOS above. Covers this target's own
+    # display strings (Settings sidebar pane titles, Dashboard's
+    # TimeRangePicker, AlertsPane's condition/duration/unit formatting, the
+    # MCP tool-confirmation NSAlert, window titles). SwiftUI `Text("literal")`
+    # / `Label("literal", systemImage:)` / `Button("literal")` call sites
+    # elsewhere in this target (Dropdown, most of Settings, Dashboard) are
+    # left as plain literals deliberately — those already resolve through
+    # `LocalizedStringKey` and Xcode's build-time string extraction picks
+    # them up into this same catalog automatically, with no source change
+    # needed.
     sources:
       - path: MacStat
     dependencies:
@@ -157,6 +180,12 @@ targets:
   MacStatMobile:
     type: application
     platform: iOS
+    # MacStatMobile/Resources/Localizable.xcstrings — same auto-detected
+    # mechanism as MacStat/MacStatKit_macOS above. Covers AlertRuleDisplay's
+    # AlertCategory names and condition-summary phrasing; the 4 tab labels
+    # (`RootTabView`'s `Label("Dashboard"/"History"/"Alerts"/"Settings",
+    # systemImage:)`) are plain `LocalizedStringKey` literals already and
+    # need no source change — see the MacStat target's comment above for why.
     sources:
       - path: MacStatMobile
     dependencies:

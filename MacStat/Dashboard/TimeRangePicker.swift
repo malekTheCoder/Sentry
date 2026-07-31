@@ -36,21 +36,21 @@ enum TimeRangePicker: String, CaseIterable, Identifiable, Sendable {
     /// redesign mock — this sits in a fixed-width pill control, not prose.
     var label: String {
         switch self {
-        case .day: return "24h"
-        case .week: return "7d"
-        case .month: return "30d"
-        case .quarter: return "90d"
-        case .halfYear: return "6mo"
+        case .day: return String(localized: "24h")
+        case .week: return String(localized: "7d")
+        case .month: return String(localized: "30d")
+        case .quarter: return String(localized: "90d")
+        case .halfYear: return String(localized: "6mo")
         }
     }
 
     var accessibilityLabel: String {
         switch self {
-        case .day: return "Last 24 hours"
-        case .week: return "Last 7 days"
-        case .month: return "Last 30 days"
-        case .quarter: return "Last 90 days"
-        case .halfYear: return "Last 6 months"
+        case .day: return String(localized: "Last 24 hours")
+        case .week: return String(localized: "Last 7 days")
+        case .month: return String(localized: "Last 30 days")
+        case .quarter: return String(localized: "Last 90 days")
+        case .halfYear: return String(localized: "Last 6 months")
         }
     }
 

@@ -159,62 +159,64 @@ public enum MetricID: String, Codable, Sendable, CaseIterable, Hashable {
         }
     }
 
-    /// Short human label for UI. Not localized yet (plan defers localization
-    /// to Phase 8).
+    /// Short human label for UI. Wrapped in `String(localized:)` so it's
+    /// extracted into `MacStatKit/Resources/Localizable.xcstrings` — English
+    /// copy is unchanged; translations can be added to the catalog later
+    /// without touching this switch.
     public var shortLabel: String {
         switch self {
-        case .batteryChargePercent: return "Battery"
-        case .batteryChargingWatts: return "Charging"
-        case .batterySystemPowerWatts: return "Power"
-        case .batteryHealthPercent: return "Health"
-        case .batteryCycleCount: return "Cycles"
-        case .batteryTemperatureC: return "Batt Temp"
-        case .batteryAdapterWatts: return "Adapter"
-        case .batteryVoltageMV: return "Voltage"
-        case .batteryAmperageMA: return "Amperage"
-        case .batteryTimeToFullMin: return "Time to Full"
-        case .batteryTimeToEmptyMin: return "Time to Empty"
-        case .batteryFullChargeCapacityMAh: return "Full Capacity"
-        case .cpuTotalPercent: return "CPU"
-        case .cpuUserPercent: return "CPU User"
-        case .cpuSystemPercent: return "CPU System"
-        case .cpuEcorePercent: return "E-Cores"
-        case .cpuPcorePercent: return "P-Cores"
-        case .cpuFrequencyMHz: return "CPU Freq"
-        case .cpuPowerWatts: return "CPU Power"
-        case .cpuLoadAvg1m: return "Load Avg"
-        case .gpuUtilizationPercent: return "GPU"
-        case .gpuRendererPercent: return "GPU Renderer"
-        case .gpuTilerPercent: return "GPU Tiler"
-        case .gpuFrequencyMHz: return "GPU Freq"
-        case .gpuPowerWatts: return "GPU Power"
-        case .gpuVramUsedBytes: return "VRAM"
-        case .anePowerWatts: return "ANE Power"
-        case .aneActive: return "ANE Active"
-        case .memoryUsedBytes: return "Memory"
-        case .memoryWiredBytes: return "Wired Mem"
-        case .memoryCompressedBytes: return "Compressed"
-        case .memoryCachedBytes: return "Cached"
-        case .memoryPressurePercent: return "Mem Pressure"
-        case .memorySwapUsedBytes: return "Swap"
-        case .diskReadBytesPerSec: return "Disk R"
-        case .diskWriteBytesPerSec: return "Disk W"
-        case .diskReadIOPS: return "Disk R IOPS"
-        case .diskWriteIOPS: return "Disk W IOPS"
-        case .diskFreeBytes: return "Disk Free"
-        case .diskUsedPercent: return "Disk Used"
-        case .networkRxBytesPerSec: return "Net ↓"
-        case .networkTxBytesPerSec: return "Net ↑"
-        case .networkRxTotalBytes: return "Net ↓ Total"
-        case .networkTxTotalBytes: return "Net ↑ Total"
-        case .networkWifiRSSIdBm: return "Wi-Fi Signal"
-        case .networkWifiTxRateMbps: return "Wi-Fi Rate"
-        case .thermalSocTempC: return "Temp"
-        case .thermalPressureLevel: return "Thermal Level"
-        case .thermalIsThrottling: return "Throttling"
-        case .systemUptimeSeconds: return "Uptime"
-        case .systemProcessCount: return "Processes"
-        case .systemAwakeAssertionActive: return "Awake Lock"
+        case .batteryChargePercent: return String(localized: "Battery")
+        case .batteryChargingWatts: return String(localized: "Charging")
+        case .batterySystemPowerWatts: return String(localized: "Power")
+        case .batteryHealthPercent: return String(localized: "Health")
+        case .batteryCycleCount: return String(localized: "Cycles")
+        case .batteryTemperatureC: return String(localized: "Batt Temp")
+        case .batteryAdapterWatts: return String(localized: "Adapter")
+        case .batteryVoltageMV: return String(localized: "Voltage")
+        case .batteryAmperageMA: return String(localized: "Amperage")
+        case .batteryTimeToFullMin: return String(localized: "Time to Full")
+        case .batteryTimeToEmptyMin: return String(localized: "Time to Empty")
+        case .batteryFullChargeCapacityMAh: return String(localized: "Full Capacity")
+        case .cpuTotalPercent: return String(localized: "CPU")
+        case .cpuUserPercent: return String(localized: "CPU User")
+        case .cpuSystemPercent: return String(localized: "CPU System")
+        case .cpuEcorePercent: return String(localized: "E-Cores")
+        case .cpuPcorePercent: return String(localized: "P-Cores")
+        case .cpuFrequencyMHz: return String(localized: "CPU Freq")
+        case .cpuPowerWatts: return String(localized: "CPU Power")
+        case .cpuLoadAvg1m: return String(localized: "Load Avg")
+        case .gpuUtilizationPercent: return String(localized: "GPU")
+        case .gpuRendererPercent: return String(localized: "GPU Renderer")
+        case .gpuTilerPercent: return String(localized: "GPU Tiler")
+        case .gpuFrequencyMHz: return String(localized: "GPU Freq")
+        case .gpuPowerWatts: return String(localized: "GPU Power")
+        case .gpuVramUsedBytes: return String(localized: "VRAM")
+        case .anePowerWatts: return String(localized: "ANE Power")
+        case .aneActive: return String(localized: "ANE Active")
+        case .memoryUsedBytes: return String(localized: "Memory")
+        case .memoryWiredBytes: return String(localized: "Wired Mem")
+        case .memoryCompressedBytes: return String(localized: "Compressed")
+        case .memoryCachedBytes: return String(localized: "Cached")
+        case .memoryPressurePercent: return String(localized: "Mem Pressure")
+        case .memorySwapUsedBytes: return String(localized: "Swap")
+        case .diskReadBytesPerSec: return String(localized: "Disk R")
+        case .diskWriteBytesPerSec: return String(localized: "Disk W")
+        case .diskReadIOPS: return String(localized: "Disk R IOPS")
+        case .diskWriteIOPS: return String(localized: "Disk W IOPS")
+        case .diskFreeBytes: return String(localized: "Disk Free")
+        case .diskUsedPercent: return String(localized: "Disk Used")
+        case .networkRxBytesPerSec: return String(localized: "Net ↓")
+        case .networkTxBytesPerSec: return String(localized: "Net ↑")
+        case .networkRxTotalBytes: return String(localized: "Net ↓ Total")
+        case .networkTxTotalBytes: return String(localized: "Net ↑ Total")
+        case .networkWifiRSSIdBm: return String(localized: "Wi-Fi Signal")
+        case .networkWifiTxRateMbps: return String(localized: "Wi-Fi Rate")
+        case .thermalSocTempC: return String(localized: "Temp")
+        case .thermalPressureLevel: return String(localized: "Thermal Level")
+        case .thermalIsThrottling: return String(localized: "Throttling")
+        case .systemUptimeSeconds: return String(localized: "Uptime")
+        case .systemProcessCount: return String(localized: "Processes")
+        case .systemAwakeAssertionActive: return String(localized: "Awake Lock")
         }
     }
 }
@@ -224,15 +226,15 @@ public enum MetricModule: String, Codable, Sendable, CaseIterable, Hashable {
 
     public var displayName: String {
         switch self {
-        case .battery: return "Battery"
-        case .cpu: return "CPU"
-        case .gpu: return "GPU"
-        case .ane: return "Neural Engine"
-        case .memory: return "Memory"
-        case .disk: return "Disk"
-        case .network: return "Network"
-        case .thermal: return "Thermals"
-        case .system: return "System"
+        case .battery: return String(localized: "Battery")
+        case .cpu: return String(localized: "CPU")
+        case .gpu: return String(localized: "GPU")
+        case .ane: return String(localized: "Neural Engine")
+        case .memory: return String(localized: "Memory")
+        case .disk: return String(localized: "Disk")
+        case .network: return String(localized: "Network")
+        case .thermal: return String(localized: "Thermals")
+        case .system: return String(localized: "System")
         }
     }
 
