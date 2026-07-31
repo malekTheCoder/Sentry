@@ -71,6 +71,13 @@ struct AgentActivityCard: View {
                 )
             }
             .padding(.top, 2)
+        } else if !agentProcesses.isEmpty {
+            // Live processes are already listed above — a paragraph-length
+            // empty state under a populated list read as the card
+            // contradicting itself. One quiet line carries the range fact.
+            Text("No MCP actions in this range.")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
         } else {
             Text("No AI agent activity in this range. Enable write tools in Settings → AI Access to let Claude Code, Cursor, or another MCP client act on this Mac.")
                 .font(palette.font(size: 11))

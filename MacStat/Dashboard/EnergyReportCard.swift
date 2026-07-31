@@ -25,6 +25,10 @@ struct EnergyReportCard: View {
     @State private var todayKWh: Double = 0
     @State private var weekKWh: Double = 0
     @State private var monthKWh: Double = 0
+    /// Days between the earliest hourly power sample and now — drives which
+    /// rows are honest to show (a day-old install rendering identical
+    /// "7 days" and "30 days" figures read as a bug, and effectively was one).
+    @State private var dataSpanDays: Double = 0
     @State private var hasAnyData = false
 
     var body: some View {
@@ -40,8 +44,17 @@ struct EnergyReportCard: View {
             if hasAnyData {
                 VStack(alignment: .leading, spacing: palette.spacingTight) {
                     row("Today", todayKWh)
-                    row("Last 7 days", weekKWh)
-                    row("Last 30 days", monthKWh)
+                    if dataSpanDays >= 7 {
+                        row("Last 7 days", weekKWh)
+                    }
+                    if dataSpanDays >= 30 {
+                        row("Last 30 days", monthKWh)
+                    } else if dataSpanDays >= 1 {
+                        // Younger than the windows above: one honest
+                        // since-install total instead of three identical
+                        // numbers pretending to be different windows.
+                        row("Since install", monthKWh)
+                    }
                 }
             } else {
                 Text("No power samples yet — leave Sentry running and this fills in.")
@@ -101,19 +114,28 @@ struct EnergyReportCard: View {
             samples: raw.map { (timestamp: $0.timestamp, watts: $0.value) }
         )
 
-        func rolledUp(daysBack: Double) -> Double {
-            let hourly = historyStore.samplesWithRange(
-                metric: MetricID.batterySystemPowerWatts.rawValue,
-                since: now.addingTimeInterval(-daysBack * 24 * 3600),
-                tier: .hourly
-            )
-            return EnergyIntegrator.kilowattHours(
-                samples: hourly.map { (timestamp: $0.timestamp, watts: $0.avg) },
-                maximumGap: 1.5 * 3600
-            )
+        // One 30-day hourly fetch serves the 7-day figure (filtered), the
+        // 30-day figure, and the data-span calculation.
+        let hourly = historyStore.samplesWithRange(
+            metric: MetricID.batterySystemPowerWatts.rawValue,
+            since: now.addingTimeInterval(-30 * 24 * 3600),
+            tier: .hourly
+        )
+        let hourlyPoints = hourly.map { (timestamp: $0.timestamp, watts: $0.avg) }
+        let weekCutoff = now.addingTimeInterval(-7 * 24 * 3600)
+        weekKWh = EnergyIntegrator.kilowattHours(
+            samples: hourlyPoints.filter { $0.timestamp >= weekCutoff },
+            maximumGap: 1.5 * 3600
+        )
+        monthKWh = EnergyIntegrator.kilowattHours(
+            samples: hourlyPoints,
+            maximumGap: 1.5 * 3600
+        )
+        if let earliest = hourly.first?.timestamp {
+            dataSpanDays = now.timeIntervalSince(earliest) / 86400
+        } else {
+            dataSpanDays = 0
         }
-        weekKWh = rolledUp(daysBack: 7)
-        monthKWh = rolledUp(daysBack: 30)
-        hasAnyData = !raw.isEmpty || weekKWh > 0 || monthKWh > 0
+        hasAnyData = !raw.isEmpty || monthKWh > 0
     }
 }

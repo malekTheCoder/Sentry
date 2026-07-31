@@ -91,29 +91,32 @@ struct DashboardView: View {
     /// this window is this, or the header's own spacing.
     private var rowGap: CGFloat { palette.spacing * 1.5 }
 
+    /// Battery rides the 30s slow tier — give it 45s of session age before
+    /// letting the hero claim the Mac has no battery at all.
+    private var isBatteryWarmingUp: Bool {
+        guard viewModel.latestBattery == nil else { return false }
+        guard let first = viewModel.firstSnapshotAt else { return true }
+        return Date().timeIntervalSince(first) < 45
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 header
 
                 sectionHeader("Power")
-                // Two *columns*, not two rows: the battery hero is much
-                // taller than the keep-awake card, and pairing them per-row
-                // left a window-sized hole under the shorter card. Stacking
-                // each column internalizes the height difference — gaps land
-                // between siblings, never as dead space beside them.
+                // The hero's height roughly equals keep-awake + energy
+                // stacked, so this row closes flush; the health trend then
+                // runs full-width below it, where a time-series chart reads
+                // best. This is the composition that finally killed the
+                // "window-sized hole beside a short card" problem in both
+                // of its earlier forms.
                 HStack(alignment: .top, spacing: rowGap) {
-                    VStack(spacing: rowGap) {
-                        BatteryHeroCard(
-                            battery: viewModel.snapshot?.battery,
-                            powerSeries: nil
-                        )
-                        BatteryHealthTrendCard(
-                            historyStore: historyStore,
-                            currentCycleCount: viewModel.snapshot?.battery?.cycleCount,
-                            currentHealthPercent: viewModel.snapshot?.battery?.healthPercent
-                        )
-                    }
+                    BatteryHeroCard(
+                        battery: viewModel.latestBattery,
+                        powerSeries: nil,
+                        isWarmingUp: isBatteryWarmingUp
+                    )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
                     VStack(spacing: rowGap) {
                         // The dropdown's box-free card, given this window's
@@ -125,6 +128,11 @@ struct DashboardView: View {
                     }
                     .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
+                BatteryHealthTrendCard(
+                    historyStore: historyStore,
+                    currentCycleCount: viewModel.latestBattery?.cycleCount,
+                    currentHealthPercent: viewModel.latestBattery?.healthPercent
+                )
 
                 sectionHeader("Activity")
                 HStack(alignment: .top, spacing: rowGap) {

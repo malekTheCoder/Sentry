@@ -12,6 +12,11 @@ struct BatteryHeroCard: View {
     let battery: BatteryStats?
     let powerSeries: MetricSeries?
 
+    /// True while the app hasn't had a fair chance to hear from the slow
+    /// battery tier yet — the caller computes it from session age. Renders a
+    /// calm "Reading battery…" instead of a false "unavailable".
+    var isWarmingUp: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             if let battery {
@@ -24,10 +29,12 @@ struct BatteryHeroCard: View {
                     SparklineChart(series: powerSeries, tint: arcColor(for: battery), height: 32)
                 }
             } else {
-                Text("Battery Unavailable")
+                Text(isWarmingUp ? "Reading battery…" : "Battery Unavailable")
                     .font(palette.font(size: 12, weight: .semibold))
                     .foregroundStyle(palette.textSecondary)
-                Text("This Mac reported no battery data.")
+                Text(isWarmingUp
+                    ? "The first battery sample lands within about half a minute."
+                    : "This Mac reported no battery data.")
                     .font(palette.font(size: 10))
                     .foregroundStyle(palette.textTertiary)
             }

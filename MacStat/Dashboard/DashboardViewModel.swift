@@ -80,6 +80,18 @@ final class DashboardViewModel: ObservableObject {
     /// first `ingest(_:)` call.
     @Published private(set) var snapshot: SystemSnapshot?
 
+    /// The last non-nil battery reading this session. Battery lives on the
+    /// slow (30s) tier, so the first fast-tier snapshots after launch carry
+    /// no battery at all — rendering "unavailable" during that window is a
+    /// lie the hero card used to tell. `nil` only if no battery has ever
+    /// been reported this run.
+    @Published private(set) var latestBattery: BatteryStats?
+
+    /// When the first snapshot of this session arrived — lets the hero card
+    /// distinguish "still warming up" from "this Mac genuinely has no
+    /// battery" without hardcoding tier timing knowledge into a view.
+    private(set) var firstSnapshotAt: Date?
+
     /// Queried history per chart metric, already downsampled to
     /// `maxPointsPerSeries`. Only metrics whose module is in
     /// `enabledModules` are populated — a disabled module's key is simply
@@ -172,6 +184,8 @@ final class DashboardViewModel: ObservableObject {
     /// as `DropdownViewModel.ingest`/`DebugDumpViewModel.ingest`. Cheap —
     /// only a struct reference is retained, no history query happens here.
     func ingest(_ snapshot: SystemSnapshot) {
+        if firstSnapshotAt == nil { firstSnapshotAt = Date() }
+        if let battery = snapshot.battery { latestBattery = battery }
         self.snapshot = snapshot
     }
 

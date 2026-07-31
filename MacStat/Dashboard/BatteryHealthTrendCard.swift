@@ -53,12 +53,22 @@ struct BatteryHealthTrendCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             header
-            DashboardChart(
-                samples: samples,
-                tint: tint,
-                metricTitle: "Battery Health",
-                height: 160
-            )
+            if samples.isEmpty {
+                // One quiet line, not a 160pt empty chart: on a fresh
+                // install the first daily rollup is at most a day away, and
+                // a card-sized void reads as breakage, not honesty.
+                Text("Trend appears after a day or two of readings — daily health snapshots accumulate while Sentry runs.")
+                    .font(palette.font(size: 12))
+                    .foregroundStyle(palette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                DashboardChart(
+                    samples: samples,
+                    tint: tint,
+                    metricTitle: "Battery Health",
+                    height: 160
+                )
+            }
         }
         .dashboardCard(palette)
         // `.task` rather than `.onAppear`: this card is a scroll-away
