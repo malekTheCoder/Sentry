@@ -76,7 +76,7 @@ struct MacStatWidget: Widget {
         #if os(macOS)
         "Battery, CPU, and sleep status for this Mac, live from the Sentry menu bar app."
         #else
-        "Battery, CPU, and sleep status for your Mac. This build shows demo data — there's no live iCloud sync yet, so nothing here comes from a real Mac."
+        "Battery, CPU, and sleep status for your Mac — live over your local Wi-Fi when Sentry is running on the Mac, demo data otherwise (and labeled as such)."
         #endif
     }
 

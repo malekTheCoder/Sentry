@@ -35,13 +35,19 @@ public enum MachHostBridge {
         }
 
         let count = min(Int(cpuCount), maxCores)
+        // The kernel's tick counters are unsigned 32-bit, but the Mach API
+        // hands them back through `integer_t` (Int32) — past 2^31 ticks
+        // (~248 days of accumulation per state at 100Hz) the raw value goes
+        // negative, and a plain `UInt32(_:)` init would trap. Reinterpret
+        // the bit pattern instead; the wrapping delta math downstream is
+        // already modulo-2^32 correct.
         return (0..<count).map { i in
             let o = i * Int(CPU_STATE_MAX)
             return CPUTicks(
-                user: UInt32(info[o + Int(CPU_STATE_USER)]),
-                system: UInt32(info[o + Int(CPU_STATE_SYSTEM)]),
-                idle: UInt32(info[o + Int(CPU_STATE_IDLE)]),
-                nice: UInt32(info[o + Int(CPU_STATE_NICE)])
+                user: UInt32(bitPattern: info[o + Int(CPU_STATE_USER)]),
+                system: UInt32(bitPattern: info[o + Int(CPU_STATE_SYSTEM)]),
+                idle: UInt32(bitPattern: info[o + Int(CPU_STATE_IDLE)]),
+                nice: UInt32(bitPattern: info[o + Int(CPU_STATE_NICE)])
             )
         }
     }

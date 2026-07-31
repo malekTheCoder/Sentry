@@ -39,7 +39,10 @@ public final class BatteryCollector: Collector {
         }
 
         if let telemetry = smart["PowerTelemetryData"] as? [String: Any] {
-            stats.systemPowerInWatts = Double(telemetry["SystemPowerIn"] as? Int ?? 0) / 1000.0
+            // Only report when the key is actually present — `?? 0` here
+            // would fabricate a "0.0 W" reading when the field is missing
+            // (P5: absent data must surface as nil, never a made-up number).
+            stats.systemPowerInWatts = (telemetry["SystemPowerIn"] as? Int).map { Double($0) / 1000.0 }
         }
 
         if let adapter = smart["AdapterDetails"] as? [String: Any] {
@@ -57,7 +60,13 @@ public final class BatteryCollector: Collector {
         // System Settings / system_profiler report 99% — Apple's internal health
         // metric isn't fully exposed via IORegistry. Documented as an open item
         // (plan §19); this is the best publicly-derivable approximation.
+        // On newer macOS (observed on Darwin 27 / macOS 26) the top-level
+        // NominalChargeCapacity / AppleRawMaxCapacity keys are gone and the
+        // value only exists nested as BatteryData["NominalChargeCapacity"] —
+        // without that entry in the chain, health silently reads as
+        // unavailable on current systems even though the data is present.
         let fcc = battData?["FccComp1"] as? Int
+            ?? battData?["NominalChargeCapacity"] as? Int
             ?? smart["NominalChargeCapacity"] as? Int
             ?? smart["AppleRawMaxCapacity"] as? Int
         stats.designCapacityMAh = design

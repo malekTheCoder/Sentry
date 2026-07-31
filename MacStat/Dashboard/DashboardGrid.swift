@@ -58,8 +58,8 @@ struct DashboardGrid: View {
     /// Adaptive with a 320pt floor: at the window's ~900pt default content
     /// width that yields a comfortable 2-column layout (2×320 + spacing),
     /// growing to 3 columns once the window is widened past roughly
-    /// 1000-1100pt, and collapsing gracefully to 1 column at the 760pt
-    /// `contentMinSize` `HistoryWindowController` enforces. A fixed column
+    /// 1000-1100pt, and collapsing gracefully toward fewer columns at the
+    /// 860pt `contentMinSize` `MainWindowController` enforces. A fixed column
     /// count would either waste width at the default size or crush cards
     /// too narrow to read a chart's y-axis labels once resized down.
     private var columns: [GridItem] {

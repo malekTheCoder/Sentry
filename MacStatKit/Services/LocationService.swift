@@ -94,6 +94,15 @@ public final class LocationService: NSObject, ObservableObject {
     /// whether the user last asked it to.
     @Published public private(set) var isActive = false
 
+    /// The user's standing intent — set by `start()`, cleared by `stop()`.
+    /// Exists because `locationManagerDidChangeAuthorization` fires on every
+    /// launch shortly after the delegate is assigned; without this flag that
+    /// callback restarted capture for any authorized user even after they
+    /// turned the feature OFF (capture — and LAN broadcast of the fix —
+    /// with the toggle visibly off; the exact opt-out violation the feature's
+    /// honesty rules forbid).
+    private var isEnabled = false
+
     private let manager: CLLocationManager
     private var captureTimer: Timer?
 
@@ -125,6 +134,7 @@ public final class LocationService: NSObject, ObservableObject {
     /// itself refuses to spin up a timer that could never produce a fix
     /// rather than silently doing nothing forever once permission is denied.
     public func start() {
+        isEnabled = true
         guard permissionState == .authorized else { return }
         guard !isActive else { return }
         isActive = true
@@ -137,16 +147,23 @@ public final class LocationService: NSObject, ObservableObject {
         manager.startMonitoringSignificantLocationChanges()
     }
 
-    /// Stops the timer and significant-change monitoring. Idempotent. Does
-    /// **not** clear `lastLocation` — the last known fix stays known (and
-    /// its `Freshness`/age keeps growing) until a new one arrives or the
-    /// process restarts, same "last known, not blanked out" convention every
-    /// other honest-staleness surface in this codebase follows.
+    /// Stops the timer and significant-change monitoring, and clears
+    /// `lastLocation`. Idempotent.
+    ///
+    /// Clearing is deliberate and overrides the "last known stays known"
+    /// staleness convention other surfaces follow: `AppDelegate` mirrors
+    /// `lastLocation` into `StatsCoordinator.location`, which rides every
+    /// `SystemSnapshot` out over the LAN — so a retained fix after the user
+    /// turns the feature OFF keeps broadcasting their location until
+    /// relaunch. Opt-out means the data stops leaving the machine, not just
+    /// that no new data is captured.
     public func stop() {
+        isEnabled = false
         isActive = false
         captureTimer?.invalidate()
         captureTimer = nil
         manager.stopMonitoringSignificantLocationChanges()
+        lastLocation = nil
     }
 
     deinit {
@@ -185,9 +202,18 @@ extension LocationService: CLLocationManagerDelegate {
             guard let self else { return }
             self.permissionState = Self.permissionState(for: status)
             if self.permissionState == .authorized {
-                self.start()
-            } else {
+                // Only resume capture if the user's toggle is actually on —
+                // this callback fires on every launch for any authorized
+                // user, and must never override an explicit opt-out. See
+                // `isEnabled`'s doc comment.
+                if self.isEnabled { self.start() }
+            } else if self.isActive {
+                // Permission revoked mid-run: halt capture but preserve the
+                // user's intent, so re-granting in System Settings resumes
+                // without them having to re-toggle.
+                let wantedEnabled = self.isEnabled
                 self.stop()
+                self.isEnabled = wantedEnabled
             }
         }
     }

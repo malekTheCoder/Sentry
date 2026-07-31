@@ -45,7 +45,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                 Text("No data yet")
                     .font(.callout)
-                Text("Open MacStat on your iPhone while on the same Wi-Fi as your Mac.")
+                Text("Open Sentry on your iPhone while on the same Wi-Fi as your Mac.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

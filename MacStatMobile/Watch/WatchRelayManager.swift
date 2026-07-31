@@ -65,8 +65,23 @@ final class WatchRelayManager: NSObject {
     /// tick would.
     static let significantChangeCooldown: TimeInterval = 30
 
+    /// Floor between `transferCurrentComplicationUserInfo` calls
+    /// specifically — much longer than `minimumRelayInterval`, because the
+    /// two channels have wildly different budgets. `updateApplicationContext`
+    /// is effectively unbudgeted (last-value-wins) and safe to send on every
+    /// relay, but watchOS grants roughly **50 complication transfers per
+    /// day**; relaying one per 5-minute heartbeat (288/day) would blow that
+    /// budget before breakfast and get every later transfer silently
+    /// demoted to a plain `transferUserInfo`. 30 minutes caps this channel
+    /// at 48/day worst-case, just under the documented budget, and
+    /// `relay(_:at:)` additionally checks
+    /// `remainingComplicationUserInfoTransfers` so a budget already spent
+    /// (e.g. by an earlier burst) is respected rather than assumed.
+    static let complicationTransferInterval: TimeInterval = 30 * 60
+
     private var lastRelayed: WatchRelaySnapshot?
     private var lastRelayedAt: Date?
+    private var lastComplicationTransferAt: Date?
     private var transportSubscription: AnyCancellable?
     private var snapshotTask: Task<Void, Never>?
     private var deviceNameCache: String?
@@ -94,6 +109,12 @@ final class WatchRelayManager: NSObject {
 
     private func observeSnapshots(transport: any StatsTransport) {
         snapshotTask?.cancel()
+        // The cached device name belongs to the previous transport's
+        // catalog — when discovery swaps the mock out for a live
+        // `LocalSyncClient` (or vice versa), the Watch must not keep
+        // rendering the old transport's device name over the new
+        // transport's data.
+        deviceNameCache = nil
         snapshotTask = Task { [weak self] in
             for await snapshot in transport.snapshots() {
                 guard !Task.isCancelled else { return }
@@ -185,7 +206,16 @@ final class WatchRelayManager: NSObject {
         // for when the Watch app is actually installed (calling it
         // otherwise is a documented no-op that still counts against
         // nothing, but there is no reason to call it at all in that case).
+        // Separately throttled from the context update above — see
+        // `complicationTransferInterval`'s doc comment: this channel has a
+        // hard ~50/day system budget the 5-minute heartbeat would exhaust.
         guard session.isWatchAppInstalled else { return }
+        if let lastComplicationTransferAt,
+           now.timeIntervalSince(lastComplicationTransferAt) < Self.complicationTransferInterval {
+            return
+        }
+        guard session.remainingComplicationUserInfoTransfers > 0 else { return }
+        lastComplicationTransferAt = now
         session.transferCurrentComplicationUserInfo(payload)
     }
 }

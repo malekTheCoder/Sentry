@@ -111,6 +111,21 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
         return decision
     }
 
+    /// Strips newlines and caps length on strings the *caller* chose —
+    /// `clientName` and the arguments summary are attacker-controlled for a
+    /// hostile local process, and rendered verbatim they could inject
+    /// misleading multi-line copy into the very dialog asking the user to
+    /// approve them.
+    private static func sanitizedForDialog(_ raw: String, maxLength: Int) -> String {
+        let flattened = raw
+            .components(separatedBy: .newlines)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return flattened.count > maxLength
+            ? String(flattened.prefix(maxLength)) + "…"
+            : flattened
+    }
+
     /// Plan §13.4: "'Require confirmation' checkbox per write tool → the app
     /// shows a native confirmation dialog before executing." `runModal`
     /// blocks the main thread until the user answers — acceptable here
@@ -119,6 +134,8 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
     /// loop; a user staring at a confirmation dialog is, by definition, not
     /// waiting on anything else from this process.
     private func presentConfirmationAlert(tool: MCPToolID, clientName: String, argumentsSummary: String) -> Bool {
+        let clientName = Self.sanitizedForDialog(clientName, maxLength: 60)
+        let argumentsSummary = Self.sanitizedForDialog(argumentsSummary, maxLength: 300)
         let alert = NSAlert()
         alert.messageText = String(localized: "\(clientName) wants to \(tool.displayName.lowercased())")
         alert.informativeText = String(localized: "\(tool.toolDescription)\n\nDetails: \(argumentsSummary)\n\nThis was requested over MCP by an AI agent connected to Sentry. Allow it?")
@@ -465,11 +482,20 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
                 reply(false, "Unknown mode '\(mode)'. Expected one of: \(AwakeMode.allCases.map(\.rawValue).joined(separator: ", ")).")
                 return
             }
+            // A non-finite duration slips past both `<= 0` and `> 0` checks
+            // downstream and would mint an indefinite hold no timer ever
+            // releases; an agent also shouldn't be able to request a week.
+            // 24h is the cap — an agent wanting longer can renew.
+            guard durationSeconds.isFinite else {
+                reply(false, "durationSeconds must be a finite number.")
+                return
+            }
+            let clampedDuration = min(durationSeconds, 24 * 3600)
             let clampedReason = reason.isEmpty ? "Requested via MCP by \(clientName)" : reason
             do {
                 try self.powerControl.startAssertion(
                     mode: awakeMode,
-                    duration: durationSeconds > 0 ? durationSeconds : nil,
+                    duration: clampedDuration > 0 ? clampedDuration : nil,
                     reason: clampedReason
                 )
                 reply(true, nil)

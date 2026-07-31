@@ -488,10 +488,10 @@ struct MenuBarPane: View {
         )
     }
 
-    /// Same shape as `colorRuleKindBinding`: `VisibilityRule` carries an
-    /// associated value on one case, so the `Picker` selects over a plain tag
-    /// and the rule is rebuilt on change. Unlike the color rule, the discarded
-    /// associated value is parked rather than dropped — see `parkedThresholds`.
+    /// `VisibilityRule` carries an associated value on one case, so the
+    /// `Picker` selects over a plain tag (`VisibilityRuleKind`) and the rule
+    /// is rebuilt on change. The discarded associated value is parked rather
+    /// than dropped — see `parkedThresholds`.
     private func visibilityRuleKindBinding(_ module: Binding<BarModule>) -> Binding<VisibilityRuleKind> {
         Binding(
             get: { VisibilityRuleKind(rule: module.wrappedValue.visibilityRule) },
@@ -555,30 +555,16 @@ struct MenuBarPane: View {
 
 // MARK: - ColorRule case tags
 
-/// A `Picker`-friendly stand-in for `ColorRule`'s cases.
+/// A stand-in for `ColorRule`'s cases. The monochrome-bar pass removed the
+/// color-rule `Picker` this used to back (`init(rule:)`/`displayName` went
+/// with it) — what remains is the default-rule factory
+/// `thresholdEnabledBinding` uses to build the `.thresholdGradient` case
+/// when "Warn at thresholds" turns on.
 private enum ColorRuleKind: String, CaseIterable, Hashable {
     case fixed
     case thresholdGradient
     case matchSystemAccent
     case themeMetricColor
-
-    init(rule: ColorRule) {
-        switch rule {
-        case .fixed: self = .fixed
-        case .thresholdGradient: self = .thresholdGradient
-        case .matchSystemAccent: self = .matchSystemAccent
-        case .themeMetricColor: self = .themeMetricColor
-        }
-    }
-
-    var displayName: String {
-        switch self {
-        case .fixed: return "Fixed color"
-        case .thresholdGradient: return "Threshold gradient"
-        case .matchSystemAccent: return "System accent"
-        case .themeMetricColor: return "Theme metric color"
-        }
-    }
 
     /// Defaults match the plan's own §8.2 preset examples.
     func defaultRule() -> ColorRule {

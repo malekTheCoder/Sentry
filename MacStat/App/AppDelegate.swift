@@ -637,6 +637,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 await mcpRemoteServer.start(port: remotePort, serviceCaller: LocalXPCServiceCaller(service: mcpXPCService))
             } else {
                 await mcpRemoteServer.stop()
+                // Documented contract on `MCPRemoteAccessKey.clear()` that
+                // previously had no production caller: turning Remote Access
+                // off invalidates the key, so a later re-enable mints a
+                // fresh one instead of resurrecting a possibly-shared one.
+                MCPRemoteAccessKey.clear()
             }
         }
 

@@ -52,7 +52,7 @@ struct LocationLogSection: View {
                 emptyState
             }
 
-            Text("Not Find My — MacStat has no connection to Apple's Find My network. This is a periodic location log: while MacStat is running on your Mac and location access is granted, it occasionally reports its approximate location to this phone over your local Wi-Fi network. It cannot be located while off, asleep, or offline.")
+            Text("Not Find My — Sentry has no connection to Apple's Find My network. This is a periodic location log: while Sentry is running on your Mac and location access is granted, it occasionally reports its approximate location to this phone over your local Wi-Fi network. It cannot be located while off, asleep, or offline.")
                 .font(palette.font(size: 10.5))
                 .foregroundStyle(palette.textTertiary)
         }

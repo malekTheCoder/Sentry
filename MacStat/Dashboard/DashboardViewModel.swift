@@ -126,7 +126,7 @@ final class DashboardViewModel: ObservableObject {
     /// Settings — the same value `applySettings` already keeps
     /// `lastAppliedTheme` in sync with for the dropdown. Living here rather
     /// than as a `let` captured once by `DashboardView` matters because
-    /// `HistoryWindowController` reuses one `NSHostingController` forever
+    /// `MainWindowController` reuses one `NSHostingController` forever
     /// (`isReleasedWhenClosed = false`): a theme captured at first-`show()`
     /// would freeze for the rest of the app's run, since `DashboardView`'s
     /// `init` only ever runs once. Publishing it through the view model
@@ -157,8 +157,8 @@ final class DashboardViewModel: ObservableObject {
         self.theme = theme
         // Deliberately not calling `refresh()` here: constructing this view
         // model (e.g. as an `AppDelegate` property, alongside every other
-        // lazy controller) must stay cheap even though the Dashboard window
-        // itself is lazy — see `HistoryWindowController`'s doc comment for
+        // lazy controller) must stay cheap even though the window itself is
+        // lazy — see `MainWindowController`'s doc comment for
         // why paying a GRDB read cost at app-launch time for a window the
         // user may never open would be wrong. The caller (the Dashboard
         // view, on first appearance) calls `refresh()` explicitly instead.

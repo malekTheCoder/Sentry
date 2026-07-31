@@ -10,8 +10,10 @@ struct MacStatWatchWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             ComplicationView(entry: entry)
         }
-        .configurationDisplayName("MacStat")
-        .description("Battery and thermal status for your Mac, relayed from the MacStat iPhone app when you're on the same Wi-Fi as your Mac.")
+        // Product name is Sentry (bundle IDs and module names stay MacStat)
+        // — matches `MacStatWidget`'s `configurationDisplayName("Sentry")`.
+        .configurationDisplayName("Sentry")
+        .description("Battery and thermal status for your Mac, relayed from the Sentry iPhone app when you're on the same Wi-Fi as your Mac.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
 }

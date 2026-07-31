@@ -29,7 +29,9 @@ struct LargeWidgetView: View {
                 }
                 sparkline(snapshot)
                 Spacer(minLength: 0)
-                WidgetDemoDataCaption()
+                if snapshot.sourceIsDemoData {
+                    WidgetDemoDataCaption()
+                }
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

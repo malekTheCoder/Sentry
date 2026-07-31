@@ -90,13 +90,13 @@ struct RectangularComplicationView: View {
                 Text(statLine(snapshot))
                     .font(.caption2)
                     .lineLimit(1)
-                Text(Freshness(lastSeen: snapshot.lastSeen).label(lastSeen: snapshot.lastSeen))
+                Text(footerLine(snapshot))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         } else {
             VStack(alignment: .leading, spacing: 1) {
-                Text("MacStat")
+                Text("Sentry")
                     .font(.headline)
                 Text("No data yet")
                     .font(.caption2)
@@ -110,6 +110,18 @@ struct RectangularComplicationView: View {
             parts.append("Charging")
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// Staleness label, plus the demo-data disclosure
+    /// `WatchRelaySnapshot.sourceIsDemoData` exists to carry (see that
+    /// field's doc comment: a complication pinned to a watch face has no
+    /// companion banner to disclose fabricated data any other way). This is
+    /// the one complication family with room for it — the same reasoning
+    /// `WidgetDemoDataCaption` applies on iOS by living only in
+    /// `.systemLarge`.
+    private func footerLine(_ snapshot: WatchRelaySnapshot) -> String {
+        let freshness = Freshness(lastSeen: snapshot.lastSeen).label(lastSeen: snapshot.lastSeen)
+        return snapshot.sourceIsDemoData ? "\(freshness) · Demo" : freshness
     }
 }
 

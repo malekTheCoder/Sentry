@@ -42,6 +42,22 @@ public final class ProcessCollector {
 
     private var previous: [pid_t: PreviousSample] = [:]
 
+    // `proc_taskinfo.pti_total_user/system` are in Mach absolute-time units,
+    // NOT nanoseconds — on Apple Silicon the timebase is 125/3 (~41.67ns per
+    // tick), so treating ticks as nanoseconds underreports CPU by ~41.7x
+    // (verified empirically: a pegged core read ~2.4%). On Intel the
+    // timebase is 1/1 and this multiplier is a no-op.
+    private static let nanosPerMachTick: Double = {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        guard timebase.denom != 0 else { return 1 }
+        return Double(timebase.numer) / Double(timebase.denom)
+    }()
+
+    private static func nanoseconds(fromMachTicks ticks: UInt64) -> UInt64 {
+        UInt64(Double(ticks) * nanosPerMachTick)
+    }
+
     public init() {}
 
     /// Returns the `limit` busiest processes by CPU, sorted descending.
@@ -82,7 +98,7 @@ public final class ProcessCollector {
         for index in 0..<count {
             let pid = pids[index]
             guard pid > 0, let info = Self.taskInfo(for: pid) else { continue }
-            let totalNanos = info.pti_total_user + info.pti_total_system
+            let totalNanos = Self.nanoseconds(fromMachTicks: info.pti_total_user + info.pti_total_system)
             nextPrevious[pid] = PreviousSample(totalTimeNanos: totalNanos, timestamp: now)
 
             let cpuPercent: Double

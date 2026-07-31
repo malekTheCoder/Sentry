@@ -227,7 +227,7 @@ struct SettingsTabView: View {
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("MacStat isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced to or from a real Mac.")
+        .accessibilityHint("Sentry isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced through iCloud to or from a real Mac.")
     }
 
     // MARK: - Notifications (informational only — no working preferences)
@@ -270,28 +270,27 @@ struct SettingsTabView: View {
     private static let notificationCategoryNames: [String] =
         AlertEngine.defaultRules(cooldown: 0).map(\.name)
 
-    // MARK: - Widgets (nothing built yet, said plainly)
+    // MARK: - Widgets (real widget, no in-app configuration yet)
 
-    /// Plan §12.3/Phase 6 territory. `MacStatWidget/MacStatWidgetBundle.swift`
-    /// today is an unmodified Xcode template: a `TimelineProvider` that
-    /// always returns the same placeholder entry, and an entry view that
-    /// renders the literal text "MacStat" — no App Group, no shared
-    /// container, no real timeline data, nothing connecting it to
-    /// `MacStatKit` at all. There is no widget configuration surface to
-    /// build against, so this section doesn't invent one (e.g. a fake "which
-    /// metrics to show" picker with nothing behind it) — it says the gap
-    /// outright, same muted honest-disclosure row style as the sections
-    /// above it.
+    /// The widget itself is real now — `MacStatWidget` renders whatever
+    /// `WidgetSnapshotWriter` (`MacStatMobile/Data/WidgetSnapshotWriter.swift`)
+    /// last cached through the App Group, on `WidgetTimelineScheduler`'s
+    /// reload cadence. What still doesn't exist is any *configuration*
+    /// surface (which metrics to show, per-family options) — so this
+    /// section describes the one true limitation rather than inventing a
+    /// fake picker, same honest-disclosure row style as the sections above.
+    /// (This row used to claim "Widgets aren't available in this build yet"
+    /// — true when written, stale once the widget pipeline landed.)
     private var widgetsSection: some View {
         HStack(spacing: 6) {
             Image(systemName: "circle")
                 .font(.system(size: 9))
                 .foregroundStyle(palette.textTertiary)
-            Text("Widgets aren't available in this build yet.")
+            Text("Widgets show the Dashboard's latest reading — nothing to configure here yet.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("MacStatWidget is still the unconfigured Xcode template it started as — a single static placeholder, no data pipeline, no App Group shared with this app.")
+        .accessibilityHint("Add the widget from your home screen. It shows the most recent data this app cached — there are no in-app widget options to change yet.")
     }
 }

@@ -54,6 +54,20 @@ public final class LocalSyncServer: @unchecked Sendable {
     /// target described in this type's own doc comment above.
     private let minSendInterval: TimeInterval = 1.0
 
+    /// Hard ceiling on simultaneously-open client connections.
+    ///
+    /// This listener accepts **unauthenticated** connections from anything
+    /// that can reach this Mac on the local network (see this type's doc
+    /// comment — there is no pairing step, and the payload is read-only
+    /// telemetry), so "how many clients" is not a number any trusted party
+    /// controls: a hostile device on the same Wi-Fi can open sockets in a
+    /// loop. Without a cap, `connections` and the per-connection send
+    /// buffers grow until the app runs out of file descriptors or memory,
+    /// turning a read-only telemetry feed into a remote crash of the whole
+    /// menu-bar app. 16 is far above any real household (a few iPhones,
+    /// iPads, reconnect churn) and far below anything that hurts.
+    private static let maxConcurrentConnections = 16
+
     private let queue = DispatchQueue(label: "dev.malekswilam.macstat.localsyncserver")
     private let log = Logger(subsystem: "dev.malekswilam.macstat", category: "LocalSyncServer")
 
@@ -157,9 +171,21 @@ public final class LocalSyncServer: @unchecked Sendable {
             }
         }
         queue.async { [weak self] in
-            self?.connections[ObjectIdentifier(connection)] = state
+            guard let self else {
+                connection.cancel()
+                return
+            }
+            guard self.connections.count < Self.maxConcurrentConnections else {
+                self.log.error("LocalSyncServer: refusing connection — \(Self.maxConcurrentConnections) already open")
+                connection.cancel()
+                return
+            }
+            self.connections[ObjectIdentifier(connection)] = state
+            // Started only after registration, and only for a connection
+            // that was actually accepted — a refused one is cancelled
+            // before it ever runs.
+            connection.start(queue: self.queue)
         }
-        connection.start(queue: queue)
     }
 
     private func remove(_ connection: NWConnection) {

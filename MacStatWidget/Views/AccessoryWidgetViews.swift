@@ -56,7 +56,7 @@ struct AccessoryRectangularWidgetView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 1) {
-                Text("MacStat")
+                Text("Sentry")
                     .font(.headline)
                 Text("No data yet")
                     .font(.caption2)

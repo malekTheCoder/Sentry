@@ -150,7 +150,7 @@ struct AlertsTabView: View {
                     .font(palette.font(size: 12, weight: .semibold))
                     .foregroundStyle(palette.textSecondary)
             }
-            Text("MacStat logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone.")
+            Text("Sentry logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)

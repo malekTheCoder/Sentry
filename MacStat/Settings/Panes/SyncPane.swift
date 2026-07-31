@@ -101,7 +101,7 @@ struct SyncPane: View {
             } header: {
                 Text("Upload Schedule")
             } footer: {
-                Text("This is the cadence MacStat's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above.")
+                Text("This is the cadence Sentry's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

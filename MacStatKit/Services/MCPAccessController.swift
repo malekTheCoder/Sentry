@@ -58,19 +58,56 @@ public final class MCPActivityLog: ObservableObject {
 
     private let capacity: Int
 
+    /// How many of `capacity`'s slots entries for calls that did **not**
+    /// execute (denied, or a confirmation the user declined) are allowed to
+    /// occupy.
+    ///
+    /// **Why this partition exists — audit-trail integrity.** Denied calls
+    /// deliberately cost an attacker nothing: `MCPAccessController.evaluate`
+    /// rejects them without consuming rate-limit budget (see `recordCall`'s
+    /// doc comment on why that's right for the *rate limit*), so any local
+    /// process that can reach the Mach service can issue denied calls as
+    /// fast as XPC will carry them. In a single undifferentiated ring buffer
+    /// that means a few hundred junk calls silently evict every record of
+    /// what actually ran — i.e. the cheapest possible way to erase the
+    /// evidence of a `keep_awake`/`create_alert_rule` that *was* allowed a
+    /// moment earlier. Capping the unexecuted share means a flood can
+    /// destroy at most `deniedCapacity` slots and never touches the entries
+    /// that describe real, executed side effects.
+    private let deniedCapacity: Int
+
+    /// Number of entries currently in `entries` whose decision is anything
+    /// other than `.allow`. Maintained incrementally rather than recomputed,
+    /// since `record` runs on the main actor on the XPC hot path.
+    private var unexecutedCount = 0
+
     public init(capacity: Int = 200) {
         self.capacity = max(1, capacity)
+        self.deniedCapacity = max(1, self.capacity / 2)
     }
 
     public func record(_ entry: MCPActivityLogEntry) {
         entries.insert(entry, at: 0)
-        if entries.count > capacity {
-            entries.removeLast(entries.count - capacity)
+        if entry.decision != .allow { unexecutedCount += 1 }
+
+        // Over the unexecuted share: drop the *oldest* unexecuted entry
+        // rather than the oldest entry overall, so a denial flood only ever
+        // recycles its own slots.
+        if unexecutedCount > deniedCapacity,
+           let oldestUnexecuted = entries.lastIndex(where: { $0.decision != .allow }) {
+            entries.remove(at: oldestUnexecuted)
+            unexecutedCount -= 1
+        }
+
+        while entries.count > capacity {
+            let removed = entries.removeLast()
+            if removed.decision != .allow { unexecutedCount -= 1 }
         }
     }
 
     public func clear() {
         entries.removeAll()
+        unexecutedCount = 0
     }
 }
 
@@ -142,6 +179,20 @@ public final class MCPAccessController {
     /// wording.
     private var recentCallTimestamps: [Date] = []
 
+    /// Serializes every read/write of `recentCallTimestamps`.
+    ///
+    /// Today every caller happens to reach this type from `MCPXPCService`'s
+    /// `@MainActor` hop, so the window is de facto serialized — but nothing
+    /// in this type's signature *enforces* that, and it is now reachable
+    /// from two transports (the stdio `MacStatMCP` XPC connection and
+    /// `MCPRemoteServer`'s NIO event loop, via `LocalXPCServiceCaller`) whose
+    /// threading is owned by frameworks, not by this app. A rate limiter
+    /// that can be raced is a rate limiter an attacker can overrun, and the
+    /// lock costs nothing at this call volume (tens of calls a minute), so
+    /// it does not rely on a convention a future refactor could quietly
+    /// break.
+    private let lock = NSLock()
+
     /// - Parameter clock: injectable so tests can drive rate-limit windows
     ///   deterministically without real `sleep()` calls — same convention as
     ///   `AlertEngine.clock`.
@@ -177,7 +228,9 @@ public final class MCPAccessController {
     /// client hammering a rate-limited tool can't queue up a pile of pending
     /// confirmation prompts.
     public func isRateLimited(limitPerMinute: Int) -> Bool {
-        pruneWindow()
+        lock.lock()
+        defer { lock.unlock() }
+        pruneWindowLocked()
         return recentCallTimestamps.count >= max(0, limitPerMinute)
     }
 
@@ -192,11 +245,14 @@ public final class MCPAccessController {
     /// then declined via confirmation must not both consume rate-limit
     /// budget — only the one that truly ran should.
     public func recordCall() {
-        pruneWindow()
+        lock.lock()
+        defer { lock.unlock() }
+        pruneWindowLocked()
         recentCallTimestamps.append(clock())
     }
 
-    private func pruneWindow() {
+    /// Must be called with `lock` already held.
+    private func pruneWindowLocked() {
         let cutoff = clock().addingTimeInterval(-60)
         recentCallTimestamps.removeAll { $0 < cutoff }
     }

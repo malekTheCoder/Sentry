@@ -39,8 +39,15 @@ struct MenuBarPreviewStrip: View {
             }
 
             ZStack(alignment: .leading) {
+                // A neutral, appearance-derived stand-in for the menu bar
+                // itself — NOT `theme.background`: the real bar item never
+                // paints a theme background (it draws monochrome glyphs over
+                // whatever the system menu bar shows), and a fixed-dark
+                // theme's background under this strip's appearance-derived
+                // black ink rendered the preview illegible in light mode
+                // while promising a themed bar the renderer never draws.
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(theme.background.color(for: colorScheme))
+                    .fill(Color(nsColor: .windowBackgroundColor))
 
                 if layout.modules.isEmpty {
                     Text("No modules — add one below")
@@ -57,7 +64,7 @@ struct MenuBarPreviewStrip: View {
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(theme.separator.color(for: colorScheme), lineWidth: 1)
+                    .strokeBorder(monoSeparator, lineWidth: 1)
             )
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Menu bar preview")
@@ -140,7 +147,9 @@ struct MenuBarPreviewStrip: View {
             if module.visibilityRule != .always {
                 Image(systemName: "eye.slash")
                     .font(.system(size: 6))
-                    .foregroundStyle(theme.textTertiary.color(for: colorScheme))
+                    // Mono like everything else on the strip — the theme's
+                    // text ramp never reaches the real bar.
+                    .foregroundStyle(monoTertiary)
                     .offset(x: 4, y: -6)
             }
         }

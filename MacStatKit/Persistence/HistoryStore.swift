@@ -141,7 +141,18 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Must only be called while already on `queue`.
     private func flushLocked() {
-        guard let dbQueue, !buffer.isEmpty else { return }
+        guard let dbQueue else {
+            // The database never opened (see `init`). Rows buffered anyway
+            // must be *dropped*, not retained: `record` keeps appending and
+            // this method is the only thing that empties the buffer, so
+            // returning without clearing would grow the buffer unboundedly
+            // for the whole process lifetime — a slow leak of ~35 tuples per
+            // snapshot, forever. Same "log and drop" posture as a failed
+            // write below; there is nowhere durable for these rows to go.
+            buffer.removeAll(keepingCapacity: false)
+            return
+        }
+        guard !buffer.isEmpty else { return }
         let rows = buffer
         buffer.removeAll(keepingCapacity: true)
 
@@ -381,9 +392,10 @@ public final class HistoryStore: @unchecked Sendable {
 
         switch chosen {
         case .daily:
-            return samples(metric: metric, since: since, tier: .hourly).isEmpty
+            let hourly = samples(metric: metric, since: since, tier: .hourly)
+            return hourly.isEmpty
                 ? samples(metric: metric, since: since, tier: .raw)
-                : samples(metric: metric, since: since, tier: .hourly)
+                : hourly
         case .hourly:
             return samples(metric: metric, since: since, tier: .raw)
         case .raw:

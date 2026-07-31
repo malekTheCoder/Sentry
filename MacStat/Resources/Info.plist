@@ -25,8 +25,8 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Malek Swilam</string>
 	<key>NSLocationUsageDescription</key>
-	<string>MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
+	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
+	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
 </dict>
 </plist>

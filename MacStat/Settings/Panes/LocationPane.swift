@@ -39,14 +39,14 @@ struct LocationPane: View {
                 Toggle("Log this Mac's location", isOn: $store.settings.locationLogEnabled)
                     .accessibilityLabel("Log this Mac's location")
 
-                Text("When on, MacStat periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while MacStat is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or MacStat isn't running, and it has no connection to Apple's Find My network.")
+                Text("When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running, and it has no connection to Apple's Find My network.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Location Log")
             } footer: {
-                Text("Not Find My. There is no way for a third-party app like MacStat to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where MacStat last saw this Mac, nothing more.")
+                Text("Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -81,7 +81,7 @@ struct LocationPane: View {
                 .font(.callout)
                 .foregroundStyle(.green)
         case .denied:
-            Label("Location access denied. Enable it for MacStat in System Settings ▸ Privacy & Security ▸ Location Services to use this feature.", systemImage: "location.slash")
+            Label("Location access denied. Enable it for Sentry in System Settings ▸ Privacy & Security ▸ Location Services to use this feature.", systemImage: "location.slash")
                 .font(.callout)
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)

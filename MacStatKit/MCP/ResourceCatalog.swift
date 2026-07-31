@@ -75,6 +75,26 @@ public actor ResourceSubscriptionPump {
     private var pumpTask: Task<Void, Never>?
     private var lastTimestamp: Date?
 
+    /// Consecutive polls that came back with no data — which, on this
+    /// surface, overwhelmingly means *denied*, not "transient glitch":
+    /// `resources/subscribe` is not itself gated by any `MCPToolID`, but the
+    /// poll underneath it is a full `get_system_snapshot` call through
+    /// `MCPAccessController`. So a client that subscribes while MCP access
+    /// is off (or while `get_system_snapshot` is disabled, or after the user
+    /// turns remote access off with a subscription still open) otherwise
+    /// leaves this loop hammering the gate every `pollInterval` forever:
+    /// 20 denied calls a minute, which is the *entire* default rate-limit
+    /// budget (`AppSettings.mcpRateLimitPerMinute` = 20) plus 20 entries a
+    /// minute of activity-log noise, for a subscription that will never
+    /// deliver anything. Backing off exponentially to `maxPollInterval`
+    /// keeps a legitimate subscription self-healing (it recovers the moment
+    /// the user re-enables the tool) while making the denied case cheap.
+    private var consecutiveFailures = 0
+
+    /// Ceiling on the backoff above — long enough to be negligible, short
+    /// enough that re-enabling the tool in Settings visibly recovers.
+    private static let maxPollInterval: Duration = .seconds(60)
+
     public init(xpcClient: any MCPServiceCalling, clientName: String, pollInterval: Duration = .seconds(3)) {
         self.xpcClient = xpcClient
         self.clientName = clientName
@@ -83,11 +103,14 @@ public actor ResourceSubscriptionPump {
 
     public func subscribe(onUpdate: @escaping @Sendable () async -> Void) {
         subscriberCount += 1
+        // A newly-arrived subscriber deserves a prompt first poll even if a
+        // previous one left the loop backed off.
+        consecutiveFailures = 0
         guard pumpTask == nil else { return }
         pumpTask = Task { [weak self] in
             guard let self else { return }
             while await self.isActive() {
-                try? await Task.sleep(for: await self.pollInterval)
+                try? await Task.sleep(for: await self.nextPollDelay())
                 await self.pollOnce(onUpdate: onUpdate)
             }
         }
@@ -105,9 +128,22 @@ public actor ResourceSubscriptionPump {
         subscriberCount > 0
     }
 
+    /// `pollInterval`, doubled once per consecutive failed poll, capped at
+    /// `maxPollInterval` — see `consecutiveFailures`.
+    private func nextPollDelay() -> Duration {
+        guard consecutiveFailures > 0 else { return pollInterval }
+        let scaled = pollInterval * (1 << min(consecutiveFailures, 6))
+        return min(scaled, Self.maxPollInterval)
+    }
+
     private func pollOnce(onUpdate: @escaping @Sendable () async -> Void) async {
         let (data, _) = await xpcClient.readCall { $0.getSystemSnapshot(clientName: self.clientName, reply: $1) }
-        guard let data else { return }
+        guard let data else {
+            // Denied, or MacStat unreachable — either way, slow down.
+            consecutiveFailures += 1
+            return
+        }
+        consecutiveFailures = 0
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         guard let snapshot = try? decoder.decode(SystemSnapshot.self, from: data) else { return }

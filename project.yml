@@ -217,8 +217,8 @@ targets:
         # (`LocationPane`), never at launch. `NSLocationUsageDescription` is
         # the legacy key macOS's TCC prompt still reads; both are set to the
         # same text for safety across macOS versions.
-        NSLocationUsageDescription: "MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
-        NSLocationWhenInUseUsageDescription: "MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
+        NSLocationUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
+        NSLocationWhenInUseUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
 
   MacStatMobile:
     type: application
@@ -261,6 +261,7 @@ targets:
     info:
       path: MacStatMobile/Info.plist
       properties:
+        CFBundleDisplayName: Sentry
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -272,7 +273,7 @@ targets:
         # `StatsTransport.swift`'s doc comment for why this transport exists
         # at all (CloudKit is blocked on Apple Developer Program enrollment;
         # this one isn't).
-        NSLocalNetworkUsageDescription: "MacStat uses your local network to show live data from your Mac when you're on the same Wi-Fi."
+        NSLocalNetworkUsageDescription: "Sentry uses your local network to show live data from your Mac when you're on the same Wi-Fi."
         NSBonjourServices:
           - "_macstat._tcp"
 
@@ -362,7 +363,7 @@ targets:
     info:
       path: MacStatWatch/Info.plist
       properties:
-        CFBundleDisplayName: MacStat
+        CFBundleDisplayName: Sentry
         WKApplication: true
         # Pairs this watch app with `MacStatMobile` — required so watchOS
         # knows which iPhone app installs this alongside it, and so
@@ -393,7 +394,7 @@ targets:
     info:
       path: MacStatWatchWidget/Info.plist
       properties:
-        CFBundleDisplayName: MacStat Complication
+        CFBundleDisplayName: Sentry Complication
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 

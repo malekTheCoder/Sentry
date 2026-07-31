@@ -145,9 +145,18 @@ public final class RollupJob: @unchecked Sendable {
     /// deletes raw rows older than 48h. "Complete hour" means `hour_start <
     /// currentHourStart` — the in-progress hour is never rolled, since it
     /// isn't finished accumulating samples yet. Re-running this for an hour
-    /// already rolled is safe (`INSERT OR REPLACE` recomputes it from
-    /// whatever raw data still exists), so there's no separate "already
-    /// rolled up" bookkeeping to maintain.
+    /// already rolled is safe: the upsert recomputes it from whatever raw
+    /// data still exists, but the `DO UPDATE ... WHERE excluded.sample_count
+    /// >= sample_hourly.sample_count` guard refuses to overwrite an existing
+    /// rollup with one computed from *fewer* samples. Without that guard, the
+    /// retention delete below corrupts the oldest hour: the 48h cutoff lands
+    /// mid-hour, deletes part of that hour's raw rows, and the *next* pass
+    /// would then recompute the bucket from the surviving fraction and
+    /// overwrite the correct full-hour min/avg/max/count — permanently, since
+    /// the raw rows are gone. Raw rows are only ever removed by that
+    /// retention delete (`HistoryStore` upserts, never deletes), so a
+    /// shrinking count always means "partially pruned", never "corrected
+    /// data".
     public func runHourlyRollup(now: Date = Date()) {
         guard let dbQueue else { return }
 
@@ -173,6 +182,7 @@ public final class RollupJob: @unchecked Sendable {
                         max_value = excluded.max_value,
                         avg_value = excluded.avg_value,
                         sample_count = excluded.sample_count
+                    WHERE excluded.sample_count >= sample_hourly.sample_count
                     """, arguments: [currentHourStart])
 
                 try db.execute(
@@ -191,6 +201,13 @@ public final class RollupJob: @unchecked Sendable {
     /// (count-weighted average, so a hour with more samples isn't diluted to
     /// the same weight as one with few), then deletes hourly rows older than
     /// 90d.
+    ///
+    /// Carries the same `DO UPDATE ... WHERE excluded.sample_count >=`
+    /// guard as `runHourlyRollup`, for the same reason: the 90d hourly
+    /// cutoff lands mid-day, and without the guard the next pass would
+    /// overwrite that day's correct rollup with one recomputed from only the
+    /// surviving hours — worse here, because `sample_daily` is the
+    /// kept-forever tier, so the corruption would be permanent.
     public func runDailyRollup(now: Date = Date()) {
         guard let dbQueue else { return }
 
@@ -216,6 +233,7 @@ public final class RollupJob: @unchecked Sendable {
                         max_value = excluded.max_value,
                         avg_value = excluded.avg_value,
                         sample_count = excluded.sample_count
+                    WHERE excluded.sample_count >= sample_daily.sample_count
                     """, arguments: [currentDayStart])
 
                 try db.execute(

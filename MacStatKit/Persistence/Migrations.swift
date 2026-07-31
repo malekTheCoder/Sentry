@@ -100,6 +100,20 @@ public enum Migrations {
             try db.create(index: "idx_agent_activity_ts", on: "agent_activity_log", columns: ["ts"])
         }
 
+        // Persistence audit: `HistoryStore.samples`/`samplesWithRange` query
+        // the rollup tiers with `WHERE metric = ? AND hour_start >= ?`, but
+        // the only index those tables had was the composite primary key
+        // `(hour_start, metric)` — leading column wrong for that shape, so
+        // SQLite range-scans *every* metric's rows in the window and filters
+        // (verified via EXPLAIN QUERY PLAN: `(hour_start>?)` before, `(metric=?
+        // AND hour_start>?)` after). `sample_raw` already had the right-shaped
+        // `idx_raw_metric_ts` from v1; these give the hourly/daily tiers —
+        // one of which grows forever — the same treatment. Purely additive.
+        migrator.registerMigration("v4RollupMetricIndexes") { db in
+            try db.create(index: "idx_hourly_metric_hour", on: "sample_hourly", columns: ["metric", "hour_start"])
+            try db.create(index: "idx_daily_metric_day", on: "sample_daily", columns: ["metric", "day_start"])
+        }
+
         return migrator
     }
 }

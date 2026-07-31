@@ -63,6 +63,8 @@ struct DashboardTabView: View {
                 }
                 if !appDataSource.isUsingLocalSync {
                     demoDataBanner
+                } else if !appDataSource.isLocalSyncConnected {
+                    connectionLostBanner
                 }
                 devicePicker
                 freshnessBanner
@@ -103,6 +105,23 @@ struct DashboardTabView: View {
                 .foregroundStyle(palette.textSecondary)
         } icon: {
             Image(systemName: "wand.and.stars")
+                .foregroundStyle(palette.warning)
+        }
+        .padding(palette.spacing)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(palette)
+    }
+
+    /// Shown when the local-sync connection dropped mid-session: the
+    /// readings below are real but frozen, which is a different honesty
+    /// problem than demo data — say exactly that, not "demo".
+    private var connectionLostBanner: some View {
+        Label {
+            Text("Connection to your Mac lost — showing the last received readings. Reconnecting…")
+                .font(.caption)
+                .foregroundStyle(palette.textSecondary)
+        } icon: {
+            Image(systemName: "wifi.exclamationmark")
                 .foregroundStyle(palette.warning)
         }
         .padding(palette.spacing)

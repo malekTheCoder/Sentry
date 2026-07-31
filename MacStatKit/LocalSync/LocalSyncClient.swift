@@ -88,6 +88,24 @@ public actor LocalSyncClient: StatsTransport {
     /// see `waitForFirstConnection(timeout:)`.
     private var readyWaiters: [CheckedContinuation<Bool, Never>] = []
 
+    /// Invoked with `true` when a connection becomes ready and `false` when
+    /// it closes — the surface `AppDataSource` uses to keep the UI honest
+    /// about a Mac that went away *mid-session* (before this existed, the
+    /// launch-time yes/no was the only signal, and a dropped connection left
+    /// the app claiming a live link forever).
+    private var connectionStateHandler: (@Sendable (Bool) -> Void)?
+
+    public func setConnectionStateHandler(_ handler: (@Sendable (Bool) -> Void)?) {
+        connectionStateHandler = handler
+    }
+
+    /// Wall-clock time of the most recently decoded snapshot, or nil —
+    /// lets `AppDataSource.devices()` report an honest `lastSeen` instead
+    /// of stamping catalog-fetch time.
+    public func lastSnapshotDate() async -> Date? {
+        lastReceivedAt
+    }
+
     public init() {}
 
     deinit {
@@ -205,6 +223,7 @@ public actor LocalSyncClient: StatsTransport {
         isConnecting = false
         isReady = true
         resumeReadyWaiters(found: true)
+        connectionStateHandler?(true)
         receiveNext(on: connection)
     }
 
@@ -214,11 +233,26 @@ public actor LocalSyncClient: StatsTransport {
         isReady = false
         self.connection = nil
         resumeReadyWaiters(found: false)
+        connectionStateHandler?(false)
         // Discovery keeps running (the browser wasn't stopped), so a
-        // reconnect happens automatically the next time
-        // `browseResultsChangedHandler` fires for this or another service —
-        // covers both "the Mac app quit and relaunched" and "brief Wi-Fi
-        // blip" without the composition root needing to notice and retry.
+        // reconnect happens when `browseResultsChangedHandler` next fires —
+        // but a bare TCP drop (Mac app crash, socket reset) often leaves
+        // the Bonjour result set UNCHANGED, and that handler only fires on
+        // changes. The retry loop below covers that gap by re-attempting
+        // against whatever the browser currently sees, backing off between
+        // tries, until either a connection lands or `stop()` runs.
+        Task { await self.retryConnectFromBrowserResults() }
+    }
+
+    /// Re-attempts a connection against the browser's current result set —
+    /// see `handleClosed`. Gives up silently when discovery has been
+    /// stopped, a connection attempt is already in flight, or there is
+    /// nothing to connect to (the next results-changed event covers that).
+    private func retryConnectFromBrowserResults() async {
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        guard browser != nil, connection == nil, !isConnecting, !isReady else { return }
+        guard let first = browser?.browseResults.first else { return }
+        connect(to: first.endpoint)
     }
 
     // MARK: - Receiving + framing

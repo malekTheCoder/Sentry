@@ -26,7 +26,6 @@ struct EnergyReportCard: View {
     @State private var weekKWh: Double = 0
     @State private var monthKWh: Double = 0
     @State private var hasAnyData = false
-    @State private var hasLoaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
@@ -52,10 +51,17 @@ struct EnergyReportCard: View {
             }
         }
         .dashboardCard(palette)
+        // Periodic, not one-shot: under the one-window shell both tabs stay
+        // alive for the app's whole run, so a `hasLoaded`-guarded `.task`
+        // would freeze "Today" at whatever it was the first time the window
+        // ever opened. Ten minutes keeps the figure honest at three cheap
+        // queries per reload; the loop dies with the view if the window is
+        // ever truly torn down.
         .task {
-            guard !hasLoaded else { return }
-            hasLoaded = true
-            load()
+            while !Task.isCancelled {
+                load()
+                try? await Task.sleep(for: .seconds(600))
+            }
         }
     }
 

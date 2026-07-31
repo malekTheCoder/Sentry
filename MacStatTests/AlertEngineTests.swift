@@ -121,6 +121,51 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(highlightCount, 2, "should re-fire once cooldown has elapsed")
     }
 
+    func testCooldownSurvivesUpdateRulesForUnchangedRuleID() {
+        var now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 0, cooldown: 60)
+        let engine = AlertEngine(rules: [rule], clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 1)
+
+        // Edit the rule (same id, new name) mid-cooldown — e.g. the user
+        // renames it in the settings pane. The cooldown must NOT reset.
+        var edited = rule
+        edited.name = "Renamed mid-cooldown"
+        engine.updateRules([edited])
+
+        now = now.addingTimeInterval(30) // still inside the 60s cooldown
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 1, "editing a rule must not reset its cooldown")
+
+        now = now.addingTimeInterval(31) // 61s after the firing
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 2, "cooldown still expires normally after the edit")
+    }
+
+    func testUpdateRulesDropsRuntimeStateForRemovedRules() {
+        var now = Date()
+        let original = highlightRule(threshold: 90, sustainedFor: 0, cooldown: 3600)
+        let engine = AlertEngine(rules: [original], clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 1)
+
+        // Replace with a *different* rule (new id). It must not inherit the
+        // removed rule's hour-long cooldown.
+        let replacement = highlightRule(threshold: 90, sustainedFor: 0, cooldown: 3600)
+        engine.updateRules([replacement])
+
+        now = now.addingTimeInterval(1)
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 2, "a brand-new rule id starts with no cooldown state")
+    }
+
     // MARK: - Quiet hours
 
     func testQuietHoursSuppressFiring() {
@@ -190,6 +235,47 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(entries.filter { !$0.suppressed }.count, 2)
 
         _ = now // silence "never mutated" warning if clock isn't advanced further
+    }
+
+    func testUnwiredDeliveryClosureIsNotLoggedAsDeliveredAndDoesNotConsumeRateCap() {
+        let now = Date()
+        // Rule 0's only action goes through `shortcutRunner`, which is left
+        // nil (unwired composition root). Rule 1 uses the wired highlighter.
+        // With a cap of 1: rule 0 must neither log `delivered: true` (no one
+        // saw anything) nor burn the single rate-cap slot rule 1 needs.
+        let unwired = AlertRule(
+            name: "Unwired shortcut rule",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 0,
+            sustainedFor: 0,
+            cooldown: 0,
+            actions: [.runShortcut(name: "Nobody Home")]
+        )
+        let wired = AlertRule(
+            name: "Wired highlight rule",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 1,
+            sustainedFor: 0,
+            cooldown: 0,
+            actions: [.menuBarHighlight("warning")]
+        )
+        let historyStore = tempHistoryStore()
+        let engine = AlertEngine(rules: [unwired, wired], historyStore: historyStore, rateCapPerHour: 1, clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+        // engine.shortcutRunner deliberately left nil.
+
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(highlightCount, 1, "the unwired rule must not have consumed the only rate-cap slot")
+        let entries = historyStore.recentAlertFirings()
+        XCTAssertEqual(entries.count, 2, "both firings are still logged")
+        let unwiredEntry = entries.first { $0.ruleName == "Unwired shortcut rule" }
+        XCTAssertEqual(unwiredEntry?.delivered, false, "an action with no wired handler delivered nothing and must not claim otherwise")
+        let wiredEntry = entries.first { $0.ruleName == "Wired highlight rule" }
+        XCTAssertEqual(wiredEntry?.delivered, true)
     }
 
     // MARK: - changedBy baseline

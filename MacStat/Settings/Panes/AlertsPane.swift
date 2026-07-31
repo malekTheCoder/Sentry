@@ -4,10 +4,10 @@ import MacStatKit
 /// The plan §11 alert surface: a rule list with an inspector for the selected
 /// rule, plus the `alert_log` history §11.3 asks for.
 ///
-/// **Why history is a mode of this pane and not its own tab.** The settings
-/// window's `TabView` already carries five tabs; a seventh would start
-/// wrapping the toolbar on the 640 pt minimum width `SettingsView` declares.
-/// More importantly the two views are one workflow, not two subjects — you
+/// **Why history is a mode of this pane and not its own sidebar entry.**
+/// `SettingsView`'s sidebar already carries nine panes, and a tenth row for a
+/// read-only list would stretch it for no gain. More importantly the two
+/// views are one workflow, not two subjects — you
 /// read the history *in order to* decide which rule to retune (that's the
 /// entire reason the rate cap logs suppressed firings instead of dropping
 /// them), so putting them a segmented-control click apart keeps the edit and
@@ -29,11 +29,12 @@ import MacStatKit
 ///
 /// **Actions are shown but not edited.** A rule's `[AlertAction]` is
 /// summarized read-only. Editing it well means a UI for composing
-/// notification title/body copy plus per-action pickers, and two of the five
-/// action cases (`.pushToPhone`, `.runShortcut`) are documented no-ops with
-/// no backing implementation yet — an editor that let a user attach them
-/// would be promising delivery this app cannot perform. Showing the shipped
-/// actions honestly is the smaller lie than none at all.
+/// notification title/body copy plus per-action pickers. `.runShortcut` now
+/// launches Shortcuts.app for real and `.pushToPhone` is recorded to
+/// `PendingAlertPushStore` (see `AppDelegate`'s wiring), but phone *delivery*
+/// is still blocked on device sync — the summary text says exactly which
+/// half of that works. Showing the shipped actions honestly is the smaller
+/// lie than none at all.
 struct AlertsPane: View {
 
     @ObservedObject var store: SettingsStore
@@ -44,8 +45,9 @@ struct AlertsPane: View {
     /// "unavailable" message rather than an empty list that would read as
     /// "nothing has ever fired."
     ///
-    /// `AppDelegate`/`SettingsWindowController` pass the same `HistoryStore`
-    /// instance `AlertEngine` was constructed with; nothing here writes to it.
+    /// `AppDelegate` (via `MainWindowController`'s root view) passes the same
+    /// `HistoryStore` instance `AlertEngine` was constructed with; nothing
+    /// here writes to it.
     let historyStore: HistoryStore?
 
     init(store: SettingsStore, historyStore: HistoryStore? = nil) {
@@ -616,7 +618,7 @@ struct AlertsPane: View {
         } header: {
             Text("Actions")
         } footer: {
-            Text("Actions aren't editable yet. Phone push and Shortcuts aren't implemented, so an editor offering them would promise delivery Sentry can't perform — every firing is still written to history regardless.")
+            Text("Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -699,8 +701,8 @@ struct AlertsPane: View {
         // exactly the battery this app exists to measure. Re-reading on each
         // switch into this mode is one bounded `LIMIT 200` query and keeps
         // the pane from showing a snapshot from whenever the window was last
-        // opened — which, since `SettingsWindowController` deliberately
-        // reuses its window forever, could be days ago.
+        // opened — which, since `MainWindowController` deliberately reuses
+        // its window (and this pane's view tree) forever, could be days ago.
         .onAppear { loadHistory() }
     }
 
@@ -1009,9 +1011,9 @@ struct AlertsPane: View {
         case .menuBarHighlight(let token):
             return "Token “\(token)”"
         case .pushToPhone:
-            return "Not implemented yet — does nothing"
+            return "Queued on this Mac — reaches a phone only once device sync ships"
         case .runShortcut(let name):
-            return "“\(name)” — not implemented yet, does nothing"
+            return "Runs “\(name)” in Shortcuts"
         case .releaseSleepAssertion:
             return "Releases the keep-awake assertion"
         case .logOnly:

@@ -129,13 +129,11 @@ struct GeneralPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("Updates") {
-                Toggle("Check for updates daily", isOn: $store.settings.updateCheckDaily)
-                    .accessibilityLabel("Check for updates daily")
-                Text("Updates are never installed without asking.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            // No Updates section: `AppSettings.updateCheckDaily` exists, but
+            // no updater is wired yet (Sparkle is linked but not integrated) —
+            // a toggle that promises daily checks nothing performs is the
+            // "slider that silently does nothing" SyncPane's doc comment
+            // refuses to ship. Restore the section when the updater lands.
         }
         .formStyle(.grouped)
         .onAppear(perform: reconcileLaunchAtLogin)

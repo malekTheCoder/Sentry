@@ -26,9 +26,11 @@ final class MacStatTests: XCTestCase {
         let tracker = DeltaTracker(width: .bits32)
         let t0 = Date()
         _ = tracker.rate(for: UInt64(UInt32.max) - 10, at: t0)
-        // Counter wrapped past UInt32.max and is now at 5.
+        // Counter wrapped past UInt32.max and is now at 5. The modulus is
+        // 2^32, so the true delta is (2^32 − (2^32−11)) + 5 = 16 — this
+        // test previously pinned 15, the exact off-by-one the tracker fixed.
         let rate = tracker.rate(for: 5, at: t0.addingTimeInterval(1))
-        XCTAssertEqual(rate ?? -1, 15, accuracy: 0.001)
+        XCTAssertEqual(rate ?? -1, 16, accuracy: 0.001)
     }
 
     func testDeltaTrackerBits64TreatsDecreaseAsResetNotCrash() {

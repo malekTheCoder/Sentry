@@ -98,6 +98,24 @@ public final class PowerControlService: ObservableObject {
     private var assertionID: IOPMAssertionID = 0
     private var expiryTimer: Timer?
 
+    /// Bumped once per successfully created assertion. Exists to close a
+    /// stale-expiry race the `expiryTimer` alone cannot: the timer's block
+    /// hops onto the main actor via `Task { @MainActor ... }`, so there is a
+    /// window between the timer *firing* and that task *running* in which
+    /// other main-actor work — a user starting a fresh assertion, an
+    /// `adjustAssertion` extension — can replace the assertion the timer was
+    /// armed for. `expiryTimer?.invalidate()` prevents future fires but
+    /// cannot recall a fire that already happened, so without this guard the
+    /// stale task would call `releaseAssertion()` and silently tear down the
+    /// *new* assertion seconds after the user created it (e.g. extend a
+    /// 60-second hold to 8 hours in the last instant of the old window, and
+    /// the Mac sleeps 8 hours early anyway). Each timer captures the
+    /// generation it was armed for; `timedAssertionExpired(generation:)`
+    /// releases only if that generation is still current.
+    /// `internal private(set)` rather than `private` so tests can exercise
+    /// the stale-generation guard deterministically.
+    private(set) var assertionGeneration: UInt64 = 0
+
     /// The conditional trigger (if any) governing the current assertion, so
     /// `evaluate(_:)` and the app-termination observer know what to check,
     /// and so a future UI can ask "is there a pending conditional release
@@ -353,6 +371,19 @@ public final class PowerControlService: ObservableObject {
     ) throws {
         releaseAssertion() // only ever one at a time
 
+        // "Keep awake for zero (or negative) seconds" must not silently
+        // become "keep awake forever": below, a non-positive duration is
+        // skipped when building the timeout properties and when computing
+        // `expiresAt`, so without this guard it would fall through to an
+        // *indefinite* assertion — the exact battery-draining failure mode
+        // the cold-start reconciliation guard exists to prevent, minted
+        // fresh from a degenerate input instead of a stale record. The
+        // release above has already run, so the net effect is "nothing
+        // held," which is the only honest reading of a zero-length request.
+        if let duration, duration <= 0 {
+            return
+        }
+
         var props: [String: Any] = [
             kIOPMAssertionTypeKey as String: mode.assertionType,
             kIOPMAssertionNameKey as String: reason,
@@ -372,6 +403,7 @@ public final class PowerControlService: ObservableObject {
         }
 
         assertionID = id
+        assertionGeneration &+= 1
         activeCondition = condition
         conditionSustainedSince = nil
         processMissCount = 0
@@ -382,13 +414,29 @@ public final class PowerControlService: ObservableObject {
         if let duration, duration > 0 {
             // App-level mechanism #2 (see type doc): updates `state`
             // promptly while this process is alive, independent of the
-            // OS-level timeout above.
+            // OS-level timeout above. The captured generation is what makes
+            // an already-fired-but-not-yet-run expiry harmless if a newer
+            // assertion has replaced this one in the meantime — see
+            // `assertionGeneration`'s doc comment for the race.
+            let generation = assertionGeneration
             expiryTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-                Task { @MainActor in self?.releaseAssertion() }
+                Task { @MainActor in self?.timedAssertionExpired(generation: generation) }
             }
         }
 
         persistState() // so we can restore across app relaunch (plan §10.2)
+    }
+
+    /// Landing point for the app-level expiry timer. Releases only when
+    /// `generation` still identifies the *current* assertion — a stale fire
+    /// (timer went off for assertion N, but assertion N+1 was started before
+    /// this ran on the main actor) is a no-op rather than a silent teardown
+    /// of the newer assertion. See `assertionGeneration`'s doc comment.
+    /// `internal` rather than `private` so tests can drive the stale case
+    /// deterministically; not part of the public API.
+    func timedAssertionExpired(generation: UInt64) {
+        guard generation == assertionGeneration else { return }
+        releaseAssertion()
     }
 
     // MARK: - Notification handlers

@@ -51,6 +51,14 @@ public final class MCPRemoteServer: @unchecked Sendable {
     private var channel: Channel?
     private var boundPort: Int?
 
+    /// Bumped by every `stop()`. `start()` snapshots it before the
+    /// suspension points (`mcpServer.start`, `bind`) and re-checks after:
+    /// `applySettings` fires an unstructured Task per settings emission, so
+    /// a stop can interleave with an in-flight start — without this check
+    /// the resumed start would assign the freshly bound channel and leave a
+    /// LAN port listening while the UI shows Remote Access off.
+    private var stopGeneration: UInt64 = 0
+
     public init() {}
 
     /// Starts listening on `port`, bound to all interfaces. No-ops if
@@ -65,7 +73,7 @@ public final class MCPRemoteServer: @unchecked Sendable {
         if let boundPort, boundPort == port { return }
         await stop()
 
-        guard let apiKey = MCPRemoteAccessKey.current() else {
+        guard MCPRemoteAccessKey.current() != nil else {
             Self.logger.notice("Not starting MCPRemoteServer: no API key has been generated yet.")
             return
         }
@@ -79,7 +87,13 @@ public final class MCPRemoteServer: @unchecked Sendable {
         )
 
         let validationPipeline = StandardValidationPipeline(validators: [
-            APIKeyValidator(expectedKey: apiKey),
+            // Per-request key resolution, not a start-time capture: the
+            // Settings pane's "Regenerate" writes a new key to the Keychain
+            // without restarting this server, and a captured key would keep
+            // honoring the leaked one indefinitely — the exact revocation
+            // the pane promises. The `apiKey` guard above still gates
+            // binding at all.
+            APIKeyValidator(keyProvider: { MCPRemoteAccessKey.current() }),
             OriginValidator.disabled,
             AcceptHeaderValidator(mode: .jsonOnly),
             ContentTypeValidator(),
@@ -106,8 +120,16 @@ public final class MCPRemoteServer: @unchecked Sendable {
                 }
             }
 
+        let generationAtStart = stopGeneration
         do {
             let boundChannel = try await bootstrap.bind(host: "0.0.0.0", port: port).get()
+            guard stopGeneration == generationAtStart else {
+                // A stop() ran while bind was in flight — the user turned
+                // Remote Access off. Close what we just bound; don't record it.
+                try? await boundChannel.close().get()
+                await Self.shutdown(group)
+                return
+            }
             self.group = group
             self.channel = boundChannel
             self.boundPort = port
@@ -122,6 +144,7 @@ public final class MCPRemoteServer: @unchecked Sendable {
     /// listening (mirrors `PowerControlService.releaseAssertion()`'s own
     /// "safe to call with nothing active" convention).
     public func stop() async {
+        stopGeneration &+= 1
         if let channel {
             try? await channel.close().get()
         }
@@ -157,6 +180,14 @@ final class MCPHTTPChannelHandler: ChannelInboundHandler {
     private let transport: StatelessHTTPServerTransport
     private var requestHead: HTTPRequestHead?
     private var bodyBuffer: ByteBuffer?
+    private var rejectedOversizedBody = false
+
+    /// Hard cap on accumulated request-body bytes. Auth runs only after
+    /// `.end`, so without this an unauthenticated LAN peer could stream a
+    /// multi-GB body straight into memory and crash the whole app (taking
+    /// metric collection and any active keep-awake hold with it). Every
+    /// legitimate MCP tool call is a few KB of JSON; 1 MiB is generous.
+    private static let maxBodyBytes = 1 << 20
 
     init(transport: StatelessHTTPServerTransport) {
         self.transport = transport
@@ -167,8 +198,20 @@ final class MCPHTTPChannelHandler: ChannelInboundHandler {
         case .head(let head):
             requestHead = head
             bodyBuffer = context.channel.allocator.buffer(capacity: 0)
+            rejectedOversizedBody = false
 
         case .body(var buffer):
+            guard !rejectedOversizedBody else { return }
+            if (bodyBuffer?.readableBytes ?? 0) + buffer.readableBytes > Self.maxBodyBytes {
+                rejectedOversizedBody = true
+                requestHead = nil
+                bodyBuffer = nil
+                let head = HTTPResponseHead(version: .http1_1, status: .payloadTooLarge)
+                context.channel.write(HTTPServerResponsePart.head(head), promise: nil)
+                context.channel.writeAndFlush(HTTPServerResponsePart.end(nil), promise: nil)
+                context.close(promise: nil)
+                return
+            }
             bodyBuffer?.writeBuffer(&buffer)
 
         case .end:

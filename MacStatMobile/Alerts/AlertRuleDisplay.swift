@@ -44,7 +44,13 @@ enum AlertRuleDisplay {
         if rule.id == AlertEngine.batteryHealthDropRuleID {
             return String(localized: "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more")
         }
-        return String(localized: "\(rule.metric.shortLabel) \(comparisonPhrase(rule.comparison)) \(MetricFormatter.detailed(rule.threshold, unit: rule.metric.unit))")
+        // Deliberately NOT wrapped in `String(localized:)`: every segment is
+        // an interpolation, so the extracted key would be the meaningless
+        // "%@ %@ %@" — unlocalizable (no words for a translator to reorder
+        // around) and absent from Localizable.xcstrings. The pieces are each
+        // localized at their source instead (`shortLabel`,
+        // `comparisonPhrase`), which is where the real strings live.
+        return "\(rule.metric.shortLabel) \(comparisonPhrase(rule.comparison)) \(MetricFormatter.detailed(rule.threshold, unit: rule.metric.unit))"
     }
 
     private static func comparisonPhrase(_ comparison: AlertRule.Comparison) -> String {

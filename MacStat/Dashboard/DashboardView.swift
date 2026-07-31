@@ -31,12 +31,12 @@ struct DashboardView: View {
     /// model just to unwrap it back out here.
     private let historyStore: HistoryStore
 
-    /// Owned by `AppDelegate`, not this view: the Dashboard window is a
+    /// Owned by `AppDelegate`, not this view: Sentry's one window is a
     /// reused singleton whose content view never truly disappears (see
-    /// `HistoryWindowController`'s doc comment), so SwiftUI's own
+    /// `MainWindowController`'s doc comment), so SwiftUI's own
     /// `.onDisappear` never fires here and a `@StateObject` tied to this
     /// view's lifetime couldn't stop the monitor when the window closes.
-    /// `AppDelegate` starts/stops it via `HistoryWindowController`'s
+    /// `AppDelegate` starts/stops it via `MainWindowController`'s
     /// `onShow`/`onHide` hooks instead — this view just renders whatever
     /// it's currently publishing.
     @ObservedObject private var processMonitor: ProcessMonitor
@@ -65,7 +65,7 @@ struct DashboardView: View {
 
     // Reads `viewModel.theme` live rather than a `let` captured once at
     // init — this view's `NSHostingController` is built exactly once per
-    // app run (`HistoryWindowController` reuses the window forever), so a
+    // app run (`MainWindowController` reuses the window forever), so a
     // captured theme would freeze at whatever was active the first time the
     // Dashboard was opened. See `DashboardViewModel.theme`'s doc comment.
     private var palette: ThemePalette {
@@ -75,7 +75,7 @@ struct DashboardView: View {
     /// The 2-column row's approximate 1.3fr:1fr split (Nocturne mock's exact
     /// ratio), expressed as `minWidth` hints rather than a `GeometryReader`
     /// division: this row's height is driven by its tallest child (Battery
-    /// Health's chart vs. Agent Activity's stat row are genuinely different
+    /// Health's chart vs. the Energy card's rows are genuinely different
     /// heights depending on live data), and a `GeometryReader` would have to
     /// be pinned to a fixed height to compute proportional widths, fighting
     /// the natural intrinsic-height layout every other card in this scroll
@@ -84,7 +84,7 @@ struct DashboardView: View {
     /// window's default size and only drifts from exact ratio (never from
     /// "reads as bigger left column") as the window is resized wider.
     private static let batteryHealthMinWidth: CGFloat = 340
-    private static let agentActivityMinWidth: CGFloat = 260
+    private static let energyMinWidth: CGFloat = 260
 
     /// Row gap inside a section; sections themselves are separated by their
     /// headers. One constant so nothing is "randomly placed" — every gap on
@@ -115,7 +115,7 @@ struct DashboardView: View {
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
                     EnergyReportCard(historyStore: historyStore)
-                        .frame(minWidth: Self.agentActivityMinWidth, maxWidth: .infinity, alignment: .leading)
+                        .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
 
                 sectionHeader("Activity")

@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import os
 
 /// Evaluates every enabled `AlertRule` against each `SystemSnapshot` and
 /// delivers whatever `AlertAction`s fire (plan §11).
@@ -82,6 +83,8 @@ import UserNotifications
 /// invisible in the very history pane meant to help diagnose it.
 @MainActor
 public final class AlertEngine {
+
+    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "AlertEngine")
 
     // MARK: - Special-cased rule IDs
 
@@ -269,12 +272,20 @@ public final class AlertEngine {
     private func requestAuthorizationIfNeeded() {
         guard !authorizationRequested else { return }
         authorizationRequested = true
-        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
-            // Authorization outcome isn't actionable here: if denied,
-            // `UNUserNotificationCenter.add(_:)` calls below simply won't
-            // show anything, which is the correct (if silent) behavior —
-            // this engine has no UI to surface a "notifications disabled"
-            // banner from, and shouldn't retry/re-prompt on every firing.
+        notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            // Authorization outcome isn't *actionable* here — this engine
+            // has no UI to surface a "notifications disabled" banner from,
+            // and must not retry/re-prompt on every firing — but a denial
+            // means every `.notification` action from here on is silently
+            // dropped by the system, so at minimum the log has to say so
+            // once, honestly, rather than the loss being invisible even to
+            // someone reading Console. (Firings themselves are still
+            // recorded in `alert_log` regardless.)
+            if let error {
+                Self.logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+            } else if !granted {
+                Self.logger.notice("Notification authorization denied — .notification alert actions will not be shown until it is enabled in System Settings. Firings are still recorded in alert_log.")
+            }
         }
     }
 
@@ -463,6 +474,16 @@ public final class AlertEngine {
         // capable of being "intolerable" from a misconfigured, rapidly
         // refiring rule as a notification would be), same as
         // `.releaseSleepAssertion`.
+        //
+        // Closure-delivered actions only count when their closure is
+        // actually wired: a `nil` `menuBarHighlighter` (or `shortcutRunner`,
+        // `sleepAssertionReleaser`, `phonePushRecorder`) delivers nothing to
+        // anyone, so treating it as a delivery would both lie in `alert_log`
+        // ("Delivered" for something no one could have seen — the log's own
+        // doc comment below says it must distinguish "we showed you
+        // something" from "nothing stopped us") and burn one of the
+        // `rateCapPerHour` slots on a no-op, potentially suppressing a real
+        // notification later in the same hour.
         var didDeliver = false
 
         for action in rule.actions {
@@ -478,8 +499,8 @@ public final class AlertEngine {
                 didDeliver = true
 
             case .menuBarHighlight(let token):
-                guard withinRateCap else { continue }
-                menuBarHighlighter?(token)
+                guard withinRateCap, let menuBarHighlighter else { continue }
+                menuBarHighlighter(token)
                 didDeliver = true
 
             case .pushToPhone:
@@ -495,9 +516,9 @@ public final class AlertEngine {
                 // action was itself being suppressed by the same cap — an
                 // inconsistency worth closing off now rather than after
                 // the transport exists to make it user-visible.
-                guard withinRateCap else { continue }
+                guard withinRateCap, let phonePushRecorder else { continue }
                 if let (title, body) = notificationText(in: rule.actions) {
-                    phonePushRecorder?(AlertPush(
+                    phonePushRecorder(AlertPush(
                         deviceID: snapshot.deviceID,
                         ruleName: rule.name,
                         title: title,
@@ -508,13 +529,13 @@ public final class AlertEngine {
                 }
 
             case .runShortcut(let name):
-                guard withinRateCap else { continue }
-                shortcutRunner?(name)
+                guard withinRateCap, let shortcutRunner else { continue }
+                shortcutRunner(name)
                 didDeliver = true
 
             case .releaseSleepAssertion:
-                guard withinRateCap else { continue }
-                sleepAssertionReleaser?()
+                guard withinRateCap, let sleepAssertionReleaser else { continue }
+                sleepAssertionReleaser()
                 didDeliver = true
 
             case .logOnly:
@@ -599,9 +620,15 @@ public final class AlertEngine {
         // Fires as soon as possible; `nil` trigger means "now" per
         // `UNUserNotificationCenter` semantics.
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        notificationCenter.add(request) { _ in
+        notificationCenter.add(request) { error in
             // Delivery errors (e.g. authorization not yet granted) aren't
-            // actionable here — see `ruleWasEnabled(_:)`'s doc comment.
+            // *actionable* here — see `ruleWasEnabled(_:)`'s doc comment —
+            // but they are the only signal that an alert the log recorded
+            // as delivered never actually appeared, so they must at least
+            // be visible in Console rather than swallowed.
+            if let error {
+                Self.logger.error("Notification delivery failed for rule \(ruleID.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

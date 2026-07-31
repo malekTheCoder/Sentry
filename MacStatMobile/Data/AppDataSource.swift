@@ -94,6 +94,13 @@ public final class AppDataSource: ObservableObject {
     /// existed.
     @Published public private(set) var isUsingLocalSync = false
 
+    /// Whether the local-sync connection is up *right now*. Meaningful only
+    /// while `isUsingLocalSync` is true: the transport stays the
+    /// `LocalSyncClient` across a drop (it reconnects on its own), but the
+    /// UI must stop claiming a live link the moment the Mac goes away —
+    /// the Dashboard shows a connection-lost banner off this flag.
+    @Published public private(set) var isLocalSyncConnected = false
+
     private var localClient: LocalSyncClient?
     private var resolveTask: Task<Void, Never>?
 
@@ -122,6 +129,13 @@ public final class AppDataSource: ObservableObject {
         if found {
             transport = client
             isUsingLocalSync = true
+            isLocalSyncConnected = true
+            await client.setConnectionStateHandler { [weak self] connected in
+                Task { @MainActor in
+                    guard let self, self.localClient != nil else { return }
+                    self.isLocalSyncConnected = connected
+                }
+            }
         } else {
             await client.stop()
             localClient = nil
@@ -141,6 +155,10 @@ public final class AppDataSource: ObservableObject {
             return await mock.devices()
         }
         if let local = transport as? LocalSyncClient, let deviceID = await local.lastKnownDeviceID() {
+            // `lastSeen` is the last *snapshot* time, not catalog-fetch time
+            // — stamping `Date()` here made the freshness banner claim "now"
+            // for a Mac that stopped reporting an hour ago.
+            let lastSeen = await local.lastSnapshotDate() ?? .distantPast
             return [
                 Device(
                     deviceID: deviceID,
@@ -149,7 +167,7 @@ public final class AppDataSource: ObservableObject {
                     chip: "Unknown",
                     osVersion: "Unknown",
                     appVersion: "Unknown",
-                    lastSeen: Date(),
+                    lastSeen: lastSeen,
                     capabilitiesJSON: "{}",
                     lastViewedAt: nil
                 )

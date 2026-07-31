@@ -192,6 +192,72 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .inactive)
     }
 
+    // MARK: - Expiry-timer lifecycle races
+
+    func testStaleExpiryTimerFireCannotReleaseASubsequentAssertion() throws {
+        // The race: assertion A's timer fires and enqueues its release onto
+        // the main actor; before that task runs, the user starts assertion B
+        // (or extends A, which recreates it). The stale expiry must NOT tear
+        // down B. Driven deterministically via the internal generation-
+        // guarded landing point the timer block calls, rather than trying to
+        // interleave a real Timer fire with a task hop.
+        let service = PowerControlService(defaults: makeTestDefaults("staleTimer"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 60, reason: "assertion A")
+        let staleGeneration = service.assertionGeneration
+
+        try service.startAssertion(mode: .systemOnly, duration: 3600, reason: "assertion B")
+
+        // Assertion A's timer fires late, carrying A's generation.
+        service.timedAssertionExpired(generation: staleGeneration)
+        guard case .active(_, _, let reason) = service.state else {
+            return XCTFail("a stale expiry fire must not release the newer assertion")
+        }
+        XCTAssertEqual(reason, "assertion B")
+
+        // The *current* generation's expiry still works — the guard must not
+        // have turned real expiry into a no-op.
+        service.timedAssertionExpired(generation: service.assertionGeneration)
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    func testStaleExpiryTimerFireAfterManualReleaseIsHarmless() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("staleAfterRelease"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 60, reason: "released early")
+        let generation = service.assertionGeneration
+        service.releaseAssertion()
+
+        // Idempotent: the stale fire lands on an already-inactive service.
+        service.timedAssertionExpired(generation: generation)
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    // MARK: - Degenerate durations
+
+    func testZeroOrNegativeDurationDoesNotBecomeAnIndefiniteHold() throws {
+        // A non-positive duration used to skip both the OS timeout and
+        // `expiresAt`, silently producing an *indefinite* assertion — the
+        // exact "Mac never sleeps again" failure mode the cold-start
+        // reconciliation guard exists to prevent, minted fresh from a
+        // degenerate input.
+        let service = PowerControlService(defaults: makeTestDefaults("zeroDuration"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 0, reason: "zero seconds")
+        XCTAssertEqual(service.state, .inactive, "a zero-length hold must hold nothing")
+
+        try service.startAssertion(mode: .systemOnly, duration: -30, reason: "negative seconds")
+        XCTAssertEqual(service.state, .inactive)
+
+        // And it must still release any hold it replaced.
+        try service.startAssertion(mode: .systemOnly, duration: 3600, reason: "real hold")
+        try service.startAssertion(mode: .systemOnly, duration: 0, reason: "replaced by nothing")
+        XCTAssertEqual(service.state, .inactive)
+    }
+
     func testAdjustAssertionThrowsWhenNoAssertionActive() {
         let service = PowerControlService(defaults: makeTestDefaults("adjustNoneActive"))
         defer { service.releaseAssertion() }
@@ -421,6 +487,39 @@ final class PowerControlServiceTests: XCTestCase {
         service.evaluate(snapshot())
         XCTAssertNotEqual(service.state, .inactive)
         service.evaluate(snapshot())
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    func testProcessMissCountDoesNotCarryAcrossReleaseAndRestart() throws {
+        // A rapid release + re-arm must start the 2-miss grace window from
+        // scratch: if the miss counter carried over, one miss before the
+        // release plus one miss after it would sum to 2 and drop a
+        // freshly-armed multi-hour hold on its first glitchy probe.
+        let service = PowerControlService(defaults: makeTestDefaults("processMissReset"))
+        defer { service.releaseAssertion() }
+        service.processProbe = { _ in false }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .whileProcessRunning(name: "claude"),
+            reason: "first arm"
+        )
+        service.evaluate(snapshot()) // miss #1 under the first hold
+        XCTAssertNotEqual(service.state, .inactive)
+
+        service.releaseAssertion()
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .whileProcessRunning(name: "claude"),
+            reason: "second arm"
+        )
+        service.evaluate(snapshot()) // miss #1 under the *second* hold
+        XCTAssertNotEqual(
+            service.state, .inactive,
+            "a fresh hold must get its full 2-miss grace window, not inherit misses from a released one"
+        )
+        service.evaluate(snapshot()) // miss #2 — now it may release
         XCTAssertEqual(service.state, .inactive)
     }
 

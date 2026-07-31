@@ -80,6 +80,11 @@ final class DashboardViewModel: ObservableObject {
     private func observeSnapshots(transport: any StatsTransport) {
         snapshotTask?.cancel()
         let writer = widgetSnapshotWriter
+        // Same derivation `WatchRelayManager.consider(_:)` uses for the
+        // Watch payload's honesty flag: the transport identity, not the
+        // data, is what distinguishes demo from real (`MockDataSource`'s
+        // output is plausible-looking by design).
+        let sourceIsDemoData = transport is MockDataSource
         snapshotTask = Task { [weak self] in
             for await snapshot in transport.snapshots() {
                 guard !Task.isCancelled else { return }
@@ -88,7 +93,7 @@ final class DashboardViewModel: ObservableObject {
                 // follows whichever Mac the dashboard is actually showing,
                 // once a device picker exists for more than one Mac.
                 if let device = self?.selectedDevice {
-                    await writer.record(device: device, snapshot: snapshot)
+                    await writer.record(device: device, snapshot: snapshot, sourceIsDemoData: sourceIsDemoData)
                 }
             }
         }

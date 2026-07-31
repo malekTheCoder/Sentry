@@ -44,7 +44,10 @@ public final class DeltaTracker {
         if value >= previousValue {
             delta = value - previousValue
         } else if width == .bits32, previousValue <= UInt64(UInt32.max) {
-            delta = (UInt64(UInt32.max) - previousValue) + value
+            // The modulus is 2^32 (== UInt32.max + 1), so the wrapped delta
+            // is (2^32 - previous) + value, not (UInt32.max - previous) +
+            // value — the latter undercounts by one byte per wrap.
+            delta = (UInt64(UInt32.max) - previousValue) + value + 1
         } else {
             // Reset, not a wrap we can safely account for — no delta available
             // for this sample; the next call establishes a fresh baseline.
