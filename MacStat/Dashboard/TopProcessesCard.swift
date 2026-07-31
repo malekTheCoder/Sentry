@@ -16,14 +16,7 @@ struct TopProcessesCard: View {
             header
             content
         }
-        .padding(palette.spacing * 1.6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.separator, lineWidth: 1)
-        )
+        .dashboardCard(palette)
     }
 
     private var header: some View {

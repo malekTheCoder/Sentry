@@ -55,14 +55,7 @@ struct BatteryHealthTrendCard: View {
                 height: 160
             )
         }
-        .padding(palette.spacing * 1.6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.separator, lineWidth: 1)
-        )
+        .dashboardCard(palette)
         // `.task` rather than `.onAppear`: this card is a scroll-away
         // subview of `DashboardView` inside a `ScrollView`, and `.task` is
         // automatically cancelled if the view disappears mid-query — a

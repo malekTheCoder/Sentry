@@ -109,8 +109,12 @@ struct VitalsSection: View {
                     .foregroundStyle(palette.textSecondary)
                     .lineLimit(1)
                 Spacer(minLength: palette.spacingTight)
-                VitalMeter(fraction: vital.fraction, level: vital.level)
-                    .frame(width: DropdownGrid.meterWidth)
+                VitalMeter(
+                    fraction: vital.fraction,
+                    level: vital.level,
+                    tint: palette.moduleColor(vital.module)
+                )
+                .frame(width: DropdownGrid.meterWidth)
                 valueLabel(for: vital)
                 chevron(isExpanded: isExpanded, isVisible: isHovered || isExpanded)
             }
@@ -224,7 +228,7 @@ struct VitalsSection: View {
                         .font(palette.font(size: 11))
                         .foregroundStyle(palette.textTertiary)
                     Spacer(minLength: palette.spacingTight)
-                    VitalMeter(fraction: nil, level: .normal)
+                    VitalMeter(fraction: nil, level: .normal, tint: palette.textTertiary)
                         .frame(width: DropdownGrid.meterWidth)
                     Text(MetricFormatting.placeholder)
                         .font(palette.numericFont(size: 11, weight: .medium))
@@ -324,11 +328,11 @@ private struct VitalValueText: View {
 
 /// A 3pt track — the entire visual budget for "how full is this".
 ///
-/// Neutral by default on purpose: a filled bar already encodes magnitude
-/// through length, so tinting it per-module would spend color on information
-/// the shape is already carrying. It picks up `warning`/`danger` only when the
-/// reading itself is flagged, which is the one case where the bar has something
-/// to say that its length doesn't.
+/// The fill carries the module's own theme color (CPU blue, GPU green, …) —
+/// the one deliberate spot of color on each row, matching the Dashboard's
+/// chart tints so the two surfaces speak the same visual language. A flagged
+/// reading overrides the module color with `warning`/`danger`, because
+/// severity always outranks identity.
 private struct VitalMeter: View {
     @Environment(\.themePalette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -336,10 +340,12 @@ private struct VitalMeter: View {
     /// nil renders the bare track — "not measured" rather than "measured zero".
     let fraction: Double?
     let level: VitalLevel
+    /// The module's theme color, used at `.normal`.
+    let tint: Color
 
     private var fill: Color {
         switch level {
-        case .normal: return palette.textTertiary
+        case .normal: return tint
         case .warning: return palette.warning
         case .critical: return palette.danger
         }

@@ -102,6 +102,21 @@ struct ThemePalette: Equatable {
         theme.metricColor(for: metric)?.color(for: scheme) ?? accent
     }
 
+    /// Module-level color for surfaces keyed by module rather than metric
+    /// (the dropdown's vitals rows): each module resolves through its
+    /// representative metric so it matches the Dashboard's chart tints.
+    func moduleColor(_ module: MetricModule) -> Color {
+        switch module {
+        case .cpu: return metricColor(.cpuTotalPercent)
+        case .gpu: return metricColor(.gpuUtilizationPercent)
+        case .memory: return metricColor(.memoryUsedBytes)
+        case .disk: return metricColor(.diskReadBytesPerSec)
+        case .network: return metricColor(.networkRxBytesPerSec)
+        case .thermal: return metricColor(.thermalSocTempC)
+        case .battery, .ane, .system: return success
+        }
+    }
+
     // MARK: Typography
 
     /// Typography for any number that changes while the user is looking at it.
@@ -196,6 +211,32 @@ struct ThemePalette: Equatable {
 // MARK: - Themed backdrop
 
 extension View {
+    /// The one card chrome every Dashboard card wears. Material themes get a
+    /// glass tile — within-window ultra-thin material under the theme's own
+    /// translucent wash, so cards read as panes of frosted glass floating
+    /// over the backdrop; opaque themes keep the flat elevated-surface fill.
+    /// One modifier instead of six hand-copied chrome stacks is also what
+    /// keeps "randomly placed" impossible: geometry lives here or nowhere.
+    @ViewBuilder
+    func dashboardCard(_ palette: ThemePalette) -> some View {
+        let shape = RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+        if palette.theme.useMaterialBackground {
+            self
+                .padding(palette.spacing * 1.6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(shape.fill(palette.surfaceElevated))
+                .background(.ultraThinMaterial, in: shape)
+                .overlay(shape.strokeBorder(palette.separator, lineWidth: 1))
+        } else {
+            self
+                .padding(palette.spacing * 1.6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(palette.surfaceElevated)
+                .clipShape(shape)
+                .overlay(shape.stroke(palette.separator, lineWidth: 1))
+        }
+    }
+
     /// The one way any themed surface paints its backdrop: for material
     /// themes, a real behind-window `NSVisualEffectView` (see `VisualEffect`
     /// — SwiftUI's `Material` renders flat gray inside an opaque window)

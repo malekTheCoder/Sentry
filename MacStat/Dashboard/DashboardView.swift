@@ -106,14 +106,7 @@ struct DashboardView: View {
                     // standard card chrome so the row reads as two siblings
                     // rather than one card and one floating control group.
                     SleepControlCard(powerControl: powerControl)
-                        .padding(palette.spacing * 1.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(palette.surfaceElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                                .stroke(palette.separator, lineWidth: 1)
-                        )
+                        .dashboardCard(palette)
                 }
                 HStack(alignment: .top, spacing: rowGap) {
                     BatteryHealthTrendCard(
@@ -147,10 +140,10 @@ struct DashboardView: View {
             }
             .padding(.horizontal, palette.spacing * 2)
             .padding(.bottom, palette.spacing * 2)
-            // Clears the traffic lights: the window's titlebar is
-            // transparent and content is full-size, so the header supplies
-            // its own headroom.
-            .padding(.top, 40)
+            // Clears the floating glass switcher (`MainWindowView.navHeight`)
+            // — the window's titlebar is transparent and content is
+            // full-size, so the header supplies its own headroom.
+            .padding(.top, MainWindowView.navHeight + 8)
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)

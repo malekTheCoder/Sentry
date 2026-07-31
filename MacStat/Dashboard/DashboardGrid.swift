@@ -235,14 +235,7 @@ private struct DashboardMetricCard<Detail: View>: View {
             }
             .padding(.top, subtitle == nil ? 6 : 2)
         }
-        .padding(palette.spacing * 1.4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.separator, lineWidth: 1)
-        )
+        .dashboardCard(palette)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(metric.title), \(headline)")
     }

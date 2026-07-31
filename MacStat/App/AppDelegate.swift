@@ -69,15 +69,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItemController: StatusItemController?
     private let dropdownViewModel = DropdownViewModel()
     private let popover = NSPopover()
-    private lazy var settingsWindowController = SettingsWindowController(
-        settingsStore: settingsStore,
-        // Same store the engine logs firings to — the Alerts pane's history
-        // view reads `alert_log` from it. Without this it renders an
-        // explicit "history unavailable" state rather than a misleading
-        // empty list.
-        historyStore: historyStore,
-        onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
-        mcpActivityLog: mcpActivityLog
+
+    /// Which tab Sentry's one window shows — written by the window's own
+    /// glass switcher and by the dropdown's Dashboard/Settings actions.
+    private let mainWindowState = MainWindowState()
+
+    /// Sentry's single window: Dashboard and Settings behind the glass nav
+    /// switcher (`MainWindowView`), replacing the separate settings and
+    /// history windows. Same lazy-singleton pattern those two had.
+    private lazy var mainWindowController = MainWindowController(
+        rootView: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            return AnyView(
+                MainWindowView(
+                    state: self.mainWindowState,
+                    dashboard: AnyView(
+                        DashboardView(
+                            viewModel: self.dashboardViewModel,
+                            historyStore: self.historyStore,
+                            processMonitor: self.processMonitor,
+                            powerControl: self.powerControl
+                        )
+                    ),
+                    settings: AnyView(
+                        SettingsView(
+                            store: self.settingsStore,
+                            // Same store the engine logs firings to — the
+                            // Alerts pane's history view reads `alert_log`
+                            // from it. Without it that pane renders an
+                            // explicit "history unavailable" state.
+                            historyStore: self.historyStore,
+                            onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
+                            mcpActivityLog: self.mcpActivityLog
+                        )
+                    )
+                )
+            )
+        },
+        onShow: { [weak self] in
+            self?.dashboardViewModel.refresh()
+            self?.processMonitor.start()
+        },
+        onHide: { [weak self] in
+            self?.processMonitor.stop()
+            // The debounced writer may still hold the user's last edit;
+            // closing the window is exactly the moment "eventually" isn't
+            // enough — carried over from the old SettingsWindowController.
+            self?.settingsStore.save()
+        }
     )
 
     // MARK: - Debug window (plan Phase 1 exit criterion)
@@ -109,46 +148,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// Backs the Dashboard's "Top Processes" card (plan §17 Phase 8). Lazy
     /// for the same reason `dashboardViewModel` is — cheap to construct,
-    /// but its `Timer` (started via `historyWindowController`'s `onShow`
-    /// below) should only run while the Dashboard window is actually open.
+    /// but its `Timer` (started via `mainWindowController`'s `onShow`)
+    /// should only run while Sentry's window is actually open.
     private lazy var processMonitor = ProcessMonitor()
-
-    // MARK: - Dashboard window
-    //
-    // Same lazy-singleton pattern as `settingsWindowController`/
-    // `debugWindowController` above — costs nothing until the dropdown's
-    // "History" button is actually clicked. `rootView` is evaluated once,
-    // on first `show()` (see `HistoryWindowController`'s doc comment) — but
-    // unlike an earlier version of this wiring, that one-time evaluation no
-    // longer matters for theme/module freshness: `DashboardView` reads
-    // `dashboardViewModel.theme`/`.enabledModules` live rather than values
-    // captured at construction, and `applySettings` below pushes into both
-    // on every settings change, same as it already does for the dropdown's
-    // `lastAppliedTheme`. `onShow` re-triggers `dashboardViewModel.refresh()`
-    // on every `show()`, not just the first — `DashboardView`'s own `.task`
-    // only ever runs once (this window's `NSHostingController` is never
-    // rebuilt), so without this a Dashboard reopened after being closed for
-    // a while would keep showing whatever history it last queried.
-    private lazy var historyWindowController = HistoryWindowController(
-        rootView: { [weak self] in
-            guard let self else { return AnyView(EmptyView()) }
-            return AnyView(
-                DashboardView(
-                    viewModel: self.dashboardViewModel,
-                    historyStore: self.historyStore,
-                    processMonitor: self.processMonitor,
-                    powerControl: self.powerControl
-                )
-            )
-        },
-        onShow: { [weak self] in
-            self?.dashboardViewModel.refresh()
-            self?.processMonitor.start()
-        },
-        onHide: { [weak self] in
-            self?.processMonitor.stop()
-        }
-    )
 
     // MARK: - MCP (plan §13)
     //
@@ -423,7 +425,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 showsKeepAwake: settingsStore.settings.dropdownShowsKeepAwake,
                 showsAgentActivity: settingsStore.settings.dropdownShowsAgentActivity,
                 onOpenSettings: { [weak self] in self?.openSettings() },
-                onOpenHistory: { [weak self] in self?.historyWindowController.show() },
+                onOpenHistory: { [weak self] in self?.openMainWindow(tab: .dashboard) },
                 onQuit: { NSApplication.shared.terminate(nil) },
                 onSelectTheme: { [weak self] themeID in self?.selectTheme(id: themeID) }
             )
@@ -484,8 +486,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func openSettings() {
+        openMainWindow(tab: .settings)
+    }
+
+    /// Opens (or fronts) Sentry's one window onto a specific tab.
+    private func openMainWindow(tab: MainTab) {
         popover.performClose(nil)
-        settingsWindowController.show()
+        mainWindowState.tab = tab
+        mainWindowController.show()
     }
 
     /// Theme picked from the dropdown's quick switcher. `applySettings`

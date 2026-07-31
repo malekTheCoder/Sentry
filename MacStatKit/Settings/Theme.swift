@@ -703,7 +703,12 @@ extension Theme {
             ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.0),
         ],
         separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.1),
-        metricColors: [:],
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
+            success: ThemeColor(light: "#34C759", dark: "#30D158"),
+            warning: ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
+            danger: ThemeColor(light: "#FF3B30", dark: "#FF453A")
+        ),
         fontFamily: .system,
         barFontSize: 11,
         barFontWeight: .medium,
@@ -743,7 +748,12 @@ extension Theme {
             ThemeColor(light: "#0A84FF", dark: "#64D2FF", opacity: 0.0),
         ],
         separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.12),
-        metricColors: [:],
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(light: "#0A84FF", dark: "#64D2FF"),
+            success: ThemeColor(light: "#30D158", dark: "#66E58C"),
+            warning: ThemeColor(light: "#FF9F0A", dark: "#FFC53F"),
+            danger: ThemeColor(light: "#FF453A", dark: "#FF7A70")
+        ),
         fontFamily: .rounded,
         barFontSize: 11,
         barFontWeight: .medium,

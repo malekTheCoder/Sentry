@@ -69,9 +69,9 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 /// icon chips, an inline pane title in the content column, and **no
 /// toolbar**. `NavigationSplitView` was tried and rejected: its unified
 /// toolbar adds a second bar above the content that reads as chrome for
-/// chrome's sake in a window this small. The window itself draws no title
-/// bar (`SettingsWindowController` uses a transparent titlebar +
-/// full-size content), so the whole surface is these two columns.
+/// chrome's sake in a window this small. This view now lives as the
+/// Settings tab of Sentry's one window (`MainWindowView`), under the
+/// floating glass switcher — so the whole surface is these two columns.
 ///
 /// **Deliberately not themed.** Themes style the app's own surfaces (the
 /// dropdown, the Dashboard, the widgets); the settings window earns trust
@@ -117,7 +117,7 @@ struct SettingsView: View {
             Divider()
             detail
         }
-        .frame(minWidth: 700, minHeight: 480)
+        .frame(minWidth: 720, minHeight: 500)
         // Only `ThemePane`'s preview cards read this — see the type doc.
         .environment(
             \.themePalette,
@@ -129,14 +129,10 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
-            // Clears the traffic lights (the titlebar is transparent and
-            // content is full-size), then names the window once, quietly.
-            Text("Sentry")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 10)
-                .padding(.top, 42)
-                .padding(.bottom, 6)
+            // Clears the floating glass switcher; the switcher names the
+            // window, so the sidebar goes straight to its rows.
+            Color.clear
+                .frame(height: MainWindowView.navHeight)
 
             ForEach(SettingsPane.allCases) { pane in
                 sidebarRow(for: pane)
@@ -199,7 +195,7 @@ struct SettingsView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-            .padding(.top, 40)
+            .padding(.top, MainWindowView.navHeight + 4)
             .padding(.horizontal, 24)
             .padding(.bottom, 10)
 
