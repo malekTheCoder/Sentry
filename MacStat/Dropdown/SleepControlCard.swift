@@ -689,15 +689,15 @@ enum SleepTriggerOption: Hashable, Identifiable {
     func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
         switch self {
         case .indefinite:
-            return "MacStat — keep awake until turned off"
+            return "Sentry — keep awake until turned off"
         case .fixed(let seconds):
-            return "MacStat — keep awake for \(SleepCountdownFormatting.presetLabel(seconds))"
+            return "Sentry — keep awake for \(SleepCountdownFormatting.presetLabel(seconds))"
         case .batteryBelow:
-            return "MacStat — keep awake until battery drops below \(MetricFormatting.percent(batteryThreshold))"
+            return "Sentry — keep awake until battery drops below \(MetricFormatting.percent(batteryThreshold))"
         case .cpuAbove:
-            return "MacStat — keep awake while CPU stays above \(MetricFormatting.percent(cpuThreshold))"
+            return "Sentry — keep awake while CPU stays above \(MetricFormatting.percent(cpuThreshold))"
         case .processRunning:
-            return "MacStat — keep awake while \(processName) is running"
+            return "Sentry — keep awake while \(processName) is running"
         }
     }
 }

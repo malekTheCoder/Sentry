@@ -125,7 +125,7 @@ struct AlertsPane: View {
             Button("Restore Defaults", role: .destructive) { restoreDefaultRules() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Your \(rules.count == 1 ? "1 rule" : "\(rules.count) rules") will be replaced by the \(AppSettings.defaultAlertRules.count) rules MacStat ships with, including any you edited or removed. Alert history is not deleted.")
+            Text("Your \(rules.count == 1 ? "1 rule" : "\(rules.count) rules") will be replaced by the \(AppSettings.defaultAlertRules.count) rules Sentry ships with, including any you edited or removed. Alert history is not deleted.")
         }
     }
 
@@ -580,7 +580,7 @@ struct AlertsPane: View {
 
             if selected.contains(.displayAsleep) {
                 Label(
-                    "MacStat has no display-sleep signal yet, so this condition is always false and this rule will never fire.",
+                    "Sentry has no display-sleep signal yet, so this condition is always false and this rule will never fire.",
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
@@ -616,7 +616,7 @@ struct AlertsPane: View {
         } header: {
             Text("Actions")
         } footer: {
-            Text("Actions aren't editable yet. Phone push and Shortcuts aren't implemented, so an editor offering them would promise delivery MacStat can't perform — every firing is still written to history regardless.")
+            Text("Actions aren't editable yet. Phone push and Shortcuts aren't implemented, so an editor offering them would promise delivery Sentry can't perform — every firing is still written to history regardless.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -662,7 +662,7 @@ struct AlertsPane: View {
     private var historyColumn: some View {
         VStack(spacing: 0) {
             if !historyIsAvailable {
-                message("Alert history isn't available — MacStat couldn't open its history database. Alerts still fire; they just aren't being recorded.")
+                message("Alert history isn't available — Sentry couldn't open its history database. Alerts still fire; they just aren't being recorded.")
             } else if historyEntries.isEmpty {
                 message("No alerts have fired yet.")
             } else {
@@ -1071,7 +1071,7 @@ enum RuleKind: Hashable {
         case .slowCharging:
             return "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
         case .batteryHealthDrop:
-            return "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
+            return "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed."
         case .generic:
             return nil
         }

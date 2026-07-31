@@ -33,7 +33,32 @@ struct MenuBarPane: View {
                 inspectorColumn
                     .frame(minWidth: 280)
             }
+
+            Divider()
+
+            dropdownContentBar
         }
+    }
+
+    /// What the menu bar *dropdown* shows, as opposed to the bar item the
+    /// rest of this pane composes. One compact row rather than a separate
+    /// pane: two switches don't justify a ninth sidebar entry. The vitals
+    /// rows themselves follow the Modules pane — said here so nobody hunts
+    /// for a third place.
+    private var dropdownContentBar: some View {
+        HStack(spacing: 16) {
+            Text("Dropdown shows:")
+                .foregroundStyle(.secondary)
+            Toggle("Keep-awake controls", isOn: $store.settings.dropdownShowsKeepAwake)
+            Toggle("Agent activity", isOn: $store.settings.dropdownShowsAgentActivity)
+            Spacer()
+            Text("Vitals rows follow Modules")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private var layout: MenuBarLayout {
@@ -335,7 +360,7 @@ struct MenuBarPane: View {
             // read out of the snapshot. Hiding a module is a render filter, so
             // the number is current the instant the rule flips back on — and
             // it is not a way to save battery.
-            Text("Hiding a module only stops it drawing. MacStat keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on.")
+            Text("Hiding a module only stops it drawing. Sentry keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -638,7 +663,7 @@ extension VisibilityRule {
         case .whenCharging:
             return "Only shown when charging"
         case .whenAssertionActive:
-            return "Only shown while MacStat is keeping the Mac awake"
+            return "Only shown while Sentry is keeping the Mac awake"
         }
     }
 }

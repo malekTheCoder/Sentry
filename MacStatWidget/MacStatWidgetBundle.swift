@@ -61,7 +61,7 @@ struct MacStatWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             MacStatWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("MacStat")
+        .configurationDisplayName("Sentry")
         .description(Self.galleryDescription)
         .supportedFamilies(Self.families)
     }
@@ -74,7 +74,7 @@ struct MacStatWidget: Widget {
     /// `MockDataSource` demo data (its writer sets `sourceIsDemoData: true`).
     private static var galleryDescription: String {
         #if os(macOS)
-        "Battery, CPU, and sleep status for this Mac, live from the MacStat menu bar app."
+        "Battery, CPU, and sleep status for this Mac, live from the Sentry menu bar app."
         #else
         "Battery, CPU, and sleep status for your Mac. This build shows demo data — there's no live iCloud sync yet, so nothing here comes from a real Mac."
         #endif

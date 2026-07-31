@@ -94,7 +94,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: rootView())
 
         let dashboardWindow = NSWindow(contentViewController: hosting)
-        dashboardWindow.title = "MacStat Dashboard"
+        dashboardWindow.title = "Sentry Dashboard"
         dashboardWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         // Wider than Settings' 720×520: a grid of per-metric detail charts
         // wants more breathing room than a single-column settings form.

@@ -20,8 +20,8 @@ struct GeneralPane: View {
     var body: some View {
         Form {
             Section("Startup") {
-                Toggle("Launch MacStat at login", isOn: launchAtLoginBinding)
-                    .accessibilityLabel("Launch MacStat at login")
+                Toggle("Launch Sentry at login", isOn: launchAtLoginBinding)
+                    .accessibilityLabel("Launch Sentry at login")
             }
 
             Section {

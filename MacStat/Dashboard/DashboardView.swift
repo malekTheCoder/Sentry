@@ -125,7 +125,7 @@ struct DashboardView: View {
             }
             .padding(palette.spacing * 2)
         }
-        .background(palette.background)
+        .themedBackdrop(palette)
         .environment(\.themePalette, palette)
         // `DashboardViewModel.refresh()` is explicitly not automatic on
         // init (see its doc comment — constructing the view model at

@@ -3,8 +3,7 @@ import MacStatKit
 
 /// The 8 settings panes, in the Nocturne redesign's sidebar order (design
 /// handoff: General, Modules, Menu Bar, Theme, Alerts, AI Access, Sync,
-/// Advanced — a different order than the tab strip this file used to have,
-/// where Alerts was followed by Advanced/Sync/AIAccess).
+/// Advanced).
 private enum SettingsPane: String, CaseIterable, Identifiable {
     case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced
 
@@ -37,10 +36,17 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     }
 }
 
-/// Root of the settings window: a fixed-width left sidebar plus a content
-/// area holding whichever pane is selected (plan §8.2, §8.4, §9.3; Nocturne
-/// redesign replaces the previous native `TabView` chrome with this custom
-/// sidebar, per the design handoff).
+/// Root of the settings window: a native `NavigationSplitView` — system
+/// sidebar material, system selection highlight, `.grouped` forms — in
+/// place of the previous hand-painted sidebar and theme-tinted content.
+///
+/// **Deliberately not themed.** Themes style the app's own surfaces (the
+/// dropdown, the Dashboard, the widgets); the settings window is where the
+/// user *configures* those surfaces, and it reads as trustworthy precisely
+/// by looking like every other macOS settings window. The one exception is
+/// `ThemePane`'s preview cards, which render each theme with its own tokens
+/// — that's the pane's whole job. `themePalette` stays in the environment
+/// only for that pane.
 ///
 /// Every pane binds straight into `store.settings`, which debounces its own
 /// save — there is deliberately no draft/apply copy to keep in sync.
@@ -76,81 +82,51 @@ struct SettingsView: View {
         self.mcpActivityLog = mcpActivityLog
     }
 
-    @State private var selectedPane: SettingsPane = .general
+    /// Optional because that's the selection type `List` binds; `detail`
+    /// falls back to `.general` so the window never shows an empty pane.
+    @State private var selectedPane: SettingsPane? = .general
 
     @Environment(\.colorScheme) private var systemColorScheme
 
-    private var palette: ThemePalette {
-        ThemePalette(theme: store.resolvedTheme(), scheme: systemColorScheme)
-    }
-
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(28)
-        }
-        .frame(minWidth: 640, minHeight: 440)
-        .environment(\.themePalette, palette)
-    }
-
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsPane.allCases) { pane in
-                sidebarRow(for: pane)
+        NavigationSplitView {
+            List(SettingsPane.allCases, selection: $selectedPane) { pane in
+                Label(pane.title, systemImage: pane.symbol)
+                    .tag(pane)
             }
-            Spacer(minLength: 0)
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
+        } detail: {
+            content(for: selectedPane ?? .general)
+                .navigationTitle((selectedPane ?? .general).title)
         }
-        .padding(10)
-        .frame(width: 180, alignment: .top)
-        .frame(maxHeight: .infinity)
-        .background(palette.surface)
-    }
-
-    private func sidebarRow(for pane: SettingsPane) -> some View {
-        let isSelected = pane == selectedPane
-        return Button {
-            selectedPane = pane
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: pane.symbol)
-                    .frame(width: 16)
-                Text(pane.title)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isSelected ? palette.accent.opacity(0.13) : Color.clear)
-            )
-            .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .frame(minWidth: 680, minHeight: 470)
+        // Only `ThemePane`'s preview cards read this — see the type doc.
+        .environment(
+            \.themePalette,
+            ThemePalette(theme: store.resolvedTheme(), scheme: systemColorScheme)
+        )
     }
 
     @ViewBuilder
-    private var content: some View {
-        switch selectedPane {
+    private func content(for pane: SettingsPane) -> some View {
+        switch pane {
         case .general:
-            GeneralPane(store: store)
+            GeneralPane(store: store).formStyle(.grouped)
         case .modules:
-            ModulesPane(store: store)
+            ModulesPane(store: store).formStyle(.grouped)
         case .menuBar:
-            MenuBarPane(store: store)
+            MenuBarPane(store: store).formStyle(.grouped)
         case .theme:
             ThemePane(store: store)
         case .alerts:
-            AlertsPane(store: store, historyStore: historyStore)
+            AlertsPane(store: store, historyStore: historyStore).formStyle(.grouped)
         case .aiAccess:
-            AIAccessPane(store: store, activityLog: mcpActivityLog)
+            AIAccessPane(store: store, activityLog: mcpActivityLog).formStyle(.grouped)
         case .sync:
-            SyncPane()
+            SyncPane().formStyle(.grouped)
         case .advanced:
-            AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow)
+            AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow).formStyle(.grouped)
         }
     }
 }

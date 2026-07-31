@@ -25,6 +25,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// preset per Appendix B.
     public var menuBarLayout: MenuBarLayout
 
+    // MARK: - Dropdown content
+    //
+    // Which optional sections the menu bar dropdown shows. The vitals rows
+    // themselves follow `enabledModules` (one switch for dropdown + Dashboard,
+    // deliberately); these cover the sections that aren't per-module.
+
+    /// Show the keep-awake controls section in the dropdown.
+    public var dropdownShowsKeepAwake: Bool
+
+    /// Show the transient "agent just did something" line under the headline.
+    public var dropdownShowsAgentActivity: Bool
+
     // MARK: - Lifecycle
 
     public var launchAtLogin: Bool
@@ -218,6 +230,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         themeID: String = Theme.defaultTheme.id,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
+        dropdownShowsKeepAwake: Bool = true,
+        dropdownShowsAgentActivity: Bool = true,
         launchAtLogin: Bool = false,
         globalRefreshInterval: TimeInterval = 3,
         adaptiveThrottlingEnabled: Bool = true,
@@ -243,6 +257,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.themeID = themeID
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
+        self.dropdownShowsKeepAwake = dropdownShowsKeepAwake
+        self.dropdownShowsAgentActivity = dropdownShowsAgentActivity
         self.launchAtLogin = launchAtLogin
         self.globalRefreshInterval = globalRefreshInterval
         self.adaptiveThrottlingEnabled = adaptiveThrottlingEnabled
@@ -278,6 +294,8 @@ extension AppSettings {
         case themeID
         case enabledModules
         case menuBarLayout
+        case dropdownShowsKeepAwake
+        case dropdownShowsAgentActivity
         case launchAtLogin
         case globalRefreshInterval
         case adaptiveThrottlingEnabled
@@ -326,6 +344,10 @@ extension AppSettings {
                 ?? fallback.enabledModules,
             menuBarLayout: try container.decodeIfPresent(MenuBarLayout.self, forKey: .menuBarLayout)
                 ?? fallback.menuBarLayout,
+            dropdownShowsKeepAwake: try container.decodeIfPresent(Bool.self, forKey: .dropdownShowsKeepAwake)
+                ?? fallback.dropdownShowsKeepAwake,
+            dropdownShowsAgentActivity: try container.decodeIfPresent(Bool.self, forKey: .dropdownShowsAgentActivity)
+                ?? fallback.dropdownShowsAgentActivity,
             launchAtLogin: try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin)
                 ?? fallback.launchAtLogin,
             globalRefreshInterval: try container.decodeIfPresent(TimeInterval.self, forKey: .globalRefreshInterval)

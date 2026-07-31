@@ -1,4 +1,4 @@
-# MacStat
+# Sentry (codebase: MacStat)
 
 A macOS menu bar system monitor with an iPhone companion app, CloudKit sync,
 remote sleep-prevention control, and an AI-agent (MCP) integration layer.
@@ -30,7 +30,10 @@ repo lives in iCloud-synced `~/Documents`, so derived data must live outside
 the repo (codesign rejects FileProvider xattrs), and `DEVELOPER_DIR` must
 point at Xcode-beta.
 
-Targets: `MacStat` (menu bar app), `MacStatKit` (shared models/services,
+The app's product/display name is **Sentry**; the code, targets, and
+bundle identifiers keep the MacStat name.
+
+Targets: `MacStat` (menu bar app, builds `Sentry.app`), `MacStatKit` (shared models/services,
 macOS+iOS), `SystemMetricsKit` (macOS collectors), `MacStatMobile` (iOS
 companion), `MacStatWidgetExtension` (iOS home/lock-screen widget),
 `MacStatWidgetExtension_macOS` (desktop widget, fed live by the menu bar

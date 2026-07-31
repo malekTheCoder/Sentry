@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Build and (re)launch MacStat.
+# Build and (re)launch Sentry (product name of the MacStat project).
 #
 # Two things on this machine make the plain `xcodebuild` line from the README
 # fail, and both are worked around here rather than requiring a sudo password:
@@ -21,7 +21,7 @@ cd "$(dirname "$0")"
 
 export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 DD="$HOME/Library/Developer/MacStat-DerivedData"
-APP="$DD/Build/Products/Debug/MacStat.app"
+APP="$DD/Build/Products/Debug/Sentry.app"
 
 /opt/homebrew/bin/xcodegen generate
 
@@ -37,17 +37,19 @@ xcodebuild -project MacStat.xcodeproj -scheme MacStat -configuration Debug \
 #
 # `open` on an already-running app just activates it, so kill first to be sure
 # the relaunch actually picks up the build we just made.
-pkill -f "MacStat.app/Contents/MacOS/MacStat" 2>/dev/null || true
+pkill -f "Sentry.app/Contents/MacOS/Sentry" 2>/dev/null || true
 sleep 1
-rm -rf /Applications/MacStat.app
-ditto "$APP" /Applications/MacStat.app
-xattr -cr /Applications/MacStat.app 2>/dev/null || true
-open /Applications/MacStat.app
+# The old MacStat.app install is superseded by Sentry.app; clear both
+# so two copies never race over the same settings and status item.
+rm -rf /Applications/MacStat.app /Applications/Sentry.app
+ditto "$APP" /Applications/Sentry.app
+xattr -cr /Applications/Sentry.app 2>/dev/null || true
+open /Applications/Sentry.app
 sleep 3
 
-if pgrep -f "MacStat.app/Contents/MacOS/MacStat" >/dev/null; then
-  echo "MacStat running — $(git rev-parse --short HEAD) $(git branch --show-current)"
+if pgrep -f "Sentry.app/Contents/MacOS/Sentry" >/dev/null; then
+  echo "Sentry running — $(git rev-parse --short HEAD) $(git branch --show-current)"
 else
-  echo "MacStat failed to stay running; check Console.app for a crash report" >&2
+  echo "Sentry failed to stay running; check Console.app for a crash report" >&2
   exit 1
 fi

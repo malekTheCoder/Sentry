@@ -86,7 +86,7 @@ struct SyncPane: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text("MacStat isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build.")
+                Text("Sentry isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

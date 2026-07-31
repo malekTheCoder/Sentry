@@ -132,6 +132,11 @@ targets:
         link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
+      # The app is named Sentry; the module stays MacStat so `@testable
+      # import MacStat` and every internal reference keep compiling. Bundle
+      # id is unchanged on purpose — it's identity, not branding.
+      PRODUCT_NAME: Sentry
+      PRODUCT_MODULE_NAME: MacStat
       MARKETING_VERSION: "0.1.0"
       CURRENT_PROJECT_VERSION: "1"
       # Hardened runtime turns on library validation, which rejects the
@@ -151,7 +156,7 @@ targets:
       path: MacStat/Resources/Info.plist
       properties:
         LSUIElement: true
-        CFBundleDisplayName: MacStat
+        CFBundleDisplayName: Sentry
         NSHumanReadableCopyright: "Malek Swilam"
 
   MacStatMobile:
@@ -223,7 +228,7 @@ targets:
     info:
       path: MacStatWidget/Info.plist
       properties:
-        CFBundleDisplayName: MacStat Widget
+        CFBundleDisplayName: Sentry Widget
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
@@ -253,7 +258,7 @@ targets:
       # one path would race on content.
       path: MacStatWidget/Info-macOS.plist
       properties:
-        CFBundleDisplayName: MacStat Widget
+        CFBundleDisplayName: Sentry Widget
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
@@ -308,6 +313,11 @@ targets:
         link: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.tests
+      # XcodeGen derives TEST_HOST from the target name, not from the
+      # PRODUCT_NAME override that renames the app to Sentry — so it must be
+      # spelled out or `xcodebuild test` can't find the host binary.
+      TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Sentry.app/Contents/MacOS/Sentry"
+      BUNDLE_LOADER: "$(TEST_HOST)"
 
 schemes:
   MacStat:

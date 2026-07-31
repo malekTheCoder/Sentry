@@ -128,7 +128,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
         view.update(makeSnapshot())
 
         XCTAssertGreaterThan(view.intrinsicContentSize.width, 0)
-        XCTAssertEqual(view.accessibilitySummary, "MacStat")
+        XCTAssertEqual(view.accessibilitySummary, "Sentry")
     }
 
     // MARK: - A single module always fits regardless of a tiny budget
@@ -142,7 +142,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
         view.update(makeSnapshot())
 
         XCTAssertFalse(view.accessibilitySummary.isEmpty)
-        XCTAssertNotEqual(view.accessibilitySummary, "MacStat")
+        XCTAssertNotEqual(view.accessibilitySummary, "Sentry")
         XCTAssertGreaterThan(view.intrinsicContentSize.width, 0)
     }
 }

@@ -45,7 +45,7 @@ struct EnergyReportCard: View {
                     row("Last 30 days", monthKWh)
                 }
             } else {
-                Text("No power samples yet — leave MacStat running and this fills in.")
+                Text("No power samples yet — leave Sentry running and this fills in.")
                     .font(palette.font(size: 12))
                     .foregroundStyle(palette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)

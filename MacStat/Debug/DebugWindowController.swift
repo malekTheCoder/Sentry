@@ -55,7 +55,7 @@ final class DebugWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: root)
 
         let debugWindow = NSWindow(contentViewController: hosting)
-        debugWindow.title = "MacStat Debug Snapshot"
+        debugWindow.title = "Sentry Debug Snapshot"
         debugWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         debugWindow.setContentSize(NSSize(width: 560, height: 640))
         debugWindow.contentMinSize = NSSize(width: 480, height: 420)

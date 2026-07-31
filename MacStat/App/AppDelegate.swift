@@ -210,6 +210,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// `togglePopover` can tell a genuine display change from a no-op reopen
     /// and skip the state-destroying rebuild in the latter case.
     private var lastAppliedCardListMaxHeight: CGFloat?
+    private var lastAppliedDropdownShowsKeepAwake: Bool?
+    private var lastAppliedDropdownShowsAgentActivity: Bool?
 
     /// Which rules were enabled last time settings changed, so a
     /// disabled→enabled transition can be detected and reported to
@@ -418,9 +420,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 theme: theme,
                 enabledModules: enabledModules,
                 cardListMaxHeight: height,
+                showsKeepAwake: settingsStore.settings.dropdownShowsKeepAwake,
+                showsAgentActivity: settingsStore.settings.dropdownShowsAgentActivity,
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onOpenHistory: { [weak self] in self?.historyWindowController.show() },
-                onQuit: { NSApplication.shared.terminate(nil) }
+                onQuit: { NSApplication.shared.terminate(nil) },
+                onSelectTheme: { [weak self] themeID in self?.selectTheme(id: themeID) }
             )
         )
         // Without this, NSHostingController's `preferredContentSize` never
@@ -481,6 +486,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func openSettings() {
         popover.performClose(nil)
         settingsWindowController.show()
+    }
+
+    /// Theme picked from the dropdown's quick switcher. `applySettings`
+    /// deliberately skips popover rebuilds while it's shown (a background
+    /// settings change must not yank state out from under the user) — but
+    /// here the user asked for the change *from* the popover, so repainting
+    /// it immediately is the whole point.
+    private func selectTheme(id: String) {
+        settingsStore.settings.themeID = id
+        guard popover.isShown else { return }
+        let theme = Theme.builtInPresets.first { $0.id == id } ?? .defaultTheme
+        configurePopover(theme: theme, enabledModules: settingsStore.settings.enabledModules)
     }
 
     // MARK: - NSPopoverDelegate
@@ -577,7 +594,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // selection reaches an already-constructed SwiftUI tree, but it's
         // expensive and discards scroll state — so only on an actual
         // change, and never while the user is looking at the popover.
-        guard theme != lastAppliedTheme || settings.enabledModules != lastAppliedModules,
+        let dropdownOptionsChanged = settings.dropdownShowsKeepAwake != lastAppliedDropdownShowsKeepAwake
+            || settings.dropdownShowsAgentActivity != lastAppliedDropdownShowsAgentActivity
+        lastAppliedDropdownShowsKeepAwake = settings.dropdownShowsKeepAwake
+        lastAppliedDropdownShowsAgentActivity = settings.dropdownShowsAgentActivity
+        guard theme != lastAppliedTheme || settings.enabledModules != lastAppliedModules || dropdownOptionsChanged,
               !popover.isShown
         else { return }
         configurePopover(theme: theme, enabledModules: settings.enabledModules)

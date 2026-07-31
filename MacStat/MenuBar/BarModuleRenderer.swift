@@ -507,7 +507,7 @@ final class BarModuleRenderer {
                 pointSize: theme.barFontSize,
                 weight: Self.symbolWeight(theme.barFontWeight)
             )
-            guard let base = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "MacStat")?
+            guard let base = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Sentry")?
                 .withSymbolConfiguration(configuration) else { return }
             fallbackImage = Self.tinted(base, color: palette.textSecondary)
         }

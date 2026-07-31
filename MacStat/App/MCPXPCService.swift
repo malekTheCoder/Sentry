@@ -121,7 +121,7 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
     private func presentConfirmationAlert(tool: MCPToolID, clientName: String, argumentsSummary: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = "\(clientName) wants to \(tool.displayName.lowercased())"
-        alert.informativeText = "\(tool.toolDescription)\n\nDetails: \(argumentsSummary)\n\nThis was requested over MCP by an AI agent connected to MacStat. Allow it?"
+        alert.informativeText = "\(tool.toolDescription)\n\nDetails: \(argumentsSummary)\n\nThis was requested over MCP by an AI agent connected to Sentry. Allow it?"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Allow")
         alert.addButton(withTitle: "Deny")

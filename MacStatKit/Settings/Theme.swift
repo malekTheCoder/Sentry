@@ -548,10 +548,225 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// All built-in presets, in display order: the adaptive default first, then
-    /// the 2 fixed-appearance minimal presets, then the 5 IDE-inspired ones.
+    /// System — native macOS. Apple's semantic colors (system blue/green/
+    /// orange/red), neutral surfaces, and a translucent popover material, so
+    /// every surface reads like it shipped with the OS. Adaptive.
+    public static let system = Theme(
+        id: "builtin.system",
+        name: "System",
+        isBuiltIn: true,
+        background: ThemeColor(light: "#FFFFFF", dark: "#1E1E1E", opacity: 0.85),
+        surface: ThemeColor(light: "#0000000A", dark: "#FFFFFF0D"),
+        surfaceElevated: ThemeColor(light: "#F5F5F7", dark: "#2A2A2C"),
+        textPrimary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.85),
+        textSecondary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.5),
+        textTertiary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.26),
+        accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
+        success: ThemeColor(light: "#34C759", dark: "#30D158"),
+        warning: ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
+        danger: ThemeColor(light: "#FF3B30", dark: "#FF453A"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
+        chartFill: [
+            ThemeColor(light: "#007AFF", dark: "#0A84FF", opacity: 0.2),
+            ThemeColor(light: "#007AFF", dark: "#0A84FF", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
+            success: ThemeColor(light: "#34C759", dark: "#30D158"),
+            warning: ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
+            danger: ThemeColor(light: "#FF3B30", dark: "#FF453A")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 8,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: true,
+        materialStyle: .popover,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// GitHub — Primer's palette, adaptive (github.com light / dark dimmed-free).
+    public static let github = Theme(
+        id: "builtin.github",
+        name: "GitHub",
+        isBuiltIn: true,
+        background: ThemeColor(light: "#FFFFFF", dark: "#0D1117"),
+        surface: ThemeColor(light: "#F6F8FA", dark: "#161B22"),
+        surfaceElevated: ThemeColor(light: "#EFF2F5", dark: "#1C2129"),
+        textPrimary: ThemeColor(light: "#1F2328", dark: "#E6EDF3"),
+        textSecondary: ThemeColor(light: "#59636E", dark: "#8D96A0"),
+        textTertiary: ThemeColor(light: "#818B98", dark: "#6E7681"),
+        accent: ThemeColor(light: "#0969DA", dark: "#58A6FF"),
+        success: ThemeColor(light: "#1A7F37", dark: "#3FB950"),
+        warning: ThemeColor(light: "#9A6700", dark: "#D29922"),
+        danger: ThemeColor(light: "#CF222E", dark: "#F85149"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
+        chartFill: [
+            ThemeColor(light: "#0969DA", dark: "#58A6FF", opacity: 0.18),
+            ThemeColor(light: "#0969DA", dark: "#58A6FF", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#D1D9E0", dark: "#30363D"),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(light: "#0969DA", dark: "#58A6FF"),
+            success: ThemeColor(light: "#1A7F37", dark: "#3FB950"),
+            warning: ThemeColor(light: "#9A6700", dark: "#D29922"),
+            danger: ThemeColor(light: "#CF222E", dark: "#F85149")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 6,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: false,
+        materialStyle: .popover,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Xcode — the editor's default light/dark chrome and syntax accents.
+    public static let xcode = Theme(
+        id: "builtin.xcode",
+        name: "Xcode",
+        isBuiltIn: true,
+        background: ThemeColor(light: "#FFFFFF", dark: "#1F1F24"),
+        surface: ThemeColor(light: "#F5F5F5", dark: "#292A30"),
+        surfaceElevated: ThemeColor(light: "#ECECEC", dark: "#313239"),
+        textPrimary: ThemeColor(light: "#262626", dark: "#DFDFE0"),
+        textSecondary: ThemeColor(light: "#6C6C6C", dark: "#A0A0A6"),
+        textTertiary: ThemeColor(light: "#9B9B9B", dark: "#6C6C73"),
+        accent: ThemeColor(light: "#0F68A0", dark: "#4FB0CC"),
+        success: ThemeColor(light: "#1C464A", dark: "#78C2B3"),
+        warning: ThemeColor(light: "#78492A", dark: "#FD8F3F"),
+        danger: ThemeColor(light: "#AD3DA4", dark: "#FC5FA3"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
+        chartFill: [
+            ThemeColor(light: "#0F68A0", dark: "#4FB0CC", opacity: 0.2),
+            ThemeColor(light: "#0F68A0", dark: "#4FB0CC", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.09),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(light: "#0F68A0", dark: "#4FB0CC"),
+            success: ThemeColor(light: "#1C464A", dark: "#78C2B3"),
+            warning: ThemeColor(light: "#78492A", dark: "#FD8F3F"),
+            danger: ThemeColor(light: "#AD3DA4", dark: "#FC5FA3")
+        ),
+        fontFamily: .systemMono,
+        barFontSize: 11,
+        barFontWeight: .regular,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 6,
+        density: .compact,
+        chartStyle: .line,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 40,
+        useMaterialBackground: false,
+        materialStyle: .contentBackground,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Translucent — near-transparent surfaces over the popover material, so
+    /// the dropdown reads as frosted glass over whatever is behind it.
+    /// Everything structural is monochrome at low opacity; only semantic
+    /// state gets a hue.
+    public static let translucent = Theme(
+        id: "builtin.translucent",
+        name: "Translucent",
+        isBuiltIn: true,
+        background: ThemeColor(light: "#FFFFFF", dark: "#1A1A1A", opacity: 0.35),
+        surface: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
+        surfaceElevated: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.09),
+        textPrimary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.88),
+        textSecondary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.52),
+        textTertiary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.28),
+        accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
+        success: ThemeColor(light: "#34C759", dark: "#30D158"),
+        warning: ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
+        danger: ThemeColor(light: "#FF3B30", dark: "#FF453A"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.05),
+        chartFill: [
+            ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.14),
+            ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.1),
+        metricColors: [:],
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 8,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: true,
+        materialStyle: .hudWindow,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Liquid Glass — the heaviest glass treatment: ultra-thin material, a
+    /// bare wash of tint, large continuous radii, and a whisper of glow on
+    /// charts. Where Translucent is frosted, this is wet.
+    public static let liquidGlass = Theme(
+        id: "builtin.liquidGlass",
+        name: "Liquid Glass",
+        isBuiltIn: true,
+        background: ThemeColor(light: "#FFFFFF", dark: "#101014", opacity: 0.2),
+        surface: ThemeColor(light: "#FFFFFF", dark: "#FFFFFF", opacity: 0.1),
+        surfaceElevated: ThemeColor(light: "#FFFFFF", dark: "#FFFFFF", opacity: 0.14),
+        textPrimary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.9),
+        textSecondary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.55),
+        textTertiary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.3),
+        accent: ThemeColor(light: "#0A84FF", dark: "#64D2FF"),
+        success: ThemeColor(light: "#30D158", dark: "#66E58C"),
+        warning: ThemeColor(light: "#FF9F0A", dark: "#FFC53F"),
+        danger: ThemeColor(light: "#FF453A", dark: "#FF7A70"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.05),
+        chartFill: [
+            ThemeColor(light: "#0A84FF", dark: "#64D2FF", opacity: 0.22),
+            ThemeColor(light: "#0A84FF", dark: "#64D2FF", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.12),
+        metricColors: [:],
+        fontFamily: .rounded,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 14,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: true,
+        materialStyle: .hudWindow,
+        glowIntensity: 0.25,
+        scanlineOverlay: false
+    )
+
+    /// All built-in presets, in display order: the adaptive defaults first
+    /// (minimal → native → glass), then the fixed-appearance minimal pair,
+    /// then the IDE/brand-inspired set.
     public static let builtInPresets: [Theme] = [
-        .notion, .slate, .paper, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
+        .notion, .system, .translucent, .liquidGlass,
+        .slate, .paper,
+        .github, .xcode, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
     ]
 
     /// The single source of truth for "which theme when the user hasn't chosen

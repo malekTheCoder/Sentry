@@ -52,7 +52,7 @@ struct AIAccessPane: View {
                     Text(
                         store.settings.mcpRemoteAccessEnabled
                             ? "Local MCP still makes zero network connections — Remote Access below is separate"
-                            : "MacStat makes zero network connections for MCP"
+                            : "Sentry makes zero network connections for MCP"
                     )
                     .fontWeight(.semibold)
                 } icon: {
@@ -124,7 +124,7 @@ struct AIAccessPane: View {
             } header: {
                 Text("Write Tools")
             } footer: {
-                Text("\"Require confirmation\" shows a native dialog in MacStat before the action runs, every time — the agent's call is paused until you allow or deny it.")
+                Text("\"Require confirmation\" shows a native dialog in Sentry before the action runs, every time — the agent's call is paused until you allow or deny it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -200,7 +200,7 @@ struct AIAccessPane: View {
             } header: {
                 Text("Remote Access")
             } footer: {
-                Text("Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call MacStat's tools; regenerate it if it's ever shared by mistake.")
+                Text("Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call Sentry's tools; regenerate it if it's ever shared by mistake.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -228,7 +228,7 @@ struct AIAccessPane: View {
             } header: {
                 Text("Activity Log")
             } footer: {
-                Text("Shows calls made since MacStat last launched — this is a live session view, not durable history, and clears on relaunch.")
+                Text("Shows calls made since Sentry last launched — this is a live session view, not durable history, and clears on relaunch.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -426,7 +426,7 @@ struct AIAccessPane: View {
 
     static func resolvedMCPBinaryPath() -> String {
         guard let executablePath = Bundle.main.executablePath else {
-            return "/Applications/MacStat.app/Contents/MacOS/MacStatMCP"
+            return "/Applications/Sentry.app/Contents/MacOS/MacStatMCP"
         }
         let macOSDir = (executablePath as NSString).deletingLastPathComponent
         return (macOSDir as NSString).appendingPathComponent("MacStatMCP")

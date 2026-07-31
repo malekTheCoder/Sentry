@@ -48,9 +48,15 @@ struct DropdownView: View {
     private let theme: Theme
     private let enabledModules: Set<MetricModule>
     private let cardListMaxHeight: CGFloat
+    /// Section visibility, user-configurable in Settings → Menu Bar.
+    private let showsKeepAwake: Bool
+    private let showsAgentActivitySetting: Bool
     private let onOpenSettings: () -> Void
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
+    /// Applies a theme picked from the dropdown's own quick switcher. nil
+    /// hides the switcher (previews).
+    private let onSelectTheme: ((String) -> Void)?
 
     /// Measured height of the content, so `cardListMaxHeight` can cap the
     /// popover without a `ScrollView` greedily claiming the full cap even when
@@ -81,9 +87,12 @@ struct DropdownView: View {
         // missing and there's no way to see them" in practice (small popover
         // window against a much taller screen).
         cardListMaxHeight: CGFloat = 480,
+        showsKeepAwake: Bool = true,
+        showsAgentActivity: Bool = true,
         onOpenSettings: @escaping () -> Void,
         onOpenHistory: @escaping () -> Void,
-        onQuit: @escaping () -> Void
+        onQuit: @escaping () -> Void,
+        onSelectTheme: ((String) -> Void)? = nil
     ) {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self._powerControl = ObservedObject(wrappedValue: powerControl)
@@ -91,9 +100,12 @@ struct DropdownView: View {
         self.theme = theme
         self.enabledModules = enabledModules
         self.cardListMaxHeight = cardListMaxHeight
+        self.showsKeepAwake = showsKeepAwake
+        self.showsAgentActivitySetting = showsAgentActivity
         self.onOpenSettings = onOpenSettings
         self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
+        self.onSelectTheme = onSelectTheme
     }
 
     private var palette: ThemePalette {
@@ -128,7 +140,7 @@ struct DropdownView: View {
         .frame(width: 320)
         .frame(height: cappedHeight)
         .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
-        .background(palette.background)
+        .themedBackdrop(palette)
         .environment(\.themePalette, palette)
     }
 
@@ -164,14 +176,17 @@ struct DropdownView: View {
 
             hairline
 
-            // A control the user came here to press, not something to cut for
-            // lightness — a running keep-awake session is state the popover
-            // must always be able to show and end.
-            SleepControlCard(powerControl: powerControl)
-                .padding(.horizontal, rowInset)
-                .padding(.vertical, palette.spacingTight)
+            // The section is user-hideable (Settings → Menu Bar) — but never
+            // while a session is actually running: an active keep-awake hold
+            // is state the popover must always be able to show and end, so
+            // the card overrides the setting for exactly as long as one is on.
+            if showsKeepAwake || powerControl.state != .inactive {
+                SleepControlCard(powerControl: powerControl)
+                    .padding(.horizontal, rowInset)
+                    .padding(.vertical, palette.spacingTight)
 
-            hairline
+                hairline
+            }
 
             actionsRow
                 .padding(.horizontal, rowInset)
@@ -323,6 +338,7 @@ struct DropdownView: View {
     /// history). 20s comfortably covers one dropdown-open glance after a
     /// `keep_awake`/`create_alert_rule`/etc. call without lingering stale.
     private var showsAgentActivity: Bool {
+        guard showsAgentActivitySetting else { return false }
         guard let latest = activityLog.entries.first,
               latest.tool.isWrite,
               latest.decision == .allow else { return false }
@@ -359,9 +375,42 @@ struct DropdownView: View {
                 action: onOpenHistory
             )
             Spacer(minLength: palette.spacingTight)
+            if onSelectTheme != nil {
+                themeSwitcher
+            }
             DropdownIconAction(symbol: "gearshape", label: "Settings", action: onOpenSettings)
-            DropdownIconAction(symbol: "power", label: "Quit MacStat", action: onQuit)
+            DropdownIconAction(symbol: "power", label: "Quit Sentry", action: onQuit)
         }
+    }
+
+    /// Quick theme switcher: every built-in preset one click away, without a
+    /// trip through Settings. Same 28pt icon treatment as its neighbors so
+    /// the action row reads as one control group.
+    private var themeSwitcher: some View {
+        Menu {
+            ForEach(Theme.builtInPresets) { candidate in
+                Button {
+                    onSelectTheme?(candidate.id)
+                } label: {
+                    if candidate.id == theme.id {
+                        Label(candidate.name, systemImage: "checkmark")
+                    } else {
+                        Text(candidate.name)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "paintbrush")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.textTertiary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Theme")
+        .accessibilityLabel("Theme, currently \(theme.name)")
     }
 }
 

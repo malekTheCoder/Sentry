@@ -39,7 +39,7 @@ final class StatusItemView: NSView {
 
     /// A readable summary for VoiceOver (plan §9.4) — without it the custom
     /// view reads as an unlabeled blank.
-    private(set) var accessibilitySummary: String = "MacStat"
+    private(set) var accessibilitySummary: String = "Sentry"
 
     /// Semantic color token of the currently-displayed alert highlight, or
     /// nil when none is active. Set via `highlight(token:for:)`.
@@ -358,7 +358,7 @@ final class StatusItemView: NSView {
 
     private func rebuildAccessibilitySummary() {
         guard !items.isEmpty else {
-            accessibilitySummary = "MacStat"
+            accessibilitySummary = "Sentry"
             setAccessibilityLabel(accessibilitySummary)
             return
         }
@@ -373,7 +373,7 @@ final class StatusItemView: NSView {
             }
             return spoken
         }
-        accessibilitySummary = "MacStat: " + parts.joined(separator: ", ")
+        accessibilitySummary = "Sentry: " + parts.joined(separator: ", ")
         setAccessibilityLabel(accessibilitySummary)
     }
 
