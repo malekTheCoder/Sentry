@@ -17,6 +17,16 @@ struct MenuBarPreviewStrip: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    // The real bar is strictly monochrome (see `MenuBarPalette`) — white on a
+    // dark menu bar, black on a light one, state carried by the "!" cue and
+    // opacity, never hue. The preview mirrors that or it lies about the one
+    // thing it exists to show. Opacities match `MenuBarPalette`'s.
+    private var monoBase: Color { colorScheme == .dark ? .white : .black }
+    private var monoPrimary: Color { monoBase.opacity(0.9) }
+    private var monoSecondary: Color { monoBase.opacity(0.55) }
+    private var monoTertiary: Color { monoBase.opacity(0.3) }
+    private var monoSeparator: Color { monoBase.opacity(0.15) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
@@ -85,10 +95,10 @@ struct MenuBarPreviewStrip: View {
         case .dot:
             Text("·")
                 .font(font(size: theme.barFontSize))
-                .foregroundStyle(theme.textTertiary.color(for: colorScheme))
+                .foregroundStyle(monoTertiary)
         case .line:
             Rectangle()
-                .fill(theme.separator.color(for: colorScheme))
+                .fill(monoSeparator)
                 .frame(width: 1, height: theme.barFontSize + 4)
         }
     }
@@ -101,7 +111,7 @@ struct MenuBarPreviewStrip: View {
             if module.showLabel {
                 Text(module.metric.shortLabel)
                     .font(font(size: theme.barFontSize - 1))
-                    .foregroundStyle(theme.textSecondary.color(for: colorScheme))
+                    .foregroundStyle(monoSecondary)
             }
 
             switch module.displayMode {
@@ -188,7 +198,7 @@ struct MenuBarPreviewStrip: View {
         let fraction = normalizedSample(for: module.metric)
         return ZStack(alignment: .leading) {
             Capsule()
-                .fill(theme.separator.color(for: colorScheme))
+                .fill(monoSeparator)
             Capsule()
                 .fill(tint)
                 .frame(width: max(2, theme.barGraphWidth * CGFloat(fraction)))
@@ -200,7 +210,7 @@ struct MenuBarPreviewStrip: View {
         let fraction = normalizedSample(for: module.metric)
         return ZStack {
             Circle()
-                .stroke(theme.separator.color(for: colorScheme), lineWidth: 2)
+                .stroke(monoSeparator, lineWidth: 2)
             Circle()
                 .trim(from: 0, to: CGFloat(fraction))
                 .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
@@ -234,44 +244,11 @@ struct MenuBarPreviewStrip: View {
         }
     }
 
+    /// Every rule resolves to the mono base, exactly like
+    /// `BarModuleRenderer.color(for:value:)` — the rule still matters to the
+    /// real bar (thresholds drive the "!" cue), but never as a hue.
     private func color(for module: BarModule) -> Color {
-        switch module.colorRule {
-        case .fixed(let hex):
-            return ThemeColor(hex: hex).color(for: colorScheme)
-        case .matchSystemAccent:
-            return Color.accentColor
-        case .themeMetricColor:
-            return theme.metricColor(for: module.metric)?.color(for: colorScheme)
-                ?? theme.accent.color(for: colorScheme)
-        case .thresholdGradient(let low, let high):
-            return MenuBarPreviewStrip.gradientColor(
-                value: MenuBarPreviewStrip.sampleValue(for: module.metric),
-                low: low,
-                high: high,
-                theme: theme,
-                scheme: colorScheme
-            )
-        }
-    }
-
-    /// Green below `low`, amber between, red above `high`. `low > high` inverts
-    /// the ramp, which is what "low free disk is bad" needs.
-    private static func gradientColor(
-        value: Double,
-        low: Double,
-        high: Double,
-        theme: Theme,
-        scheme: ColorScheme
-    ) -> Color {
-        let inverted = low > high
-        let lo = min(low, high)
-        let hi = max(low, high)
-        let below = value <= lo
-        let above = value >= hi
-
-        if below { return (inverted ? theme.danger : theme.success).color(for: scheme) }
-        if above { return (inverted ? theme.success : theme.danger).color(for: scheme) }
-        return theme.warning.color(for: scheme)
+        monoPrimary
     }
 
     // MARK: - Sample data
