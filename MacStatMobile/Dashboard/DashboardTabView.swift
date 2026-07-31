@@ -77,7 +77,7 @@ struct DashboardTabView: View {
             }
             .padding(palette.spacing * 2)
         }
-        .background(palette.background)
+        .themedScreenBackground(palette)
         .task { await viewModel.start() }
     }
 
@@ -107,8 +107,7 @@ struct DashboardTabView: View {
         }
         .padding(palette.spacing)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+        .glassCard(palette)
     }
 
     // MARK: - Device picker

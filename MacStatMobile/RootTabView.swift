@@ -39,7 +39,7 @@ struct RootTabView: View {
     /// Persisted locally on this phone only — see `SettingsTabView`'s theme
     /// section doc comment for why this is deliberately not synced to the
     /// Mac (no sync channel exists to carry it).
-    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.defaultTheme.id
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.liquidGlass.id
     @Environment(\.colorScheme) private var systemColorScheme
 
     private var palette: ThemePalette {

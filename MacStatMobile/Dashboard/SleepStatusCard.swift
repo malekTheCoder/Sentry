@@ -86,8 +86,7 @@ struct SleepStatusCard: View {
         }
         .padding(palette.spacing * 1.4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
+        .glassCard(palette)
         .overlay(
             RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
                 .stroke(isActive ? palette.accent.opacity(0.5) : palette.separator, lineWidth: 1)

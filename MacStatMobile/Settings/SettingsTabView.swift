@@ -53,7 +53,7 @@ struct SettingsTabView: View {
     /// a binding passed down — see `RootTabView`'s doc comment for why the
     /// string key (not a shared Swift symbol) is what actually keeps them in
     /// sync, and why that's an accepted duplication rather than an oversight.
-    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.defaultTheme.id
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.liquidGlass.id
 
     @Environment(\.themePalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
@@ -93,7 +93,7 @@ struct SettingsTabView: View {
             }
             .padding(palette.spacing * 2)
         }
-        .background(palette.background)
+        .themedScreenBackground(palette)
         .task {
             device = await appDataSource.devices().first
         }
@@ -188,12 +188,7 @@ struct SettingsTabView: View {
         }
         .padding(palette.spacing * 1.6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.separator, lineWidth: 1)
-        )
+        .glassCard(palette)
         .accessibilityElement(children: .combine)
         .accessibilityHint(
             appDataSource.isUsingLocalSync

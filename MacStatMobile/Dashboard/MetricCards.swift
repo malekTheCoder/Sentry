@@ -68,12 +68,7 @@ struct DashboardMetricCard: View {
         }
         .padding(palette.spacing * 1.2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.separator, lineWidth: 1)
-        )
+        .glassCard(palette)
     }
 }
 

@@ -77,7 +77,7 @@ struct HistoryTabView: View {
             }
             .padding(palette.spacing * 2)
         }
-        .background(palette.background)
+        .themedScreenBackground(palette)
         .task { await viewModel.start() }
         .onChange(of: viewModel.selectedRange) { _, _ in
             Task { await viewModel.reloadDailyHealth() }
@@ -105,8 +105,7 @@ struct HistoryTabView: View {
         }
         .padding(palette.spacing)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius))
+        .glassCard(palette)
     }
 
     // MARK: - Battery health
@@ -128,12 +127,7 @@ struct HistoryTabView: View {
         }
         .padding(palette.spacing * 1.6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(palette.separator, lineWidth: 1)
-        )
+        .glassCard(palette)
     }
 
     private var batteryHealthHeadline: String {

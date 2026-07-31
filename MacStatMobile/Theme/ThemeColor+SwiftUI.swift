@@ -160,6 +160,47 @@ struct ThemePalette: Equatable {
     var glow: Double { min(max(theme.glowIntensity, 0), 1) }
 }
 
+// MARK: - Glass chrome
+
+extension View {
+    /// The one card chrome every card in the iPhone app wears — the iOS
+    /// sibling of the Mac Dashboard's `dashboardCard`. Material themes get
+    /// Apple's real Liquid Glass on iOS 26+ (`glassEffect`), an
+    /// ultra-thin-material tile below; opaque themes keep the flat
+    /// elevated-surface fill. One modifier, one geometry.
+    @ViewBuilder
+    func glassCard(_ palette: ThemePalette) -> some View {
+        let shape = RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+        if palette.theme.useMaterialBackground {
+            if #available(iOS 26.0, *) {
+                self.glassEffect(.regular, in: shape)
+            } else {
+                self
+                    .background(shape.fill(palette.surfaceElevated))
+                    .background(.ultraThinMaterial, in: shape)
+                    .overlay(shape.strokeBorder(palette.separator, lineWidth: 1))
+            }
+        } else {
+            self
+                .background(palette.surfaceElevated)
+                .clipShape(shape)
+                .overlay(shape.stroke(palette.separator, lineWidth: 1))
+        }
+    }
+
+    /// Screen backdrop: material themes get the theme's translucent wash
+    /// over the system background (letting Liquid Glass cards refract
+    /// something), opaque themes their solid background color.
+    @ViewBuilder
+    func themedScreenBackground(_ palette: ThemePalette) -> some View {
+        if palette.theme.useMaterialBackground {
+            self.background(palette.background.opacity(0.6)).background(.regularMaterial)
+        } else {
+            self.background(palette.background)
+        }
+    }
+}
+
 // MARK: - Environment
 
 private struct ThemePaletteKey: EnvironmentKey {
