@@ -104,17 +104,17 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 header
 
+                GlanceStrip(
+                    snapshot: viewModel.snapshot,
+                    series: viewModel.series,
+                    enabledModules: viewModel.enabledModules
+                )
+
                 sectionHeader("Power")
-                // The hero's height roughly equals keep-awake + energy
-                // stacked, so this row closes flush; the health trend then
-                // runs full-width below it, where a time-series chart reads
-                // best. This is the composition that finally killed the
-                // "window-sized hole beside a short card" problem in both
-                // of its earlier forms.
                 HStack(alignment: .top, spacing: rowGap) {
-                    BatteryHeroCard(
+                    BatteryOverviewCard(
+                        historyStore: historyStore,
                         battery: viewModel.latestBattery,
-                        powerSeries: nil,
                         isWarmingUp: isBatteryWarmingUp
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
@@ -128,22 +128,17 @@ struct DashboardView: View {
                     }
                     .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
-                BatteryHealthTrendCard(
-                    historyStore: historyStore,
-                    currentCycleCount: viewModel.latestBattery?.cycleCount,
-                    currentHealthPercent: viewModel.latestBattery?.healthPercent
-                )
 
                 sectionHeader("Activity")
                 HStack(alignment: .top, spacing: rowGap) {
                     AgentActivityCard(
                         summary: viewModel.agentActivity,
-                        agentProcesses: processMonitor.agentProcesses
+                        agentProcesses: Array(processMonitor.agentProcesses.prefix(4))
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     AnomaliesCard(anomalies: viewModel.anomalies)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    TopProcessesCard(processes: processMonitor.topProcesses)
+                    TopProcessesCard(processes: Array(processMonitor.topProcesses.prefix(5)))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
@@ -164,10 +159,9 @@ struct DashboardView: View {
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
         // `DashboardViewModel.refresh()` is explicitly not automatic on
-        // init (see its doc comment — constructing the view model at
-        // `AppDelegate` launch time must stay cheap) — this is the one call
-        // site responsible for the first history query, matching the
-        // window's actual first appearance rather than app launch.
+        // init (see its doc comment) — this is the one call site
+        // responsible for the first history query, matching the window's
+        // actual first appearance rather than app launch.
         .task {
             viewModel.refresh()
         }
@@ -191,14 +185,32 @@ struct DashboardView: View {
                 Text("Dashboard")
                     .font(palette.font(size: 19, weight: .semibold))
                     .foregroundStyle(palette.textPrimary)
-                Text(machineName)
-                    .font(palette.font(size: 11))
-                    .foregroundStyle(palette.textTertiary)
+                // Slow clock (10s) purely to age the caption — same
+                // pattern and reasoning as the dropdown's status block.
+                TimelineView(.periodic(from: .now, by: 10)) { context in
+                    Text(headerCaption(now: context.date))
+                        .font(palette.font(size: 11))
+                        .foregroundStyle(palette.textTertiary)
+                }
             }
             Spacer(minLength: palette.spacing)
             TimeRangePickerView(selection: $viewModel.timeRange)
         }
         .padding(.bottom, palette.spacing * 0.5)
+    }
+
+    /// "Aniketh's MacBook Pro · updated 4s ago" — the machine, then proof
+    /// the numbers are alive. No age clause until the first snapshot lands.
+    private func headerCaption(now: Date) -> String {
+        guard let timestamp = viewModel.snapshot?.timestamp else { return machineName }
+        let age = max(0, now.timeIntervalSince(timestamp))
+        let ageText: String
+        if age < 60 {
+            ageText = "updated \(Int(age))s ago"
+        } else {
+            ageText = "updated \(Int(age / 60))m ago"
+        }
+        return "\(machineName) · \(ageText)"
     }
 
     /// The organizing device this window was missing: a small uppercase
