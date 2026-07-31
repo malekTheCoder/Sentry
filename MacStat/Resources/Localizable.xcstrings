@@ -1,0 +1,457 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "0 or 1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 or 1"
+          }
+        }
+      }
+    },
+    "0–3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0–3"
+          }
+        }
+      }
+    },
+    "24h": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24h"
+          }
+        }
+      }
+    },
+    "30d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30d"
+          }
+        }
+      }
+    },
+    "6mo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6mo"
+          }
+        }
+      }
+    },
+    "7d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7d"
+          }
+        }
+      }
+    },
+    "90d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90d"
+          }
+        }
+      }
+    },
+    "AI Access": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Access"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
+          }
+        }
+      }
+    },
+    "Alerts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alerts"
+          }
+        }
+      }
+    },
+    "Allow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow"
+          }
+        }
+      }
+    },
+    "At or above": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At or above"
+          }
+        }
+      }
+    },
+    "At or below": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At or below"
+          }
+        }
+      }
+    },
+    "Changed by": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changed by"
+          }
+        }
+      }
+    },
+    "Charging below half the adapter's rated wattage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charging below half the adapter's rated wattage"
+          }
+        }
+      }
+    },
+    "Deny": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deny"
+          }
+        }
+      }
+    },
+    "Equals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equals"
+          }
+        }
+      }
+    },
+    "Fires immediately": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires immediately"
+          }
+        }
+      }
+    },
+    "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
+          }
+        }
+      }
+    },
+    "General": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
+          }
+        }
+      }
+    },
+    "Last 24 hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 24 hours"
+          }
+        }
+      }
+    },
+    "Last 30 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days"
+          }
+        }
+      }
+    },
+    "Last 6 months": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 6 months"
+          }
+        }
+      }
+    },
+    "Last 7 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 7 days"
+          }
+        }
+      }
+    },
+    "Last 90 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 90 days"
+          }
+        }
+      }
+    },
+    "MCP access is disabled in MacStat → Settings → AI Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP access is disabled in MacStat → Settings → AI Access."
+          }
+        }
+      }
+    },
+    "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment."
+          }
+        }
+      }
+    },
+    "MacStat Dashboard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacStat Dashboard"
+          }
+        }
+      }
+    },
+    "MacStat Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacStat Settings"
+          }
+        }
+      }
+    },
+    "Menu Bar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu Bar"
+          }
+        }
+      }
+    },
+    "Modules": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modules"
+          }
+        }
+      }
+    },
+    "Plugged in but not charging, with a reason reported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugged in but not charging, with a reason reported"
+          }
+        }
+      }
+    },
+    "Sync": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync"
+          }
+        }
+      }
+    },
+    "The user declined to confirm this action in MacStat.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The user declined to confirm this action in MacStat."
+          }
+        }
+      }
+    },
+    "Theme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
+          }
+        }
+      }
+    },
+    "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
+          }
+        }
+      }
+    },
+    "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
+          }
+        }
+      }
+    },
+    "This tool is disabled in MacStat → Settings → AI Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This tool is disabled in MacStat → Settings → AI Access."
+          }
+        }
+      }
+    },
+    "bytes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes"
+          }
+        }
+      }
+    },
+    "bytes/s": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes/s"
+          }
+        }
+      }
+    },
+    "changed by": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "changed by"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.1"
+}

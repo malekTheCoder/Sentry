@@ -66,13 +66,13 @@ public enum DisplayMode: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .iconOnly: return "Icon only"
-        case .valueOnly: return "Value only"
-        case .iconAndValue: return "Icon + value"
-        case .sparkline: return "Sparkline"
-        case .bar: return "Bar"
-        case .arc: return "Arc"
-        case .sparklineAndValue: return "Sparkline + value"
+        case .iconOnly: return String(localized: "Icon only")
+        case .valueOnly: return String(localized: "Value only")
+        case .iconAndValue: return String(localized: "Icon + value")
+        case .sparkline: return String(localized: "Sparkline")
+        case .bar: return String(localized: "Bar")
+        case .arc: return String(localized: "Arc")
+        case .sparklineAndValue: return String(localized: "Sparkline + value")
         }
     }
 
@@ -106,10 +106,10 @@ public enum SeparatorStyle: String, Codable, CaseIterable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .none: return "None"
-        case .dot: return "Dot"
-        case .line: return "Line"
-        case .space: return "Space"
+        case .none: return String(localized: "None")
+        case .dot: return String(localized: "Dot")
+        case .line: return String(localized: "Line")
+        case .space: return String(localized: "Space")
         }
     }
 }

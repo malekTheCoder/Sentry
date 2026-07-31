@@ -12,14 +12,14 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: return "General"
-        case .modules: return "Modules"
-        case .menuBar: return "Menu Bar"
-        case .theme: return "Theme"
-        case .alerts: return "Alerts"
-        case .aiAccess: return "AI Access"
-        case .sync: return "Sync"
-        case .advanced: return "Advanced"
+        case .general: return String(localized: "General")
+        case .modules: return String(localized: "Modules")
+        case .menuBar: return String(localized: "Menu Bar")
+        case .theme: return String(localized: "Theme")
+        case .alerts: return String(localized: "Alerts")
+        case .aiAccess: return String(localized: "AI Access")
+        case .sync: return String(localized: "Sync")
+        case .advanced: return String(localized: "Advanced")
         }
     }
 

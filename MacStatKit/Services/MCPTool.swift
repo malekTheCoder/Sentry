@@ -100,11 +100,11 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
     public var riskLabel: String? {
         switch self {
         case .createAlertRule:
-            return "Medium"
+            return String(localized: "Medium")
         case .keepAwake, .releaseAwake, .setRefreshInterval, .setAlertRuleEnabled:
-            return "Low"
+            return String(localized: "Low")
         case .waitUntilReady:
-            return "Low"
+            return String(localized: "Low")
         default:
             return nil
         }
@@ -112,51 +112,51 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
 
     public var displayName: String {
         switch self {
-        case .getSystemSnapshot: return "Get System Snapshot"
-        case .getBatteryStatus: return "Get Battery Status"
-        case .getBatteryHealthHistory: return "Get Battery Health History"
-        case .getMetricHistory: return "Get Metric History"
-        case .getThermalStatus: return "Get Thermal Status"
-        case .getResourceUsage: return "Get Resource Usage"
-        case .getAlertHistory: return "Get Alert History"
-        case .getDeviceInfo: return "Get Device Info"
-        case .getSleepState: return "Get Sleep State"
-        case .preflightCheck: return "Preflight Check"
-        case .getResourceEventsSince: return "Get Resource Events Since"
-        case .getAgentCapacity: return "Get Agent Capacity"
-        case .getAgentActivity: return "Get Agent Activity"
-        case .getSessionResourceReport: return "Get Session Resource Report"
-        case .keepAwake: return "Keep Awake"
-        case .releaseAwake: return "Release Awake"
-        case .setRefreshInterval: return "Set Refresh Interval"
-        case .setAlertRuleEnabled: return "Enable/Disable Alert Rule"
-        case .createAlertRule: return "Create Alert Rule"
-        case .waitUntilReady: return "Wait Until Ready"
+        case .getSystemSnapshot: return String(localized: "Get System Snapshot")
+        case .getBatteryStatus: return String(localized: "Get Battery Status")
+        case .getBatteryHealthHistory: return String(localized: "Get Battery Health History")
+        case .getMetricHistory: return String(localized: "Get Metric History")
+        case .getThermalStatus: return String(localized: "Get Thermal Status")
+        case .getResourceUsage: return String(localized: "Get Resource Usage")
+        case .getAlertHistory: return String(localized: "Get Alert History")
+        case .getDeviceInfo: return String(localized: "Get Device Info")
+        case .getSleepState: return String(localized: "Get Sleep State")
+        case .preflightCheck: return String(localized: "Preflight Check")
+        case .getResourceEventsSince: return String(localized: "Get Resource Events Since")
+        case .getAgentCapacity: return String(localized: "Get Agent Capacity")
+        case .getAgentActivity: return String(localized: "Get Agent Activity")
+        case .getSessionResourceReport: return String(localized: "Get Session Resource Report")
+        case .keepAwake: return String(localized: "Keep Awake")
+        case .releaseAwake: return String(localized: "Release Awake")
+        case .setRefreshInterval: return String(localized: "Set Refresh Interval")
+        case .setAlertRuleEnabled: return String(localized: "Enable/Disable Alert Rule")
+        case .createAlertRule: return String(localized: "Create Alert Rule")
+        case .waitUntilReady: return String(localized: "Wait Until Ready")
         }
     }
 
     public var toolDescription: String {
         switch self {
-        case .getSystemSnapshot: return "Current values for all enabled metrics."
-        case .getBatteryStatus: return "Detailed battery: charge, W in/out, health, cycles, adapter, charging diagnostics."
-        case .getBatteryHealthHistory: return "Daily health/cycle series over a date range."
-        case .getMetricHistory: return "Any metric, any range, with automatic tier selection."
-        case .getThermalStatus: return "Temps, fans, thermal pressure, throttling state."
-        case .getResourceUsage: return "CPU/GPU/ANE/memory/disk/network in one call."
-        case .getAlertHistory: return "Recently fired alerts."
-        case .getDeviceInfo: return "Model, chip, OS, capabilities."
-        case .getSleepState: return "Current assertion state + expiry."
-        case .preflightCheck: return "One-shot go/wait recommendation for starting a heavy job now (thermal, CPU, battery). On a thermal wait, cooldownETASeconds carries a regression-based estimate of when the machine is nominal again, so you can schedule instead of poll."
-        case .getResourceEventsSince: return "Alert firings + peak thermal/CPU/memory/disk values since a given time — for root-causing a failed/flaky run."
-        case .getAgentCapacity: return "Whether this Mac has memory/CPU headroom for N more local agent processes."
-        case .getAgentActivity: return "Recent MCP tool calls (client, tool, decision) — what agents have been asking this Mac for."
-        case .getSessionResourceReport: return "Aggregated CPU/thermal/memory cost over a time window, framed as a session report."
-        case .keepAwake: return "Start a sleep assertion with mode + duration."
-        case .releaseAwake: return "Release the current sleep assertion."
-        case .setRefreshInterval: return "Change polling cadence for a tier."
-        case .setAlertRuleEnabled: return "Toggle an alert rule on or off."
-        case .createAlertRule: return "Define a new alert rule."
-        case .waitUntilReady: return "Block (capped) until a condition holds — e.g. thermal_normal, cpu_below:50 — then return what changed."
+        case .getSystemSnapshot: return String(localized: "Current values for all enabled metrics.")
+        case .getBatteryStatus: return String(localized: "Detailed battery: charge, W in/out, health, cycles, adapter, charging diagnostics.")
+        case .getBatteryHealthHistory: return String(localized: "Daily health/cycle series over a date range.")
+        case .getMetricHistory: return String(localized: "Any metric, any range, with automatic tier selection.")
+        case .getThermalStatus: return String(localized: "Temps, fans, thermal pressure, throttling state.")
+        case .getResourceUsage: return String(localized: "CPU/GPU/ANE/memory/disk/network in one call.")
+        case .getAlertHistory: return String(localized: "Recently fired alerts.")
+        case .getDeviceInfo: return String(localized: "Model, chip, OS, capabilities.")
+        case .getSleepState: return String(localized: "Current assertion state + expiry.")
+        case .preflightCheck: return String(localized: "One-shot go/wait recommendation for starting a heavy job now (thermal, CPU, battery). On a thermal wait, cooldownETASeconds carries a regression-based estimate of when the machine is nominal again, so you can schedule instead of poll.")
+        case .getResourceEventsSince: return String(localized: "Alert firings + peak thermal/CPU/memory/disk values since a given time — for root-causing a failed/flaky run.")
+        case .getAgentCapacity: return String(localized: "Whether this Mac has memory/CPU headroom for N more local agent processes.")
+        case .getAgentActivity: return String(localized: "Recent MCP tool calls (client, tool, decision) — what agents have been asking this Mac for.")
+        case .getSessionResourceReport: return String(localized: "Aggregated CPU/thermal/memory cost over a time window, framed as a session report.")
+        case .keepAwake: return String(localized: "Start a sleep assertion with mode + duration.")
+        case .releaseAwake: return String(localized: "Release the current sleep assertion.")
+        case .setRefreshInterval: return String(localized: "Change polling cadence for a tier.")
+        case .setAlertRuleEnabled: return String(localized: "Toggle an alert rule on or off.")
+        case .createAlertRule: return String(localized: "Define a new alert rule.")
+        case .waitUntilReady: return String(localized: "Block (capped) until a condition holds — e.g. thermal_normal, cpu_below:50 — then return what changed.")
         }
     }
 

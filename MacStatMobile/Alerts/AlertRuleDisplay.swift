@@ -36,23 +36,23 @@ enum AlertRuleDisplay {
     /// the Mac-only type that generates it there.
     static func conditionSummary(for rule: AlertRule) -> String {
         if rule.id == AlertEngine.chargingPausedRuleID {
-            return "Plugged in but not charging, with a reason reported"
+            return String(localized: "Plugged in but not charging, with a reason reported")
         }
         if rule.id == AlertEngine.slowChargingRuleID {
-            return "Charging below half the adapter's rated wattage"
+            return String(localized: "Charging below half the adapter's rated wattage")
         }
         if rule.id == AlertEngine.batteryHealthDropRuleID {
-            return "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more"
+            return String(localized: "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more")
         }
-        return "\(rule.metric.shortLabel) \(comparisonPhrase(rule.comparison)) \(MetricFormatter.detailed(rule.threshold, unit: rule.metric.unit))"
+        return String(localized: "\(rule.metric.shortLabel) \(comparisonPhrase(rule.comparison)) \(MetricFormatter.detailed(rule.threshold, unit: rule.metric.unit))")
     }
 
     private static func comparisonPhrase(_ comparison: AlertRule.Comparison) -> String {
         switch comparison {
-        case .above: return "at or above"
-        case .below: return "at or below"
-        case .equals: return "equals"
-        case .changedBy: return "changed by"
+        case .above: return String(localized: "at or above")
+        case .below: return String(localized: "at or below")
+        case .equals: return String(localized: "equals")
+        case .changedBy: return String(localized: "changed by")
         }
     }
 }
@@ -78,10 +78,10 @@ enum AlertCategory: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .battery: return "Battery"
-        case .thermal: return "Thermal"
-        case .performance: return "Performance"
-        case .disk: return "Disk"
+        case .battery: return String(localized: "Battery")
+        case .thermal: return String(localized: "Thermal")
+        case .performance: return String(localized: "Performance")
+        case .disk: return String(localized: "Disk")
         }
     }
 

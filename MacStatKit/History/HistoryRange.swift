@@ -29,21 +29,21 @@ public enum HistoryRange: String, CaseIterable, Identifiable, Sendable {
     /// own "fits a fixed-width control" constraint.
     public var label: String {
         switch self {
-        case .last24Hours: return "24H"
-        case .last7Days: return "7D"
-        case .last30Days: return "30D"
-        case .last90Days: return "90D"
-        case .all: return "All"
+        case .last24Hours: return String(localized: "24H")
+        case .last7Days: return String(localized: "7D")
+        case .last30Days: return String(localized: "30D")
+        case .last90Days: return String(localized: "90D")
+        case .all: return String(localized: "All")
         }
     }
 
     public var accessibilityLabel: String {
         switch self {
-        case .last24Hours: return "Last 24 hours"
-        case .last7Days: return "Last 7 days"
-        case .last30Days: return "Last 30 days"
-        case .last90Days: return "Last 90 days"
-        case .all: return "All history"
+        case .last24Hours: return String(localized: "Last 24 hours")
+        case .last7Days: return String(localized: "Last 7 days")
+        case .last30Days: return String(localized: "Last 30 days")
+        case .last90Days: return String(localized: "Last 90 days")
+        case .all: return String(localized: "All history")
         }
     }
 
