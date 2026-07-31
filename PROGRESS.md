@@ -114,3 +114,71 @@ commit message):
   required for all xcodebuild/simctl invocations (`xcode-select` points at
   CommandLineTools; changing it needs the user's password).
 - `./run.sh` builds, installs to `/Applications/Sentry.app`, and relaunches.
+
+### Protection Insights (Pro feature) — engine, collector, UI, and wiring
+
+New Pro-gated feature: a third main-window tab ("Insights") that turns this
+Mac's own measured history and security posture into evidence-backed
+recommendations, plus an explainable 0–100 Protection Score.
+
+- **`MacStatKit/Insights/`** (pure, cross-platform, no I/O): `ProtectionInsight`
+  model, `InsightCategory`/`InsightSeverity`/`InsightDomain`, `InsightContext`
+  (everything a rule may read, all-value), `ProtectionInsightRule` protocol,
+  `ProtectionInsightsEngine` running 44 rules across battery longevity,
+  thermal, storage, memory, security, privacy, power habits, and maintenance,
+  and `ProtectionScore` — start at 100, subtract every firing insight's
+  `scoreImpact` from a fixed six-tier weight vocabulary (`InsightWeight`),
+  clamp at 0, with per-category subscores and an honest "not enough data"
+  state for categories with nothing to judge. `InsightSuppression` (dismiss/
+  snooze) and `ProGate` (the free/paid cut — two full findings free, the rest
+  locked to category+severity only, no strings withheld-but-obscured) live
+  alongside it.
+- **`SystemMetricsKit/Security/SecurityPostureCollector.swift`**: macOS-only,
+  off-main-thread (dedicated `DispatchQueue`, not the cooperative pool),
+  5-minute TTL-cached collector reading FileVault/SIP/Gatekeeper/firewall/
+  auto-update/screen-lock/sharing-service posture via subprocess calls
+  (`fdesetup`, `csrutil`, `spctl`, `socketfilterfw`, `defaults read`,
+  `netstat`). Every probe that fails, times out, or prints something
+  unrecognized degrades to `.unknown` — never guessed as off.
+  `SecurityPostureParser` (pure parsing, no subprocess) is the tested half.
+- **UI (`MacStat/Insights/`)**: `InsightsView`/`InsightsViewModel` (same
+  two-path shape as `DashboardViewModel` — cheap `ingest(_:)` every snapshot
+  tick, expensive `refresh()` only on window-appear/explicit Refresh, no
+  timer), `ProtectionScoreCard`, `CategoryBreakdownCard`, `InsightRowView`
+  (+ `LockedInsightRowView`), `ProUpsellCard`. Wired into `MainTab.insights`
+  in `MainWindowView` between Dashboard and Settings.
+- **Composition root**: `AppDelegate` now constructs `ProEntitlementStore`
+  (the local, no-StoreKit developer-override entitlement check) and
+  `SecurityPostureCollector` as app-lifetime instances, builds
+  `insightsViewModel` the same lazy-singleton way as `dashboardViewModel`
+  (same `historyStore`, wired into the snapshot loop's `ingest`, theme and
+  settings propagation in `applySettings`, `cancelRefresh()` on the window's
+  `onHide` so a refresh in flight for a closed window isn't wasted work), and
+  passes its `AnyView` into `MainWindowView`'s `insights:` parameter.
+- **Tests**: `MacStatTests/ProtectionInsightsEngineTests.swift` — rule
+  fire/don't-fire boundaries (FileVault on/off/unknown, firewall severity
+  following actual exposure, screen-lock-delay threshold, deep-discharge
+  advisory/warning tiers, hardened-baseline requiring all four, posture-
+  unknown honesty rule), engine invariants (evidence-free insights dropped,
+  duplicate ids deduped, prioritisation order), suppression/snooze/dismiss
+  filtering (active vs. expired snooze, malformed nil-`until` snooze treated
+  as expired not indefinite, dismissals never expire), score determinism/
+  order-independence/monotonicity/clamping/no-data categories,
+  `SecurityPostureParser` parsing including malformed and empty input
+  (→ `.unknown`/`nil`, never a guess), and the Pro gating cut (free tier sees
+  exactly the top two findings in full, everything else locked to
+  category+severity, unlocked sees everything).
+
+**NOT BUILT OR TESTED: no Swift toolchain was available in the environment
+where this was written; needs `xcodegen generate` + a full build + test run
+on the Mac.** Every cross-file reference (rule inventory names, `ProtectionInsight`
+field names, `ProEntitlementProviding`/`SecurityPostureProviding` shapes,
+UI-to-view-model bindings) was verified by hand against the defining files,
+but hand-verification is not a compiler. A human must confirm on a real
+Xcode build before this merges: the project actually compiles across all
+three targets (`MacStat`, `MacStatKit_macOS`, `SystemMetricsKit`), the new
+test file runs and passes, the Insights tab renders correctly at runtime
+(theme, layout, the ring/score card, locked-row paywall visuals), and that
+`SecurityPostureCollector`'s subprocess calls behave as expected on a real
+Mac (this was never exercised against actual `fdesetup`/`csrutil`/etc.
+output beyond the parser's unit tests).
