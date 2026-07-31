@@ -58,7 +58,7 @@ enum SecurityEvidence {
 
 /// FileVault off. The single highest-impact security finding this app can
 /// make, and the reason the score's `criticalSecurity` weight exists.
-public struct FileVaultOffRule: ProtectionInsightRule {
+public struct FileVaultOffRule: ProtectionInsightRule, Sendable {
     public let id = "security.filevault-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -98,7 +98,7 @@ public struct FileVaultOffRule: ProtectionInsightRule {
 }
 
 /// The positive counterpart.
-public struct FileVaultOnRule: ProtectionInsightRule {
+public struct FileVaultOnRule: ProtectionInsightRule, Sendable {
     public let id = "security.filevault-on"
     public let category: InsightCategory = .security
     public init() {}
@@ -131,7 +131,7 @@ public struct FileVaultOnRule: ProtectionInsightRule {
 
 /// SIP disabled — almost always deliberate, and almost always forgotten
 /// about afterwards.
-public struct SIPDisabledRule: ProtectionInsightRule {
+public struct SIPDisabledRule: ProtectionInsightRule, Sendable {
     public let id = "security.sip-disabled"
     public let category: InsightCategory = .security
     public init() {}
@@ -171,7 +171,7 @@ public struct SIPDisabledRule: ProtectionInsightRule {
 }
 
 /// Gatekeeper assessments disabled.
-public struct GatekeeperDisabledRule: ProtectionInsightRule {
+public struct GatekeeperDisabledRule: ProtectionInsightRule, Sendable {
     public let id = "security.gatekeeper-disabled"
     public let category: InsightCategory = .security
     public init() {}
@@ -208,7 +208,7 @@ public struct GatekeeperDisabledRule: ProtectionInsightRule {
 
 // MARK: - Firewall
 
-public struct FirewallOffRule: ProtectionInsightRule {
+public struct FirewallOffRule: ProtectionInsightRule, Sendable {
     public let id = "security.firewall-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -270,7 +270,7 @@ public struct FirewallOffRule: ProtectionInsightRule {
 
 /// Stealth mode — only meaningful, and only reported, when the firewall it
 /// belongs to is actually on.
-public struct FirewallStealthModeRule: ProtectionInsightRule {
+public struct FirewallStealthModeRule: ProtectionInsightRule, Sendable {
     public let id = "security.stealth-mode-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -310,7 +310,7 @@ public struct FirewallStealthModeRule: ProtectionInsightRule {
 
 // MARK: - Updates
 
-public struct AutomaticUpdateChecksOffRule: ProtectionInsightRule {
+public struct AutomaticUpdateChecksOffRule: ProtectionInsightRule, Sendable {
     public let id = "security.auto-update-checks-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -349,7 +349,7 @@ public struct AutomaticUpdateChecksOffRule: ProtectionInsightRule {
     }
 }
 
-public struct SecurityResponsesOffRule: ProtectionInsightRule {
+public struct SecurityResponsesOffRule: ProtectionInsightRule, Sendable {
     public let id = "security.security-responses-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -387,7 +387,7 @@ public struct SecurityResponsesOffRule: ProtectionInsightRule {
     }
 }
 
-public struct AutomaticMacOSUpdatesOffRule: ProtectionInsightRule {
+public struct AutomaticMacOSUpdatesOffRule: ProtectionInsightRule, Sendable {
     public let id = "security.macos-auto-updates-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -433,7 +433,7 @@ public struct AutomaticMacOSUpdatesOffRule: ProtectionInsightRule {
 
 // MARK: - Screen lock
 
-public struct ScreenLockOffRule: ProtectionInsightRule {
+public struct ScreenLockOffRule: ProtectionInsightRule, Sendable {
     public let id = "security.screen-lock-off"
     public let category: InsightCategory = .security
     public init() {}
@@ -469,7 +469,7 @@ public struct ScreenLockOffRule: ProtectionInsightRule {
     }
 }
 
-public struct ScreenLockDelayRule: ProtectionInsightRule {
+public struct ScreenLockDelayRule: ProtectionInsightRule, Sendable {
     public let id = "security.screen-lock-delay-long"
     public let category: InsightCategory = .security
     public init() {}
@@ -563,7 +563,7 @@ struct ListeningServiceRuleBody {
     }
 }
 
-public struct RemoteLoginListeningRule: ProtectionInsightRule {
+public struct RemoteLoginListeningRule: ProtectionInsightRule, Sendable {
     public let id = "security.remote-login-listening"
     public let category: InsightCategory = .security
     public init() {}
@@ -583,7 +583,7 @@ public struct RemoteLoginListeningRule: ProtectionInsightRule {
     }
 }
 
-public struct ScreenSharingListeningRule: ProtectionInsightRule {
+public struct ScreenSharingListeningRule: ProtectionInsightRule, Sendable {
     public let id = "security.screen-sharing-listening"
     public let category: InsightCategory = .security
     public init() {}
@@ -603,7 +603,7 @@ public struct ScreenSharingListeningRule: ProtectionInsightRule {
     }
 }
 
-public struct FileSharingListeningRule: ProtectionInsightRule {
+public struct FileSharingListeningRule: ProtectionInsightRule, Sendable {
     public let id = "security.file-sharing-listening"
     public let category: InsightCategory = .security
     public init() {}
@@ -623,7 +623,7 @@ public struct FileSharingListeningRule: ProtectionInsightRule {
     }
 }
 
-public struct RemoteManagementListeningRule: ProtectionInsightRule {
+public struct RemoteManagementListeningRule: ProtectionInsightRule, Sendable {
     public let id = "security.remote-management-listening"
     public let category: InsightCategory = .security
     public init() {}
@@ -645,7 +645,7 @@ public struct RemoteManagementListeningRule: ProtectionInsightRule {
 
 // MARK: - Accounts
 
-public struct GuestAccountEnabledRule: ProtectionInsightRule {
+public struct GuestAccountEnabledRule: ProtectionInsightRule, Sendable {
     public let id = "security.guest-account-enabled"
     public let category: InsightCategory = .security
     public init() {}
@@ -687,7 +687,7 @@ public struct GuestAccountEnabledRule: ProtectionInsightRule {
 
 /// Sentry's LAN-reachable MCP server. Reported for the same reason as
 /// everything else: a finding is not less true because we caused it.
-public struct RemoteMCPAccessRule: ProtectionInsightRule {
+public struct RemoteMCPAccessRule: ProtectionInsightRule, Sendable {
     public let id = "privacy.mcp-remote-access"
     public let category: InsightCategory = .privacy
     public init() {}
@@ -734,7 +734,7 @@ public struct RemoteMCPAccessRule: ProtectionInsightRule {
 /// Write-capable MCP tools with only *local* access enabled. Milder than
 /// the remote case above, and deliberately a separate finding so turning
 /// remote access off doesn't silently hide it.
-public struct LocalMCPWriteToolsRule: ProtectionInsightRule {
+public struct LocalMCPWriteToolsRule: ProtectionInsightRule, Sendable {
     public let id = "privacy.mcp-write-tools"
     public let category: InsightCategory = .privacy
     public init() {}
@@ -772,7 +772,7 @@ public struct LocalMCPWriteToolsRule: ProtectionInsightRule {
 
 /// The rule that exists specifically so unknowns cannot vanish into a
 /// clean-looking report.
-public struct PostureUnknownRule: ProtectionInsightRule {
+public struct PostureUnknownRule: ProtectionInsightRule, Sendable {
     public let id = "security.posture-unknown"
     public let category: InsightCategory = .security
     public init() {}
@@ -810,7 +810,7 @@ public struct PostureUnknownRule: ProtectionInsightRule {
 }
 
 /// All four baseline protections confirmed on.
-public struct HardenedBaselineRule: ProtectionInsightRule {
+public struct HardenedBaselineRule: ProtectionInsightRule, Sendable {
     public let id = "security.hardened-baseline"
     public let category: InsightCategory = .security
     public init() {}

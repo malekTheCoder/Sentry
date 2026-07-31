@@ -5,7 +5,7 @@ import Foundation
 /// High-state-of-charge residency — the best-documented driver of
 /// lithium-ion calendar ageing, and the one habit a laptop user can change
 /// without changing what they do all day.
-public struct HighChargeResidencyRule: ProtectionInsightRule {
+public struct HighChargeResidencyRule: ProtectionInsightRule, Sendable {
     public let id = "battery.high-soc-residency"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -72,7 +72,7 @@ public struct HighChargeResidencyRule: ProtectionInsightRule {
 /// `HighChargeResidencyRule`: that one is about *where* the charge sits,
 /// this one is about it not moving, which is its own (milder) problem and
 /// has a different fix.
-public struct BatteryNeverExercisedRule: ProtectionInsightRule {
+public struct BatteryNeverExercisedRule: ProtectionInsightRule, Sendable {
     public let id = "battery.never-exercised"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -116,7 +116,7 @@ public struct BatteryNeverExercisedRule: ProtectionInsightRule {
 
 /// Repeated deep discharges. The mirror image of high-charge residency and
 /// the other end of the same curve.
-public struct DeepDischargeRule: ProtectionInsightRule {
+public struct DeepDischargeRule: ProtectionInsightRule, Sendable {
     public let id = "battery.deep-discharge-frequency"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -160,7 +160,7 @@ public struct DeepDischargeRule: ProtectionInsightRule {
 
 /// Measured capacity loss over the observed window, normalised to a
 /// per-30-day rate so a 6-day window and a 60-day window are comparable.
-public struct CapacityLossRateRule: ProtectionInsightRule {
+public struct CapacityLossRateRule: ProtectionInsightRule, Sendable {
     public let id = "battery.capacity-loss-rate"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -221,7 +221,7 @@ public struct CapacityLossRateRule: ProtectionInsightRule {
 
 /// Cycle accumulation rate, projected against Apple's own 1,000-cycle
 /// rating for current Mac batteries.
-public struct CycleBurnRateRule: ProtectionInsightRule {
+public struct CycleBurnRateRule: ProtectionInsightRule, Sendable {
     public let id = "battery.cycle-burn-rate"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -279,7 +279,7 @@ public struct CycleBurnRateRule: ProtectionInsightRule {
 
 /// Charging while the SoC is already thermally saturated — the one habit
 /// that stacks both major wear mechanisms at once.
-public struct ChargingWhileHotRule: ProtectionInsightRule {
+public struct ChargingWhileHotRule: ProtectionInsightRule, Sendable {
     public let id = "battery.charging-while-hot"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -332,7 +332,7 @@ public struct ChargingWhileHotRule: ProtectionInsightRule {
 
 /// Sustained elevated *battery pack* temperature, as opposed to SoC
 /// temperature — a separate sensor and a separate finding.
-public struct BatteryTemperatureExposureRule: ProtectionInsightRule {
+public struct BatteryTemperatureExposureRule: ProtectionInsightRule, Sendable {
     public let id = "battery.temperature-exposure"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -382,7 +382,7 @@ public struct BatteryTemperatureExposureRule: ProtectionInsightRule {
 }
 
 /// The positive counterpart to the battery rules above.
-public struct BatteryInGoodShapeRule: ProtectionInsightRule {
+public struct BatteryInGoodShapeRule: ProtectionInsightRule, Sendable {
     public let id = "battery.in-good-shape"
     public let category: InsightCategory = .batteryLongevity
     public init() {}
@@ -430,7 +430,7 @@ public struct BatteryInGoodShapeRule: ProtectionInsightRule {
 // MARK: - Thermal
 
 /// Sustained thermal saturation across many days.
-public struct SustainedHeatRule: ProtectionInsightRule {
+public struct SustainedHeatRule: ProtectionInsightRule, Sendable {
     public let id = "thermal.sustained-heat"
     public let category: InsightCategory = .thermal
     public init() {}
@@ -482,7 +482,7 @@ public struct SustainedHeatRule: ProtectionInsightRule {
 }
 
 /// How much of this Mac's life is spent actively throttled.
-public struct ThermalThrottlingRule: ProtectionInsightRule {
+public struct ThermalThrottlingRule: ProtectionInsightRule, Sendable {
     public let id = "thermal.throttling-frequency"
     public let category: InsightCategory = .thermal
     public init() {}
@@ -523,7 +523,7 @@ public struct ThermalThrottlingRule: ProtectionInsightRule {
 
 /// A thermal baseline that is drifting upward against this Mac's own past —
 /// the dust / degraded-paste / failing-fan signature.
-public struct RisingThermalBaselineRule: ProtectionInsightRule {
+public struct RisingThermalBaselineRule: ProtectionInsightRule, Sendable {
     public let id = "thermal.rising-baseline"
     public let category: InsightCategory = .maintenance
     public init() {}
@@ -575,7 +575,7 @@ public struct RisingThermalBaselineRule: ProtectionInsightRule {
 }
 
 /// The positive thermal finding.
-public struct ThermalsWellBehavedRule: ProtectionInsightRule {
+public struct ThermalsWellBehavedRule: ProtectionInsightRule, Sendable {
     public let id = "thermal.well-behaved"
     public let category: InsightCategory = .thermal
     public init() {}
@@ -620,7 +620,7 @@ public struct ThermalsWellBehavedRule: ProtectionInsightRule {
 }
 
 /// Sustained pinned CPU across many days — the load that produces the heat.
-public struct SustainedCPULoadRule: ProtectionInsightRule {
+public struct SustainedCPULoadRule: ProtectionInsightRule, Sendable {
     public let id = "load.sustained-cpu"
     public let category: InsightCategory = .thermal
     public init() {}
@@ -669,7 +669,7 @@ public struct SustainedCPULoadRule: ProtectionInsightRule {
 }
 
 /// The GPU counterpart of `SustainedCPULoadRule`.
-public struct SustainedGPULoadRule: ProtectionInsightRule {
+public struct SustainedGPULoadRule: ProtectionInsightRule, Sendable {
     public let id = "load.sustained-gpu"
     public let category: InsightCategory = .thermal
     public init() {}
@@ -715,7 +715,7 @@ public struct SustainedGPULoadRule: ProtectionInsightRule {
 // MARK: - Memory
 
 /// Chronic high memory utilisation.
-public struct HighMemoryUtilizationRule: ProtectionInsightRule {
+public struct HighMemoryUtilizationRule: ProtectionInsightRule, Sendable {
     public let id = "memory.high-utilization"
     public let category: InsightCategory = .memory
     public init() {}
@@ -766,7 +766,7 @@ public struct HighMemoryUtilizationRule: ProtectionInsightRule {
 
 /// Swap volume — the finding that translates memory pressure into real,
 /// irreversible SSD wear.
-public struct SwapThrashRule: ProtectionInsightRule {
+public struct SwapThrashRule: ProtectionInsightRule, Sendable {
     public let id = "memory.swap-thrash"
     public let category: InsightCategory = .memory
     public init() {}
@@ -820,7 +820,7 @@ public struct SwapThrashRule: ProtectionInsightRule {
 
 /// Heavy memory compression — the stage before swap, and an early warning
 /// that costs CPU rather than SSD.
-public struct MemoryCompressionRule: ProtectionInsightRule {
+public struct MemoryCompressionRule: ProtectionInsightRule, Sendable {
     public let id = "memory.compression-pressure"
     public let category: InsightCategory = .memory
     public init() {}
@@ -871,7 +871,7 @@ public struct MemoryCompressionRule: ProtectionInsightRule {
 // MARK: - Storage
 
 /// Sustained lack of headroom on the startup volume.
-public struct LowStorageHeadroomRule: ProtectionInsightRule {
+public struct LowStorageHeadroomRule: ProtectionInsightRule, Sendable {
     public let id = "storage.low-headroom"
     public let category: InsightCategory = .storage
     public init() {}
@@ -927,7 +927,7 @@ public struct LowStorageHeadroomRule: ProtectionInsightRule {
 }
 
 /// Free space trending toward zero.
-public struct StorageFillingTrendRule: ProtectionInsightRule {
+public struct StorageFillingTrendRule: ProtectionInsightRule, Sendable {
     public let id = "storage.filling-trend"
     public let category: InsightCategory = .storage
     public init() {}
@@ -978,7 +978,7 @@ public struct StorageFillingTrendRule: ProtectionInsightRule {
 }
 
 /// Estimated SSD write volume — finite, unrecoverable, and soldered down.
-public struct StorageWriteVolumeRule: ProtectionInsightRule {
+public struct StorageWriteVolumeRule: ProtectionInsightRule, Sendable {
     public let id = "storage.write-volume"
     public let category: InsightCategory = .storage
     public init() {}
@@ -1029,7 +1029,7 @@ public struct StorageWriteVolumeRule: ProtectionInsightRule {
 }
 
 /// The positive storage finding.
-public struct StorageHeadroomHealthyRule: ProtectionInsightRule {
+public struct StorageHeadroomHealthyRule: ProtectionInsightRule, Sendable {
     public let id = "storage.healthy-headroom"
     public let category: InsightCategory = .storage
     public init() {}
@@ -1071,7 +1071,7 @@ public struct StorageHeadroomHealthyRule: ProtectionInsightRule {
 // MARK: - Power habits & maintenance
 
 /// Uptime without a restart.
-public struct LongUptimeRule: ProtectionInsightRule {
+public struct LongUptimeRule: ProtectionInsightRule, Sendable {
     public let id = "maintenance.long-uptime"
     public let category: InsightCategory = .maintenance
     public init() {}
@@ -1115,7 +1115,7 @@ public struct LongUptimeRule: ProtectionInsightRule {
 
 /// A keep-awake assertion currently held — Sentry's own feature, reported
 /// honestly rather than hidden because it is ours.
-public struct KeepAwakeHeldRule: ProtectionInsightRule {
+public struct KeepAwakeHeldRule: ProtectionInsightRule, Sendable {
     public let id = "power.keep-awake-active"
     public let category: InsightCategory = .powerHabits
     public init() {}
@@ -1180,7 +1180,7 @@ public struct KeepAwakeHeldRule: ProtectionInsightRule {
 }
 
 /// A power adapter that cannot keep up with what this Mac actually draws.
-public struct UnderpoweredAdapterRule: ProtectionInsightRule {
+public struct UnderpoweredAdapterRule: ProtectionInsightRule, Sendable {
     public let id = "power.adapter-undersized"
     public let category: InsightCategory = .powerHabits
     public init() {}
