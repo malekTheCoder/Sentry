@@ -2,7 +2,15 @@ import AppKit
 import CoreText
 import MacStatKit
 
-/// Theme color tokens resolved once for a given appearance.
+/// Menu bar color tokens resolved once for a given appearance.
+///
+/// The bar is strictly monochrome: every token is white or black (chosen by
+/// the menu bar's own appearance, which tracks the wallpaper) at varying
+/// opacity. Theme hues never reach the bar — colored text over an arbitrary
+/// wallpaper is what made it unreadable, and it's also how every built-in
+/// macOS status item behaves. State is carried by the "!" cue, the VoiceOver
+/// summary, and opacity — never by hue (§9.4 already required a non-color
+/// cue, so nothing is lost).
 ///
 /// Hex parsing allocates; the bar redraws every few seconds forever (P6), so
 /// tokens are resolved when the theme or the appearance changes and never
@@ -17,26 +25,18 @@ struct MenuBarPalette {
     let danger: NSColor
     let separator: NSColor
     let chartFill: [NSColor]
-    /// Keyed by `MetricID.rawValue` — `Theme.metricColors` is string-keyed so
-    /// it can carry templated ids (`cpu.core.3_percent`) that have no case.
-    let metricColors: [String: NSColor]
 
     init(theme: Theme, dark: Bool) {
-        textPrimary = theme.textPrimary.nsColor(dark: dark)
-        textSecondary = theme.textSecondary.nsColor(dark: dark)
-        textTertiary = theme.textTertiary.nsColor(dark: dark)
-        accent = theme.accent.nsColor(dark: dark)
-        success = theme.success.nsColor(dark: dark)
-        warning = theme.warning.nsColor(dark: dark)
-        danger = theme.danger.nsColor(dark: dark)
-        separator = theme.separator.nsColor(dark: dark)
-        let stops = theme.chartFill.map { $0.nsColor(dark: dark) }
-        // A one-stop gradient is degenerate and an empty `chartFill` is legal
-        // in the data model, so fall back to a fade of the accent.
-        chartFill = stops.count >= 2
-            ? stops
-            : [accent.withAlphaComponent(0.35), accent.withAlphaComponent(0)]
-        metricColors = theme.metricColors.mapValues { $0.nsColor(dark: dark) }
+        let base: NSColor = dark ? .white : .black
+        textPrimary = base.withAlphaComponent(0.9)
+        textSecondary = base.withAlphaComponent(0.55)
+        textTertiary = base.withAlphaComponent(0.3)
+        accent = textPrimary
+        success = textPrimary
+        warning = textPrimary
+        danger = textPrimary
+        separator = base.withAlphaComponent(0.15)
+        chartFill = [base.withAlphaComponent(0.25), base.withAlphaComponent(0)]
     }
 
     /// Resolves an `AlertAction.menuBarHighlight` token to a themed color.
@@ -453,24 +453,12 @@ final class BarModuleRenderer {
 
     // MARK: - Color rules
 
+    /// Monochrome bar: every color rule resolves to the mono base. The rules
+    /// still matter — `.thresholdGradient` drives `severity(for:)`, which
+    /// draws the "!" cue and feeds VoiceOver — but hue is never the carrier.
+    /// An absent reading dims to tertiary so an em dash doesn't shout.
     func color(for module: BarModule, value: Double?) -> NSColor {
-        switch module.colorRule {
-        case .fixed(let hex):
-            guard let rgba = ThemeColor.rgbaComponents(hex: hex) else { return palette.accent }
-            return NSColor(srgbRed: rgba.r, green: rgba.g, blue: rgba.b, alpha: rgba.a)
-        case .thresholdGradient(let low, let high):
-            guard let value else { return palette.textTertiary }
-            return rampColor(value: value, low: low, high: high)
-        case .matchSystemAccent:
-            // Flattened to a concrete sRGB color *here*, at draw time, rather
-            // than handing the dynamic color to the glyph cache: a baked-in
-            // dynamic color would keep painting the old accent after the user
-            // changes theirs, whereas a flattened one changes the cache key
-            // and re-renders.
-            return NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? NSColor.controlAccentColor
-        case .themeMetricColor:
-            return palette.metricColors[module.metric.rawValue] ?? palette.accent
-        }
+        value == nil ? palette.textTertiary : palette.textPrimary
     }
 
     /// Where `value` sits between `low` and `high`, clamped to 0...1.
@@ -482,31 +470,6 @@ final class BarModuleRenderer {
         let span = high - low
         guard value.isFinite, span.isFinite, abs(span) > 0.000_001 else { return nil }
         return min(max((value - low) / span, 0), 1)
-    }
-
-    /// Green → amber → red.
-    private func rampColor(value: Double, low: Double, high: Double) -> NSColor {
-        guard let position = rampPosition(value: value, low: low, high: high) else {
-            // A degenerate (or non-finite) range still has to answer with
-            // *something* legible; the two ends are the only honest options.
-            return value >= high ? palette.danger : palette.success
-        }
-        return position < 0.5
-            ? lerp(palette.success, palette.warning, CGFloat(position * 2))
-            : lerp(palette.warning, palette.danger, CGFloat((position - 0.5) * 2))
-    }
-
-    /// Manual sRGB interpolation rather than `blended(withFraction:of:)`,
-    /// which returns nil when the two colors can't be converted into a common
-    /// space — a nil we'd have to invent a fallback for anyway.
-    private func lerp(_ a: NSColor, _ b: NSColor, _ t: CGFloat) -> NSColor {
-        guard let from = a.usingColorSpace(.sRGB), let to = b.usingColorSpace(.sRGB) else { return a }
-        return NSColor(
-            srgbRed: from.redComponent + (to.redComponent - from.redComponent) * t,
-            green: from.greenComponent + (to.greenComponent - from.greenComponent) * t,
-            blue: from.blueComponent + (to.blueComponent - from.blueComponent) * t,
-            alpha: from.alphaComponent + (to.alphaComponent - from.alphaComponent) * t
-        )
     }
 
     // MARK: - Text

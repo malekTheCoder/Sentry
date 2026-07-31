@@ -5,6 +5,20 @@ import MacStatKit
 /// toggle, a duration/trigger menu, an `AwakeMode` menu, and a live countdown
 /// while an assertion is running.
 ///
+/// **Layout.** Two states, one grid. Off, this is two rows: the switch, and a
+/// summary of what flipping it will do ("Indefinitely · Keep display on")
+/// which doubles as the disclosure for the pickers behind it. On, it is the
+/// countdown plus the controls that move it. Nothing is boxed — the section is
+/// bounded by the hairlines `DropdownView` draws above and below it, and the
+/// labels/values sit on `DropdownGrid`, so the keep-awake rows and the vitals
+/// rows above them share a left edge, a right edge and a row height.
+///
+/// The pickers used to be visible at all times, which put four rows and a
+/// two-line explanation permanently under a switch that most users flip
+/// without changing anything. They're one click away now instead, and the
+/// collapsed summary states the current selection so the disclosure never
+/// hides *what will happen* — only *how to change it*.
+///
 /// **Scope, and what's deliberately missing.** Plan §10.3 lists six trigger
 /// kinds. Four are here (indefinite, fixed presets, battery threshold,
 /// sustained-CPU threshold). Two are not:
@@ -13,11 +27,11 @@ import MacStatKit
 /// - *While a specific app is running* needs a running-app browser.
 ///
 /// Both would roughly double this card's height inside a 320pt popover whose
-/// remaining space belongs to the metric cards. They're deferred to the
-/// Settings window, not dropped: `ReleaseCondition.whileAppRunning` already
-/// exists and is fully handled by `PowerControlService`'s `NSWorkspace`
-/// termination observer, and "until a time" is just a fixed duration computed
-/// from `Date`. Neither needs service-layer work to land later — only UI.
+/// remaining space belongs to the vitals. They're deferred to the Settings
+/// window, not dropped: `ReleaseCondition.whileAppRunning` already exists and
+/// is fully handled by `PowerControlService`'s `NSWorkspace` termination
+/// observer, and "until a time" is just a fixed duration computed from `Date`.
+/// Neither needs service-layer work to land later — only UI.
 ///
 /// **Why the card re-reads `powerControl.state` instead of mirroring it.**
 /// The service is the single source of truth and can end an assertion without
@@ -29,12 +43,22 @@ import MacStatKit
 /// selection (what to start next) and the last start error.
 struct SleepControlCard: View {
     @Environment(\.themePalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var powerControl: PowerControlService
 
     @State private var trigger: SleepTriggerOption = .indefinite
     @State private var mode: AwakeMode = .displayAndSystem
     @State private var batteryThreshold: Double = 20
     @State private var cpuThreshold: Double = 80
+    /// Executable name for `.processRunning`. Defaults to the tool this
+    /// feature was built for — an agent CLI chewing through a long task is
+    /// the canonical "hold the Mac awake until it's done" workload.
+    @State private var processName: String = "claude"
+
+    /// Whether the trigger/mode pickers are disclosed. Local and not
+    /// persisted: it's a "I'm about to change something" state, not a
+    /// preference, and re-opening the popover should show the calm form.
+    @State private var showsOptions = false
 
     /// Non-nil only when the most recent `startAssertion` attempt threw. Shown
     /// verbatim instead of a success state (P5) and cleared by the next
@@ -53,54 +77,47 @@ struct SleepControlCard: View {
         return (mode, expiresAt, reason)
     }
 
+    private var isActive: Bool { activeState != nil }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
+        VStack(alignment: .leading, spacing: 0) {
             header
             if let activeState {
                 activeDetail(for: activeState)
             } else {
-                pickers
+                optionsDisclosure
+                if showsOptions {
+                    pickers
+                }
             }
             if let startError {
                 errorRow(startError)
             }
         }
-        .padding(palette.spacing * 1.4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .stroke(activeState == nil ? palette.separator : palette.accent.opacity(0.5), lineWidth: 1)
-        )
     }
 
     // MARK: Header
 
-    private var isActive: Bool { activeState != nil }
-
+    /// The section's title row. `.medium` on `textPrimary` rather than a size
+    /// jump: this is a heading among data rows, and the surface has exactly one
+    /// slot for large type (the verdict line, above).
     private var header: some View {
-        HStack(spacing: palette.spacing) {
-            Image(systemName: isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
-                .foregroundStyle(isActive ? palette.accent : palette.textSecondary)
-                .frame(width: 14)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Keep Awake")
-                    .font(palette.font(size: 12, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                Text(isActive ? "Preventing sleep" : "Sleep behaves normally")
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: palette.spacing)
+        HStack(spacing: palette.spacingTight) {
+            Text("Keep Awake")
+                .font(palette.font(size: 11, weight: .medium))
+                .foregroundStyle(palette.textPrimary)
+            Spacer(minLength: palette.spacingTight)
             Toggle("", isOn: toggleBinding)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .tint(palette.accent)
                 .accessibilityLabel("Keep awake")
+                .accessibilityValue(isActive ? "On, preventing sleep" : "Off, sleep behaves normally")
         }
+        .padding(.horizontal, palette.spacingTight)
+        .frame(height: DropdownGrid.rowHeight)
     }
 
     /// Writes go straight to the service; reads come straight back from it.
@@ -116,11 +133,42 @@ struct SleepControlCard: View {
 
     // MARK: Inactive — configuration
 
+    /// Collapsed, this row *is* the answer to "what happens if I flip that
+    /// switch"; expanded, it becomes the group's label. Never both, because a
+    /// summary sitting directly above the two controls it summarises is
+    /// redundancy the eye still has to read.
+    private var optionsDisclosure: some View {
+        DropdownDisclosureRow(
+            title: showsOptions ? "Options" : selectionSummary,
+            isExpanded: showsOptions,
+            accessibilityLabel: showsOptions
+                ? "Hide keep awake options"
+                : "Keep awake options, currently \(selectionSummary)"
+        ) {
+            withAnimation(ThemePalette.disclosureMotion(reduceMotion: reduceMotion)) {
+                showsOptions.toggle()
+            }
+        }
+    }
+
+    private var selectionSummary: String {
+        let triggerText = trigger.menuLabel(
+            batteryThreshold: batteryThreshold,
+            cpuThreshold: cpuThreshold,
+            processName: processName
+        )
+        return "\(triggerText) · \(mode.shortLabel)"
+    }
+
     private var pickers: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
+        VStack(alignment: .leading, spacing: 0) {
             optionMenu(
                 title: "For",
-                selection: trigger.menuLabel(batteryThreshold: batteryThreshold, cpuThreshold: cpuThreshold)
+                selection: trigger.menuLabel(
+                    batteryThreshold: batteryThreshold,
+                    cpuThreshold: cpuThreshold,
+                    processName: processName
+                )
             ) {
                 ForEach(SleepTriggerOption.allOptions) { option in
                     Button(option.pickerLabel) { trigger = option }
@@ -133,11 +181,14 @@ struct SleepControlCard: View {
                 }
             }
             Text(mode.explanation)
-                .font(palette.font(size: 9))
+                .font(palette.font(size: 10))
                 .foregroundStyle(palette.textTertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, palette.spacingTight)
+                .padding(.bottom, palette.spacingTight)
         }
+        .transition(.opacity)
     }
 
     /// Only the two conditional triggers carry a tunable threshold, so the
@@ -149,9 +200,45 @@ struct SleepControlCard: View {
             percentStepper("Battery floor", value: $batteryThreshold, range: 5...95)
         case .cpuAbove:
             percentStepper("CPU floor", value: $cpuThreshold, range: 10...100)
+        case .processRunning:
+            processNameRow
         case .indefinite, .fixed:
             EmptyView()
         }
+    }
+
+    /// Free-text executable name plus a menu of the agent/build tools this
+    /// trigger exists for. The text field is the source of truth; the menu
+    /// just types for you.
+    private var processNameRow: some View {
+        HStack(spacing: palette.spacingTight) {
+            Text("Process")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+            Spacer(minLength: palette.spacingTight)
+            TextField("name", text: $processName)
+                .textFieldStyle(.plain)
+                .font(palette.numericFont(size: 11, weight: .medium))
+                .foregroundStyle(palette.textPrimary)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 110)
+                .accessibilityLabel("Process name")
+            Menu {
+                ForEach(["claude", "codex", "xcodebuild", "node", "python3"], id: \.self) { preset in
+                    Button(preset) { processName = preset }
+                }
+            } label: {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(palette.textTertiary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Common processes")
+        }
+        .padding(.horizontal, palette.spacingTight)
+        .frame(height: DropdownGrid.rowHeight)
     }
 
     private func percentStepper(
@@ -160,58 +247,70 @@ struct SleepControlCard: View {
         range: ClosedRange<Double>
     ) -> some View {
         Stepper(value: value, in: range, step: 5) {
-            HStack {
+            HStack(spacing: palette.spacingTight) {
                 Text(label)
-                    .font(palette.font(size: 10))
+                    .font(palette.font(size: 11))
                     .foregroundStyle(palette.textTertiary)
-                Spacer(minLength: palette.spacing)
+                Spacer(minLength: palette.spacingTight)
                 Text(MetricFormatting.percent(value.wrappedValue))
-                    .font(palette.font(size: 10))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textSecondary)
+                    .font(palette.numericFont(size: 11, weight: .medium))
+                    .foregroundStyle(palette.textPrimary)
             }
         }
         .controlSize(.mini)
+        .padding(.horizontal, palette.spacingTight)
+        .frame(height: DropdownGrid.rowHeight)
         .accessibilityLabel("\(label) \(MetricFormatting.percent(value.wrappedValue))")
     }
 
     /// A `Menu` rather than a `Picker`: `Picker`'s macOS pop-up button draws
-    /// its own system-chrome background, which reads as a foreign control
-    /// against the themed cards. This keeps the label/value/chevron geometry
-    /// of `MetricDetailRow`.
+    /// its own bezel, which is the one piece of system chrome this surface has
+    /// nowhere to put.
+    ///
+    /// **The label is a single `Text` on purpose — this is a bug fix.** The
+    /// previous version handed `Menu` an `HStack { Text(title); Spacer();
+    /// Text(selection); Image(chevron) }` as its label. AppKit's borderless
+    /// pop-up cannot host an arbitrary view hierarchy: it flattened the label
+    /// down to one glyph and one string, so both rows shipped rendering as a
+    /// stray up/down chevron next to "For" — the *current selection was never
+    /// drawn at all*, and the control looked broken because, functionally, it
+    /// was: the only way to see what was selected was to open the menu. The
+    /// title now lives outside the `Menu` where we control it, the menu's own
+    /// label is nothing but the selection string, and the system indicator is
+    /// left visible (rather than hidden and re-drawn by hand) so the affordance
+    /// can't disappear again. It lands in the same chevron column the vitals
+    /// rows reserve, so the row still lines up.
     private func optionMenu<Content: View>(
         title: String,
         selection: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        Menu {
-            content()
-        } label: {
-            HStack(spacing: palette.spacing) {
-                Text(title)
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-                Spacer(minLength: palette.spacing)
+        HStack(spacing: palette.spacingTight) {
+            Text(title)
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+            Spacer(minLength: palette.spacingTight)
+            Menu {
+                content()
+            } label: {
                 Text(selection)
-                    .font(palette.font(size: 10, weight: .medium))
-                    .foregroundStyle(palette.textSecondary)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(palette.textTertiary)
+                    .font(palette.font(size: 11, weight: .medium))
+                    .foregroundStyle(palette.textPrimary)
+                    .lineLimit(1)
             }
-            .contentShape(Rectangle())
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("\(title), \(selection)")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityLabel("\(title), \(selection)")
+        .padding(.horizontal, palette.spacingTight)
+        .frame(height: DropdownGrid.rowHeight)
     }
 
     // MARK: Active — countdown
 
     @ViewBuilder
     private func activeDetail(for active: (mode: AwakeMode, expiresAt: Date?, reason: String)) -> some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
+        VStack(alignment: .leading, spacing: 0) {
             if let expiresAt = active.expiresAt {
                 // `TimelineView` is scoped to this branch on purpose: an
                 // indefinite or condition-released assertion has nothing that
@@ -221,115 +320,163 @@ struct SleepControlCard: View {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     countdownRow(remaining: expiresAt.timeIntervalSince(context.date))
                 }
-                // Extend/truncate only mean something with an `expiresAt` to
-                // adjust — an indefinite hold or a conditional trigger (both
-                // `expiresAt == nil`) has no clock for these buttons to move,
-                // matching `PowerControlService.adjustAssertion(bySeconds:)`'s
-                // own `.noAdjustableAssertion` guard.
-                adjustRow
             } else {
-                MetricDetailRow(label: "Ends", value: "When you turn it off")
+                valueRow(label: "Ends", value: "When you turn it off")
             }
-            MetricDetailRow(label: "Mode", value: active.mode.shortLabel)
+            valueRow(label: "Mode", value: active.mode.shortLabel)
+            // Extend/truncate only mean something with an `expiresAt` to
+            // adjust — an indefinite hold or a conditional trigger (both
+            // `expiresAt == nil`) has no clock for these buttons to move,
+            // matching `PowerControlService.adjustAssertion(bySeconds:)`'s
+            // own `.noAdjustableAssertion` guard.
+            adjustRow(hasClock: active.expiresAt != nil)
             // `reason` is the string handed to IOKit at start time and is the
             // only record of a conditional trigger that survives an app
             // relaunch (the condition itself is private to the service), so
             // it — not a locally remembered selection — is what's shown.
             Text(active.reason)
-                .font(palette.font(size: 9))
+                .font(palette.font(size: 10))
                 .foregroundStyle(palette.textTertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            endNowButton
+                .padding(.horizontal, palette.spacingTight)
+                .padding(.bottom, palette.spacingTight)
         }
     }
 
-    /// Quick +/- adjustments to the running countdown. `-15m` is allowed to
-    /// end the assertion outright (via `adjustAssertion`'s own below-zero
-    /// clamp) rather than being disabled once remaining time drops under 15
-    /// minutes — matching the "truncate" half of "extended or truncated or
-    /// ended" the way a user would actually expect it to behave.
-    private var adjustRow: some View {
-        HStack(spacing: palette.spacing * 0.6) {
-            adjustButton("-15m", delta: -15 * 60)
-            adjustButton("+15m", delta: 15 * 60)
-            adjustButton("+1h", delta: 60 * 60)
+    /// Quick +/- adjustments to the running countdown, and the labelled way to
+    /// end the session. `-15m` is allowed to end the assertion outright (via
+    /// `adjustAssertion`'s own below-zero clamp) rather than being disabled
+    /// once remaining time drops under 15 minutes — matching the "truncate"
+    /// half of "extended or truncated or ended" the way a user would actually
+    /// expect it to behave.
+    ///
+    /// "End Now" is a duplicate of the header switch, kept because a labelled
+    /// verb next to the countdown is the discoverable version of "ended" once
+    /// the timing controls are what the eye is on.
+    private func adjustRow(hasClock: Bool) -> some View {
+        HStack(spacing: 2) {
+            if hasClock {
+                adjustButton("−15m", delta: -15 * 60)
+                adjustButton("+15m", delta: 15 * 60)
+                adjustButton("+1h", delta: 60 * 60)
+            }
+            Spacer(minLength: palette.spacingTight)
+            endNowButton
         }
+        .padding(.horizontal, palette.spacingTight)
+        .frame(height: DropdownGrid.rowHeight)
     }
 
     private func adjustButton(_ title: String, delta: TimeInterval) -> some View {
-        Button(title) { adjust(bySeconds: delta) }
-            .buttonStyle(.plain)
-            .font(palette.font(size: 10, weight: .medium))
-            .foregroundStyle(palette.textSecondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(palette.surface)
-            .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius * 0.6, style: .continuous))
-            .accessibilityLabel(delta < 0 ? "Shorten by \(SleepCountdownFormatting.presetLabel(-delta))" : "Extend by \(SleepCountdownFormatting.presetLabel(delta))")
+        DropdownInlineButton(
+            title: title,
+            accessibilityLabel: delta < 0
+                ? "Shorten by \(SleepCountdownFormatting.presetLabel(-delta))"
+                : "Extend by \(SleepCountdownFormatting.presetLabel(delta))"
+        ) {
+            adjust(bySeconds: delta)
+        }
     }
 
-    /// Explicit end control, distinct from the header toggle — the toggle
-    /// still works too (`toggleBinding`'s `set` calls the same `stop()`), but
-    /// a labeled button next to the extend/truncate row is the discoverable
-    /// version of "ended" once the countdown/adjust controls are already the
-    /// visual focus of this state.
+    /// Neutral at rest and `danger` only under the cursor: a permanently red
+    /// word on an otherwise monochrome surface reads as an error message rather
+    /// than a control, but the colour is genuinely useful at the moment the
+    /// user is about to commit to ending the session.
     private var endNowButton: some View {
-        Button("End Now", action: stop)
-            .buttonStyle(.plain)
-            .font(palette.font(size: 10, weight: .medium))
-            .foregroundStyle(palette.danger)
+        DropdownInlineButton(
+            title: "End Now",
+            hoverTint: palette.danger,
+            accessibilityLabel: "End keep awake now",
+            action: stop
+        )
     }
 
     private func countdownRow(remaining: TimeInterval) -> some View {
-        HStack {
-            Text("Remaining")
-                .font(palette.font(size: 10))
+        valueRow(label: "Remaining", value: SleepCountdownFormatting.countdown(remaining))
+    }
+
+    /// The same label-left/value-right geometry as a vitals detail row, ending
+    /// on the same right edge, so the keep-awake block and the vitals block
+    /// read as one table rather than two.
+    private func valueRow(label: String, value: String) -> some View {
+        HStack(spacing: palette.spacingTight) {
+            Text(label)
+                .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
-            Spacer(minLength: palette.spacing)
-            Text(SleepCountdownFormatting.countdown(remaining))
-                .font(palette.font(size: 15, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(palette.accent)
+            Spacer(minLength: palette.spacingTight)
+            Text(value)
+                .font(palette.numericFont(size: 11, weight: .medium))
+                .foregroundStyle(palette.textPrimary)
+                .lineLimit(1)
         }
+        .padding(.leading, palette.spacingTight)
+        .padding(.trailing, DropdownGrid.valueTrailingInset(palette))
+        .frame(height: DropdownGrid.detailRowHeight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Remaining \(SleepCountdownFormatting.countdown(remaining))")
+        .accessibilityLabel("\(label) \(value)")
     }
 
     // MARK: Error
 
+    /// No tinted panel behind it. `danger` text plus a glyph is already two
+    /// signals; a third (a filled rounded rectangle) is the "error card" idiom
+    /// this surface spent the redesign removing.
     private func errorRow(_ message: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "exclamationmark.triangle.fill")
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 10))
             Text(message)
-                .font(palette.font(size: 10))
+                .font(palette.font(size: 11))
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(palette.danger)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
-        .padding(.horizontal, 6)
-        .background(palette.danger.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
+        .padding(.horizontal, palette.spacingTight)
+        .padding(.bottom, palette.spacingTight)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Actions
 
     private func start() {
-        let reason = trigger.assertionReason(batteryThreshold: batteryThreshold, cpuThreshold: cpuThreshold)
+        // Arm-time validation for the process trigger: a hold on a process
+        // that isn't running would release itself two ticks later, which
+        // reads as "the switch is broken". Saying why beats a silent bounce.
+        if case .processRunning = trigger {
+            let name = processName.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else {
+                startError = "Enter a process name first."
+                return
+            }
+            processName = name
+            guard PowerControlService.isProcessRunning(named: name) else {
+                startError = "No process named “\(name)” is running right now."
+                return
+            }
+        }
+        let reason = trigger.assertionReason(
+            batteryThreshold: batteryThreshold,
+            cpuThreshold: cpuThreshold,
+            processName: processName
+        )
         do {
             if let condition = trigger.releaseCondition(
                 batteryThreshold: batteryThreshold,
                 cpuThreshold: cpuThreshold,
-                cpuSustainedFor: Self.cpuSustainedWindow
+                cpuSustainedFor: Self.cpuSustainedWindow,
+                processName: processName
             ) {
                 try powerControl.startConditionalAssertion(mode: mode, condition: condition, reason: reason)
             } else {
                 try powerControl.startAssertion(mode: mode, duration: trigger.duration, reason: reason)
             }
             startError = nil
+            // The options were a means to starting this session; leaving them
+            // open would push the countdown the user now cares about down the
+            // popover behind controls that no longer apply.
+            showsOptions = false
         } catch {
             // `PowerControlError.assertionFailed` is a `LocalizedError`; the
             // `localizedDescription` fallback covers anything else IOKit
@@ -353,6 +500,94 @@ struct SleepControlCard: View {
     }
 }
 
+// MARK: - Shared row controls
+
+/// A full-width row that expands something below it. Same 28pt height, same
+/// hover highlight and same reserved chevron column as a vitals row, because
+/// it is the same kind of thing: a line you click to see more.
+struct DropdownDisclosureRow: View {
+    @Environment(\.themePalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let title: String
+    let isExpanded: Bool
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: palette.spacingTight) {
+                Text(title)
+                    .font(palette.font(size: 11))
+                    .foregroundStyle(palette.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: palette.spacingTight)
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(palette.textTertiary)
+                    .frame(width: DropdownGrid.chevronWidth, alignment: .trailing)
+            }
+            .padding(.horizontal, palette.spacingTight)
+            .frame(height: DropdownGrid.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            if isHovered {
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(ThemePalette.motion(reduceMotion: reduceMotion)) { isHovered = hovering }
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// A compact text button for controls that sit several-to-a-row (`+15m`,
+/// `End Now`). No fill and no border at rest — the hover highlight is the
+/// affordance, and it's the same highlight every other clickable line in the
+/// dropdown uses.
+struct DropdownInlineButton: View {
+    @Environment(\.themePalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let title: String
+    /// Defaults to `textPrimary`; `End Now` overrides it to `danger`.
+    var hoverTint: Color? = nil
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(palette.font(size: 11, weight: .medium))
+                .foregroundStyle(isHovered ? (hoverTint ?? palette.textPrimary) : palette.textSecondary)
+                .padding(.horizontal, palette.spacingTight)
+                .frame(height: DropdownGrid.rowHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background {
+            if isHovered {
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(ThemePalette.motion(reduceMotion: reduceMotion)) { isHovered = hovering }
+        }
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 // MARK: - Trigger options
 
 /// The subset of plan §10.3's trigger list this card offers. Not
@@ -368,6 +603,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
     case fixed(TimeInterval)
     case batteryBelow
     case cpuAbove
+    case processRunning
 
     static let allOptions: [SleepTriggerOption] = [
         .indefinite,
@@ -378,7 +614,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
         .fixed(4 * 60 * 60),
         .fixed(8 * 60 * 60),
         .batteryBelow,
-        .cpuAbove
+        .cpuAbove,
+        .processRunning
     ]
 
     var id: String {
@@ -387,6 +624,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .fixed(let seconds): return "fixed-\(Int(seconds))"
         case .batteryBelow: return "battery"
         case .cpuAbove: return "cpu"
+        case .processRunning: return "process"
         }
     }
 
@@ -401,7 +639,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
     func releaseCondition(
         batteryThreshold: Double,
         cpuThreshold: Double,
-        cpuSustainedFor: TimeInterval
+        cpuSustainedFor: TimeInterval,
+        processName: String
     ) -> ReleaseCondition? {
         switch self {
         case .indefinite, .fixed:
@@ -410,6 +649,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return .batteryBelowPercent(batteryThreshold)
         case .cpuAbove:
             return .cpuAbovePercent(cpuThreshold, for: cpuSustainedFor)
+        case .processRunning:
+            return .whileProcessRunning(name: processName)
         }
     }
 
@@ -421,12 +662,13 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .fixed(let seconds): return SleepCountdownFormatting.presetLabel(seconds)
         case .batteryBelow: return "Until battery is low"
         case .cpuAbove: return "While CPU is busy"
+        case .processRunning: return "While a process runs"
         }
     }
 
     /// Collapsed label for the closed menu, where the chosen threshold has to
     /// be visible without opening anything.
-    func menuLabel(batteryThreshold: Double, cpuThreshold: Double) -> String {
+    func menuLabel(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
         switch self {
         case .indefinite, .fixed:
             return pickerLabel
@@ -434,6 +676,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return "Battery < \(MetricFormatting.percent(batteryThreshold))"
         case .cpuAbove:
             return "CPU > \(MetricFormatting.percent(cpuThreshold))"
+        case .processRunning:
+            return "While \(processName.isEmpty ? "process" : processName) runs"
         }
     }
 
@@ -442,7 +686,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
     /// that survives into `SleepAssertionState` for the active card to show.
     /// Prefixed with the app name because that's what shows up in system power
     /// diagnostics next to every other process's assertions.
-    func assertionReason(batteryThreshold: Double, cpuThreshold: Double) -> String {
+    func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
         switch self {
         case .indefinite:
             return "MacStat — keep awake until turned off"
@@ -452,6 +696,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return "MacStat — keep awake until battery drops below \(MetricFormatting.percent(batteryThreshold))"
         case .cpuAbove:
             return "MacStat — keep awake while CPU stays above \(MetricFormatting.percent(cpuThreshold))"
+        case .processRunning:
+            return "MacStat — keep awake while \(processName) is running"
         }
     }
 }
@@ -540,5 +786,6 @@ extension AwakeMode {
     SleepControlCard(powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.sleepcard")!))
         .padding()
         .frame(width: 320)
-        .background(ThemePalette(theme: .slate, scheme: .dark).background)
+        .environment(\.themePalette, ThemePalette(theme: .defaultTheme, scheme: .dark))
+        .background(ThemePalette(theme: .defaultTheme, scheme: .dark).background)
 }

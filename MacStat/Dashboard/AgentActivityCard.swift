@@ -17,10 +17,21 @@ struct AgentActivityCard: View {
     @Environment(\.themePalette) private var palette
 
     let summary: AgentActivitySummary?
+    /// Live agent/build-tool processes from `ProcessMonitor.agentProcesses`
+    /// — the orchestration half of this card: who is running *right now*,
+    /// how hard, next to what agents have *done* over the selected range.
+    var agentProcesses: [ProcessStats] = []
+
+    /// CPU at/above this reads as "working"; below it, "idle". Chosen well
+    /// above libproc sampling noise but below any real compile/inference load.
+    private static let workingCPUThreshold: Double = 5
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             header
+            if !agentProcesses.isEmpty {
+                liveProcessList
+            }
             content
         }
         .padding(palette.spacing * 1.6)
@@ -72,6 +83,43 @@ struct AgentActivityCard: View {
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// One row per live process: name, pid, CPU, and a plain-word state.
+    /// Grouping instances would hide exactly what an orchestration view
+    /// exists to show — three parallel `claude` processes are three rows.
+    private var liveProcessList: some View {
+        VStack(alignment: .leading, spacing: palette.spacingTight) {
+            ForEach(agentProcesses) { process in
+                HStack(spacing: palette.spacingTight) {
+                    Circle()
+                        .fill(process.cpuPercent >= Self.workingCPUThreshold
+                            ? palette.success
+                            : palette.textTertiary)
+                        .frame(width: 6, height: 6)
+                    Text(process.name)
+                        .font(palette.numericFont(size: 12, weight: .medium))
+                        .foregroundStyle(palette.textPrimary)
+                        .lineLimit(1)
+                    Text("pid \(String(process.pid))")
+                        .font(palette.font(size: 11))
+                        .foregroundStyle(palette.textTertiary)
+                    Spacer(minLength: palette.spacingTight)
+                    Text(process.cpuPercent >= Self.workingCPUThreshold
+                        ? "\(Int(process.cpuPercent.rounded()))% CPU"
+                        : "idle")
+                        .font(palette.numericFont(size: 11))
+                        .foregroundStyle(palette.textSecondary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    "\(process.name), process \(process.pid), " +
+                    (process.cpuPercent >= Self.workingCPUThreshold
+                        ? "working at \(Int(process.cpuPercent.rounded())) percent CPU"
+                        : "idle")
+                )
+            }
         }
     }
 

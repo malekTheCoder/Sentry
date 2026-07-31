@@ -51,6 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // to `UserDefaults` and re-creates it on wake, so a second instance
     // would reconcile against — and fight over — the first's record.
     private let powerControl = PowerControlService()
+
+    /// Feeds the desktop widget's App Group cache from the same snapshot
+    /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
+    private let widgetWriter = MacWidgetSnapshotWriter(
+        deviceName: Host.current().localizedName ?? "This Mac"
+    )
     private lazy var alertEngine = AlertEngine(
         rules: settingsStore.settings.alertRules,
         historyStore: historyStore,
@@ -213,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// including a hand-edited settings file.
     private var lastEnabledRuleIDs: Set<UUID> = []
 
-    nonisolated static func main() {
+    static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -311,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 // release, and no alert rule would ever fire.
                 self.powerControl.evaluate(snapshot)
                 self.alertEngine.evaluate(snapshot)
+                await self.widgetWriter.record(snapshot)
             }
         }
 
@@ -499,7 +506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // still the *old* value at emission time. It happens to work today
         // only because the async hop lands after the assignment — not
         // something a theme switch should depend on.
-        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .slate
+        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .defaultTheme
 
         statusItemController?.apply(layout: settings.menuBarLayout)
         statusItemController?.apply(theme: theme)

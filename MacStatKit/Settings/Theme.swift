@@ -223,7 +223,66 @@ extension Theme {
         ]
     }
 
-    /// Slate — minimal default, dark. The app's default theme.
+    /// Notion — the app's default theme, and the only built-in that tracks the
+    /// system appearance rather than committing to one. Every token is a
+    /// light/dark pair, so `ThemePalette` resolves it against
+    /// `NSApp.effectiveAppearance` (macOS) / `colorScheme` (iOS) instead of
+    /// forcing a single look the way the IDE-inspired presets below do.
+    ///
+    /// The palette is deliberately near-monochrome: a warm-neutral text ramp on
+    /// an untinted background, with a single blue accent. Semantic colors are
+    /// reserved for state that actually needs attention (warning/danger), which
+    /// is what keeps a dense metrics UI from reading as confetti — see
+    /// `nocturneMetricColors` for how the six metric modules reuse those four
+    /// semantic tokens rather than carrying six bespoke hues.
+    public static let notion = Theme(
+        id: "builtin.notion",
+        name: "Notion",
+        isBuiltIn: true,
+        background: ThemeColor(light: "#FFFFFF", dark: "#191919"),
+        surface: ThemeColor(light: "#F7F6F3", dark: "#202020"),
+        surfaceElevated: ThemeColor(light: "#EFEEE9", dark: "#2C2C2C"),
+        textPrimary: ThemeColor(light: "#37352F", dark: "#D4D4D4"),
+        textSecondary: ThemeColor(light: "#787774", dark: "#9B9B9B"),
+        textTertiary: ThemeColor(light: "#9B9A97", dark: "#6F6F6F"),
+        accent: ThemeColor(light: "#2383E2", dark: "#529CCA"),
+        success: ThemeColor(light: "#0F7B6C", dark: "#4DAB9A"),
+        warning: ThemeColor(light: "#D9730D", dark: "#FFA344"),
+        danger: ThemeColor(light: "#E03E3E", dark: "#FF7369"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
+        chartFill: [
+            ThemeColor(light: "#2383E2", dark: "#529CCA", opacity: 0.18),
+            ThemeColor(light: "#2383E2", dark: "#529CCA", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.09),
+        metricColors: nocturneMetricColors(
+            accent: ThemeColor(light: "#2383E2", dark: "#529CCA"),
+            success: ThemeColor(light: "#0F7B6C", dark: "#4DAB9A"),
+            warning: ThemeColor(light: "#D9730D", dark: "#FFA344"),
+            danger: ThemeColor(light: "#E03E3E", dark: "#FF7369")
+        ),
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        // Small on purpose. Notion's own surfaces sit around 3–4pt; 6 is the
+        // most a Mac popover wants. Large radii read as "card" and invite the
+        // nested-rounded-rectangle look this redesign is specifically moving
+        // away from — interior elements should mostly have no radius at all
+        // because they should mostly have no fill or border.
+        cornerRadius: 6,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: true,
+        materialStyle: .popover,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Slate — minimal, dark.
     public static let slate = Theme(
         id: "builtin.slate",
         name: "Slate",
@@ -489,11 +548,17 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// All built-in presets, in the design doc's display order: 2 minimal
-    /// defaults followed by 5 IDE-inspired themes. `.slate` is the default.
+    /// All built-in presets, in display order: the adaptive default first, then
+    /// the 2 fixed-appearance minimal presets, then the 5 IDE-inspired ones.
     public static let builtInPresets: [Theme] = [
-        .slate, .paper, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
+        .notion, .slate, .paper, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
     ]
+
+    /// The single source of truth for "which theme when the user hasn't chosen
+    /// one, or chose one that no longer exists". Call sites use this rather than
+    /// naming a preset directly, so changing the default is a one-line edit
+    /// here instead of a hunt through every `?? .slate` fallback.
+    public static let defaultTheme: Theme = .notion
 }
 
 // MARK: - Typed metric-color lookup

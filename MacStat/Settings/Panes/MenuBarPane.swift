@@ -219,19 +219,18 @@ struct MenuBarPane: View {
                 .accessibilityLabel("Show metric unit")
         }
 
-        Section("Color") {
-            Picker("Rule", selection: colorRuleKindBinding(module)) {
-                ForEach(ColorRuleKind.allCases, id: \.self) { kind in
-                    Text(kind.displayName).tag(kind)
-                }
-            }
-            .accessibilityLabel("Color rule")
+        // The bar renders strictly monochrome (white/black with the menu
+        // bar's own appearance — see `MenuBarPalette`), so this section no
+        // longer picks colors: what the threshold rule still controls is the
+        // severity machinery — the "!" critical cue and the VoiceOver
+        // announcement. The old fixed/accent color rules remain in the data
+        // model for imported layouts, but there's nothing left for them to
+        // change, so the UI stops offering them.
+        Section("Thresholds") {
+            Toggle("Warn at thresholds", isOn: thresholdEnabledBinding(module))
+                .accessibilityLabel("Warn at thresholds")
 
-            switch module.wrappedValue.colorRule {
-            case .fixed:
-                ColorPicker("Color", selection: fixedColorBinding(module), supportsOpacity: false)
-                    .accessibilityLabel("Fixed color")
-            case .thresholdGradient:
+            if case .thresholdGradient = module.wrappedValue.colorRule {
                 // Low > high is legal and inverts the ramp (see ColorRule's
                 // doc comment), so neither field constrains the other.
                 LabeledContent("Low threshold") {
@@ -254,12 +253,10 @@ struct MenuBarPane: View {
                     .frame(width: 80)
                     .accessibilityLabel("High threshold value")
                 }
-                Text("Green below the low value, amber between, red above the high value. Set low above high to invert — useful for metrics where a small number is the bad one.")
+                Text("The bar always draws in plain white or black so it stays readable on any wallpaper. Near the high threshold a value counts as critical: it gets a “!” beside it and VoiceOver says so. Set low above high to invert — useful for metrics where a small number is the bad one.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            case .matchSystemAccent, .themeMetricColor:
-                EmptyView()
             }
         }
 
@@ -429,29 +426,21 @@ struct MenuBarPane: View {
         )
     }
 
-    /// `ColorRule` carries associated values, which a `Picker` can't select
-    /// over; this projects it onto a plain case tag and rebuilds the rule with
-    /// sensible defaults when the kind changes.
-    private func colorRuleKindBinding(_ module: Binding<BarModule>) -> Binding<ColorRuleKind> {
-        Binding(
-            get: { ColorRuleKind(rule: module.wrappedValue.colorRule) },
-            set: { kind in
-                guard kind != ColorRuleKind(rule: module.wrappedValue.colorRule) else { return }
-                module.wrappedValue.colorRule = kind.defaultRule()
-            }
-        )
-    }
-
-    private func fixedColorBinding(_ module: Binding<BarModule>) -> Binding<Color> {
+    /// On = `.thresholdGradient` (the rule that feeds `severity(for:)`'s
+    /// "!" cue), off = `.themeMetricColor` (the monochrome bar's inert
+    /// default). Turning the toggle off and on again restores the default
+    /// 20/90 band rather than remembering the old one — matching how
+    /// `maxWidthEnabledBinding` below deliberately forgets on disable.
+    private func thresholdEnabledBinding(_ module: Binding<BarModule>) -> Binding<Bool> {
         Binding(
             get: {
-                guard case .fixed(let hex) = module.wrappedValue.colorRule else {
-                    return .accentColor
-                }
-                return ThemeColor(hex: hex).color(for: .dark)
+                if case .thresholdGradient = module.wrappedValue.colorRule { return true }
+                return false
             },
-            set: { newColor in
-                module.wrappedValue.colorRule = .fixed(hex: Self.hexString(from: newColor))
+            set: { isOn in
+                module.wrappedValue.colorRule = isOn
+                    ? ColorRuleKind.thresholdGradient.defaultRule()
+                    : .themeMetricColor
             }
         )
     }
@@ -537,16 +526,6 @@ struct MenuBarPane: View {
         )
     }
 
-    /// `Color` has no public component accessor on macOS 14, so this goes
-    /// through `NSColor` and returns a neutral gray if the conversion to sRGB
-    /// fails (a catalog color with no RGB representation) rather than trapping.
-    private static func hexString(from color: Color) -> String {
-        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return "#808080" }
-        let r = Int((rgb.redComponent * 255).rounded())
-        let g = Int((rgb.greenComponent * 255).rounded())
-        let b = Int((rgb.blueComponent * 255).rounded())
-        return String(format: "#%02X%02X%02X", r, g, b)
-    }
 }
 
 // MARK: - ColorRule case tags

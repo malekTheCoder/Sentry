@@ -15,6 +15,17 @@ struct MacStatWidgetEntryView: View {
     var entry: Provider.Entry
 
     var body: some View {
+        // iOS 17 / macOS 14 WidgetKit requires the container-background API
+        // for system families; without it the widget renders as a "please
+        // adopt" placeholder. `.background` (the semantic style, not a
+        // color) keeps the system's default widget surface in both light
+        // and dark, which is exactly the minimal look the app wants.
+        familyView
+            .containerBackground(.background, for: .widget)
+    }
+
+    @ViewBuilder
+    private var familyView: some View {
         switch family {
         case .systemSmall:
             SmallWidgetView(snapshot: entry.snapshot)
@@ -22,10 +33,12 @@ struct MacStatWidgetEntryView: View {
             MediumWidgetView(snapshot: entry.snapshot)
         case .systemLarge:
             LargeWidgetView(snapshot: entry.snapshot)
+        #if !os(macOS)
         case .accessoryCircular:
             AccessoryCircularWidgetView(snapshot: entry.snapshot)
         case .accessoryRectangular:
             AccessoryRectangularWidgetView(snapshot: entry.snapshot)
+        #endif
         default:
             // `.systemExtraLarge`/`.accessoryInline`/future families this
             // widget doesn't declare support for (see `supportedFamilies`
@@ -49,20 +62,32 @@ struct MacStatWidget: Widget {
             MacStatWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("MacStat")
-        // The gallery-level honesty disclosure — see `WidgetDemoDataCaption`'s
-        // doc comment for why the in-widget caption only exists on
-        // `.systemLarge`; every family still gets this sentence at the
-        // moment a user is choosing to add the widget, which is arguably
-        // the more important moment for the disclosure to land (before
-        // they've committed a home screen slot to it), not after.
-        .description("Battery, CPU, and sleep status for your Mac. This build shows demo data — there's no live iCloud sync yet, so nothing here comes from a real Mac.")
-        .supportedFamilies([
-            .systemSmall,
-            .systemMedium,
-            .systemLarge,
-            .accessoryCircular,
-            .accessoryRectangular,
-        ])
+        .description(Self.galleryDescription)
+        .supportedFamilies(Self.families)
+    }
+
+    /// The gallery-level honesty disclosure — see `WidgetDemoDataCaption`'s
+    /// doc comment for why the in-widget caption only exists on
+    /// `.systemLarge`. Platform-split because the two builds genuinely
+    /// differ: the Mac widget is fed live local readings by
+    /// `MacWidgetSnapshotWriter`, while the phone build still renders
+    /// `MockDataSource` demo data (its writer sets `sourceIsDemoData: true`).
+    private static var galleryDescription: String {
+        #if os(macOS)
+        "Battery, CPU, and sleep status for this Mac, live from the MacStat menu bar app."
+        #else
+        "Battery, CPU, and sleep status for your Mac. This build shows demo data — there's no live iCloud sync yet, so nothing here comes from a real Mac."
+        #endif
+    }
+
+    /// The accessory families are Lock Screen / watch surfaces that don't
+    /// exist on macOS — referencing them there doesn't even compile.
+    private static var families: [WidgetFamily] {
+        #if os(macOS)
+        [.systemSmall, .systemMedium, .systemLarge]
+        #else
+        [.systemSmall, .systemMedium, .systemLarge, .accessoryCircular, .accessoryRectangular]
+        #endif
     }
 }
 

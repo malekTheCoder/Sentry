@@ -381,4 +381,57 @@ final class PowerControlServiceTests: XCTestCase {
         service.releaseAssertion()
         reconciled.releaseAssertion()
     }
+
+    // MARK: - ReleaseCondition.whileProcessRunning
+
+    func testProcessConditionHoldsWhileProbeSeesProcess() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("processHolds"))
+        defer { service.releaseAssertion() }
+        service.processProbe = { _ in true }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .whileProcessRunning(name: "claude"),
+            reason: "process hold test"
+        )
+        service.evaluate(snapshot())
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive)
+    }
+
+    func testProcessConditionSurvivesSingleMissThenReleasesOnSecond() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("processMissGrace"))
+        defer { service.releaseAssertion() }
+        var probeResults: [Bool] = [false, true, false, false]
+        service.processProbe = { _ in probeResults.removeFirst() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .whileProcessRunning(name: "claude"),
+            reason: "process grace test"
+        )
+        // One miss: the grace window keeps the hold alive.
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive)
+        // The process reappears: the miss counter must reset…
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive)
+        // …so a single fresh miss still holds, and only the second
+        // consecutive miss releases.
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive)
+        service.evaluate(snapshot())
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    func testIsProcessRunningFindsThisTestHostAndNotNonsense() {
+        // Whatever hosts this test bundle (xctest or the MacStat app) is
+        // certainly running; an invented name is certainly not. Exercises
+        // the real libproc scan, including its case-insensitivity.
+        let hostName = ProcessInfo.processInfo.processName
+        XCTAssertTrue(PowerControlService.isProcessRunning(named: hostName))
+        XCTAssertTrue(PowerControlService.isProcessRunning(named: hostName.uppercased()))
+        XCTAssertFalse(PowerControlService.isProcessRunning(named: "definitely-not-a-real-process-name"))
+        XCTAssertFalse(PowerControlService.isProcessRunning(named: ""))
+    }
 }

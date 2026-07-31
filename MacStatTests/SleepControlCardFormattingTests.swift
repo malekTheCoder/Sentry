@@ -56,12 +56,12 @@ final class SleepControlCardFormattingTests: XCTestCase {
     func testFixedTriggersCarryADurationAndNoCondition() {
         let option = SleepTriggerOption.fixed(30 * 60)
         XCTAssertEqual(option.duration, 1800)
-        XCTAssertNil(option.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300))
+        XCTAssertNil(option.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude"))
     }
 
     func testIndefiniteTriggerCarriesNeitherDurationNorCondition() {
         XCTAssertNil(SleepTriggerOption.indefinite.duration)
-        XCTAssertNil(SleepTriggerOption.indefinite.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300))
+        XCTAssertNil(SleepTriggerOption.indefinite.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude"))
     }
 
     /// Conditional triggers must stay open-ended: handing a duration to
@@ -71,19 +71,35 @@ final class SleepControlCardFormattingTests: XCTestCase {
         XCTAssertNil(SleepTriggerOption.batteryBelow.duration)
         XCTAssertNil(SleepTriggerOption.cpuAbove.duration)
         XCTAssertEqual(
-            SleepTriggerOption.batteryBelow.releaseCondition(batteryThreshold: 15, cpuThreshold: 80, cpuSustainedFor: 300),
+            SleepTriggerOption.batteryBelow.releaseCondition(batteryThreshold: 15, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude"),
             .batteryBelowPercent(15)
         )
         XCTAssertEqual(
-            SleepTriggerOption.cpuAbove.releaseCondition(batteryThreshold: 20, cpuThreshold: 70, cpuSustainedFor: 300),
+            SleepTriggerOption.cpuAbove.releaseCondition(batteryThreshold: 20, cpuThreshold: 70, cpuSustainedFor: 300, processName: "claude"),
             .cpuAbovePercent(70, for: 300)
+        )
+    }
+
+    func testProcessTriggerMapsToWhileProcessRunning() {
+        XCTAssertNil(SleepTriggerOption.processRunning.duration)
+        XCTAssertEqual(
+            SleepTriggerOption.processRunning.releaseCondition(
+                batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "xcodebuild"
+            ),
+            .whileProcessRunning(name: "xcodebuild")
+        )
+        XCTAssertTrue(
+            SleepTriggerOption.processRunning
+                .assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "xcodebuild")
+                .contains("xcodebuild"),
+            "process reason should name the watched process"
         )
     }
 
     func testMenuOrderMatchesPlanSection103() {
         XCTAssertEqual(
             SleepTriggerOption.allOptions.map(\.id),
-            ["indefinite", "fixed-900", "fixed-1800", "fixed-3600", "fixed-7200", "fixed-14400", "fixed-28800", "battery", "cpu"]
+            ["indefinite", "fixed-900", "fixed-1800", "fixed-3600", "fixed-7200", "fixed-14400", "fixed-28800", "battery", "cpu", "process"]
         )
     }
 
@@ -93,11 +109,11 @@ final class SleepControlCardFormattingTests: XCTestCase {
     /// to name the actual threshold.
     func testAssertionReasonNamesTheChosenThreshold() {
         XCTAssertTrue(
-            SleepTriggerOption.batteryBelow.assertionReason(batteryThreshold: 25, cpuThreshold: 80).contains("25%"),
+            SleepTriggerOption.batteryBelow.assertionReason(batteryThreshold: 25, cpuThreshold: 80, processName: "claude").contains("25%"),
             "battery reason should name its threshold"
         )
         XCTAssertTrue(
-            SleepTriggerOption.cpuAbove.assertionReason(batteryThreshold: 20, cpuThreshold: 65).contains("65%"),
+            SleepTriggerOption.cpuAbove.assertionReason(batteryThreshold: 20, cpuThreshold: 65, processName: "claude").contains("65%"),
             "CPU reason should name its threshold"
         )
     }

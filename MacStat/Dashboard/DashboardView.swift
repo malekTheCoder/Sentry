@@ -103,13 +103,18 @@ struct DashboardView: View {
                         currentCycleCount: viewModel.snapshot?.battery?.cycleCount
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
-                    AgentActivityCard(summary: viewModel.agentActivity)
-                        .frame(minWidth: Self.agentActivityMinWidth, maxWidth: .infinity, alignment: .leading)
+                    AgentActivityCard(
+                        summary: viewModel.agentActivity,
+                        agentProcesses: processMonitor.agentProcesses
+                    )
+                    .frame(minWidth: Self.agentActivityMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(alignment: .top, spacing: palette.spacing * 1.5) {
                     AnomaliesCard(anomalies: viewModel.anomalies)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     TopProcessesCard(processes: processMonitor.topProcesses)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    EnergyReportCard(historyStore: historyStore)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 DashboardGrid(

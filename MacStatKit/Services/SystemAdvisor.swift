@@ -28,6 +28,13 @@ public enum SystemAdvisor {
         public var batteryChargePercent: Double?
         public var lowPowerModeEnabled: Bool
         public var timestamp: Date
+        /// Regression-based estimate of when the SoC temperature crosses back
+        /// under `highSoCTempCelsius`, when a "wait" is thermal and the
+        /// machine is measurably cooling — see `cooldownETASeconds(...)`.
+        /// `nil` means "no defensible estimate", never "no wait needed":
+        /// agents should schedule on this when present and fall back to
+        /// polling (`wait_until_ready`) when absent.
+        public var cooldownETASeconds: Double?
 
         public init(
             recommendation: String,
@@ -39,7 +46,8 @@ public enum SystemAdvisor {
             onBattery: Bool,
             batteryChargePercent: Double?,
             lowPowerModeEnabled: Bool,
-            timestamp: Date
+            timestamp: Date,
+            cooldownETASeconds: Double? = nil
         ) {
             self.recommendation = recommendation
             self.reasons = reasons
@@ -51,6 +59,7 @@ public enum SystemAdvisor {
             self.batteryChargePercent = batteryChargePercent
             self.lowPowerModeEnabled = lowPowerModeEnabled
             self.timestamp = timestamp
+            self.cooldownETASeconds = cooldownETASeconds
         }
     }
 
@@ -101,6 +110,60 @@ public enum SystemAdvisor {
             lowPowerModeEnabled: lowPowerModeEnabled,
             timestamp: snapshot.timestamp
         )
+    }
+
+    // MARK: - Cool-down ETA
+
+    /// Minimum samples/span before the ETA fit will speak, and the cooling
+    /// rate below which "cooling" is indistinguishable from sensor noise
+    /// (0.3 °C per minute).
+    public static let cooldownMinimumSamples = 4
+    public static let cooldownMinimumSpan: TimeInterval = 120
+    public static let cooldownMinimumRatePerSecond: Double = 0.005
+
+    /// ETAs beyond this collapse to `nil` — a linear fit on a few minutes of
+    /// cooling has nothing honest to say about the next hour.
+    public static let cooldownMaximumETA: TimeInterval = 30 * 60
+
+    /// Least-squares estimate of seconds until the SoC temperature crosses
+    /// back under `threshold`, from recent `(timestamp, °C)` samples.
+    ///
+    /// This is what turns the thermal gate from a poll ("still throttled?")
+    /// into a schedule ("thermal nominal in ~4 min") for autonomous agents.
+    /// Returns `nil` — never a guess — when the latest reading is already
+    /// under the threshold, the machine isn't measurably cooling (heating,
+    /// flat, or within noise), the data is too thin (`cooldownMinimumSamples`
+    /// / `cooldownMinimumSpan`), or the extrapolation lands beyond
+    /// `cooldownMaximumETA`.
+    public static func cooldownETASeconds(
+        tempSamples: [(timestamp: Date, celsius: Double)],
+        threshold: Double = highSoCTempCelsius
+    ) -> TimeInterval? {
+        let clean = tempSamples
+            .filter { $0.celsius.isFinite }
+            .sorted { $0.timestamp < $1.timestamp }
+        guard clean.count >= cooldownMinimumSamples,
+              let first = clean.first, let last = clean.last,
+              last.timestamp.timeIntervalSince(first.timestamp) >= cooldownMinimumSpan,
+              last.celsius > threshold else {
+            return nil
+        }
+
+        let n = Double(clean.count)
+        let xs = clean.map { $0.timestamp.timeIntervalSince(first.timestamp) }
+        let ys = clean.map(\.celsius)
+        let sumX = xs.reduce(0, +)
+        let sumY = ys.reduce(0, +)
+        let sumXY = zip(xs, ys).reduce(0) { $0 + $1.0 * $1.1 }
+        let sumXX = xs.reduce(0) { $0 + $1 * $1 }
+        let denominator = n * sumXX - sumX * sumX
+        guard denominator > 0 else { return nil }
+        let slope = (n * sumXY - sumX * sumY) / denominator          // °C/second
+
+        guard slope <= -cooldownMinimumRatePerSecond else { return nil }
+        let eta = (last.celsius - threshold) / -slope
+        guard eta > 0, eta <= cooldownMaximumETA else { return nil }
+        return eta
     }
 }
 

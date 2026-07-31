@@ -14,6 +14,19 @@ import SystemMetricsKit
 @MainActor
 public final class ProcessMonitor: ObservableObject {
     @Published public private(set) var topProcesses: [ProcessStats] = []
+    /// Live agent/build-tool processes for the Dashboard's orchestration
+    /// view, regardless of whether they'd make the top-N cut. Same
+    /// enumeration pass as `topProcesses` (see `ProcessCollector.collect`).
+    @Published public private(set) var agentProcesses: [ProcessStats] = []
+
+    /// Executable names that count as "agent workload": the agent CLIs
+    /// themselves plus the build/runtime tools they spend their lives
+    /// driving. Lowercased, matched exactly against `proc_name` output.
+    public static let agentProcessNames: Set<String> = [
+        "claude", "codex", "gemini", "aider",
+        "xcodebuild", "swift-frontend", "swiftc", "sourcekit-lsp",
+        "node", "bun", "cargo", "rustc", "ninja", "make",
+    ]
 
     private let collector = ProcessCollector()
     private let interval: TimeInterval
@@ -39,6 +52,8 @@ public final class ProcessMonitor: ObservableObject {
     }
 
     private func refresh() {
-        topProcesses = collector.collectTopProcesses(limit: limit)
+        let collected = collector.collect(limit: limit, matching: Self.agentProcessNames)
+        topProcesses = collected.top
+        agentProcesses = collected.matched
     }
 }
