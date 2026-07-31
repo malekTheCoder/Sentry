@@ -6,6 +6,11 @@ import MacStatKit
 
 enum MainTab: String, CaseIterable, Identifiable {
     case dashboard
+    /// Protection Insights (`MacStat/Insights/`). Sits between Dashboard and
+    /// Settings deliberately: it reads the same telemetry the Dashboard
+    /// shows and turns it into things to *do*, so it belongs next to the
+    /// data rather than filed away with the preferences.
+    case insights
     case settings
 
     var id: String { rawValue }
@@ -13,6 +18,7 @@ enum MainTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .dashboard: return "Dashboard"
+        case .insights: return "Insights"
         case .settings: return "Settings"
         }
     }
@@ -20,6 +26,7 @@ enum MainTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .dashboard: return "gauge.with.dots.needle.67percent"
+        case .insights: return "checkmark.shield"
         case .settings: return "gearshape"
         }
     }
@@ -46,6 +53,7 @@ struct MainWindowView: View {
     /// Pre-built by the composition root (they carry observable models and
     /// injected stores); this view only decides which one is on screen.
     let dashboard: AnyView
+    let insights: AnyView
     let settings: AnyView
 
     /// Height reserved for the floating switcher — the content views pad
@@ -79,6 +87,9 @@ struct MainWindowView: View {
                     dashboard
                         .opacity(state.tab == .dashboard ? 1 : 0)
                         .allowsHitTesting(state.tab == .dashboard)
+                    insights
+                        .opacity(state.tab == .insights ? 1 : 0)
+                        .allowsHitTesting(state.tab == .insights)
                     settings
                         .opacity(state.tab == .settings ? 1 : 0)
                         .allowsHitTesting(state.tab == .settings)

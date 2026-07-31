@@ -193,6 +193,29 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// user-initiated permission flow this feature requires.
     public var locationLogEnabled: Bool
 
+    // MARK: - Protection Insights
+
+    /// Per-insight dismissals and snoozes (see `InsightSuppression`).
+    ///
+    /// Lives here rather than in its own store for the same reason
+    /// `alertRules` does: it is a small `Codable` value type, it belongs to
+    /// the user rather than to a machine, and carrying it in the one file
+    /// everything else round-trips through means a user who copies
+    /// `settings.json` to a new Mac keeps their decisions with it.
+    ///
+    /// Unlike `alertRules`, an absent key here upgrades to `[]` — the
+    /// shipped default genuinely is "nothing suppressed", so there is no
+    /// missing-key-versus-explicitly-empty distinction to preserve.
+    public var protectionInsightSuppressions: [InsightSuppression]
+
+    /// The local developer/testing unlock for Pro features (see
+    /// `ProEntitlementStore`). **Not a licence check**: it is a plain
+    /// boolean in a user-editable JSON file, deliberately, because it is a
+    /// testing affordance and not a purchase. Off by default, and the only
+    /// thing that ever sets it is the explicit toggle in Settings ▸
+    /// Advanced.
+    public var proUnlockOverrideEnabled: Bool
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -267,6 +290,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mcpRemoteAccessEnabled: Bool = false,
         mcpRemotePort: Int = 8642,
         locationLogEnabled: Bool = false,
+        protectionInsightSuppressions: [InsightSuppression] = [],
+        proUnlockOverrideEnabled: Bool = false,
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -295,6 +320,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mcpRemoteAccessEnabled = mcpRemoteAccessEnabled
         self.mcpRemotePort = mcpRemotePort
         self.locationLogEnabled = locationLogEnabled
+        self.protectionInsightSuppressions = protectionInsightSuppressions
+        self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -340,6 +367,11 @@ extension AppSettings {
         // must upgrade to `false` (off), never implicitly opt a pre-existing
         // install into a permission-gated feature it never asked for.
         case locationLogEnabled
+        // Protection Insights, additive: absent in any settings.json written
+        // before this feature existed, so both decode via the same
+        // decodeIfPresent ?? fallback pattern as every other field.
+        case protectionInsightSuppressions
+        case proUnlockOverrideEnabled
         case updateCheckDaily
         case schemaVersion
     }
@@ -423,6 +455,16 @@ extension AppSettings {
                 ?? fallback.mcpRemotePort,
             locationLogEnabled: try container.decodeIfPresent(Bool.self, forKey: .locationLogEnabled)
                 ?? fallback.locationLogEnabled,
+            // Unlike `alertRules`/`mcpEnabledToolIDs` above, "missing" and
+            // "explicitly empty" mean the same thing here — the shipped
+            // default is genuinely nothing suppressed — so there is no
+            // upgrade distinction to preserve.
+            protectionInsightSuppressions: try container.decodeIfPresent([InsightSuppression].self, forKey: .protectionInsightSuppressions)
+                ?? fallback.protectionInsightSuppressions,
+            // Must upgrade to `false`: a settings file written before Pro
+            // gating existed has not been granted anything.
+            proUnlockOverrideEnabled: try container.decodeIfPresent(Bool.self, forKey: .proUnlockOverrideEnabled)
+                ?? fallback.proUnlockOverrideEnabled,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;
