@@ -4,6 +4,11 @@ options:
   deploymentTarget:
     macOS: "14.0"
     iOS: "17.0"
+    # watchOS 10 is the first release where accessoryCorner-style
+    # WidgetKit complications and the modern (no legacy WatchKit
+    # extension) single-target watch app shape are both available —
+    # MacStatWatch/MacStatWatchWidget below rely on both.
+    watchOS: "10.0"
   createIntermediateGroups: true
 
 configs:
@@ -95,6 +100,30 @@ targets:
       PRODUCT_MODULE_NAME: MacStatKit
       GENERATE_INFOPLIST_FILE: YES
 
+  MacStatKit_watchOS:
+    type: framework
+    platform: watchOS
+    # Deliberately NOT `- path: MacStatKit` (the whole directory, the way
+    # MacStatKit_macOS/MacStatKit_iOS above do it) — most of MacStatKit is
+    # macOS-only IOKit/XPC/MCP code or depends on GRDB, neither of which the
+    # Watch side of this feature needs at all. MacStatWatch and
+    # MacStatWatchWidgetExtension only ever need the relay payload type
+    # (`WatchRelaySnapshot`/`WatchRelayStore`, `MacStatKit/Watch/`) and the
+    # freshness-labeling helpers (`Freshness`/`FreshnessBadge`,
+    # `MacStatKit/Sync/`) — both already pure Foundation/SwiftUI with no
+    # platform-specific import, so listing exactly these three files keeps
+    # this target's compile surface (and its risk of picking up something
+    # watchOS can't build) as small as the feature actually requires.
+    sources:
+      - path: MacStatKit/Watch
+      - path: MacStatKit/Sync/Freshness.swift
+      - path: MacStatKit/Sync/FreshnessBadge.swift
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit.watch
+      PRODUCT_NAME: MacStatKit
+      PRODUCT_MODULE_NAME: MacStatKit
+      GENERATE_INFOPLIST_FILE: YES
+
   MacStat:
     type: application
     platform: macOS
@@ -164,6 +193,15 @@ targets:
         embed: true
       - target: MacStatWidgetExtension
         embed: true
+      # A watchOS `application` target dependency is XcodeGen/Xcode's way of
+      # embedding a modern (watchOS 9+, single-target, no legacy WatchKit
+      # extension) watch app — it produces an "Embed Watch Content" copy
+      # phase rather than the "Embed App Extensions" phase the two widget
+      # dependencies above get, since the destination platform differs from
+      # this target's own.
+      - target: MacStatWatch
+        embed: true
+      - sdk: WatchConnectivity.framework
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile
       # Simulator builds don't need a signing team, but they DO need the
@@ -254,6 +292,65 @@ targets:
       path: MacStatWidget/Info-macOS.plist
       properties:
         CFBundleDisplayName: MacStat Widget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  MacStatWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: MacStatWatch
+    dependencies:
+      - target: MacStatKit_watchOS
+        embed: true
+      - target: MacStatWatchWidgetExtension
+        embed: true
+      - sdk: WatchConnectivity.framework
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.watch
+      # No enrolled Apple Developer Program account project-wide (see
+      # `StatsTransport.swift`'s doc comment) — same ad-hoc/unsigned posture
+      # as every other target, except the App Group behind `WatchRelayStore`
+      # still needs its entitlement file actually embedded even under
+      # Simulator's "Sign to Run Locally" identity, matching
+      # `MacStatMobile`'s identical reasoning above.
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_ENTITLEMENTS: MacStatWatch/MacStatWatch.entitlements
+    info:
+      path: MacStatWatch/Info.plist
+      properties:
+        CFBundleDisplayName: MacStat
+        WKApplication: true
+        # Pairs this watch app with `MacStatMobile` — required so watchOS
+        # knows which iPhone app installs this alongside it, and so
+        # `WCSession.isWatchAppInstalled` (read from `WatchRelayManager` on
+        # the phone side) resolves correctly instead of always reporting
+        # `false`.
+        WKCompanionAppBundleIdentifier: dev.malekswilam.macstat.mobile
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+  MacStatWatchWidgetExtension:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: MacStatWatchWidget
+        excludes:
+          - "Info*.plist"
+    dependencies:
+      - target: MacStatKit_watchOS
+        embed: true
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.watch.widget
+      PRODUCT_NAME: MacStatWatchWidget
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_ENTITLEMENTS: MacStatWatchWidget/MacStatWatchWidget.entitlements
+    info:
+      path: MacStatWatchWidget/Info.plist
+      properties:
+        CFBundleDisplayName: MacStat Complication
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
