@@ -277,7 +277,27 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
     nonisolated func preflightCheck(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             guard self.checkAndReplyIfDenied(.preflightCheck, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
-            let recommendation = SystemAdvisor.recommend(self.coordinator.latestSnapshot(), lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled)
+            let snapshot = self.coordinator.latestSnapshot()
+            var recommendation = SystemAdvisor.recommend(snapshot, lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled)
+            // Attach the cool-down ETA only when the "wait" is thermal —
+            // history lives here, not in the pure advisor, hence this seam.
+            // An agent that gets a number can schedule; one that doesn't
+            // falls back to wait_until_ready's polling, so nil costs nothing.
+            if recommendation.recommendation == "wait",
+               recommendation.isThrottling
+                || recommendation.thermalPressure == "serious"
+                || recommendation.thermalPressure == "critical"
+                || (recommendation.socTemperatureCelsius ?? 0) > SystemAdvisor.highSoCTempCelsius {
+                let since = Date().addingTimeInterval(-15 * 60)
+                let temps = self.historyStore
+                    .samples(metric: MetricID.thermalSocTempC.rawValue, since: since)
+                    .map { (timestamp: $0.timestamp, celsius: $0.value) }
+                if let eta = SystemAdvisor.cooldownETASeconds(tempSamples: temps) {
+                    recommendation.cooldownETASeconds = eta
+                    let minutes = max(1, Int((eta / 60).rounded()))
+                    recommendation.reasons.append("Cooling — estimated thermal nominal in ~\(minutes) min.")
+                }
+            }
             self.encodeAndReply(recommendation, reply: reply)
         }
     }

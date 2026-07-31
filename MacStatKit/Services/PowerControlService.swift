@@ -4,6 +4,7 @@ import os
 #if os(macOS)
 import IOKit.pwr_mgt
 import AppKit
+import Darwin
 
 /// Maps each `AwakeMode` case to the real `IOKit.pwr_mgt` assertion-type
 /// constant `PowerControlService` passes to `IOPMAssertionCreateWithProperties`.
@@ -34,6 +35,15 @@ public enum ReleaseCondition: Codable, Equatable, Sendable {
     /// any point resets the sustained-duration clock.
     case cpuAbovePercent(Double, for: TimeInterval)
     case whileAppRunning(bundleIdentifier: String)
+    /// Holds the assertion while a *process* with this executable name is
+    /// running — `claude`, `codex`, `xcodebuild`, `node` — and releases when
+    /// it exits. The agent-ops sibling of `.whileAppRunning`: CLI tools and
+    /// build daemons never appear in `NSWorkspace`'s app lifecycle
+    /// notifications, so this one is polled per snapshot tick in
+    /// `evaluate(_:)` via a libproc scan instead. Name matching is
+    /// case-insensitive and exact (no substring matching — "node" must not
+    /// hold the machine awake because "com.apple.noded" exists).
+    case whileProcessRunning(name: String)
 }
 
 /// Wraps an `IOReturn` failure from `IOPMAssertionCreateWithProperties`.
@@ -98,6 +108,17 @@ public final class PowerControlService: ObservableObject {
     /// the "sustained" requirement. `nil` whenever the condition is not
     /// currently true (including "no condition set" / "no CPU sample yet").
     private var conditionSustainedSince: Date?
+
+    /// Consecutive `evaluate(_:)` ticks on which `.whileProcessRunning`'s
+    /// process was *not* found. Released only after two consecutive misses,
+    /// so a single glitchy `proc_listallpids` enumeration (or a process
+    /// observed mid-exec) can't drop a multi-hour hold spuriously.
+    private var processMissCount = 0
+
+    /// Injectable for tests — the default scans the live process table.
+    /// Called at most once per snapshot tick, and only while a
+    /// `.whileProcessRunning` condition is armed.
+    public var processProbe: (String) -> Bool = PowerControlService.isProcessRunning(named:)
 
     private var wakeObserver: NSObjectProtocol?
     private var terminationObserver: NSObjectProtocol?
@@ -206,6 +227,7 @@ public final class PowerControlService: ObservableObject {
         expiryTimer = nil
         activeCondition = nil
         conditionSustainedSince = nil
+        processMissCount = 0
         state = .inactive
         persistState()
     }
@@ -270,7 +292,55 @@ public final class PowerControlService: ObservableObject {
 
         case .whileAppRunning:
             break
+
+        case .whileProcessRunning(let name):
+            if processProbe(name) {
+                processMissCount = 0
+            } else {
+                processMissCount += 1
+                if processMissCount >= 2 {
+                    releaseAssertion()
+                }
+            }
         }
+    }
+
+    /// Whether any running process's executable name matches `target`
+    /// (case-insensitive, exact). Public so the UI can validate "is that
+    /// process even running?" at arm time and warn instead of arming a hold
+    /// that releases two ticks later.
+    ///
+    /// `proc_listallpids`/`proc_name` are the same public libproc APIs
+    /// `ProcessCollector` already uses; a full scan is a few hundred
+    /// microseconds and only runs while a `.whileProcessRunning` hold is
+    /// armed, not on every tick of the app's life.
+    public nonisolated static func isProcessRunning(named target: String) -> Bool {
+        let wanted = target.lowercased()
+        guard !wanted.isEmpty else { return false }
+
+        let expected = proc_listallpids(nil, 0)
+        guard expected > 0 else { return false }
+        // Headroom for processes spawned between the two calls, matching
+        // ProcessCollector's convention.
+        var pids = [pid_t](repeating: 0, count: Int(expected) + 32)
+        let filled = pids.withUnsafeMutableBufferPointer { buffer in
+            proc_listallpids(buffer.baseAddress, Int32(buffer.count * MemoryLayout<pid_t>.size))
+        }
+        guard filled > 0 else { return false }
+
+        var nameBuffer = [CChar](repeating: 0, count: 128)
+        for index in 0..<Int(filled) {
+            let pid = pids[index]
+            guard pid > 0 else { continue }
+            let length = nameBuffer.withUnsafeMutableBufferPointer { pointer in
+                proc_name(pid, pointer.baseAddress, UInt32(pointer.count))
+            }
+            guard length > 0 else { continue }
+            if String(cString: nameBuffer).lowercased() == wanted {
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: - Assertion creation (shared by both public entry points)
@@ -304,6 +374,7 @@ public final class PowerControlService: ObservableObject {
         assertionID = id
         activeCondition = condition
         conditionSustainedSince = nil
+        processMissCount = 0
 
         let expiresAt: Date? = (duration.flatMap { $0 > 0 ? Date().addingTimeInterval($0) : nil })
         state = .active(mode: mode, expiresAt: expiresAt, reason: reason)

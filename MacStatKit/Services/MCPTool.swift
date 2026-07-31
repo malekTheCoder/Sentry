@@ -146,7 +146,7 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
         case .getAlertHistory: return "Recently fired alerts."
         case .getDeviceInfo: return "Model, chip, OS, capabilities."
         case .getSleepState: return "Current assertion state + expiry."
-        case .preflightCheck: return "One-shot go/wait recommendation for starting a heavy job now (thermal, CPU, battery)."
+        case .preflightCheck: return "One-shot go/wait recommendation for starting a heavy job now (thermal, CPU, battery). On a thermal wait, cooldownETASeconds carries a regression-based estimate of when the machine is nominal again, so you can schedule instead of poll."
         case .getResourceEventsSince: return "Alert firings + peak thermal/CPU/memory/disk values since a given time — for root-causing a failed/flaky run."
         case .getAgentCapacity: return "Whether this Mac has memory/CPU headroom for N more local agent processes."
         case .getAgentActivity: return "Recent MCP tool calls (client, tool, decision) — what agents have been asking this Mac for."

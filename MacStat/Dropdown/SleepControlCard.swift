@@ -50,6 +50,10 @@ struct SleepControlCard: View {
     @State private var mode: AwakeMode = .displayAndSystem
     @State private var batteryThreshold: Double = 20
     @State private var cpuThreshold: Double = 80
+    /// Executable name for `.processRunning`. Defaults to the tool this
+    /// feature was built for — an agent CLI chewing through a long task is
+    /// the canonical "hold the Mac awake until it's done" workload.
+    @State private var processName: String = "claude"
 
     /// Whether the trigger/mode pickers are disclosed. Local and not
     /// persisted: it's a "I'm about to change something" state, not a
@@ -148,7 +152,11 @@ struct SleepControlCard: View {
     }
 
     private var selectionSummary: String {
-        let triggerText = trigger.menuLabel(batteryThreshold: batteryThreshold, cpuThreshold: cpuThreshold)
+        let triggerText = trigger.menuLabel(
+            batteryThreshold: batteryThreshold,
+            cpuThreshold: cpuThreshold,
+            processName: processName
+        )
         return "\(triggerText) · \(mode.shortLabel)"
     }
 
@@ -156,7 +164,11 @@ struct SleepControlCard: View {
         VStack(alignment: .leading, spacing: 0) {
             optionMenu(
                 title: "For",
-                selection: trigger.menuLabel(batteryThreshold: batteryThreshold, cpuThreshold: cpuThreshold)
+                selection: trigger.menuLabel(
+                    batteryThreshold: batteryThreshold,
+                    cpuThreshold: cpuThreshold,
+                    processName: processName
+                )
             ) {
                 ForEach(SleepTriggerOption.allOptions) { option in
                     Button(option.pickerLabel) { trigger = option }
@@ -188,9 +200,45 @@ struct SleepControlCard: View {
             percentStepper("Battery floor", value: $batteryThreshold, range: 5...95)
         case .cpuAbove:
             percentStepper("CPU floor", value: $cpuThreshold, range: 10...100)
+        case .processRunning:
+            processNameRow
         case .indefinite, .fixed:
             EmptyView()
         }
+    }
+
+    /// Free-text executable name plus a menu of the agent/build tools this
+    /// trigger exists for. The text field is the source of truth; the menu
+    /// just types for you.
+    private var processNameRow: some View {
+        HStack(spacing: palette.spacingTight) {
+            Text("Process")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+            Spacer(minLength: palette.spacingTight)
+            TextField("name", text: $processName)
+                .textFieldStyle(.plain)
+                .font(palette.numericFont(size: 11, weight: .medium))
+                .foregroundStyle(palette.textPrimary)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 110)
+                .accessibilityLabel("Process name")
+            Menu {
+                ForEach(["claude", "codex", "xcodebuild", "node", "python3"], id: \.self) { preset in
+                    Button(preset) { processName = preset }
+                }
+            } label: {
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(palette.textTertiary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Common processes")
+        }
+        .padding(.horizontal, palette.spacingTight)
+        .frame(height: DropdownGrid.rowHeight)
     }
 
     private func percentStepper(
@@ -393,12 +441,32 @@ struct SleepControlCard: View {
     // MARK: Actions
 
     private func start() {
-        let reason = trigger.assertionReason(batteryThreshold: batteryThreshold, cpuThreshold: cpuThreshold)
+        // Arm-time validation for the process trigger: a hold on a process
+        // that isn't running would release itself two ticks later, which
+        // reads as "the switch is broken". Saying why beats a silent bounce.
+        if case .processRunning = trigger {
+            let name = processName.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty else {
+                startError = "Enter a process name first."
+                return
+            }
+            processName = name
+            guard PowerControlService.isProcessRunning(named: name) else {
+                startError = "No process named “\(name)” is running right now."
+                return
+            }
+        }
+        let reason = trigger.assertionReason(
+            batteryThreshold: batteryThreshold,
+            cpuThreshold: cpuThreshold,
+            processName: processName
+        )
         do {
             if let condition = trigger.releaseCondition(
                 batteryThreshold: batteryThreshold,
                 cpuThreshold: cpuThreshold,
-                cpuSustainedFor: Self.cpuSustainedWindow
+                cpuSustainedFor: Self.cpuSustainedWindow,
+                processName: processName
             ) {
                 try powerControl.startConditionalAssertion(mode: mode, condition: condition, reason: reason)
             } else {
@@ -535,6 +603,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
     case fixed(TimeInterval)
     case batteryBelow
     case cpuAbove
+    case processRunning
 
     static let allOptions: [SleepTriggerOption] = [
         .indefinite,
@@ -545,7 +614,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
         .fixed(4 * 60 * 60),
         .fixed(8 * 60 * 60),
         .batteryBelow,
-        .cpuAbove
+        .cpuAbove,
+        .processRunning
     ]
 
     var id: String {
@@ -554,6 +624,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .fixed(let seconds): return "fixed-\(Int(seconds))"
         case .batteryBelow: return "battery"
         case .cpuAbove: return "cpu"
+        case .processRunning: return "process"
         }
     }
 
@@ -568,7 +639,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
     func releaseCondition(
         batteryThreshold: Double,
         cpuThreshold: Double,
-        cpuSustainedFor: TimeInterval
+        cpuSustainedFor: TimeInterval,
+        processName: String
     ) -> ReleaseCondition? {
         switch self {
         case .indefinite, .fixed:
@@ -577,6 +649,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return .batteryBelowPercent(batteryThreshold)
         case .cpuAbove:
             return .cpuAbovePercent(cpuThreshold, for: cpuSustainedFor)
+        case .processRunning:
+            return .whileProcessRunning(name: processName)
         }
     }
 
@@ -588,12 +662,13 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .fixed(let seconds): return SleepCountdownFormatting.presetLabel(seconds)
         case .batteryBelow: return "Until battery is low"
         case .cpuAbove: return "While CPU is busy"
+        case .processRunning: return "While a process runs"
         }
     }
 
     /// Collapsed label for the closed menu, where the chosen threshold has to
     /// be visible without opening anything.
-    func menuLabel(batteryThreshold: Double, cpuThreshold: Double) -> String {
+    func menuLabel(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
         switch self {
         case .indefinite, .fixed:
             return pickerLabel
@@ -601,6 +676,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return "Battery < \(MetricFormatting.percent(batteryThreshold))"
         case .cpuAbove:
             return "CPU > \(MetricFormatting.percent(cpuThreshold))"
+        case .processRunning:
+            return "While \(processName.isEmpty ? "process" : processName) runs"
         }
     }
 
@@ -609,7 +686,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
     /// that survives into `SleepAssertionState` for the active card to show.
     /// Prefixed with the app name because that's what shows up in system power
     /// diagnostics next to every other process's assertions.
-    func assertionReason(batteryThreshold: Double, cpuThreshold: Double) -> String {
+    func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
         switch self {
         case .indefinite:
             return "MacStat — keep awake until turned off"
@@ -619,6 +696,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return "MacStat — keep awake until battery drops below \(MetricFormatting.percent(batteryThreshold))"
         case .cpuAbove:
             return "MacStat — keep awake while CPU stays above \(MetricFormatting.percent(cpuThreshold))"
+        case .processRunning:
+            return "MacStat — keep awake while \(processName) is running"
         }
     }
 }

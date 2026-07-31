@@ -51,15 +51,31 @@ public final class ProcessCollector {
     /// reports 0% for it rather than a misleadingly large "since process
     /// start" average.
     public func collectTopProcesses(limit: Int = 8, now: Date = Date()) -> [ProcessStats] {
+        collect(limit: limit, matching: [], now: now).top
+    }
+
+    /// One enumeration, two views of it: the top-N by CPU, plus every
+    /// process whose name (lowercased) is in `matching` regardless of rank.
+    /// A single pass rather than two calls because the delta baseline
+    /// (`previous`) is per-instance state — a second call microseconds later
+    /// would see near-zero elapsed time and report nonsense percentages.
+    /// This is what feeds the Dashboard's live agent-process view: `claude`
+    /// at 0.2% CPU is exactly the row that never makes a top-8 cut.
+    public func collect(
+        limit: Int = 8,
+        matching: Set<String>,
+        now: Date = Date()
+    ) -> (top: [ProcessStats], matched: [ProcessStats]) {
         var pids = [pid_t](repeating: 0, count: Self.maxProcesses)
         let bytesReturned = pids.withUnsafeMutableBufferPointer { buffer -> Int32 in
             proc_listallpids(buffer.baseAddress, Int32(buffer.count * MemoryLayout<pid_t>.size))
         }
-        guard bytesReturned > 0 else { return [] }
+        guard bytesReturned > 0 else { return (top: [], matched: []) }
         let count = min(Int(bytesReturned), Self.maxProcesses)
 
         var results: [ProcessStats] = []
         results.reserveCapacity(count)
+        var matched: [ProcessStats] = []
         var nextPrevious: [pid_t: PreviousSample] = [:]
         nextPrevious.reserveCapacity(count)
 
@@ -76,16 +92,23 @@ public final class ProcessCollector {
                 cpuPercent = 0
             }
 
-            results.append(ProcessStats(
+            let stats = ProcessStats(
                 pid: pid,
                 name: Self.processName(for: pid),
                 cpuPercent: cpuPercent,
                 residentMemoryBytes: info.pti_resident_size
-            ))
+            )
+            results.append(stats)
+            if !matching.isEmpty, matching.contains(stats.name.lowercased()) {
+                matched.append(stats)
+            }
         }
 
         previous = nextPrevious
-        return Array(results.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(max(0, limit)))
+        return (
+            top: Array(results.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(max(0, limit))),
+            matched: matched.sorted { $0.cpuPercent > $1.cpuPercent }
+        )
     }
 
     /// Pure so it's independently unit-testable without real process

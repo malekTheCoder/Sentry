@@ -94,6 +94,34 @@ struct BatteryHealthTrendCard: View {
                 .font(palette.font(size: 12))
                 .monospacedDigit()
                 .foregroundStyle(palette.textTertiary)
+            if let forecastLine {
+                Text(forecastLine)
+                    .font(palette.font(size: 12))
+                    .foregroundStyle(palette.textTertiary)
+            }
+        }
+    }
+
+    /// The forecast sentence, or nil when there's nothing defensible to say —
+    /// `BatteryHealthForecast` owns the honesty rules (minimum span, horizon
+    /// cap); this just phrases its cases. `.insufficientData` renders as
+    /// nothing rather than an apology: a card already showing a short chart
+    /// doesn't need a second line saying the chart is short.
+    private var forecastLine: String? {
+        let forecast = BatteryHealthForecast.forecast(
+            samples: samples.map { (timestamp: $0.timestamp, health: $0.avg) }
+        )
+        switch forecast {
+        case .insufficientData:
+            return nil
+        case .stable:
+            return "No decline in sight at the current rate"
+        case .alreadyBelow:
+            return "Below 80% — consider battery service"
+        case .crosses(let date, let percentPerMonth):
+            let month = date.formatted(.dateTime.month(.wide).year())
+            let rate = String(format: "%.1f", percentPerMonth)
+            return "On pace to cross 80% around \(month) (−\(rate)%/mo)"
         }
     }
 
