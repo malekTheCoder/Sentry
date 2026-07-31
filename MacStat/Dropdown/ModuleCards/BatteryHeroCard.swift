@@ -112,7 +112,13 @@ struct BatteryHeroCard: View {
     }
 
     private func timeValue(for battery: BatteryStats) -> String {
-        MetricFormatting.minutesRemaining(
+        // Plugged in and not charging: neither clock is running — time to
+        // empty reads 0m from IOKit, which would render as "0m remaining"
+        // on a Mac that isn't draining at all.
+        if !battery.isCharging && battery.isPluggedIn {
+            return MetricFormatting.placeholder
+        }
+        return MetricFormatting.minutesRemaining(
             battery.isCharging ? battery.timeToFullMinutes : battery.timeToEmptyMinutes
         )
     }
@@ -160,7 +166,17 @@ struct BatteryHeroCard: View {
     /// It can also legitimately read "Charging normally" when the reason
     /// code is present but zero, which is not a pause at all and must fall
     /// through to the ordinary charging/discharging text below.
+    /// A full battery held at 100% on AC is macOS working as designed —
+    /// the pause "reason" IOKit reports in that state must not render as a
+    /// warning about anything.
+    private static func isEffectivelyFull(_ battery: BatteryStats) -> Bool {
+        battery.isPluggedIn && !battery.isCharging && battery.chargePercent >= 99.5
+    }
+
     private func diagnosticsText(for battery: BatteryStats) -> String {
+        if Self.isEffectivelyFull(battery) {
+            return "Fully charged"
+        }
         if let reason = battery.notChargingReasonText, Self.isPauseReason(reason) {
             return reason
         }
@@ -190,6 +206,7 @@ struct BatteryHeroCard: View {
     }
 
     private func diagnosticsColor(for battery: BatteryStats) -> Color {
+        if Self.isEffectivelyFull(battery) { return palette.success }
         if battery.notChargingReasonText.map(Self.isPauseReason) == true || battery.isThermallyLimited {
             return palette.warning
         }
@@ -197,6 +214,7 @@ struct BatteryHeroCard: View {
     }
 
     private func diagnosticsSymbol(for battery: BatteryStats) -> String {
+        if Self.isEffectivelyFull(battery) { return "battery.100" }
         if battery.notChargingReasonText.map(Self.isPauseReason) == true || battery.isThermallyLimited {
             return "exclamationmark.triangle.fill"
         }

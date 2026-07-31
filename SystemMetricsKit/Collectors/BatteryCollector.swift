@@ -115,14 +115,20 @@ public final class BatteryCollector: Collector {
         raw > Int(Int32.max) ? raw - Int(UInt32.max) - 1 : raw
     }
 
-    /// Reason codes are undocumented and model/macOS-version dependent.
-    /// Known codes get a human label; everything else degrades gracefully.
+    /// Reason codes are undocumented, model/macOS-version dependent, and —
+    /// observed live — a *bitmask*, not an enum (a real MacBook reported
+    /// 0x400001, i.e. bit 0 plus an unknown high bit). Only exact matches
+    /// of the two singleton codes get their specific label: with unknown
+    /// bits set alongside, claiming "battery temperature" off bit 0 would
+    /// be a guess dressed as a diagnosis. Everything else gets the honest
+    /// minimum — the charge is on hold — with no raw code, which meant
+    /// nothing to anyone and looked like a malfunction in the UI.
     private static func notChargingReasonText(_ code: Int) -> String {
         if code == 0 { return "Charging normally" }
         switch code {
         case 1 << 0: return "Paused — battery at high temperature"
         case 1 << 1: return "Paused — Optimized Battery Charging"
-        default: return "Paused (code \(code))"
+        default: return "Charging on hold"
         }
     }
 }

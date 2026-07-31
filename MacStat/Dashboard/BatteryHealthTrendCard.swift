@@ -40,6 +40,11 @@ struct BatteryHealthTrendCard: View {
     /// nil until the first `ingest(_:)` call.
     let currentCycleCount: Int?
 
+    /// Live health from the current snapshot — the header's fallback while
+    /// the daily series is still empty, so a Mac that plainly knows its
+    /// health (the hero card shows it) never captions this card "— health".
+    let currentHealthPercent: Double?
+
     @State private var samples: DashboardViewModel.RangedSamples = []
     @State private var hasLoaded = false
 
@@ -83,7 +88,7 @@ struct BatteryHealthTrendCard: View {
             Text("Battery Health · all-time")
                 .font(palette.font(size: 14, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
-            Text("\(MetricFormatting.percent(samples.last?.avg, decimals: 1)) health · \(MetricFormatting.integer(currentCycleCount)) cycles")
+            Text("\(MetricFormatting.percent(samples.last?.avg ?? currentHealthPercent, decimals: 1)) health · \(MetricFormatting.integer(currentCycleCount)) cycles")
                 .font(palette.font(size: 12))
                 .monospacedDigit()
                 .foregroundStyle(palette.textTertiary)

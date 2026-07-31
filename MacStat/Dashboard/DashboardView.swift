@@ -97,25 +97,33 @@ struct DashboardView: View {
                 header
 
                 sectionHeader("Power")
+                // Two *columns*, not two rows: the battery hero is much
+                // taller than the keep-awake card, and pairing them per-row
+                // left a window-sized hole under the shorter card. Stacking
+                // each column internalizes the height difference — gaps land
+                // between siblings, never as dead space beside them.
                 HStack(alignment: .top, spacing: rowGap) {
-                    BatteryHeroCard(
-                        battery: viewModel.snapshot?.battery,
-                        powerSeries: nil
-                    )
-                    // The dropdown's box-free card, given this window's
-                    // standard card chrome so the row reads as two siblings
-                    // rather than one card and one floating control group.
-                    SleepControlCard(powerControl: powerControl)
-                        .dashboardCard(palette)
-                }
-                HStack(alignment: .top, spacing: rowGap) {
-                    BatteryHealthTrendCard(
-                        historyStore: historyStore,
-                        currentCycleCount: viewModel.snapshot?.battery?.cycleCount
-                    )
+                    VStack(spacing: rowGap) {
+                        BatteryHeroCard(
+                            battery: viewModel.snapshot?.battery,
+                            powerSeries: nil
+                        )
+                        BatteryHealthTrendCard(
+                            historyStore: historyStore,
+                            currentCycleCount: viewModel.snapshot?.battery?.cycleCount,
+                            currentHealthPercent: viewModel.snapshot?.battery?.healthPercent
+                        )
+                    }
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
-                    EnergyReportCard(historyStore: historyStore)
-                        .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
+                    VStack(spacing: rowGap) {
+                        // The dropdown's box-free card, given this window's
+                        // standard card chrome so the column reads as
+                        // siblings rather than a card and a floating group.
+                        SleepControlCard(powerControl: powerControl)
+                            .dashboardCard(palette)
+                        EnergyReportCard(historyStore: historyStore)
+                    }
+                    .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
 
                 sectionHeader("Activity")

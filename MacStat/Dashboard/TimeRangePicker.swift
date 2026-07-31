@@ -111,6 +111,10 @@ struct TimeRangePickerView: View {
         .padding(containerPadding)
         .background(palette.surface)
         .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
+        // Intrinsic width only — a greedy `maxWidth: .infinity` on the
+        // segments once stretched this control across the entire window,
+        // colliding with the header. It's a compact pill, not a toolbar.
+        .fixedSize()
         .accessibilityElement(children: .contain)
     }
 
@@ -124,7 +128,6 @@ struct TimeRangePickerView: View {
                 .foregroundStyle(isSelected ? Color.white : palette.textSecondary)
                 .padding(.vertical, 4)
                 .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: containerCornerRadius - containerPadding, style: .continuous)
                         .fill(isSelected ? palette.accent : Color.clear)
