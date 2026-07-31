@@ -101,6 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             powerControl: self.powerControl
                         )
                     ),
+                    insights: AnyView(
+                        InsightsView(viewModel: self.insightsViewModel)
+                    ),
                     settings: AnyView(
                         SettingsView(
                             store: self.settingsStore,
@@ -123,6 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         },
         onHide: { [weak self] in
             self?.processMonitor.stop()
+            // A refresh in flight for a window the user just closed is pure
+            // waste — see `InsightsViewModel.cancelRefresh`'s doc comment.
+            self?.insightsViewModel.cancelRefresh()
             // The debounced writer may still hold the user's last edit;
             // closing the window is exactly the moment "eventually" isn't
             // enough — carried over from the old SettingsWindowController.
@@ -155,6 +161,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         historyStore: historyStore,
         enabledModules: settingsStore.settings.enabledModules,
         theme: settingsStore.resolvedTheme()
+    )
+
+    // MARK: - Protection Insights
+
+    /// The local, no-StoreKit entitlement check (see `ProEntitlementStore`'s
+    /// doc comment for how a real StoreKit implementation drops in later
+    /// without touching `InsightsViewModel`).
+    private lazy var proEntitlementStore = ProEntitlementStore(settingsStore: settingsStore)
+
+    /// macOS-only, off-main-thread, TTL-cached — see
+    /// `SecurityPostureCollector`'s doc comment. One instance for the app's
+    /// lifetime so its five-minute cache is actually useful across repeated
+    /// visits to the Insights tab.
+    private let securityPostureCollector = SecurityPostureCollector()
+
+    /// Same lazy-singleton reasoning as `dashboardViewModel` immediately
+    /// above: cheap to construct, fed from the same `historyStore`, kept
+    /// alive for the app's lifetime rather than rebuilt on every tab switch
+    /// so its report, suppressions, and refresh state survive navigating
+    /// away and back.
+    private lazy var insightsViewModel = InsightsViewModel(
+        historyStore: historyStore,
+        settingsStore: settingsStore,
+        entitlements: proEntitlementStore,
+        postureProvider: securityPostureCollector,
+        theme: settingsStore.resolvedTheme(),
+        onOpenAppSettings: { [weak self] in self?.openMainWindow(tab: .settings) }
     )
 
     /// Backs the Dashboard's "Top Processes" card (plan §17 Phase 8). Lazy
@@ -325,6 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.dropdownViewModel.ingest(snapshot)
                 self.debugDumpViewModel.ingest(snapshot)
                 self.dashboardViewModel.ingest(snapshot)
+                self.insightsViewModel.ingest(snapshot)
                 // Without these, both Phase 3 services are armed but inert —
                 // neither has a data source of its own by design (plan §3.2
                 // P3: one poll loop, many consumers). A conditional
@@ -597,6 +631,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the re-query a module toggle needs.
         dashboardViewModel.theme = theme
         dashboardViewModel.enabledModules = settings.enabledModules
+        insightsViewModel.theme = theme
+
+        // Entitlement resolution first: `insightsViewModel.applySettings`
+        // reads `proEntitlementStore.isUnlocked` synchronously below, so the
+        // override toggle must already reflect the delivered value.
+        proEntitlementStore.applySettings(settings)
+        insightsViewModel.applySettings(settings)
 
         // Settings that must actually reach the services behind them —
         // these sliders/toggles were previously wired to nothing.
