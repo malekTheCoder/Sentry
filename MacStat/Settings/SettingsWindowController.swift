@@ -75,10 +75,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: root)
 
         let settingsWindow = NSWindow(contentViewController: hosting)
+        // The title is kept for Mission Control / the Window menu /
+        // accessibility, but not drawn: the titlebar is transparent, content
+        // is full-size, and `SettingsView`'s sidebar names the window
+        // instead — one bar of chrome, not two.
         settingsWindow.title = "Sentry Settings"
-        settingsWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        settingsWindow.setContentSize(NSSize(width: 720, height: 520))
-        settingsWindow.contentMinSize = NSSize(width: 640, height: 440)
+        settingsWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        settingsWindow.titlebarAppearsTransparent = true
+        settingsWindow.titleVisibility = .hidden
+        // Non-opaque so the sidebar's behind-window material actually has a
+        // desktop to sample — see `VisualEffect`'s doc comment. The detail
+        // column paints its own opaque `windowBackgroundColor` on top.
+        settingsWindow.isOpaque = false
+        settingsWindow.backgroundColor = .clear
+        settingsWindow.setContentSize(NSSize(width: 740, height: 540))
+        settingsWindow.contentMinSize = NSSize(width: 700, height: 480)
         // Closing settings must not tear down the hosting controller — the
         // window is reused, and rebuilding it would drop transient UI state
         // (selected pane, selected bar module) on every close.

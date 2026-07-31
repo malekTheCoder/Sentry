@@ -1,9 +1,7 @@
 import SwiftUI
 import MacStatKit
 
-/// The 8 settings panes, in the Nocturne redesign's sidebar order (design
-/// handoff: General, Modules, Menu Bar, Theme, Alerts, AI Access, Sync,
-/// Advanced).
+/// The 8 settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
     case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced
 
@@ -24,32 +22,61 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .general: return "gearshape"
-        case .modules: return "square.grid.2x2"
+        case .general: return "gearshape.fill"
+        case .modules: return "square.grid.2x2.fill"
         case .menuBar: return "menubar.rectangle"
-        case .theme: return "paintbrush"
-        case .alerts: return "bell"
-        case .aiAccess: return "bolt.shield"
-        case .sync: return "icloud"
-        case .advanced: return "wrench.and.screwdriver"
+        case .theme: return "paintbrush.fill"
+        case .alerts: return "bell.badge.fill"
+        case .aiAccess: return "bolt.shield.fill"
+        case .sync: return "arrow.triangle.2.circlepath.icloud.fill"
+        case .advanced: return "wrench.and.screwdriver.fill"
+        }
+    }
+
+    /// System Settings-style icon chip tint. Chosen from the system palette
+    /// so the sidebar reads native at a glance.
+    var chipColor: Color {
+        switch self {
+        case .general: return Color(nsColor: .systemGray)
+        case .modules: return .blue
+        case .menuBar: return .indigo
+        case .theme: return .purple
+        case .alerts: return .red
+        case .aiAccess: return .orange
+        case .sync: return .cyan
+        case .advanced: return Color(nsColor: .darkGray)
+        }
+    }
+
+    /// One quiet sentence under the pane title, so every pane opens with
+    /// context instead of controls floating in space.
+    var subtitle: String {
+        switch self {
+        case .general: return "Startup, sampling cadence, and data retention."
+        case .modules: return "Which metric modules Sentry samples and shows."
+        case .menuBar: return "Compose the bar item and choose what the dropdown shows."
+        case .theme: return "How Sentry's own surfaces look — dropdown, dashboard, widgets."
+        case .alerts: return "Rules, notifications, and alert history."
+        case .aiAccess: return "MCP tools for AI agents, local and remote."
+        case .sync: return "iPhone companion and device sync."
+        case .advanced: return "Diagnostics and debugging."
         }
     }
 }
 
-/// Root of the settings window: a native `NavigationSplitView` — system
-/// sidebar material, system selection highlight, `.grouped` forms — in
-/// place of the previous hand-painted sidebar and theme-tinted content.
+/// Root of the settings window: a hand-built two-pane shell in the System
+/// Settings idiom — sidebar over real behind-window material with colored
+/// icon chips, an inline pane title in the content column, and **no
+/// toolbar**. `NavigationSplitView` was tried and rejected: its unified
+/// toolbar adds a second bar above the content that reads as chrome for
+/// chrome's sake in a window this small. The window itself draws no title
+/// bar (`SettingsWindowController` uses a transparent titlebar +
+/// full-size content), so the whole surface is these two columns.
 ///
 /// **Deliberately not themed.** Themes style the app's own surfaces (the
-/// dropdown, the Dashboard, the widgets); the settings window is where the
-/// user *configures* those surfaces, and it reads as trustworthy precisely
-/// by looking like every other macOS settings window. The one exception is
-/// `ThemePane`'s preview cards, which render each theme with its own tokens
-/// — that's the pane's whole job. `themePalette` stays in the environment
-/// only for that pane.
-///
-/// Every pane binds straight into `store.settings`, which debounces its own
-/// save — there is deliberately no draft/apply copy to keep in sync.
+/// dropdown, the Dashboard, the widgets); the settings window earns trust
+/// by looking like macOS. `themePalette` stays in the environment only for
+/// `ThemePane`'s live preview cards.
 struct SettingsView: View {
 
     @ObservedObject var store: SettingsStore
@@ -61,13 +88,11 @@ struct SettingsView: View {
     let historyStore: HistoryStore?
 
     /// Passed straight through to `AdvancedPane`'s "Show Debug Window"
-    /// button. `nil` is a legitimate configuration (e.g. a settings window
-    /// built without the app delegate's debug window controller wired up),
-    /// same as `historyStore` above.
+    /// button. `nil` is a legitimate configuration, same as `historyStore`.
     let onShowDebugWindow: (() -> Void)?
 
     /// Passed straight through to `AIAccessPane`. `nil` is a legitimate
-    /// configuration, same as `historyStore`/`onShowDebugWindow` above.
+    /// configuration, same as the two above.
     let mcpActivityLog: MCPActivityLog?
 
     init(
@@ -82,30 +107,107 @@ struct SettingsView: View {
         self.mcpActivityLog = mcpActivityLog
     }
 
-    /// Optional because that's the selection type `List` binds; `detail`
-    /// falls back to `.general` so the window never shows an empty pane.
-    @State private var selectedPane: SettingsPane? = .general
+    @State private var selectedPane: SettingsPane = .general
 
     @Environment(\.colorScheme) private var systemColorScheme
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsPane.allCases, selection: $selectedPane) { pane in
-                Label(pane.title, systemImage: pane.symbol)
-                    .tag(pane)
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
-        } detail: {
-            content(for: selectedPane ?? .general)
-                .navigationTitle((selectedPane ?? .general).title)
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            detail
         }
-        .frame(minWidth: 680, minHeight: 470)
+        .frame(minWidth: 700, minHeight: 480)
         // Only `ThemePane`'s preview cards read this — see the type doc.
         .environment(
             \.themePalette,
             ThemePalette(theme: store.resolvedTheme(), scheme: systemColorScheme)
         )
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            // Clears the traffic lights (the titlebar is transparent and
+            // content is full-size), then names the window once, quietly.
+            Text("Sentry")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 10)
+                .padding(.top, 42)
+                .padding(.bottom, 6)
+
+            ForEach(SettingsPane.allCases) { pane in
+                sidebarRow(for: pane)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 200, alignment: .top)
+        .frame(maxHeight: .infinity)
+        .background(VisualEffect(material: .sidebar))
+    }
+
+    private func sidebarRow(for pane: SettingsPane) -> some View {
+        let isSelected = pane == selectedPane
+        return Button {
+            selectedPane = pane
+        } label: {
+            HStack(spacing: 8) {
+                chip(for: pane)
+                Text(pane.title)
+                    .font(.system(size: 13))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Color.accentColor : Color.clear)
+            )
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// The System Settings icon treatment: white glyph on a small colored
+    /// rounded square. This is most of what makes a sidebar read "native
+    /// settings" rather than "list of links."
+    private func chip(for pane: SettingsPane) -> some View {
+        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+            .fill(pane.chipColor.gradient)
+            .frame(width: 22, height: 22)
+            .overlay(
+                Image(systemName: pane.symbol)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white)
+            )
+            .accessibilityHidden(true)
+    }
+
+    // MARK: - Detail
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(selectedPane.title)
+                    .font(.system(size: 20, weight: .semibold))
+                Text(selectedPane.subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 40)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 10)
+
+            content(for: selectedPane)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder

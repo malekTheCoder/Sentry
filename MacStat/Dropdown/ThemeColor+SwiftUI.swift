@@ -191,34 +191,22 @@ struct ThemePalette: Equatable {
 
     var glow: Double { min(max(theme.glowIntensity, 0), 1) }
 
-    // MARK: Material
-
-    /// SwiftUI material for themes that opt into a blurred backdrop
-    /// (`Theme.useMaterialBackground`), or nil for opaque themes. The token
-    /// set is deliberately smaller than SwiftUI's — see `MaterialToken`.
-    var material: Material? {
-        guard theme.useMaterialBackground else { return nil }
-        switch theme.materialStyle {
-        case .menu, .popover: return .regularMaterial
-        case .sidebar: return .thickMaterial
-        case .hudWindow: return .ultraThinMaterial
-        case .underWindowBackground: return .thickMaterial
-        case .contentBackground: return .regularMaterial
-        }
-    }
 }
 
 // MARK: - Themed backdrop
 
 extension View {
-    /// The one way any themed surface paints its backdrop: the theme's
-    /// material (when it declares one) under the theme's background wash.
-    /// Translucent themes carry a low-opacity `background` token so the blur
-    /// shows through; opaque themes get exactly the old solid fill.
+    /// The one way any themed surface paints its backdrop: for material
+    /// themes, a real behind-window `NSVisualEffectView` (see `VisualEffect`
+    /// — SwiftUI's `Material` renders flat gray inside an opaque window)
+    /// under the theme's low-opacity background wash; for opaque themes,
+    /// exactly the old solid fill.
     @ViewBuilder
     func themedBackdrop(_ palette: ThemePalette) -> some View {
-        if let material = palette.material {
-            self.background(palette.background).background(material)
+        if palette.theme.useMaterialBackground {
+            self
+                .background(palette.background)
+                .background(VisualEffect(material: palette.theme.materialStyle.nsMaterial))
         } else {
             self.background(palette.background)
         }

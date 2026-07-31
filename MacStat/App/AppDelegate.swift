@@ -509,6 +509,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func popoverDidShow(_ notification: Notification) {
         coordinator.popoverIsClosed = false
+        applyPopoverFrameMaterial()
+    }
+
+    /// Retints the popover's own frame — the `NSVisualEffectView` AppKit
+    /// wraps around the content, including the arrow — to match a material
+    /// theme, so "Liquid Glass" is glass edge-to-edge rather than glass
+    /// content inside a stock gray frame. Walking to the content view's
+    /// superview is the only access AppKit offers to that frame view; the
+    /// conditional cast means a future AppKit that restructures the popover
+    /// silently degrades to the stock frame instead of crashing.
+    private func applyPopoverFrameMaterial() {
+        guard let frameView = popover.contentViewController?.view.superview as? NSVisualEffectView else { return }
+        if let theme = lastAppliedTheme, theme.useMaterialBackground {
+            frameView.material = theme.materialStyle.nsMaterial
+        } else {
+            frameView.material = .popover
+        }
     }
 
     func popoverDidClose(_ notification: Notification) {

@@ -86,44 +86,71 @@ struct DashboardView: View {
     private static let batteryHealthMinWidth: CGFloat = 340
     private static let agentActivityMinWidth: CGFloat = 260
 
+    /// Row gap inside a section; sections themselves are separated by their
+    /// headers. One constant so nothing is "randomly placed" — every gap on
+    /// this window is this, or the header's own spacing.
+    private var rowGap: CGFloat { palette.spacing * 1.5 }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 header
-                HStack(alignment: .top, spacing: palette.spacing * 1.5) {
+
+                sectionHeader("Power")
+                HStack(alignment: .top, spacing: rowGap) {
                     BatteryHeroCard(
                         battery: viewModel.snapshot?.battery,
                         powerSeries: nil
                     )
+                    // The dropdown's box-free card, given this window's
+                    // standard card chrome so the row reads as two siblings
+                    // rather than one card and one floating control group.
                     SleepControlCard(powerControl: powerControl)
+                        .padding(palette.spacing * 1.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(palette.surfaceElevated)
+                        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                                .stroke(palette.separator, lineWidth: 1)
+                        )
                 }
-                HStack(alignment: .top, spacing: palette.spacing * 1.5) {
+                HStack(alignment: .top, spacing: rowGap) {
                     BatteryHealthTrendCard(
                         historyStore: historyStore,
                         currentCycleCount: viewModel.snapshot?.battery?.cycleCount
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
+                    EnergyReportCard(historyStore: historyStore)
+                        .frame(minWidth: Self.agentActivityMinWidth, maxWidth: .infinity, alignment: .leading)
+                }
+
+                sectionHeader("Activity")
+                HStack(alignment: .top, spacing: rowGap) {
                     AgentActivityCard(
                         summary: viewModel.agentActivity,
                         agentProcesses: processMonitor.agentProcesses
                     )
-                    .frame(minWidth: Self.agentActivityMinWidth, maxWidth: .infinity, alignment: .leading)
-                }
-                HStack(alignment: .top, spacing: palette.spacing * 1.5) {
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     AnomaliesCard(anomalies: viewModel.anomalies)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     TopProcessesCard(processes: processMonitor.topProcesses)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    EnergyReportCard(historyStore: historyStore)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+
+                sectionHeader("History")
                 DashboardGrid(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
                     enabledModules: viewModel.enabledModules
                 )
             }
-            .padding(palette.spacing * 2)
+            .padding(.horizontal, palette.spacing * 2)
+            .padding(.bottom, palette.spacing * 2)
+            // Clears the traffic lights: the window's titlebar is
+            // transparent and content is full-size, so the header supplies
+            // its own headroom.
+            .padding(.top, 40)
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
@@ -162,5 +189,19 @@ struct DashboardView: View {
             Spacer(minLength: palette.spacing)
             TimeRangePickerView(selection: $viewModel.timeRange)
         }
+        .padding(.bottom, palette.spacing * 0.5)
+    }
+
+    /// The organizing device this window was missing: a small uppercase
+    /// label above each band of cards, so the page reads as Power →
+    /// Activity → History instead of a pile of boxes. Tertiary and tracked
+    /// out — a wayfinding whisper, never competing with card titles.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(palette.font(size: 11, weight: .semibold))
+            .kerning(0.8)
+            .foregroundStyle(palette.textTertiary)
+            .padding(.top, palette.spacing)
+            .accessibilityAddTraits(.isHeader)
     }
 }

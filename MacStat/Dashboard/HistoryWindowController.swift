@@ -94,8 +94,18 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: rootView())
 
         let dashboardWindow = NSWindow(contentViewController: hosting)
+        // Title kept for Mission Control / the Window menu / accessibility
+        // but not drawn — the view's own "Dashboard" header is the title,
+        // and drawing both was exactly the doubled-up chrome the redesign
+        // removes. Non-opaque + clear so material themes' behind-window
+        // glass (see `VisualEffect`) samples the desktop; opaque themes
+        // paint a full-bleed background over it and are unaffected.
         dashboardWindow.title = "Sentry Dashboard"
-        dashboardWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        dashboardWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        dashboardWindow.titlebarAppearsTransparent = true
+        dashboardWindow.titleVisibility = .hidden
+        dashboardWindow.isOpaque = false
+        dashboardWindow.backgroundColor = .clear
         // Wider than Settings' 720×520: a grid of per-metric detail charts
         // wants more breathing room than a single-column settings form.
         dashboardWindow.setContentSize(NSSize(width: 900, height: 700))
