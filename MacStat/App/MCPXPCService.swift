@@ -120,11 +120,11 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
     /// waiting on anything else from this process.
     private func presentConfirmationAlert(tool: MCPToolID, clientName: String, argumentsSummary: String) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "\(clientName) wants to \(tool.displayName.lowercased())"
-        alert.informativeText = "\(tool.toolDescription)\n\nDetails: \(argumentsSummary)\n\nThis was requested over MCP by an AI agent connected to Sentry. Allow it?"
+        alert.messageText = String(localized: "\(clientName) wants to \(tool.displayName.lowercased())")
+        alert.informativeText = String(localized: "\(tool.toolDescription)\n\nDetails: \(argumentsSummary)\n\nThis was requested over MCP by an AI agent connected to Sentry. Allow it?")
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Allow")
-        alert.addButton(withTitle: "Deny")
+        alert.addButton(withTitle: String(localized: "Allow"))
+        alert.addButton(withTitle: String(localized: "Deny"))
         NSApp.activate(ignoringOtherApps: true)
         return alert.runModal() == .alertFirstButtonReturn
     }
@@ -134,13 +134,13 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
         case .allow:
             return ""
         case .denyMasterDisabled:
-            return "MCP access is disabled in MacStat → Settings → AI Access."
+            return String(localized: "MCP access is disabled in MacStat → Settings → AI Access.")
         case .denyToolDisabled:
-            return "This tool is disabled in MacStat → Settings → AI Access."
+            return String(localized: "This tool is disabled in MacStat → Settings → AI Access.")
         case .denyRateLimited:
-            return "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment."
+            return String(localized: "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment.")
         case .requiresConfirmation:
-            return "The user declined to confirm this action in MacStat."
+            return String(localized: "The user declined to confirm this action in MacStat.")
         }
     }
 

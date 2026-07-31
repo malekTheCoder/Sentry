@@ -882,10 +882,10 @@ struct AlertsPane: View {
         case .chargingPaused, .slowCharging:
             return RuleKind(id: rule.id).fixedConditionSummary ?? ""
         case .batteryHealthDrop:
-            return "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more"
+            return String(localized: "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more")
         case .generic:
             let comparison = ComparisonKind(comparison: rule.comparison).phrase
-            return "\(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))"
+            return String(localized: "\(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))")
         }
     }
 
@@ -895,7 +895,7 @@ struct AlertsPane: View {
     static func humanDuration(_ seconds: TimeInterval) -> String {
         // A hand-edited settings file can hold a negative interval; treat it
         // as "immediately" rather than printing "-30 seconds".
-        guard seconds > 0 else { return "Fires immediately" }
+        guard seconds > 0 else { return String(localized: "Fires immediately") }
         if seconds < 60 {
             return "\(Self.trimmed(seconds)) second\(seconds == 1 ? "" : "s")"
         }
@@ -918,10 +918,10 @@ struct AlertsPane: View {
     /// holding `10000000000` has no formatter and desperately needs the word.
     static func unitLabel(_ unit: MetricUnit) -> String {
         switch unit {
-        case .bytes: return "bytes"
-        case .bytesPerSecond: return "bytes/s"
-        case .boolean: return "0 or 1"
-        case .thermalLevel: return "0–3"
+        case .bytes: return String(localized: "bytes")
+        case .bytesPerSecond: return String(localized: "bytes/s")
+        case .boolean: return String(localized: "0 or 1")
+        case .thermalLevel: return String(localized: "0–3")
         case .count, .decimal: return ""
         default: return unit.suffix
         }
@@ -1056,9 +1056,9 @@ enum RuleKind: Hashable {
     var fixedConditionSummary: String? {
         switch self {
         case .chargingPaused:
-            return "Plugged in but not charging, with a reason reported"
+            return String(localized: "Plugged in but not charging, with a reason reported")
         case .slowCharging:
-            return "Charging below half the adapter's rated wattage"
+            return String(localized: "Charging below half the adapter's rated wattage")
         case .generic, .batteryHealthDrop:
             return nil
         }
@@ -1067,11 +1067,11 @@ enum RuleKind: Hashable {
     var notApplicableNote: String? {
         switch self {
         case .chargingPaused:
-            return "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
+            return String(localized: "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable.")
         case .slowCharging:
-            return "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
+            return String(localized: "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable.")
         case .batteryHealthDrop:
-            return "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed."
+            return String(localized: "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed.")
         case .generic:
             return nil
         }
@@ -1110,10 +1110,10 @@ private enum ComparisonKind: String, CaseIterable, Hashable {
 
     var displayName: String {
         switch self {
-        case .above: return "At or above"
-        case .below: return "At or below"
-        case .equals: return "Equals"
-        case .changedBy: return "Changed by"
+        case .above: return String(localized: "At or above")
+        case .below: return String(localized: "At or below")
+        case .equals: return String(localized: "Equals")
+        case .changedBy: return String(localized: "Changed by")
         }
     }
 
@@ -1123,7 +1123,7 @@ private enum ComparisonKind: String, CaseIterable, Hashable {
         case .above: return "≥"
         case .below: return "≤"
         case .equals: return "="
-        case .changedBy: return "changed by"
+        case .changedBy: return String(localized: "changed by")
         }
     }
 }

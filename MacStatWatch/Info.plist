@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Sentry</string>
+	<string>MacStat</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,13 +20,13 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>LSUIElement</key>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>WKApplication</key>
 	<true/>
-	<key>NSHumanReadableCopyright</key>
-	<string>Malek Swilam</string>
-	<key>NSLocationUsageDescription</key>
-	<string>MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>dev.malekswilam.macstat.mobile</string>
 </dict>
 </plist>

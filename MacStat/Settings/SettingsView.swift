@@ -3,20 +3,21 @@ import MacStatKit
 
 /// The 8 settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced
+    case general, modules, menuBar, theme, alerts, aiAccess, sync, location, advanced
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .general: return "General"
-        case .modules: return "Modules"
-        case .menuBar: return "Menu Bar"
-        case .theme: return "Theme"
-        case .alerts: return "Alerts"
-        case .aiAccess: return "AI Access"
-        case .sync: return "Sync"
-        case .advanced: return "Advanced"
+        case .general: return String(localized: "General")
+        case .modules: return String(localized: "Modules")
+        case .menuBar: return String(localized: "Menu Bar")
+        case .theme: return String(localized: "Theme")
+        case .alerts: return String(localized: "Alerts")
+        case .aiAccess: return String(localized: "AI Access")
+        case .sync: return String(localized: "Sync")
+        case .location: return String(localized: "Location Log")
+        case .advanced: return String(localized: "Advanced")
         }
     }
 
@@ -29,6 +30,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return "bell.badge.fill"
         case .aiAccess: return "bolt.shield.fill"
         case .sync: return "arrow.triangle.2.circlepath.icloud.fill"
+        case .location: return "location.fill"
         case .advanced: return "wrench.and.screwdriver.fill"
         }
     }
@@ -44,6 +46,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return .red
         case .aiAccess: return .orange
         case .sync: return .cyan
+        case .location: return .green
         case .advanced: return Color(nsColor: .darkGray)
         }
     }
@@ -52,14 +55,15 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     /// context instead of controls floating in space.
     var subtitle: String {
         switch self {
-        case .general: return "Startup, sampling cadence, and data retention."
-        case .modules: return "Which metric modules Sentry samples and shows."
-        case .menuBar: return "Compose the bar item and choose what the dropdown shows."
-        case .theme: return "How Sentry's own surfaces look — dropdown, dashboard, widgets."
-        case .alerts: return "Rules, notifications, and alert history."
-        case .aiAccess: return "MCP tools for AI agents, local and remote."
-        case .sync: return "iPhone companion and device sync."
-        case .advanced: return "Diagnostics and debugging."
+        case .general: return String(localized: "Startup, sampling cadence, and data retention.")
+        case .modules: return String(localized: "Which metric modules Sentry samples and shows.")
+        case .menuBar: return String(localized: "Compose the bar item and choose what the dropdown shows.")
+        case .theme: return String(localized: "How Sentry's own surfaces look — dropdown, dashboard, widgets.")
+        case .alerts: return String(localized: "Rules, notifications, and alert history.")
+        case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
+        case .sync: return String(localized: "iPhone companion and device sync.")
+        case .location: return String(localized: "Opt-in last-known-location log for this Mac — not Find My.")
+        case .advanced: return String(localized: "Diagnostics and debugging.")
         }
     }
 }
@@ -95,16 +99,25 @@ struct SettingsView: View {
     /// configuration, same as the two above.
     let mcpActivityLog: MCPActivityLog?
 
+    /// Backs `LocationPane`. Unlike `historyStore`/`mcpActivityLog`, this
+    /// isn't optional — `LocationService` has no meaningful "unavailable"
+    /// state of its own (unlike a database that can fail to open), so
+    /// `AppDelegate` always constructs a real instance and this view always
+    /// has one to observe.
+    @ObservedObject var locationService: LocationService
+
     init(
         store: SettingsStore,
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
-        mcpActivityLog: MCPActivityLog? = nil
+        mcpActivityLog: MCPActivityLog? = nil,
+        locationService: LocationService
     ) {
         self.store = store
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
+        self.locationService = locationService
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -226,6 +239,8 @@ struct SettingsView: View {
             AIAccessPane(store: store, activityLog: mcpActivityLog).formStyle(.grouped)
         case .sync:
             SyncPane().formStyle(.grouped)
+        case .location:
+            LocationPane(store: store, locationService: locationService).formStyle(.grouped)
         case .advanced:
             AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow).formStyle(.grouped)
         }

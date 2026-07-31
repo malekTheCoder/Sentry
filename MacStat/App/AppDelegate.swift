@@ -52,6 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // would reconcile against — and fight over — the first's record.
     private let powerControl = PowerControlService()
 
+    /// The "Location Log" feature (plan-external addition; see
+    /// `LocationService`'s doc comment for why this is deliberately not
+    /// "Find My"). Constructed unconditionally, like `powerControl` above —
+    /// it does nothing observable (no permission prompt, no timer, no
+    /// `CLLocationManager` activity beyond reading the already-cached
+    /// `authorizationStatus`) until `applySettings` sees
+    /// `AppSettings.locationLogEnabled == true`, which is also the only
+    /// path that ever calls `requestAuthorization()`.
+    private let locationService = LocationService()
+
     /// Feeds the desktop widget's App Group cache from the same snapshot
     /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
     private let widgetWriter = MacWidgetSnapshotWriter(
@@ -100,7 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             // explicit "history unavailable" state.
                             historyStore: self.historyStore,
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
-                            mcpActivityLog: self.mcpActivityLog
+                            mcpActivityLog: self.mcpActivityLog,
+                            locationService: self.locationService
                         )
                     )
                 )
@@ -345,6 +356,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.coordinator.sleepAssertionState = state
             }
             .store(in: &cancellables)
+
+        // Mirrors `powerControl.$state` immediately above, same reasoning:
+        // `LocationService` is `@MainActor`-isolated and changes on its own
+        // multi-minute capture cadence, not a poll tick, so pushing on
+        // change (not polling from `StatsCoordinator`) is both correct and
+        // cheap. `sink` (not `AsyncPublisher`) for the same "never drop an
+        // emission" reasoning documented on the settings sink below.
+        locationService.$lastLocation
+            .sink { [weak self] location in
+                self?.coordinator.location = location
+            }
+            .store(in: &cancellables)
+
+        // If Location Log was already enabled and authorized on a previous
+        // run (persisted in settings.json + macOS's own permission
+        // bookkeeping), resume capturing on this launch without re-prompting
+        // — `start()` itself no-ops unless `permissionState == .authorized`,
+        // so this is safe to call unconditionally even if the user never
+        // enabled the feature or later revoked permission in System
+        // Settings.
+        if settings.locationLogEnabled {
+            locationService.start()
+        }
 
         // Live-apply theme/layout changes made in Settings without a restart.
         //
@@ -604,6 +638,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             } else {
                 await mcpRemoteServer.stop()
             }
+        }
+
+        // Location Log: request permission (if not already decided) and
+        // start capturing only in direct response to the toggle turning on
+        // — never at launch, never as a side effect of any other settings
+        // change. `requestAuthorization()` itself no-ops once macOS has
+        // already recorded a decision, so a re-toggle after a prior grant
+        // just resumes capturing without a second prompt.
+        if settings.locationLogEnabled {
+            locationService.requestAuthorization()
+            locationService.start()
+        } else {
+            locationService.stop()
         }
 
         // Then report any disabled→enabled transition, which is what drives

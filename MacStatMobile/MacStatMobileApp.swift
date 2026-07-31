@@ -25,6 +25,11 @@ struct MacStatMobileApp: App {
             RootTabView()
                 .environmentObject(AppDataSource.shared)
                 .task {
+                    // Starts the Watch relay (`WatchRelayManager.swift`)
+                    // alongside local-sync discovery — see that type's doc
+                    // comment for why it's a root-level singleton rather
+                    // than something a single tab's view model owns.
+                    WatchRelayManager.shared.start()
                     await AppDataSource.shared.resolveIfNeeded()
                 }
         }

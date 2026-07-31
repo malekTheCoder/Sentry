@@ -178,6 +178,21 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `MCPRemoteServer` owns validating this at bind time.
     public var mcpRemotePort: Int
 
+    // MARK: - Location Log
+
+    /// Master switch for `LocationService` (`MacStatKit/Services/LocationService.swift`)
+    /// — the honest "Location Log" feature (never "Find My," see that type's
+    /// doc comment). Off by default and, critically, **not** what actually
+    /// requests macOS location permission: `AppDelegate` only calls
+    /// `LocationService.requestAuthorization()` in direct response to this
+    /// flipping to `true` from a user tapping the toggle in `LocationPane`,
+    /// matching `AlertEngine`'s existing "request authorization lazily, on
+    /// explicit user action, never at launch" convention (plan §11.3) for
+    /// the same reason: a permission prompt a user didn't ask for, tied to a
+    /// setting they didn't know existed, is the opposite of the explicit,
+    /// user-initiated permission flow this feature requires.
+    public var locationLogEnabled: Bool
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -251,6 +266,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mcpRateLimitPerMinute: Int = 20,
         mcpRemoteAccessEnabled: Bool = false,
         mcpRemotePort: Int = 8642,
+        locationLogEnabled: Bool = false,
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -278,6 +294,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mcpRateLimitPerMinute = mcpRateLimitPerMinute
         self.mcpRemoteAccessEnabled = mcpRemoteAccessEnabled
         self.mcpRemotePort = mcpRemotePort
+        self.locationLogEnabled = locationLogEnabled
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -318,6 +335,11 @@ extension AppSettings {
         case mcpRateLimitPerMinute
         case mcpRemoteAccessEnabled
         case mcpRemotePort
+        // Additive, same decodeIfPresent ?? fallback contract as every other
+        // field here — a settings file written before Location Log existed
+        // must upgrade to `false` (off), never implicitly opt a pre-existing
+        // install into a permission-gated feature it never asked for.
+        case locationLogEnabled
         case updateCheckDaily
         case schemaVersion
     }
@@ -399,6 +421,8 @@ extension AppSettings {
                 ?? fallback.mcpRemoteAccessEnabled,
             mcpRemotePort: try container.decodeIfPresent(Int.self, forKey: .mcpRemotePort)
                 ?? fallback.mcpRemotePort,
+            locationLogEnabled: try container.decodeIfPresent(Bool.self, forKey: .locationLogEnabled)
+                ?? fallback.locationLogEnabled,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;
