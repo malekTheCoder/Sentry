@@ -151,10 +151,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, palette.spacing * 2)
             .padding(.bottom, palette.spacing * 2)
-            // Clears the floating glass switcher (`MainWindowView.navHeight`)
-            // — the window's titlebar is transparent and content is
-            // full-size, so the header supplies its own headroom.
-            .padding(.top, MainWindowView.navHeight + 8)
+            .padding(.top, palette.spacing * 1.5)
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)

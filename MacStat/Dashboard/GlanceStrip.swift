@@ -27,16 +27,19 @@ struct GlanceStrip: View {
 
     var body: some View {
         if !visibleMetrics.isEmpty {
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 128, maximum: 220), spacing: palette.spacing)],
-                spacing: palette.spacing
-            ) {
+            // An HStack of equal-flex tiles, not an adaptive grid: with only
+            // three modules enabled the adaptive grid parked three
+            // fixed-width tiles on the left and left half the row empty.
+            // Equal flex means the strip always spans the window, however
+            // many modules are on.
+            HStack(spacing: palette.spacing) {
                 ForEach(visibleMetrics) { metric in
                     GlanceTile(
                         metric: metric,
                         value: snapshot?.value(for: metric.metricID),
                         samples: sparkValues(for: metric)
                     )
+                    .frame(maxWidth: .infinity)
                 }
             }
         }

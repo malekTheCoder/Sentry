@@ -142,10 +142,7 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
-            // Clears the floating glass switcher; the switcher names the
-            // window, so the sidebar goes straight to its rows.
-            Color.clear
-                .frame(height: MainWindowView.navHeight)
+            Color.clear.frame(height: 8)
 
             ForEach(SettingsPane.allCases) { pane in
                 sidebarRow(for: pane)
@@ -208,7 +205,7 @@ struct SettingsView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-            .padding(.top, MainWindowView.navHeight + 4)
+            .padding(.top, 20)
             .padding(.horizontal, 24)
             .padding(.bottom, 10)
 

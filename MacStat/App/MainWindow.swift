@@ -53,7 +53,7 @@ struct MainWindowView: View {
     static let navHeight: CGFloat = 60
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             // The always-painted base. The window is non-opaque with a
             // clear background (for behind-window glass), and SwiftUI's
             // titlebar safe-area would otherwise leave the top strip and
@@ -64,21 +64,46 @@ struct MainWindowView: View {
             VisualEffect(material: .underWindowBackground)
                 .ignoresSafeArea()
 
-            // Both stay alive; the hidden one keeps its scroll position,
-            // disclosure state, and in-progress edits. `zIndex`/opacity
-            // rather than `if` so switching tabs never rebuilds a tree.
-            dashboard
-                .opacity(state.tab == .dashboard ? 1 : 0)
-                .allowsHitTesting(state.tab == .dashboard)
-                .ignoresSafeArea()
-            settings
-                .opacity(state.tab == .settings ? 1 : 0)
-                .allowsHitTesting(state.tab == .settings)
-                .ignoresSafeArea()
+            VStack(spacing: 0) {
+                // A real bar, not a floating overlay: the overlay version
+                // let content scroll naked underneath the switcher —
+                // headers chopped at the window edge, tiles half-hidden
+                // behind the pill. Content now simply starts below it.
+                navBar
 
-            navSwitcher
+                ZStack {
+                    // Both stay alive; the hidden one keeps its scroll
+                    // position, disclosure state, and in-progress edits.
+                    // Opacity rather than `if` so switching tabs never
+                    // rebuilds a tree.
+                    dashboard
+                        .opacity(state.tab == .dashboard ? 1 : 0)
+                        .allowsHitTesting(state.tab == .dashboard)
+                    settings
+                        .opacity(state.tab == .settings ? 1 : 0)
+                        .allowsHitTesting(state.tab == .settings)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .ignoresSafeArea()
         }
         .frame(minWidth: 860, minHeight: 620)
+    }
+
+    /// The fixed top chrome: traffic lights live in the (transparent)
+    /// titlebar over its left edge, the glass switcher sits centered, and a
+    /// hairline closes it off from content.
+    private var navBar: some View {
+        ZStack {
+            navSwitcher
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Self.navHeight)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.separator.opacity(0.4))
+                .frame(height: 1)
+        }
     }
 
     // MARK: Nav switcher
@@ -91,8 +116,7 @@ struct MainWindowView: View {
         }
         .padding(3)
         .modifier(GlassCapsule())
-        .padding(.top, 12)
-        .frame(maxWidth: .infinity)
+        .padding(.top, 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("View switcher")
     }
