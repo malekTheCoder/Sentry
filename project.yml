@@ -205,6 +205,15 @@ targets:
         LSUIElement: true
         CFBundleDisplayName: MacStat
         NSHumanReadableCopyright: "Malek Swilam"
+        # Required for `LocationService` (`MacStatKit/Services/LocationService.swift`)
+        # — the honest "Location Log" feature (never "Find My," see that
+        # type's doc comment). Only ever triggers a permission prompt when
+        # the user explicitly enables the feature in Settings ▸ Location
+        # (`LocationPane`), never at launch. `NSLocationUsageDescription` is
+        # the legacy key macOS's TCC prompt still reads; both are set to the
+        # same text for safety across macOS versions.
+        NSLocationUsageDescription: "MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
+        NSLocationWhenInUseUsageDescription: "MacStat can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
 
   MacStatMobile:
     type: application

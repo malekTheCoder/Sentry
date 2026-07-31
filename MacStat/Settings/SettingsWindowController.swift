@@ -37,18 +37,25 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// unavailable" state rather than a silently-empty list.
     private let mcpActivityLog: MCPActivityLog?
 
+    /// Backs `LocationPane` — see `SettingsView.locationService`'s doc
+    /// comment for why this isn't optional the way `historyStore`/
+    /// `mcpActivityLog` are.
+    private let locationService: LocationService
+
     /// The window is built on first `show()` rather than in `init` so that
     /// constructing the controller at launch costs nothing.
     init(
         settingsStore: SettingsStore,
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
-        mcpActivityLog: MCPActivityLog? = nil
+        mcpActivityLog: MCPActivityLog? = nil,
+        locationService: LocationService
     ) {
         self.settingsStore = settingsStore
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
+        self.locationService = locationService
         super.init(window: nil)
     }
 
@@ -71,7 +78,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let root = SettingsView(store: settingsStore, historyStore: historyStore, onShowDebugWindow: onShowDebugWindow, mcpActivityLog: mcpActivityLog)
+        let root = SettingsView(store: settingsStore, historyStore: historyStore, onShowDebugWindow: onShowDebugWindow, mcpActivityLog: mcpActivityLog, locationService: locationService)
         let hosting = NSHostingController(rootView: root)
 
         let settingsWindow = NSWindow(contentViewController: hosting)

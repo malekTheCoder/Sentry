@@ -46,13 +46,15 @@ public enum SnapshotDebugFormatter {
 
     /// The sub-struct properties on `SystemSnapshot`, in the order the plan
     /// lists them ("battery, cpu, gpu, ane, memory, disk, network, thermal,
-    /// sleepAssertion") — listed explicitly, rather than discovered purely
-    /// via `Mirror`, so the section order in the window is stable and
-    /// matches the plan even though `Mirror`'s child order already happens
-    /// to follow declaration order (an implementation detail `Mirror`'s docs
-    /// don't actually guarantee).
+    /// sleepAssertion"), plus `location` appended at the end (added after the
+    /// plan was written, for the "Location Log" feature — see
+    /// `MacLocation`'s doc comment) — listed explicitly, rather than
+    /// discovered purely via `Mirror`, so the section order in the window is
+    /// stable and matches the plan even though `Mirror`'s child order
+    /// already happens to follow declaration order (an implementation
+    /// detail `Mirror`'s docs don't actually guarantee).
     private static let subStructKeys = [
-        "battery", "cpu", "gpu", "ane", "memory", "disk", "network", "thermal", "sleepAssertion",
+        "battery", "cpu", "gpu", "ane", "memory", "disk", "network", "thermal", "sleepAssertion", "location",
     ]
 
     /// One `Section` per `SystemSnapshot` sub-struct, plus a leading
@@ -152,6 +154,7 @@ public enum SnapshotDebugFormatter {
         case "gpu": return "GPU"
         case "ane": return "ANE"
         case "sleepAssertion": return "Sleep Assertion"
+        case "location": return "Location"
         default: return key.prefix(1).uppercased() + key.dropFirst()
         }
     }
