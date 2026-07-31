@@ -41,7 +41,6 @@ struct BatteryOverviewCard: View {
 
             healthSection
         }
-        .dashboardCard(palette)
         .task {
             guard !hasLoaded else { return }
             hasLoaded = true

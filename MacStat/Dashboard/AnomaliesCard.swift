@@ -15,7 +15,6 @@ struct AnomaliesCard: View {
             header
             content
         }
-        .dashboardCard(palette)
     }
 
     private var header: some View {

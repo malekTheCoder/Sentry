@@ -63,7 +63,6 @@ struct EnergyReportCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .dashboardCard(palette)
         // Periodic, not one-shot: under the one-window shell both tabs stay
         // alive for the app's whole run, so a `hasLoaded`-guarded `.task`
         // would freeze "Today" at whatever it was the first time the window

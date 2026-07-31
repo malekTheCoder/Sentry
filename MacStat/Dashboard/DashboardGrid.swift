@@ -235,7 +235,12 @@ private struct DashboardMetricCard<Detail: View>: View {
             }
             .padding(.top, subtitle == nil ? 6 : 2)
         }
-        .dashboardCard(palette)
+        .padding(palette.spacing * 1.4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The one place boxes survive the de-carding: a chart wants a plot
+        // area. Fill only — the border went with the rest of the chrome.
+        .background(palette.surface.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(metric.title), \(headline)")
     }

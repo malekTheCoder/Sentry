@@ -34,7 +34,6 @@ struct AgentActivityCard: View {
             }
             content
         }
-        .dashboardCard(palette)
     }
 
     private var header: some View {

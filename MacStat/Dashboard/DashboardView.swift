@@ -101,46 +101,55 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
+            VStack(alignment: .leading, spacing: 0) {
                 header
+                    .padding(.bottom, palette.spacing * 2)
 
                 GlanceStrip(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
                     enabledModules: viewModel.enabledModules
                 )
+                .padding(.bottom, palette.spacing * 2)
+
+                sectionRule
 
                 sectionHeader("Power")
-                HStack(alignment: .top, spacing: rowGap) {
+                HStack(alignment: .top, spacing: palette.spacing * 3) {
                     BatteryOverviewCard(
                         historyStore: historyStore,
                         battery: viewModel.latestBattery,
                         isWarmingUp: isBatteryWarmingUp
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
-                    VStack(spacing: rowGap) {
-                        // The dropdown's box-free card, given this window's
-                        // standard card chrome so the column reads as
-                        // siblings rather than a card and a floating group.
+                    VStack(alignment: .leading, spacing: palette.spacing) {
                         SleepControlCard(powerControl: powerControl)
-                            .dashboardCard(palette)
+                        Rectangle()
+                            .fill(palette.separator)
+                            .frame(height: 1)
                         EnergyReportCard(historyStore: historyStore)
                     }
                     .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
+                .padding(.bottom, palette.spacing * 2)
+
+                sectionRule
 
                 sectionHeader("Activity")
-                HStack(alignment: .top, spacing: rowGap) {
+                HStack(alignment: .top, spacing: palette.spacing * 3) {
                     AgentActivityCard(
                         summary: viewModel.agentActivity,
                         agentProcesses: Array(processMonitor.agentProcesses.prefix(4))
                     )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                     AnomaliesCard(anomalies: viewModel.anomalies)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     TopProcessesCard(processes: Array(processMonitor.topProcesses.prefix(5)))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .padding(.bottom, palette.spacing * 2)
+
+                sectionRule
 
                 sectionHeader("History")
                 DashboardGrid(
@@ -149,9 +158,9 @@ struct DashboardView: View {
                     enabledModules: viewModel.enabledModules
                 )
             }
-            .padding(.horizontal, palette.spacing * 2)
-            .padding(.bottom, palette.spacing * 2)
-            .padding(.top, palette.spacing * 1.5)
+            .padding(.horizontal, palette.spacing * 3)
+            .padding(.bottom, palette.spacing * 3)
+            .padding(.top, palette.spacing * 2)
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
@@ -162,6 +171,18 @@ struct DashboardView: View {
         .task {
             viewModel.refresh()
         }
+    }
+
+    /// Full-bleed hairline between sections — the same organizing device
+    /// the dropdown uses. With the boxes gone, these rules and the section
+    /// labels are the entire structure, which is exactly the point: one
+    /// surface, quietly divided, instead of a pile of bordered containers.
+    private var sectionRule: some View {
+        Rectangle()
+            .fill(palette.separator)
+            .frame(height: 1)
+            .padding(.horizontal, -palette.spacing * 3)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Header
@@ -217,7 +238,8 @@ struct DashboardView: View {
             .font(palette.font(size: 11, weight: .semibold))
             .kerning(0.8)
             .foregroundStyle(palette.textTertiary)
-            .padding(.top, palette.spacing)
+            .padding(.top, palette.spacing * 2)
+            .padding(.bottom, palette.spacing * 1.5)
             .accessibilityAddTraits(.isHeader)
     }
 }

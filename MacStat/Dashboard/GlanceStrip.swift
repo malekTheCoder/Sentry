@@ -27,21 +27,27 @@ struct GlanceStrip: View {
 
     var body: some View {
         if !visibleMetrics.isEmpty {
-            // An HStack of equal-flex tiles, not an adaptive grid: with only
-            // three modules enabled the adaptive grid parked three
-            // fixed-width tiles on the left and left half the row empty.
-            // Equal flex means the strip always spans the window, however
-            // many modules are on.
-            HStack(spacing: palette.spacing) {
-                ForEach(visibleMetrics) { metric in
+            // Open columns divided by vertical hairlines — no boxes. The
+            // strip is one instrument row on the shared surface, not a
+            // shelf of separate products; equal flex keeps it spanning the
+            // window at any enabled-module count.
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(Array(visibleMetrics.enumerated()), id: \.element.id) { index, metric in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(palette.separator)
+                            .frame(width: 1, height: 58)
+                    }
                     GlanceTile(
                         metric: metric,
                         value: snapshot?.value(for: metric.metricID),
                         samples: sparkValues(for: metric)
                     )
                     .frame(maxWidth: .infinity)
+                    .padding(.horizontal, palette.spacing * 1.5)
                 }
             }
+            .padding(.horizontal, -palette.spacing * 1.5)
         }
     }
 
@@ -88,7 +94,6 @@ private struct GlanceTile: View {
                 .frame(height: 20)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCard(palette)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(metric.title), \(MetricFormatting.value(value, metric: metric.metricID))")
     }
