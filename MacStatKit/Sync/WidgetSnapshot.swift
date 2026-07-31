@@ -222,14 +222,30 @@ public enum WidgetSnapshotStore {
     /// different Apple platform resources with different naming rules).
     public static let appGroupIdentifier = "group.dev.malekswilam.macstat"
 
+    /// The macOS suite is deliberately *not* an App Group: iOS-style
+    /// `group.*` identifiers on macOS require a provisioning profile (Xcode
+    /// enforces this at build time), which the ad-hoc/no-team dev signing
+    /// this project builds with cannot produce. Both macOS processes that
+    /// touch this cache — the menu bar app's `MacWidgetSnapshotWriter` and
+    /// `MacStatWidgetExtension_macOS` — are unsandboxed, so a plain named
+    /// suite in `~/Library/Preferences` is readable by both. When the app
+    /// gains real Developer ID signing, switch macOS back to
+    /// `appGroupIdentifier` + entitlements in `project.yml`.
+    public static let macSuiteIdentifier = "dev.malekswilam.macstat.widgetcache"
+
     private static let storageKey = "dev.malekswilam.macstat.widgetSnapshot.v1"
 
-    /// `nil` when the App Group entitlement isn't provisioned correctly on
-    /// this build/signing configuration — see this type's top-level doc
-    /// comment. Every other method below routes through this so there is
-    /// exactly one place that can fail this way.
+    /// `nil` when the suite isn't reachable (on iOS: the App Group
+    /// entitlement isn't provisioned correctly for this build/signing
+    /// configuration — see this type's top-level doc comment). Every other
+    /// method below routes through this so there is exactly one place that
+    /// can fail this way.
     private static var sharedDefaults: UserDefaults? {
+        #if os(macOS)
+        UserDefaults(suiteName: macSuiteIdentifier)
+        #else
         UserDefaults(suiteName: appGroupIdentifier)
+        #endif
     }
 
     /// Called by `MacStatMobile`'s `WidgetSnapshotWriter` after every

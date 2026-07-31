@@ -84,6 +84,8 @@ targets:
         embed: true
       - target: SystemMetricsKit
         embed: true
+      - target: MacStatWidgetExtension_macOS
+        embed: true
       - package: Sparkle
         embed: false
         link: false
@@ -91,8 +93,19 @@ targets:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
       MARKETING_VERSION: "0.1.0"
       CURRENT_PROJECT_VERSION: "1"
-      ENABLE_HARDENED_RUNTIME: YES
+      # Hardened runtime turns on library validation, which rejects the
+      # ad-hoc-signed frameworks this dev-signing setup embeds. Re-enable for
+      # a real Developer-ID release build.
+      ENABLE_HARDENED_RUNTIME: NO
       APP_SANDBOX: NO
+      # Ad-hoc signing (identity "-") so the embedded widget appex carries a
+      # signature chronod will load. Deliberately NO App Group entitlement on
+      # the macOS side: Xcode requires a provisioning profile for iOS-style
+      # `group.*` groups on macOS, which an ad-hoc/no-team setup can't
+      # produce. `WidgetSnapshotStore` uses a plain (non-group) suite on
+      # macOS instead — see its doc comment.
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_IDENTITY: "-"
     info:
       path: MacStat/Resources/Info.plist
       properties:
@@ -145,7 +158,14 @@ targets:
     type: app-extension
     platform: iOS
     sources:
+      # Both widget targets generate an Info plist into this same directory
+      # (Info.plist for iOS, Info-macOS.plist for macOS); excluded here so
+      # neither target bundles the other's plist as a stray resource —
+      # embeddedBinaryValidationUtility rejects an appex containing a plist
+      # whose CFBundleIdentifier isn't prefixed by the parent app's.
       - path: MacStatWidget
+        excludes:
+          - "Info*.plist"
     dependencies:
       - target: MacStatKit_iOS
         embed: true
@@ -161,6 +181,36 @@ targets:
       CODE_SIGN_ENTITLEMENTS: MacStatWidget/MacStatWidget.entitlements
     info:
       path: MacStatWidget/Info.plist
+      properties:
+        CFBundleDisplayName: MacStat Widget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+
+  MacStatWidgetExtension_macOS:
+    type: app-extension
+    platform: macOS
+    sources:
+      # Same exclusion as MacStatWidgetExtension above.
+      - path: MacStatWidget
+        excludes:
+          - "Info*.plist"
+    dependencies:
+      - target: MacStatKit_macOS
+        embed: true
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.widget
+      PRODUCT_NAME: MacStatWidget
+      # Ad-hoc signed, no entitlements — same provisioning constraint as the
+      # MacStat app target above; the store's macOS suite needs none.
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_IDENTITY: "-"
+    info:
+      # Its own generated plist path — the iOS extension's `info:` block
+      # already generates MacStatWidget/Info.plist, and two targets writing
+      # one path would race on content.
+      path: MacStatWidget/Info-macOS.plist
       properties:
         CFBundleDisplayName: MacStat Widget
         NSExtension:

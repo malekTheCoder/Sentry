@@ -51,6 +51,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // to `UserDefaults` and re-creates it on wake, so a second instance
     // would reconcile against — and fight over — the first's record.
     private let powerControl = PowerControlService()
+
+    /// Feeds the desktop widget's App Group cache from the same snapshot
+    /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
+    private let widgetWriter = MacWidgetSnapshotWriter(
+        deviceName: Host.current().localizedName ?? "This Mac"
+    )
     private lazy var alertEngine = AlertEngine(
         rules: settingsStore.settings.alertRules,
         historyStore: historyStore,
@@ -303,6 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 // release, and no alert rule would ever fire.
                 self.powerControl.evaluate(snapshot)
                 self.alertEngine.evaluate(snapshot)
+                await self.widgetWriter.record(snapshot)
             }
         }
 
