@@ -81,6 +81,23 @@ public enum ProUnlockSource: String, Codable, Sendable, Hashable {
 public protocol ProEntitlementProviding: AnyObject {
     func isUnlocked(_ feature: ProFeature) -> Bool
     var unlockSource: ProUnlockSource { get }
+
+    /// Called by the composition root whenever settings change, with the
+    /// **delivered** value.
+    ///
+    /// Not an implementation detail: `SettingsStore.settings` is a
+    /// `@Published`, and `@Published` emits in `willSet`, so a provider that
+    /// reached back into the store from inside a settings subscription
+    /// would read the *previous* value — meaning a freshly-flipped unlock
+    /// toggle wouldn't take effect until some unrelated setting changed
+    /// next. `AppDelegate.applySettings` already documents this hazard for
+    /// its own theme resolution; this hook is the same fix applied here.
+    ///
+    /// A StoreKit implementation can ignore the argument entirely — its
+    /// entitlement doesn't live in settings — but still has to accept the
+    /// call, which is why it's a protocol requirement rather than a method
+    /// on the concrete type.
+    func applySettings(_ settings: AppSettings)
 }
 
 /// The local, no-StoreKit implementation: unlocked only by an explicit
@@ -104,12 +121,23 @@ public final class ProEntitlementStore: ProEntitlementProviding {
 
     private let settingsStore: SettingsStore
 
+    /// Mirrors `AppSettings.proUnlockOverrideEnabled`, seeded at
+    /// construction and updated by `applySettings(_:)` / the setter below.
+    /// Cached rather than read through to the store on every access for the
+    /// `willSet` reason documented on `ProEntitlementProviding.applySettings`.
+    private var overrideEnabled: Bool
+
     public init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
+        self.overrideEnabled = settingsStore.settings.proUnlockOverrideEnabled
     }
 
     public var unlockSource: ProUnlockSource {
-        settingsStore.settings.proUnlockOverrideEnabled ? .developerOverride : .locked
+        overrideEnabled ? .developerOverride : .locked
+    }
+
+    public func applySettings(_ settings: AppSettings) {
+        overrideEnabled = settings.proUnlockOverrideEnabled
     }
 
     /// Today the override unlocks everything, because there is one feature.
@@ -122,7 +150,11 @@ public final class ProEntitlementStore: ProEntitlementProviding {
         }
     }
 
+    /// Updates the cache first, then persists — so a caller that reads
+    /// `isUnlocked` immediately after setting it sees the new value without
+    /// waiting for the settings subscription to come back around.
     public func setDeveloperOverride(_ enabled: Bool) {
+        overrideEnabled = enabled
         settingsStore.settings.proUnlockOverrideEnabled = enabled
     }
 }
