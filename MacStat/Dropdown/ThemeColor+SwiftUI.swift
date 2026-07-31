@@ -211,22 +211,30 @@ struct ThemePalette: Equatable {
 // MARK: - Themed backdrop
 
 extension View {
-    /// The one card chrome every Dashboard card wears. Material themes get a
-    /// glass tile — within-window ultra-thin material under the theme's own
-    /// translucent wash, so cards read as panes of frosted glass floating
-    /// over the backdrop; opaque themes keep the flat elevated-surface fill.
-    /// One modifier instead of six hand-copied chrome stacks is also what
-    /// keeps "randomly placed" impossible: geometry lives here or nowhere.
+    /// The one card chrome every Dashboard card wears. Material themes get
+    /// Apple's real Liquid Glass on macOS 26+ (`glassEffect`, the same
+    /// treatment system surfaces use — refraction and rim lighting, not a
+    /// gray wash), an ultra-thin-material tile on older systems; opaque
+    /// themes keep the flat elevated-surface fill. One modifier instead of
+    /// six hand-copied chrome stacks is also what keeps "randomly placed"
+    /// impossible: geometry lives here or nowhere.
     @ViewBuilder
     func dashboardCard(_ palette: ThemePalette) -> some View {
         let shape = RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
         if palette.theme.useMaterialBackground {
-            self
-                .padding(palette.spacing * 1.6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(shape.fill(palette.surfaceElevated))
-                .background(.ultraThinMaterial, in: shape)
-                .overlay(shape.strokeBorder(palette.separator, lineWidth: 1))
+            if #available(macOS 26.0, *) {
+                self
+                    .padding(palette.spacing * 1.6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: shape)
+            } else {
+                self
+                    .padding(palette.spacing * 1.6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(shape.fill(palette.surfaceElevated))
+                    .background(.ultraThinMaterial, in: shape)
+                    .overlay(shape.strokeBorder(palette.separator, lineWidth: 1))
+            }
         } else {
             self
                 .padding(palette.spacing * 1.6)

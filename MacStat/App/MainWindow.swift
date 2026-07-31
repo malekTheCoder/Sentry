@@ -54,15 +54,27 @@ struct MainWindowView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            // The always-painted base. The window is non-opaque with a
+            // clear background (for behind-window glass), and SwiftUI's
+            // titlebar safe-area would otherwise leave the top strip and
+            // any uncovered region fully transparent — the window then
+            // renders as detached floating islands with the app behind
+            // showing through the gaps. This layer guarantees every pixel
+            // of the window is glass before content paints over it.
+            VisualEffect(material: .underWindowBackground)
+                .ignoresSafeArea()
+
             // Both stay alive; the hidden one keeps its scroll position,
             // disclosure state, and in-progress edits. `zIndex`/opacity
             // rather than `if` so switching tabs never rebuilds a tree.
             dashboard
                 .opacity(state.tab == .dashboard ? 1 : 0)
                 .allowsHitTesting(state.tab == .dashboard)
+                .ignoresSafeArea()
             settings
                 .opacity(state.tab == .settings ? 1 : 0)
                 .allowsHitTesting(state.tab == .settings)
+                .ignoresSafeArea()
 
             navSwitcher
         }
@@ -78,9 +90,7 @@ struct MainWindowView: View {
             }
         }
         .padding(3)
-        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-        .overlay(Capsule(style: .continuous).strokeBorder(.separator.opacity(0.5), lineWidth: 1))
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+        .modifier(GlassCapsule())
         .padding(.top, 12)
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
@@ -106,9 +116,7 @@ struct MainWindowView: View {
                     // The selected pill is a second, brighter pane of glass
                     // rather than an accent fill — the switcher stays
                     // chrome, not content.
-                    Capsule(style: .continuous)
-                        .fill(.regularMaterial)
-                        .overlay(Capsule(style: .continuous).strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
+                    SelectedPillBackground()
                 }
             }
             .contentShape(Capsule(style: .continuous))
@@ -186,5 +194,39 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         self.window = mainWindow
         return mainWindow
+    }
+}
+
+
+// MARK: - Glass helpers
+
+/// The switcher's chrome: Apple's real Liquid Glass on macOS 26+, an
+/// ultra-thin-material capsule below. One modifier so both segments of the
+/// availability fork stay in one place.
+private struct GlassCapsule: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+        } else {
+            content
+                .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).strokeBorder(.separator.opacity(0.5), lineWidth: 1))
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+        }
+    }
+}
+
+private struct SelectedPillBackground: View {
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            Capsule(style: .continuous)
+                .fill(.clear)
+                .glassEffect(.regular, in: Capsule(style: .continuous))
+        } else {
+            Capsule(style: .continuous)
+                .fill(.regularMaterial)
+                .overlay(Capsule(style: .continuous).strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
+        }
     }
 }

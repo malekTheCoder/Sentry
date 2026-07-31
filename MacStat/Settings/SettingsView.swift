@@ -200,10 +200,13 @@ struct SettingsView: View {
             .padding(.bottom, 10)
 
             content(for: selectedPane)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // System Settings caps its form column; unbounded grouped
+                // forms stretch sliders to absurd widths on a big window.
+                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.62))
     }
 
     @ViewBuilder
