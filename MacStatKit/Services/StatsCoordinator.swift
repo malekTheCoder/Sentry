@@ -257,6 +257,27 @@ public final class StatsCoordinator: @unchecked Sendable {
     }
     private var sleepAssertionStateStorage: SleepAssertionState?
 
+    /// The Mac's last-captured approximate location, pushed down by the
+    /// composition root whenever `LocationService.lastLocation` changes —
+    /// same "pushed from the main actor, not a provider closure" shape as
+    /// `sleepAssertionState` immediately above, and for the identical
+    /// reason: `LocationService` is `@MainActor`-isolated (it wraps
+    /// `CLLocationManager`, whose delegate callbacks land there), and every
+    /// provider closure here runs off a background queue in `tick(tier:)`.
+    /// Unlike the polled collectors, a location fix genuinely doesn't change
+    /// on every tick — it's captured on its own multi-minute cadence (see
+    /// `LocationService`'s doc comment) — so pushing on change, not polling,
+    /// is also the behaviorally correct model here, not just a concurrency
+    /// workaround.
+    ///
+    /// Feeds `SystemSnapshot.location`, which is what `LocalSyncServer`
+    /// broadcasts to the iPhone app alongside every other metric.
+    public var location: MacLocation? {
+        get { queue.sync { locationStorage } }
+        set { queue.async { [weak self] in self?.locationStorage = newValue } }
+    }
+    private var locationStorage: MacLocation?
+
     /// Derived from the most recent `BatteryStats.isPluggedIn`, per the
     /// task's guidance to read our own last-known snapshot rather than
     /// re-deriving power-source state elsewhere (that would violate P1 —
@@ -547,7 +568,8 @@ public final class StatsCoordinator: @unchecked Sendable {
             disk: latest.disk,
             network: latest.network,
             thermal: latest.thermal,
-            sleepAssertion: sleepAssertionStateStorage
+            sleepAssertion: sleepAssertionStateStorage,
+            location: locationStorage
         )
     }
 }

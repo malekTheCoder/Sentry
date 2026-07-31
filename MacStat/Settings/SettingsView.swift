@@ -6,7 +6,7 @@ import MacStatKit
 /// Advanced — a different order than the tab strip this file used to have,
 /// where Alerts was followed by Advanced/Sync/AIAccess).
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced
+    case general, modules, menuBar, theme, alerts, aiAccess, sync, location, advanced
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return "Alerts"
         case .aiAccess: return "AI Access"
         case .sync: return "Sync"
+        case .location: return "Location Log"
         case .advanced: return "Advanced"
         }
     }
@@ -32,6 +33,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return "bell"
         case .aiAccess: return "bolt.shield"
         case .sync: return "icloud"
+        case .location: return "location"
         case .advanced: return "wrench.and.screwdriver"
         }
     }
@@ -64,16 +66,25 @@ struct SettingsView: View {
     /// configuration, same as `historyStore`/`onShowDebugWindow` above.
     let mcpActivityLog: MCPActivityLog?
 
+    /// Backs `LocationPane`. Unlike `historyStore`/`mcpActivityLog`, this
+    /// isn't optional — `LocationService` has no meaningful "unavailable"
+    /// state of its own (unlike a database that can fail to open), so
+    /// `AppDelegate` always constructs a real instance and this view always
+    /// has one to observe.
+    @ObservedObject var locationService: LocationService
+
     init(
         store: SettingsStore,
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
-        mcpActivityLog: MCPActivityLog? = nil
+        mcpActivityLog: MCPActivityLog? = nil,
+        locationService: LocationService
     ) {
         self.store = store
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
+        self.locationService = locationService
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -149,6 +160,8 @@ struct SettingsView: View {
             AIAccessPane(store: store, activityLog: mcpActivityLog)
         case .sync:
             SyncPane()
+        case .location:
+            LocationPane(store: store, locationService: locationService)
         case .advanced:
             AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow)
         }
