@@ -151,6 +151,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         let mainWindow = window ?? makeWindow()
         NSApp.activate(ignoringOtherApps: true)
         mainWindow.makeKeyAndOrderFront(nil)
+        // An LSUIElement app doesn't reliably win activation on modern
+        // macOS (cooperative activation), and a window that orders in
+        // *behind* the frontmost app reads as "the button did nothing" —
+        // which is exactly how this bug was reported. `orderFrontRegardless`
+        // fronts the window even when activation was denied.
+        mainWindow.orderFrontRegardless()
         onShow?()
     }
 
