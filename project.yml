@@ -258,6 +258,13 @@ targets:
       # for what happens if this ever regresses.
       CODE_SIGNING_ALLOWED: YES
       CODE_SIGN_ENTITLEMENTS: MacStatMobile/MacStatMobile.entitlements
+      # Device deployment: personal-team automatic signing. Simulator
+      # builds ignore this; device builds need real profiles for the app +
+      # every embedded target (see the same block on the widget/watch
+      # targets). The Mac app deliberately stays ad-hoc.
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: H7T2D2GL7U
     info:
       path: MacStatMobile/Info.plist
       properties:
@@ -302,6 +309,9 @@ targets:
       # actually embedded even for an unsigned-by-default project.
       CODE_SIGNING_ALLOWED: YES
       CODE_SIGN_ENTITLEMENTS: MacStatWidget/MacStatWidget.entitlements
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: H7T2D2GL7U
     info:
       path: MacStatWidget/Info.plist
       properties:
@@ -351,15 +361,19 @@ targets:
         embed: true
       - sdk: WatchConnectivity.framework
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.watch
-      # No enrolled Apple Developer Program account project-wide (see
-      # `StatsTransport.swift`'s doc comment) — same ad-hoc/unsigned posture
-      # as every other target, except the App Group behind `WatchRelayStore`
-      # still needs its entitlement file actually embedded even under
-      # Simulator's "Sign to Run Locally" identity, matching
-      # `MacStatMobile`'s identical reasoning above.
+      # Must extend the iPhone app's identifier followed by "." — iOS
+      # refuses to install the phone app otherwise (this was
+      # dev.malekswilam.macstat.watch, which blocked every install of
+      # MacStatMobile with the watch embedded).
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile.watch
+      # The App Group behind `WatchRelayStore` needs its entitlement file
+      # actually embedded even under Simulator's "Sign to Run Locally"
+      # identity, matching `MacStatMobile`'s identical reasoning above.
       CODE_SIGNING_ALLOWED: YES
       CODE_SIGN_ENTITLEMENTS: MacStatWatch/MacStatWatch.entitlements
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: H7T2D2GL7U
     info:
       path: MacStatWatch/Info.plist
       properties:
@@ -387,10 +401,15 @@ targets:
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.watch.widget
+      # Extends the watch app's identifier, which itself extends the phone
+      # app's — the full chain iOS/watchOS embedding requires.
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile.watch.widget
       PRODUCT_NAME: MacStatWatchWidget
       CODE_SIGNING_ALLOWED: YES
       CODE_SIGN_ENTITLEMENTS: MacStatWatchWidget/MacStatWatchWidget.entitlements
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: H7T2D2GL7U
     info:
       path: MacStatWatchWidget/Info.plist
       properties:
