@@ -14,7 +14,7 @@ struct ProtectionScoreRing: View {
 
     let score: Int
     let caption: String
-    var diameter: CGFloat = 140
+    var diameter: CGFloat = 150
     var lineWidth: CGFloat = 12
 
     private var fraction: Double {
@@ -35,8 +35,10 @@ struct ProtectionScoreRing: View {
 
     var body: some View {
         ZStack {
+            // Track is surfaceElevated per the handoff's fill rules —
+            // separators are for hairlines, not gauge tracks.
             Circle()
-                .stroke(palette.separator, lineWidth: lineWidth)
+                .stroke(palette.surfaceElevated, lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: fraction)
                 .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))

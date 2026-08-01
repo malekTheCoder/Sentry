@@ -12,10 +12,10 @@ import Charts
 /// `HistoryStore.samplesWithRange` actually returns (`timestamp`, `min`,
 /// `avg`, `max`), so a Dashboard card — or a future card like
 /// `BatteryHealthTrendCard` — can hand it a query result directly with no
-/// intermediate wrapper type. Axes are visible here (unlike
-/// `SparklineChart`'s `.chartXAxis(.hidden)`/`.chartYAxis(.hidden)`) because
-/// a compact 44pt sparkline reads as a shape, but a dashboard card this size
-/// is a chart someone is meant to actually read values off of.
+/// intermediate wrapper type. Per the redesign handoff there are no
+/// gridlines and no y-axis even at full size: a stat sentence under the
+/// plot ("avg … · peak … at …") carries the numbers a reader actually
+/// wants, and time labels appear only at the plot's edges.
 struct DashboardChart: View {
     @Environment(\.themePalette) private var palette
 
@@ -49,18 +49,30 @@ struct DashboardChart: View {
     var compact: Bool = false
 
     var body: some View {
-        Group {
-            if points.isEmpty {
+        if points.isEmpty {
+            Group {
                 if compact {
                     compactEmptyState
                 } else {
                     emptyState
                 }
-            } else {
-                chart
+            }
+            .frame(height: height)
+        } else if compact {
+            chart.frame(height: height)
+        } else {
+            // The stat sentence lives under the plot and *replaces* axis
+            // labels (handoff chart rules): one line a person actually
+            // wants — average, peak, and when the peak happened — instead
+            // of a ladder of gridline numbers nobody reads.
+            VStack(alignment: .leading, spacing: 4) {
+                chart.frame(height: height)
+                Text(statSentence)
+                    .font(palette.font(size: 10))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.textTertiary)
             }
         }
-        .frame(height: height)
     }
 
     // MARK: - Chart
@@ -95,24 +107,48 @@ struct DashboardChart: View {
                 .chartYAxis(.hidden)
                 .chartPlotStyle { plot in plot.background(Color.clear) }
         } else {
+            // Handoff chart rules: no gridlines, no y-axis — the stat
+            // sentence under the plot carries the numbers. Time labels
+            // appear at the plot edges only, 10pt tertiary. The plot area
+            // itself is the one quiet surface fill a chart is allowed.
             base
                 .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { value in
-                        AxisGridLine().foregroundStyle(palette.chartGrid)
-                        AxisTick().foregroundStyle(palette.chartGrid)
+                    AxisMarks(values: edgeTimestamps) { _ in
                         AxisValueLabel(format: xAxisFormat)
-                            .foregroundStyle(palette.textSecondary)
+                            .font(palette.font(size: 10))
+                            .foregroundStyle(palette.textTertiary)
                     }
                 }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { value in
-                        AxisGridLine().foregroundStyle(palette.chartGrid)
-                        AxisValueLabel()
-                            .foregroundStyle(palette.textSecondary)
-                    }
+                .chartYAxis(.hidden)
+                .chartPlotStyle { plot in
+                    plot.background(
+                        RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                            .fill(palette.surface.opacity(0.6))
+                    )
                 }
                 .shadow(color: tint.opacity(palette.glow * 0.8), radius: palette.glow * 4)
         }
+    }
+
+    /// First and last sample times — the only two x labels the handoff wants.
+    private var edgeTimestamps: [Date] {
+        guard let first = samples.first?.timestamp, let last = samples.last?.timestamp, first != last else {
+            return samples.first.map { [$0.timestamp] } ?? []
+        }
+        return [first, last]
+    }
+
+    /// "avg 18 · peak 91 at 10:42" — the axis replacement. Values use
+    /// compact notation so byte-scale metrics stay readable; the peak time
+    /// comes from the sample whose max was highest.
+    private var statSentence: String {
+        let avgValue = samples.map(\.avg).reduce(0, +) / Double(max(samples.count, 1))
+        guard let peak = samples.max(by: { $0.max < $1.max }) else { return "" }
+        let fmt: (Double) -> String = { value in
+            value.formatted(.number.notation(.compactName).precision(.significantDigits(3)))
+        }
+        let peakTime = peak.timestamp.formatted(date: .omitted, time: .shortened)
+        return "avg \(fmt(avgValue)) · peak \(fmt(peak.max)) at \(peakTime)"
     }
 
     @ViewBuilder

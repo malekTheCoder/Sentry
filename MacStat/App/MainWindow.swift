@@ -57,8 +57,9 @@ struct MainWindowView: View {
     let settings: AnyView
 
     /// Height reserved for the floating switcher — the content views pad
-    /// their own tops by this so headers clear it.
-    static let navHeight: CGFloat = 60
+    /// their own tops by this so headers clear it. 52pt per the redesign
+    /// handoff's titlebar spec.
+    static let navHeight: CGFloat = 52
 
     var body: some View {
         ZStack {
@@ -126,8 +127,6 @@ struct MainWindowView: View {
             }
         }
         .padding(3)
-        .modifier(GlassCapsule())
-        .padding(.top, 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("View switcher")
     }
@@ -233,35 +232,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 }
 
 
-// MARK: - Glass helpers
+// MARK: - Switcher chrome
 
-/// The switcher's chrome: Apple's real Liquid Glass on macOS 26+, an
-/// ultra-thin-material capsule below. One modifier so both segments of the
-/// availability fork stay in one place.
-private struct GlassCapsule: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content
-                .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
-        } else {
-            content
-                .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-                .overlay(Capsule(style: .continuous).strokeBorder(.separator.opacity(0.5), lineWidth: 1))
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
-        }
-    }
-}
-
+/// The selected tab's pill: a quiet system fill, per the redesign
+/// handoff's accent rules — selection is a *state*, so it gets a neutral
+/// surface fill, never accent, never glass. The glass capsule the switcher
+/// used to float in is gone with it: minimal chrome is no chrome.
 private struct SelectedPillBackground: View {
     var body: some View {
-        if #available(macOS 26.0, *) {
-            Capsule(style: .continuous)
-                .fill(.clear)
-                .glassEffect(.regular, in: Capsule(style: .continuous))
-        } else {
-            Capsule(style: .continuous)
-                .fill(.regularMaterial)
-                .overlay(Capsule(style: .continuous).strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
-        }
+        Capsule(style: .continuous)
+            .fill(Color(nsColor: .quaternarySystemFill))
     }
 }

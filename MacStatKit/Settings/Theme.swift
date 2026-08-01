@@ -320,36 +320,134 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Paper — minimal default, light.
+    /// Paper — direction 1a of the Claude Design exploration round: light,
+    /// GitHub Primer palette, blue accent. Fixed-light by design (the dark
+    /// counterpart in the exploration is One Dark, its own preset). Unlike
+    /// the earlier presets it carries the handoff's per-metric hues rather
+    /// than reusing the four semantic tokens — the redesign wants CPU blue,
+    /// memory purple, GPU pink as *data* colors, with accent reserved
+    /// strictly for actions.
     public static let paper = Theme(
         id: "builtin.paper",
         name: "Paper",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#F7F6F3"),
-        surface: ThemeColor(hex: "#ECE9E3"),
-        surfaceElevated: ThemeColor(hex: "#E3DED4"),
-        textPrimary: ThemeColor(hex: "#232220"),
-        textSecondary: ThemeColor(hex: "#5A584F"),
-        textTertiary: ThemeColor(hex: "#86837A"),
-        accent: ThemeColor(hex: "#5B57C9"),
-        success: ThemeColor(hex: "#2F9E5C"),
-        warning: ThemeColor(hex: "#B5791C"),
-        danger: ThemeColor(hex: "#C4404B"),
-        chartGrid: ThemeColor(hex: "#000000", opacity: 0.07),
-        chartFill: [ThemeColor(hex: "#5B57C9", opacity: 0.27), ThemeColor(hex: "#5B57C9", opacity: 0.0)],
-        separator: ThemeColor(hex: "#000000", opacity: 0.07),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#5B57C9"), success: ThemeColor(hex: "#2F9E5C"),
-            warning: ThemeColor(hex: "#B5791C"), danger: ThemeColor(hex: "#C4404B")
-        ),
+        background: ThemeColor(hex: "#FFFFFF"),
+        surface: ThemeColor(hex: "#F6F8FA"),
+        surfaceElevated: ThemeColor(hex: "#EAEEF2"),
+        textPrimary: ThemeColor(hex: "#1F2328"),
+        textSecondary: ThemeColor(hex: "#59636E"),
+        textTertiary: ThemeColor(hex: "#8B949E"),
+        accent: ThemeColor(hex: "#0969DA"),
+        success: ThemeColor(hex: "#1A7F37"),
+        warning: ThemeColor(hex: "#9A6700"),
+        danger: ThemeColor(hex: "#CF222E"),
+        chartGrid: ThemeColor(hex: "#000000", opacity: 0.05),
+        // 8–10% fill under the line, per the handoff's chart rules.
+        chartFill: [ThemeColor(hex: "#0969DA", opacity: 0.09), ThemeColor(hex: "#0969DA", opacity: 0.0)],
+        separator: ThemeColor(hex: "#D8DEE4"),
+        metricColors: [
+            "cpu.total_percent": ThemeColor(hex: "#0969DA"),
+            "gpu.utilization_percent": ThemeColor(hex: "#BF3989"),
+            "memory.used_bytes": ThemeColor(hex: "#8250DF"),
+            "disk.read_bytes_per_sec": ThemeColor(hex: "#57606A"),
+            "network.rx_bytes_per_sec": ThemeColor(hex: "#1A7F37"),
+            "thermal.soc_temp_c": ThemeColor(hex: "#D1242F"),
+        ],
         fontFamily: .system,
         barFontSize: 11,
         barFontWeight: .medium,
         numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
+        cornerRadius: 8,
+        density: .comfortable,
         chartStyle: .area,
-        chartLineWidth: 1.0,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: false,
+        materialStyle: .contentBackground,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// One Dark — direction 1b of the exploration round: Atom's One Dark
+    /// palette, fixed-dark, blue accent as the only chrome color.
+    public static let oneDark = Theme(
+        id: "builtin.onedark",
+        name: "One Dark",
+        isBuiltIn: true,
+        background: ThemeColor(hex: "#282C34"),
+        surface: ThemeColor(hex: "#2F343E"),
+        surfaceElevated: ThemeColor(hex: "#3A404C"),
+        textPrimary: ThemeColor(hex: "#D7DAE0"),
+        textSecondary: ThemeColor(hex: "#9DA5B4"),
+        textTertiary: ThemeColor(hex: "#6B7382"),
+        accent: ThemeColor(hex: "#61AFEF"),
+        success: ThemeColor(hex: "#98C379"),
+        warning: ThemeColor(hex: "#E5C07B"),
+        danger: ThemeColor(hex: "#E06C75"),
+        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.05),
+        chartFill: [ThemeColor(hex: "#61AFEF", opacity: 0.10), ThemeColor(hex: "#61AFEF", opacity: 0.0)],
+        separator: ThemeColor(hex: "#3B4048"),
+        metricColors: [
+            "cpu.total_percent": ThemeColor(hex: "#61AFEF"),
+            "gpu.utilization_percent": ThemeColor(hex: "#56B6C2"),
+            "memory.used_bytes": ThemeColor(hex: "#C678DD"),
+            "disk.read_bytes_per_sec": ThemeColor(hex: "#ABB2BF"),
+            "network.rx_bytes_per_sec": ThemeColor(hex: "#98C379"),
+            "thermal.soc_temp_c": ThemeColor(hex: "#E06C75"),
+        ],
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 10,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
+        showChartGrid: false,
+        barGraphWidth: 36,
+        useMaterialBackground: false,
+        materialStyle: .menu,
+        glowIntensity: 0.0,
+        scanlineOverlay: false
+    )
+
+    /// Ivory — direction 1c of the exploration round, and the most
+    /// Claude-like of the three: warm paper neutrals, terracotta accent,
+    /// muted dusty metric hues. Fixed-light.
+    public static let ivory = Theme(
+        id: "builtin.ivory",
+        name: "Ivory",
+        isBuiltIn: true,
+        background: ThemeColor(hex: "#FAF9F5"),
+        surface: ThemeColor(hex: "#F0EEE6"),
+        surfaceElevated: ThemeColor(hex: "#E6E3D8"),
+        textPrimary: ThemeColor(hex: "#3D3D3A"),
+        textSecondary: ThemeColor(hex: "#73726C"),
+        textTertiary: ThemeColor(hex: "#A3A29A"),
+        accent: ThemeColor(hex: "#C96442"),
+        success: ThemeColor(hex: "#6A8F5F"),
+        warning: ThemeColor(hex: "#A8742F"),
+        danger: ThemeColor(hex: "#BF4D43"),
+        chartGrid: ThemeColor(hex: "#000000", opacity: 0.05),
+        chartFill: [ThemeColor(hex: "#5F7DA8", opacity: 0.09), ThemeColor(hex: "#5F7DA8", opacity: 0.0)],
+        separator: ThemeColor(hex: "#E4E2D8"),
+        metricColors: [
+            "cpu.total_percent": ThemeColor(hex: "#5F7DA8"),
+            "gpu.utilization_percent": ThemeColor(hex: "#A86F8E"),
+            "memory.used_bytes": ThemeColor(hex: "#8A6FA8"),
+            "disk.read_bytes_per_sec": ThemeColor(hex: "#8A8778"),
+            "network.rx_bytes_per_sec": ThemeColor(hex: "#6A8F5F"),
+            "thermal.soc_temp_c": ThemeColor(hex: "#BF6A4D"),
+        ],
+        fontFamily: .system,
+        barFontSize: 11,
+        barFontWeight: .medium,
+        numericStyle: .monospacedDigit,
+        cornerRadius: 12,
+        density: .comfortable,
+        chartStyle: .area,
+        chartLineWidth: 1.5,
         showChartGrid: false,
         barGraphWidth: 36,
         useMaterialBackground: false,
@@ -771,11 +869,13 @@ extension Theme {
     )
 
     /// All built-in presets, in display order: the adaptive defaults first
-    /// (minimal → native → glass), then the fixed-appearance minimal pair,
-    /// then the IDE/brand-inspired set.
+    /// (minimal → native → glass), then the redesign exploration trio
+    /// (Paper / One Dark / Ivory — see the design handoff), then the
+    /// remaining fixed-appearance and IDE/brand-inspired sets.
     public static let builtInPresets: [Theme] = [
         .notion, .system, .translucent, .liquidGlass,
-        .slate, .paper,
+        .paper, .oneDark, .ivory,
+        .slate,
         .github, .xcode, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
     ]
 
