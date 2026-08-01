@@ -637,6 +637,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the titlebar) themes itself off this — see `MainWindowState`.
         mainWindowState.theme = theme
 
+        // Remote (off-LAN) phone access: open/close the TLS-PSK listener
+        // to match settings. `enableRemote` is idempotent per config, so
+        // calling on every settings emission is safe.
+        if settings.remoteSyncEnabled,
+           !settings.remoteSyncPairingCode.isEmpty,
+           let port = UInt16(exactly: settings.remoteSyncPort) {
+            localSyncServer.enableRemote(port: port, pairingCode: settings.remoteSyncPairingCode)
+        } else {
+            localSyncServer.disableRemote()
+        }
+
         // Entitlement resolution first: `insightsViewModel.applySettings`
         // reads `proEntitlementStore.isUnlocked` synchronously below, so the
         // override toggle must already reflect the delivered value.

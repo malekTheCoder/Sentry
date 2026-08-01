@@ -53,7 +53,13 @@ struct SettingsTabView: View {
     /// a binding passed down — see `RootTabView`'s doc comment for why the
     /// string key (not a shared Swift symbol) is what actually keeps them in
     /// sync, and why that's an accepted duplication rather than an oversight.
-    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.liquidGlass.id
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.oneDark.id
+
+    /// The remote-Mac fallback endpoint — see `remoteMacSection`. The keys
+    /// must match `AppDataSource.remoteEndpointFromDefaults()` exactly.
+    @AppStorage("remoteSync.host") private var remoteHost: String = ""
+    @AppStorage("remoteSync.port") private var remotePort: String = "8643"
+    @AppStorage("remoteSync.code") private var remoteCode: String = ""
 
     @Environment(\.themePalette) private var palette
     @Environment(\.colorScheme) private var colorScheme
@@ -94,6 +100,7 @@ struct SettingsTabView: View {
                 themeSection
                 deviceCard
                 syncStatusRow
+                remoteMacSection
                 LocationLogSection(viewModel: locationLogViewModel)
                 notificationsSection
                 widgetsSection
@@ -112,6 +119,44 @@ struct SettingsTabView: View {
         Text("Settings")
             .font(palette.font(size: 20, weight: .semibold))
             .foregroundStyle(palette.textPrimary)
+    }
+
+    // MARK: - Remote Mac (off-LAN connection)
+
+    /// Mirrors the Mac's Settings ▸ Sync ▸ Remote Access: the Mac's
+    /// address (its Tailscale/VPN hostname or public address), the port,
+    /// and the pairing code shown on the Mac. Read by `AppDataSource` at
+    /// launch as the fallback when Bonjour finds nothing on this network.
+    /// Stored on this phone only.
+    private var remoteMacSection: some View {
+        VStack(alignment: .leading, spacing: palette.spacingRow) {
+            Text("REMOTE MAC")
+                .font(palette.font(size: 11, weight: .semibold))
+                .kerning(0.8)
+                .foregroundStyle(palette.textTertiary)
+                .accessibilityAddTraits(.isHeader)
+
+            VStack(alignment: .leading, spacing: palette.spacingRow) {
+                TextField("Address (e.g. my-mac.tailnet.ts.net)", text: $remoteHost)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                TextField("Port", text: $remotePort)
+                    .keyboardType(.numberPad)
+                TextField("Pairing code (from the Mac's Sync settings)", text: $remoteCode)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+            }
+            .textFieldStyle(.roundedBorder)
+
+            Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Enable Remote Access on the Mac (Settings ▸ Sync), then enter its address, port, and pairing code here. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only.")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(palette.spacingBlock)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(palette)
     }
 
     // MARK: - Theme (the real, working section)

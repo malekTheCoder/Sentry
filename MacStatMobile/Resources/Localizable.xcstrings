@@ -1,116 +1,231 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "Battery": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Battery"
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
           }
         }
       }
     },
-    "Charging below half the adapter's rated wattage": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Charging below half the adapter's rated wattage"
+    "●" : {
+
+    },
+    "Active" : {
+
+    },
+    "Activity appears after a few seconds of readings." : {
+
+    },
+    "Alert history isn't synced to this iPhone yet" : {
+
+    },
+    "Alerts" : {
+
+    },
+    "Approximate — accurate to roughly ±%@ meters, not precise GPS." : {
+
+    },
+    "As of %@" : {
+
+    },
+    "at or above" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "at or above"
           }
         }
       }
     },
-    "Disk": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disk"
+    "at or below" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "at or below"
           }
         }
       }
     },
-    "Performance": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Performance"
+    "Battery" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Battery"
           }
         }
       }
     },
-    "Plugged in but not charging, with a reason reported": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Plugged in but not charging, with a reason reported"
+    "changed by" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "changed by"
           }
         }
       }
     },
-    "Thermal": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Thermal"
+    "Charge sessions — not available yet on this build" : {
+
+    },
+    "Charging below half the adapter's rated wattage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charging below half the adapter's rated wattage"
           }
         }
       }
     },
-    "at or above": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "at or above"
+    "Control from your Mac — remote control isn't available in this build yet." : {
+
+    },
+    "Current values only — no per-metric history query exists yet" : {
+
+    },
+    "Disk" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disk"
           }
         }
       }
     },
-    "at or below": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "at or below"
+    "equals" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "equals"
           }
         }
       }
     },
-    "changed by": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "changed by"
+    "History" : {
+
+    },
+    "iCloud sync isn't available in this build yet." : {
+
+    },
+    "last 60 s" : {
+
+    },
+    "LOCATION LOG" : {
+
+    },
+    "No battery health history yet" : {
+
+    },
+    "No change this range" : {
+
+    },
+    "No countdown — ends when turned off on the Mac" : {
+
+    },
+    "No location received yet." : {
+
+    },
+    "No snapshot yet" : {
+
+    },
+    "Not Find My — Sentry has no connection to Apple's Find My network. This is a periodic location log: while Sentry is running on your Mac and location access is granted, it occasionally reports its approximate location to this phone over your local Wi-Fi network. It cannot be located while off, asleep, or offline." : {
+
+    },
+    "NOTIFICATION CATEGORIES" : {
+
+    },
+    "Per-Metric Browser" : {
+
+    },
+    "Performance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Performance"
           }
         }
       }
     },
-    "equals": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "equals"
+    "Plugged in but not charging, with a reason reported" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugged in but not charging, with a reason reported"
           }
         }
       }
+    },
+    "Reporting from your Mac" : {
+
+    },
+    "Sentry logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone." : {
+
+    },
+    "Settings" : {
+
+    },
+    "Showing demo data — this build has no live iCloud sync yet" : {
+
+    },
+    "Sleep behaves normally on this Mac." : {
+
+    },
+    "The same presets as the Mac app (MacStatKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa." : {
+
+    },
+    "THEME" : {
+
+    },
+    "Thermal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thermal"
+          }
+        }
+      }
+    },
+    "These mirror the Mac app's alert rules (AlertRule/AlertAction, MacStatKit/Services/AlertRule.swift) — shown for reference, not as working preferences. Notifications require a live sync connection this build doesn't have, so there's nothing here to turn on or off yet." : {
+
+    },
+    "This Mac reported no battery data." : {
+
+    },
+    "Unavailable" : {
+
+    },
+    "VITALS" : {
+
+    },
+    "Widgets show the Dashboard's latest reading — nothing to configure here yet." : {
+
     }
   },
-  "version": "1.1"
+  "version" : "1.1"
 }

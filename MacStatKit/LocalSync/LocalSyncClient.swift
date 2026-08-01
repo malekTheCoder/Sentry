@@ -59,6 +59,13 @@ public actor LocalSyncClient: StatsTransport {
     private var connection: NWConnection?
     private var receiveBuffer = Data()
 
+    /// The remote (off-LAN) fallback: a user-entered host:port + pairing
+    /// code, dialed with TLS-PSK (`SyncSecurity`) whenever Bonjour hasn't
+    /// produced a connection. Set via `configureDirectEndpoint` before
+    /// `start()`/`waitForFirstConnection`.
+    private var directConfig: (host: String, port: UInt16, code: String)?
+    private var directRetryTask: Task<Void, Never>?
+
     /// Fan-out targets for `snapshots()`, matching `StatsCoordinator
     /// .snapshots()`'s documented pattern: one underlying subscription (one
     /// `NWConnection`), many independently-terminable `AsyncStream`s handed
@@ -110,6 +117,7 @@ public actor LocalSyncClient: StatsTransport {
 
     deinit {
         browser?.cancel()
+        directRetryTask?.cancel()
         connection?.cancel()
         for continuation in continuations.values { continuation.finish() }
     }
@@ -122,6 +130,21 @@ public actor LocalSyncClient: StatsTransport {
     /// (timeout:)` (the composition root's normal entry point) but also
     /// exposed directly for callers that want to kick off discovery without
     /// blocking on the result.
+    /// Registers the remote fallback endpoint. Call before `start()` (or
+    /// `waitForFirstConnection`); passing an empty host or code clears it.
+    /// Bonjour remains the preferred path — same network means lower
+    /// latency and no round trip through a tunnel — the direct endpoint is
+    /// dialed only while no connection exists.
+    public func configureDirectEndpoint(host: String, port: UInt16, pairingCode: String) {
+        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = SyncSecurity.normalize(pairingCode)
+        guard !trimmedHost.isEmpty, !code.isEmpty, port > 0 else {
+            directConfig = nil
+            return
+        }
+        directConfig = (trimmedHost, port, code)
+    }
+
     public func start() {
         guard browser == nil else { return }
 
@@ -132,7 +155,7 @@ public actor LocalSyncClient: StatsTransport {
 
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             guard let self, let first = results.first else { return }
-            Task { await self.connect(to: first.endpoint) }
+            Task { await self.connect(to: first.endpoint, parameters: Self.lanParameters()) }
         }
         browser.stateUpdateHandler = { [weak self] state in
             if case .failed(let error) = state {
@@ -141,6 +164,40 @@ public actor LocalSyncClient: StatsTransport {
         }
         browser.start(queue: queue)
         self.browser = browser
+
+        startDirectRetryLoopIfConfigured()
+    }
+
+    private static func lanParameters() -> NWParameters {
+        let parameters = NWParameters.tcp
+        parameters.includePeerToPeer = true
+        return parameters
+    }
+
+    /// Dials the configured remote endpoint every few seconds while no
+    /// connection exists, for as long as the client is started. A failed
+    /// TLS handshake (wrong pairing code) surfaces as an ordinary failed
+    /// connection — the loop just tries again later, and Bonjour keeps
+    /// racing it; whichever path connects first wins.
+    private func startDirectRetryLoopIfConfigured() {
+        guard directConfig != nil, directRetryTask == nil else { return }
+        directRetryTask = Task { [weak self] in
+            while let self, await self.isStarted() {
+                await self.attemptDirectConnect()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
+    }
+
+    private func isStarted() -> Bool {
+        browser != nil
+    }
+
+    private func attemptDirectConnect() {
+        guard let config = directConfig, !isConnecting, !isReady, connection == nil else { return }
+        guard let port = NWEndpoint.Port(rawValue: config.port) else { return }
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(config.host), port: port)
+        connect(to: endpoint, parameters: SyncSecurity.remoteParameters(pairingCode: config.code))
     }
 
     /// Stops browsing and closes any open connection. Every open
@@ -149,6 +206,8 @@ public actor LocalSyncClient: StatsTransport {
     public func stop() {
         browser?.cancel()
         browser = nil
+        directRetryTask?.cancel()
+        directRetryTask = nil
         connection?.cancel()
         connection = nil
         isReady = false
@@ -196,12 +255,10 @@ public actor LocalSyncClient: StatsTransport {
         }
     }
 
-    private func connect(to endpoint: NWEndpoint) {
+    private func connect(to endpoint: NWEndpoint, parameters: NWParameters) {
         guard !isConnecting, !isReady else { return }
         isConnecting = true
 
-        let parameters = NWParameters.tcp
-        parameters.includePeerToPeer = true
         let connection = NWConnection(to: endpoint, using: parameters)
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
@@ -252,7 +309,7 @@ public actor LocalSyncClient: StatsTransport {
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         guard browser != nil, connection == nil, !isConnecting, !isReady else { return }
         guard let first = browser?.browseResults.first else { return }
-        connect(to: first.endpoint)
+        connect(to: first.endpoint, parameters: Self.lanParameters())
     }
 
     // MARK: - Receiving + framing

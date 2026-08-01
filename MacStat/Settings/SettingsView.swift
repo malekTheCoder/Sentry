@@ -244,7 +244,7 @@ struct SettingsView: View {
         case .aiAccess:
             AIAccessPane(store: store, activityLog: mcpActivityLog).formStyle(.grouped)
         case .sync:
-            SyncPane().formStyle(.grouped)
+            SyncPane(store: store).formStyle(.grouped)
         case .location:
             LocationPane(store: store, locationService: locationService).formStyle(.grouped)
         case .advanced:

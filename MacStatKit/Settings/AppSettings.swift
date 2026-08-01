@@ -31,6 +31,24 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// intermediate time labels.
     public var detailedCharts: Bool
 
+    // MARK: - Remote sync (off-LAN phone access)
+
+    /// Opens `LocalSyncServer`'s second, TLS-PSK-secured listener on
+    /// `remoteSyncPort` so the iPhone app can connect from outside the
+    /// local network (via Tailscale/VPN or a router port-forward — the
+    /// user's arrangement; Sentry only opens the port). Off by default:
+    /// exposing a listener beyond the LAN is opt-in, always.
+    public var remoteSyncEnabled: Bool
+
+    /// TCP port for the remote listener. 8643 by default (one above the
+    /// MCP remote port's 8642).
+    public var remoteSyncPort: Int
+
+    /// Pairing code the phone must present (as a TLS pre-shared key — see
+    /// `SyncSecurity`). Empty until the user enables remote access for the
+    /// first time; the Sync pane generates one then.
+    public var remoteSyncPairingCode: String
+
     // MARK: - Dropdown content
     //
     // Which optional sections the menu bar dropdown shows. The vitals rows
@@ -275,6 +293,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
         detailedCharts: Bool = false,
+        remoteSyncEnabled: Bool = false,
+        remoteSyncPort: Int = 8643,
+        remoteSyncPairingCode: String = "",
         dropdownShowsKeepAwake: Bool = true,
         dropdownShowsAgentActivity: Bool = true,
         launchAtLogin: Bool = false,
@@ -306,6 +327,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
         self.detailedCharts = detailedCharts
+        self.remoteSyncEnabled = remoteSyncEnabled
+        self.remoteSyncPort = remoteSyncPort
+        self.remoteSyncPairingCode = remoteSyncPairingCode
         self.dropdownShowsKeepAwake = dropdownShowsKeepAwake
         self.dropdownShowsAgentActivity = dropdownShowsAgentActivity
         self.launchAtLogin = launchAtLogin
@@ -347,6 +371,9 @@ extension AppSettings {
         case enabledModules
         case menuBarLayout
         case detailedCharts
+        case remoteSyncEnabled
+        case remoteSyncPort
+        case remoteSyncPairingCode
         case dropdownShowsKeepAwake
         case dropdownShowsAgentActivity
         case launchAtLogin
@@ -409,6 +436,12 @@ extension AppSettings {
                 ?? fallback.menuBarLayout,
             detailedCharts: try container.decodeIfPresent(Bool.self, forKey: .detailedCharts)
                 ?? fallback.detailedCharts,
+            remoteSyncEnabled: try container.decodeIfPresent(Bool.self, forKey: .remoteSyncEnabled)
+                ?? fallback.remoteSyncEnabled,
+            remoteSyncPort: try container.decodeIfPresent(Int.self, forKey: .remoteSyncPort)
+                ?? fallback.remoteSyncPort,
+            remoteSyncPairingCode: try container.decodeIfPresent(String.self, forKey: .remoteSyncPairingCode)
+                ?? fallback.remoteSyncPairingCode,
             dropdownShowsKeepAwake: try container.decodeIfPresent(Bool.self, forKey: .dropdownShowsKeepAwake)
                 ?? fallback.dropdownShowsKeepAwake,
             dropdownShowsAgentActivity: try container.decodeIfPresent(Bool.self, forKey: .dropdownShowsAgentActivity)

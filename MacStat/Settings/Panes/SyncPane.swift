@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import MacStatKit
 
@@ -75,8 +76,12 @@ import MacStatKit
 /// alongside that wiring, not before it.
 struct SyncPane: View {
 
+    @ObservedObject var store: SettingsStore
+
     var body: some View {
         Form {
+            remoteAccessSection
+
             Section {
                 Label {
                     Text("iCloud sync isn't available in this build")
@@ -108,6 +113,68 @@ struct SyncPane: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - Remote access (off-LAN phone connections)
+
+    /// The phone-from-anywhere path: a TLS-PSK listener on a fixed port
+    /// (see `SyncSecurity`), guarded by a pairing code shown here and
+    /// entered once on the phone. What this section deliberately does NOT
+    /// claim: that enabling it makes the Mac reachable from the internet.
+    /// Reachability is the user's network arrangement (Tailscale is the
+    /// no-configuration way; a router port-forward also works), and the
+    /// footer says so instead of pretending a toggle can do it.
+    private var remoteAccessSection: some View {
+        Section {
+            Toggle("Allow connections from other networks", isOn: remoteEnabledBinding)
+                .accessibilityLabel("Allow connections from other networks")
+
+            if store.settings.remoteSyncEnabled {
+                LabeledContent("Port", value: "\(store.settings.remoteSyncPort)")
+                LabeledContent("Pairing code") {
+                    HStack(spacing: 8) {
+                        Text(store.settings.remoteSyncPairingCode)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(store.settings.remoteSyncPairingCode, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Copy pairing code")
+                        Button("Regenerate") {
+                            store.settings.remoteSyncPairingCode = SyncSecurity.generatePairingCode()
+                        }
+                        .accessibilityHint("Invalidates the old code — the phone must be re-paired")
+                    }
+                }
+            }
+        } header: {
+            Text("Remote Access")
+        } footer: {
+            Text(store.settings.remoteSyncEnabled
+                ? "Enter this Mac's address, the port, and the pairing code in the iPhone app's Settings. The connection is encrypted and refuses any client without the code. Reaching this Mac from another network is up to your network: a VPN like Tailscale needs no configuration (use the Mac's Tailscale address); otherwise forward the port on your router. Regenerating the code disconnects any paired phone until it's updated."
+                : "Lets the Sentry iPhone app connect when it isn't on this Wi-Fi — encrypted, and only with the pairing code shown here after enabling. Off means the Mac only answers phones on the local network, as before.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Enabling for the first time mints the pairing code — a toggle that
+    /// opened a listener with no code would be a lock with no key.
+    private var remoteEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.remoteSyncEnabled },
+            set: { enabled in
+                if enabled && store.settings.remoteSyncPairingCode.isEmpty {
+                    store.settings.remoteSyncPairingCode = SyncSecurity.generatePairingCode()
+                }
+                store.settings.remoteSyncEnabled = enabled
+            }
+        )
     }
 
     // MARK: - Cadence table (pure, testable, no SyncService instance required)

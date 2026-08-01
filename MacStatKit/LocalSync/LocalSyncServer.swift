@@ -72,6 +72,16 @@ public final class LocalSyncServer: @unchecked Sendable {
     private let log = Logger(subsystem: "dev.malekswilam.macstat", category: "LocalSyncServer")
 
     private var listener: NWListener?
+
+    /// The optional second listener behind "view this Mac from another
+    /// network": a fixed, user-configured port speaking TLS-PSK (see
+    /// `SyncSecurity`) instead of the Bonjour listener's plaintext-on-LAN.
+    /// Connections accepted here join the same `connections` pool, the
+    /// same broadcast path, and the same `maxConcurrentConnections` cap —
+    /// the transports differ only in how a client reaches and
+    /// authenticates to them.
+    private var remoteListener: NWListener?
+
     private var feedTask: Task<Void, Never>?
 
     /// One entry per open connection. `lastSendDate` is `nil` until the
@@ -148,6 +158,7 @@ public final class LocalSyncServer: @unchecked Sendable {
         feedTask = nil
         listener?.cancel()
         listener = nil
+        disableRemote()
         queue.sync {
             for state in connections.values {
                 state.connection.cancel()
@@ -155,6 +166,57 @@ public final class LocalSyncServer: @unchecked Sendable {
             connections.removeAll()
         }
     }
+
+    // MARK: - Remote (off-LAN) listener
+
+    /// Opens the TLS-PSK listener on `port`. Reachability from another
+    /// network is the *user's* arrangement (Tailscale/VPN, or a router
+    /// port-forward) — this Mac only ever opens the port; it never punches
+    /// holes or talks to any relay. Idempotent per configuration: calling
+    /// again with the same port+code is a no-op, a changed configuration
+    /// tears the old listener down first.
+    public func enableRemote(port: UInt16, pairingCode: String) {
+        let normalized = SyncSecurity.normalize(pairingCode)
+        guard !normalized.isEmpty else {
+            log.error("LocalSyncServer: refusing remote listener with empty pairing code")
+            return
+        }
+        if let current = remoteConfig, current.port == port, current.code == normalized {
+            return
+        }
+        disableRemote()
+
+        let params = SyncSecurity.remoteParameters(pairingCode: pairingCode)
+        guard let nwPort = NWEndpoint.Port(rawValue: port),
+              let listener = try? NWListener(using: params, on: nwPort) else {
+            log.error("LocalSyncServer: failed to open remote listener on port \(port)")
+            return
+        }
+        listener.newConnectionHandler = { [weak self] connection in
+            self?.accept(connection)
+        }
+        listener.stateUpdateHandler = { [weak self] state in
+            if case .failed(let error) = state {
+                self?.log.error("LocalSyncServer: remote listener failed: \(String(describing: error))")
+            }
+        }
+        listener.start(queue: queue)
+        remoteListener = listener
+        remoteConfig = (port, normalized)
+        log.info("LocalSyncServer: remote listener open on port \(port)")
+    }
+
+    /// Closes the remote listener. Existing remote connections are left to
+    /// drain naturally through the shared pool (they were authenticated at
+    /// handshake time; killing them mid-stream on a settings toggle would
+    /// just force a reconnect race).
+    public func disableRemote() {
+        remoteListener?.cancel()
+        remoteListener = nil
+        remoteConfig = nil
+    }
+
+    private var remoteConfig: (port: UInt16, code: String)?
 
     // MARK: - Connection handling
 

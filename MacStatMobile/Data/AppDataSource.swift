@@ -122,10 +122,31 @@ public final class AppDataSource: ObservableObject {
         await task.value
     }
 
+    /// Reads the phone-side remote-Mac configuration (`SettingsTabView`'s
+    /// "Remote Mac" section — keys must match its `@AppStorage` properties).
+    /// `nil` unless a host and pairing code are both present.
+    private static func remoteEndpointFromDefaults() -> (host: String, port: UInt16, code: String)? {
+        let defaults = UserDefaults.standard
+        let host = (defaults.string(forKey: "remoteSync.host") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = defaults.string(forKey: "remoteSync.code") ?? ""
+        let port = UInt16(defaults.string(forKey: "remoteSync.port") ?? "") ?? 8643
+        guard !host.isEmpty, !code.isEmpty else { return nil }
+        return (host, port, code)
+    }
+
     private func resolve() async {
         let client = LocalSyncClient()
         localClient = client
-        let found = await client.waitForFirstConnection(timeout: Self.discoveryTimeout)
+        var timeout = Self.discoveryTimeout
+        if let remote = Self.remoteEndpointFromDefaults() {
+            await client.configureDirectEndpoint(host: remote.host, port: remote.port, pairingCode: remote.code)
+            // A remote dial (possibly across a tunnel) legitimately takes
+            // longer than LAN Bonjour — give it a little more runway
+            // before falling back to demo data.
+            timeout = max(timeout, 8)
+        }
+        let found = await client.waitForFirstConnection(timeout: timeout)
         if found {
             transport = client
             isUsingLocalSync = true
