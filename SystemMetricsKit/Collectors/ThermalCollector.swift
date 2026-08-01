@@ -38,7 +38,9 @@ public final class ThermalCollector: Collector {
 
         return ThermalStats(
             socTemperatureCelsius: hidBridge.readTemperature(),
-            fanRPMs: hidBridge.readFanRPMs(),
+            // Fans come from the SMC key protocol, not the HID bridge —
+            // see `SMCFanBridge` for why the HID path stayed a refusal.
+            fanRPMs: SMCFanBridge.shared.readFanRPMs(),
             pressureLevel: pressureLevel,
             isThrottling: isThrottling,
             perSensorCelsius: hidBridge.readAllTemperatures()
@@ -67,13 +69,12 @@ public final class ThermalCollector: Collector {
 /// plausible range — the bridge simply reports "no data" rather than
 /// propagating an error or crashing.
 ///
-/// Fan RPM extraction is intentionally left unimplemented (Phase 1.5, see
-/// `readFanRPMs` below): while services matching `PrimaryUsage: 0x000A`
-/// can be enumerated safely, the exact `IOHIDEventType`/field selector
-/// needed to pull a meaningful RPM value back out isn't reliably
-/// documented anywhere Apple ships, and guessing wrong risks silently
-/// showing the user a fabricated number — worse than showing none. The
-/// temperature path uses `kIOHIDEventTypeTemperature` (15), which is a
+/// Fan RPM extraction deliberately does *not* live here: the HID path's
+/// field selector for fans is undocumented and guessing wrong risks
+/// silently showing a fabricated number. Fans are read through the SMC key
+/// protocol instead — see `SMCFanBridge`, whose constants are verified
+/// against real hardware rather than reversed by guesswork. The
+/// temperature path here uses `kIOHIDEventTypeTemperature` (15), a
 /// long-standing, widely corroborated reversed constant, so it's
 /// implemented for real.
 final class HIDSensorBridge {
@@ -248,14 +249,5 @@ final class HIDSensorBridge {
         }
 
         return readings.sorted { $0.celsius > $1.celsius }
-    }
-
-    /// Phase 1.5: intentionally unimplemented. See the type-level doc
-    /// comment for why — matching AppleVendor usage 0x000A ("Fan") is safe
-    /// to attempt, but the field selector needed to turn a matched service
-    /// into an actual RPM value isn't reliably known, so this returns an
-    /// empty array rather than risk showing fabricated numbers.
-    func readFanRPMs() -> [Double] {
-        []
     }
 }
