@@ -631,6 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the re-query a module toggle needs.
         dashboardViewModel.theme = theme
         dashboardViewModel.enabledModules = settings.enabledModules
+        dashboardViewModel.detailedCharts = settings.detailedCharts
         insightsViewModel.theme = theme
 
         // Entitlement resolution first: `insightsViewModel.applySettings`

@@ -25,6 +25,17 @@ struct GeneralPane: View {
             }
 
             Section {
+                Toggle("Detailed charts", isOn: $store.settings.detailedCharts)
+                    .accessibilityLabel("Detailed charts")
+                Text("Dashboard charts are simplified by default — no axes or gridlines, with an average/peak summary line instead. Turn this on to read exact values off the plot: gridlines, a value axis, and intermediate time labels.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Charts")
+            }
+
+            Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Slider(
                         value: $store.settings.globalRefreshInterval,

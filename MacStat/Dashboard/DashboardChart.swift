@@ -16,8 +16,25 @@ import Charts
 /// gridlines and no y-axis even at full size: a stat sentence under the
 /// plot ("avg … · peak … at …") carries the numbers a reader actually
 /// wants, and time labels appear only at the plot's edges.
+// MARK: - Detailed-charts environment
+
+/// Mirrors `AppSettings.detailedCharts` into the view tree. An environment
+/// key (rather than a parameter threaded through every card) because the
+/// charts live several layers deep in cards that otherwise don't care.
+private struct DetailedChartsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var detailedCharts: Bool {
+        get { self[DetailedChartsKey.self] }
+        set { self[DetailedChartsKey.self] = newValue }
+    }
+}
+
 struct DashboardChart: View {
     @Environment(\.themePalette) private var palette
+    @Environment(\.detailedCharts) private var detailedCharts
 
     /// Ascending-by-timestamp, as every `HistoryStore` read path already
     /// guarantees. For `.raw`-tier data `min == avg == max` per sample (see
@@ -60,11 +77,16 @@ struct DashboardChart: View {
             .frame(height: height)
         } else if compact {
             chart.frame(height: height)
+        } else if detailedCharts {
+            // Settings ▸ General ▸ "Detailed charts": full axis chrome for
+            // readers who want to read values off the plot. The sentence is
+            // omitted — axes and sentence together would say it twice.
+            chart.frame(height: height)
         } else {
-            // The stat sentence lives under the plot and *replaces* axis
-            // labels (handoff chart rules): one line a person actually
-            // wants — average, peak, and when the peak happened — instead
-            // of a ladder of gridline numbers nobody reads.
+            // The default: the stat sentence lives under the plot and
+            // *replaces* axis labels (handoff chart rules) — one line a
+            // person actually wants (average, peak, when) instead of a
+            // ladder of gridline numbers nobody reads.
             VStack(alignment: .leading, spacing: 4) {
                 chart.frame(height: height)
                 Text(statSentence)
@@ -106,6 +128,26 @@ struct DashboardChart: View {
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .chartPlotStyle { plot in plot.background(Color.clear) }
+        } else if detailedCharts {
+            // The detailed rendering: gridlines, y-axis, and intermediate
+            // time labels — for readers who opted back into axes.
+            base
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                        AxisGridLine().foregroundStyle(palette.chartGrid)
+                        AxisTick().foregroundStyle(palette.chartGrid)
+                        AxisValueLabel(format: xAxisFormat)
+                            .foregroundStyle(palette.textSecondary)
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks(position: .leading) { _ in
+                        AxisGridLine().foregroundStyle(palette.chartGrid)
+                        AxisValueLabel()
+                            .foregroundStyle(palette.textSecondary)
+                    }
+                }
+                .shadow(color: tint.opacity(palette.glow * 0.8), radius: palette.glow * 4)
         } else {
             // Handoff chart rules: no gridlines, no y-axis — the stat
             // sentence under the plot carries the numbers. Time labels

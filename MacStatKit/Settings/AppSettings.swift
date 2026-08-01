@@ -25,6 +25,12 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// preset per Appendix B.
     public var menuBarLayout: MenuBarLayout
 
+    /// Dashboard charts render simplified by default (no axes or gridlines —
+    /// a stat sentence carries the numbers, per the redesign handoff). This
+    /// opts back into the detailed rendering: gridlines, a y-axis, and
+    /// intermediate time labels.
+    public var detailedCharts: Bool
+
     // MARK: - Dropdown content
     //
     // Which optional sections the menu bar dropdown shows. The vitals rows
@@ -268,6 +274,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         themeID: String = Theme.defaultTheme.id,
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
+        detailedCharts: Bool = false,
         dropdownShowsKeepAwake: Bool = true,
         dropdownShowsAgentActivity: Bool = true,
         launchAtLogin: Bool = false,
@@ -298,6 +305,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.themeID = themeID
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
+        self.detailedCharts = detailedCharts
         self.dropdownShowsKeepAwake = dropdownShowsKeepAwake
         self.dropdownShowsAgentActivity = dropdownShowsAgentActivity
         self.launchAtLogin = launchAtLogin
@@ -338,6 +346,7 @@ extension AppSettings {
         case themeID
         case enabledModules
         case menuBarLayout
+        case detailedCharts
         case dropdownShowsKeepAwake
         case dropdownShowsAgentActivity
         case launchAtLogin
@@ -398,6 +407,8 @@ extension AppSettings {
                 ?? fallback.enabledModules,
             menuBarLayout: try container.decodeIfPresent(MenuBarLayout.self, forKey: .menuBarLayout)
                 ?? fallback.menuBarLayout,
+            detailedCharts: try container.decodeIfPresent(Bool.self, forKey: .detailedCharts)
+                ?? fallback.detailedCharts,
             dropdownShowsKeepAwake: try container.decodeIfPresent(Bool.self, forKey: .dropdownShowsKeepAwake)
                 ?? fallback.dropdownShowsKeepAwake,
             dropdownShowsAgentActivity: try container.decodeIfPresent(Bool.self, forKey: .dropdownShowsAgentActivity)

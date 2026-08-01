@@ -147,6 +147,12 @@ final class DashboardViewModel: ObservableObject {
     /// its own case.
     @Published var theme: Theme
 
+    /// Mirrors `AppSettings.detailedCharts`, pushed by `AppDelegate` the
+    /// same way `theme` is and for the same reason: the Dashboard's hosting
+    /// controller is built once and reused, so it must observe live values,
+    /// not capture launch-time ones.
+    @Published var detailedCharts: Bool = false
+
     private let historyStore: HistoryStore
 
     /// - Parameters:

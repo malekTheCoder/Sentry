@@ -180,6 +180,7 @@ struct DashboardView: View {
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
+        .environment(\.detailedCharts, viewModel.detailedCharts)
         // `DashboardViewModel.refresh()` is explicitly not automatic on
         // init (see its doc comment) — this is the one call site
         // responsible for the first history query, matching the window's
