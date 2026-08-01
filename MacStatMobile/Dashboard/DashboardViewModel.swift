@@ -31,6 +31,17 @@ final class DashboardViewModel: ObservableObject {
     @Published var selectedDeviceID: String?
     @Published private(set) var latestSnapshot: SystemSnapshot?
 
+    /// Rolling ~60-sample window per headline metric, appended as snapshots
+    /// arrive — the data behind the ledger sparklines and the Activity
+    /// chart the redesign handoff calls for. In-memory only (the phone has
+    /// no history store); it starts empty and honestly shows nothing until
+    /// samples accumulate.
+    @Published private(set) var recentSeries: [MetricID: [Double]] = [:]
+
+    /// One minute of samples at the Mac's default cadence; enough for the
+    /// handoff's "60 s" window, small enough to never matter memory-wise.
+    private static let seriesCap = 60
+
     private let appDataSource: AppDataSource
     private var snapshotTask: Task<Void, Never>?
     private var transportSubscription: AnyCancellable?
@@ -89,6 +100,7 @@ final class DashboardViewModel: ObservableObject {
             for await snapshot in transport.snapshots() {
                 guard !Task.isCancelled else { return }
                 self?.latestSnapshot = snapshot
+                self?.appendToSeries(snapshot)
                 // `selectedDevice` (not raw `devices.first`) so the cache
                 // follows whichever Mac the dashboard is actually showing,
                 // once a device picker exists for more than one Mac.
@@ -97,6 +109,29 @@ final class DashboardViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Only values that actually exist get appended — a snapshot missing a
+    /// module contributes nothing to that series rather than a fake zero,
+    /// so a sparkline never draws a dip that didn't happen.
+    private func appendToSeries(_ snapshot: SystemSnapshot) {
+        var updated = recentSeries
+        func append(_ metric: MetricID, _ value: Double?) {
+            guard let value else { return }
+            var values = updated[metric] ?? []
+            values.append(value)
+            if values.count > Self.seriesCap {
+                values.removeFirst(values.count - Self.seriesCap)
+            }
+            updated[metric] = values
+        }
+        append(.cpuTotalPercent, snapshot.cpu?.totalPercent)
+        append(.gpuUtilizationPercent, snapshot.gpu?.utilizationPercent)
+        if let memory = snapshot.memory, memory.totalBytes > 0 {
+            append(.memoryUsedBytes, Double(memory.usedBytes) / Double(memory.totalBytes) * 100)
+        }
+        append(.networkRxBytesPerSec, snapshot.network?.rxBytesPerSec)
+        recentSeries = updated
     }
 
     deinit {

@@ -12,6 +12,10 @@ import MacStatKit
 /// handful of rows plan §12.1 actually calls out — a phone card competing for
 /// space with 7 metric cards below it doesn't need the Mac dropdown's full
 /// diagnostic sentence.
+/// The redesign handoff's battery hero (iOS 2b): a 32pt numeral with the
+/// status sentence beside it, a 4pt progress hairline, then the detail
+/// ledger — flat on the screen, no card, no arc. Status color appears only
+/// as data (the bolt, the hairline fill).
 struct BatteryHeroCard: View {
     @Environment(\.themePalette) private var palette
 
@@ -23,19 +27,20 @@ struct BatteryHeroCard: View {
     let battery: BatteryStats?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
+        VStack(alignment: .leading, spacing: palette.spacingRow) {
             if let battery {
-                HStack(alignment: .center, spacing: palette.spacing * 2) {
-                    chargeArc(for: battery)
-                    summary(for: battery)
+                hero(for: battery)
+                progressHairline(for: battery)
+                VStack(alignment: .leading, spacing: 3) {
+                    DashboardDetailRow(label: timeLabel(for: battery), value: timeValue(for: battery))
+                    DashboardDetailRow(label: "Health", value: MetricFormatting.percent(battery.healthPercent, decimals: 1))
+                    DashboardDetailRow(label: "Cycles", value: MetricFormatting.integer(battery.cycleCount))
                 }
             } else {
                 unavailable
             }
         }
-        .padding(palette.spacing * 1.6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(palette)
     }
 
     // MARK: Unavailable
@@ -52,63 +57,58 @@ struct BatteryHeroCard: View {
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
     }
 
-    // MARK: Arc
+    // MARK: Hero
 
-    private func chargeArc(for battery: BatteryStats) -> some View {
-        let fraction = min(max(battery.chargePercent / 100, 0), 1)
-        let tint = arcColor(for: battery)
-        return ZStack {
-            Circle()
-                .stroke(palette.separator, lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                .rotationEffect(.degrees(-90))  // 12 o'clock start, matches Mac arc
-                .animation(.easeInOut(duration: 0.3), value: fraction)
-            VStack(spacing: 0) {
-                // Big numeric readout — true SF Mono (`design: .monospaced`),
-                // not just `.monospacedDigit()` on the system font, per the
-                // Nocturne redesign spec's "SF Mono tabular for every
-                // numeric readout."
+    private func hero(for battery: BatteryStats) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: palette.spacingRow) {
+            HStack(alignment: .center, spacing: 4) {
                 Text(MetricFormatting.percent(battery.chargePercent))
-                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                    .font(palette.font(size: 32, weight: .semibold))
+                    .monospacedDigit()
+                    .tracking(-0.5)
                     .foregroundStyle(palette.textPrimary)
                 if battery.isCharging {
                     // Paired icon so charge state isn't color-only.
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(tint)
+                        .font(.system(size: 13))
+                        .foregroundStyle(statusColor(for: battery))
+                        .accessibilityHidden(true)
                 }
             }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(stateLabel(for: battery))
+                    .font(palette.font(size: 14))
+                    .foregroundStyle(palette.textSecondary)
+                Text(wattageHeadline(for: battery))
+                    .font(palette.font(size: 12))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.textTertiary)
+            }
+            Spacer(minLength: 0)
         }
-        .frame(width: 86, height: 86)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Charge \(MetricFormatting.percent(battery.chargePercent))")
+        .accessibilityLabel("Battery \(MetricFormatting.percent(battery.chargePercent)), \(stateLabel(for: battery))")
     }
 
-    private func arcColor(for battery: BatteryStats) -> Color {
+    private func progressHairline(for battery: BatteryStats) -> some View {
+        let fraction = min(max(battery.chargePercent / 100, 0), 1)
+        return GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(palette.surfaceElevated)
+                Capsule()
+                    .fill(statusColor(for: battery))
+                    .frame(width: max(4, geometry.size.width * fraction))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityHidden(true)
+    }
+
+    private func statusColor(for battery: BatteryStats) -> Color {
         if battery.isCharging { return palette.success }
         if battery.chargePercent <= 10 { return palette.danger }
         if battery.chargePercent <= 20 { return palette.warning }
         return palette.metricColor(.batteryChargePercent)
-    }
-
-    // MARK: Summary
-
-    private func summary(for battery: BatteryStats) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(wattageHeadline(for: battery))
-                .font(palette.font(size: 14, weight: .medium))
-                .monospacedDigit()
-                .foregroundStyle(palette.textPrimary)
-            Text(stateLabel(for: battery))
-                .font(palette.font(size: 10))
-                .foregroundStyle(palette.textTertiary)
-
-            DashboardDetailRow(label: timeLabel(for: battery), value: timeValue(for: battery))
-            DashboardDetailRow(label: "Health", value: MetricFormatting.percent(battery.healthPercent, decimals: 1))
-            DashboardDetailRow(label: "Cycles", value: MetricFormatting.integer(battery.cycleCount))
-        }
     }
 
     /// Charging shows what's going *in*; on battery it shows what's being

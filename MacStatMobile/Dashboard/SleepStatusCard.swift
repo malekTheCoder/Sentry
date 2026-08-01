@@ -109,7 +109,7 @@ struct SleepStatusCard: View {
                 .foregroundStyle(isActive ? palette.accent : palette.textSecondary)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
-                Text(isActive ? "Preventing sleep" : "Sleep Prevention")
+                Text(isActive ? "Keeping Mac awake" : "Keep Mac awake")
                     .font(palette.font(size: 13, weight: .semibold))
                     .foregroundStyle(palette.textPrimary)
                 if !isActive {

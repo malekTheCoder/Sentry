@@ -157,46 +157,64 @@ struct ThemePalette: Equatable {
         }
     }
 
+    // MARK: Spacing scale — named steps, mirroring the Mac palette exactly.
+
+    /// Gap inside a tightly coupled pair (dot → its sentence, value → unit).
+    var spacingTight: CGFloat { (spacing * 0.5).rounded() }
+
+    /// Padding inside a grouped block, and the gap between sibling rows.
+    var spacingRow: CGFloat { spacing }
+
+    /// Padding around grouped surfaces; gap between related blocks.
+    var spacingBlock: CGFloat { (spacing * 1.5).rounded() }
+
+    /// Gap between major sections.
+    var spacingSection: CGFloat { spacing * 2 }
+
+    /// Screen edge padding.
+    var spacingPage: CGFloat { spacing * 2 }
+
     var glow: Double { min(max(theme.glowIntensity, 0), 1) }
+
+    /// Standard transition per the handoff: ≤180ms ease-out, nothing under
+    /// Reduce Motion (the setting asks for no movement, not less).
+    static func motion(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.14)
+    }
 }
 
-// MARK: - Glass chrome
+// MARK: - Card chrome
 
 extension View {
-    /// The one card chrome every card in the iPhone app wears — the iOS
-    /// sibling of the Mac Dashboard's `dashboardCard`. Material themes get
-    /// Apple's real Liquid Glass on iOS 26+ (`glassEffect`), an
-    /// ultra-thin-material tile below; opaque themes keep the flat
-    /// elevated-surface fill. One modifier, one geometry.
+    /// The one card chrome every grouped block in the iPhone app wears —
+    /// the iOS sibling of the Mac's `quietCard`, per the redesign handoff:
+    /// fill only, no border, no shadow, no glass. Material themes keep a
+    /// touch of translucency so the wash behind still reads; opaque themes
+    /// get the flat quiet fill.
     @ViewBuilder
     func glassCard(_ palette: ThemePalette) -> some View {
         let shape = RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-        if palette.theme.useMaterialBackground {
-            if #available(iOS 26.0, *) {
-                self.glassEffect(.regular, in: shape)
-            } else {
-                self
-                    .background(shape.fill(palette.surfaceElevated))
-                    .background(.ultraThinMaterial, in: shape)
-                    .overlay(shape.strokeBorder(palette.separator, lineWidth: 1))
-            }
-        } else {
-            self
-                .background(palette.surfaceElevated)
-                .clipShape(shape)
-                .overlay(shape.stroke(palette.separator, lineWidth: 1))
-        }
+        self
+            .background(shape.fill(palette.surface.opacity(palette.theme.useMaterialBackground ? 0.5 : 0.6)))
     }
 
     /// Screen backdrop: material themes get the theme's translucent wash
-    /// over the system background (letting Liquid Glass cards refract
-    /// something), opaque themes their solid background color.
+    /// over the system background, opaque themes their solid background.
     @ViewBuilder
     func themedScreenBackground(_ palette: ThemePalette) -> some View {
         if palette.theme.useMaterialBackground {
             self.background(palette.background.opacity(0.6)).background(.regularMaterial)
         } else {
             self.background(palette.background)
+        }
+    }
+
+    /// The ledger hairline between borderless rows.
+    func ledgerDivider(_ palette: ThemePalette) -> some View {
+        overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(palette.separator)
+                .frame(height: 1)
         }
     }
 }

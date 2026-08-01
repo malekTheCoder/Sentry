@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import MacStatKit
 
 /// The iPhone app's top-level navigation shell (plan §12.1's exact tab
@@ -38,8 +39,9 @@ import MacStatKit
 struct RootTabView: View {
     /// Persisted locally on this phone only — see `SettingsTabView`'s theme
     /// section doc comment for why this is deliberately not synced to the
-    /// Mac (no sync channel exists to carry it).
-    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.liquidGlass.id
+    /// Mac (no sync channel exists to carry it). Defaults to One Dark, the
+    /// direction the Mac app converged on.
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.oneDark.id
     @Environment(\.colorScheme) private var systemColorScheme
 
     private var palette: ThemePalette {
@@ -61,7 +63,38 @@ struct RootTabView: View {
             SettingsTabView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
+        .tint(palette.textPrimary)
         .environment(\.themePalette, palette)
+        .onAppear { applyTabBarChrome() }
+        .onChange(of: selectedThemeID) { applyTabBarChrome() }
+        .onChange(of: systemColorScheme) { applyTabBarChrome() }
+    }
+
+    /// The handoff's tab bar: flat, hairline top separator, background
+    /// token; active item = textPrimary, inactive = textTertiary — no
+    /// accent on navigation, no material blur. SwiftUI's TabView styles
+    /// through UIKit's appearance proxy, so this is configured there and
+    /// reapplied whenever the theme or system appearance changes.
+    private func applyTabBarChrome() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(palette.background)
+        appearance.shadowColor = UIColor(palette.separator)
+
+        let inactive = UIColor(palette.textTertiary)
+        let active = UIColor(palette.textPrimary)
+        for item in [appearance.stackedLayoutAppearance, appearance.inlineLayoutAppearance, appearance.compactInlineLayoutAppearance] {
+            item.normal.iconColor = inactive
+            item.normal.titleTextAttributes = [.foregroundColor: inactive]
+            item.selected.iconColor = active
+            item.selected.titleTextAttributes = [
+                .foregroundColor: active,
+                .font: UIFont.systemFont(ofSize: 10, weight: .medium),
+            ]
+        }
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 }
 
