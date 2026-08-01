@@ -23,31 +23,15 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .general: return "gearshape.fill"
-        case .modules: return "square.grid.2x2.fill"
+        case .general: return "gearshape"
+        case .modules: return "square.grid.2x2"
         case .menuBar: return "menubar.rectangle"
-        case .theme: return "paintbrush.fill"
-        case .alerts: return "bell.badge.fill"
-        case .aiAccess: return "bolt.shield.fill"
-        case .sync: return "arrow.triangle.2.circlepath.icloud.fill"
-        case .location: return "location.fill"
-        case .advanced: return "wrench.and.screwdriver.fill"
-        }
-    }
-
-    /// System Settings-style icon chip tint. Chosen from the system palette
-    /// so the sidebar reads native at a glance.
-    var chipColor: Color {
-        switch self {
-        case .general: return Color(nsColor: .systemGray)
-        case .modules: return .blue
-        case .menuBar: return .indigo
-        case .theme: return .purple
-        case .alerts: return .red
-        case .aiAccess: return .orange
-        case .sync: return .cyan
-        case .location: return .green
-        case .advanced: return Color(nsColor: .darkGray)
+        case .theme: return "paintbrush"
+        case .alerts: return "bell.badge"
+        case .aiAccess: return "bolt.shield"
+        case .sync: return "arrow.triangle.2.circlepath.icloud"
+        case .location: return "location"
+        case .advanced: return "wrench.and.screwdriver"
         }
     }
 
@@ -68,19 +52,21 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     }
 }
 
-/// Root of the settings window: a hand-built two-pane shell in the System
-/// Settings idiom — sidebar over real behind-window material with colored
-/// icon chips, an inline pane title in the content column, and **no
-/// toolbar**. `NavigationSplitView` was tried and rejected: its unified
-/// toolbar adds a second bar above the content that reads as chrome for
-/// chrome's sake in a window this small. This view now lives as the
-/// Settings tab of Sentry's one window (`MainWindowView`), under the
-/// floating glass switcher — so the whole surface is these two columns.
+/// Root of the settings tab: a hand-built two-pane shell — themed sidebar,
+/// an inline pane title in the content column, and **no toolbar**.
+/// `NavigationSplitView` was tried and rejected: its unified toolbar adds
+/// a second bar above the content that reads as chrome for chrome's sake
+/// in a window this small. This view lives as the Settings tab of Sentry's
+/// one window (`MainWindowView`), under the themed switcher.
 ///
-/// **Deliberately not themed.** Themes style the app's own surfaces (the
-/// dropdown, the Dashboard, the widgets); the settings window earns trust
-/// by looking like macOS. `themePalette` stays in the environment only for
-/// `ThemePane`'s live preview cards.
+/// **Themed like the rest of the app.** This shell used to imitate System
+/// Settings (material sidebar, colored icon chips) on the theory that
+/// settings earn trust by looking native — in practice it read as a
+/// different app bolted onto a themed window. The sidebar and detail
+/// column now draw from the same `ThemePalette` as Dashboard and Insights:
+/// monochrome icons, quiet surface fills for selection (never accent), the
+/// theme's own background behind the grouped forms. The forms themselves
+/// stay native controls — the *chrome* is what themes.
 struct SettingsView: View {
 
     @ObservedObject var store: SettingsStore
@@ -124,18 +110,20 @@ struct SettingsView: View {
 
     @Environment(\.colorScheme) private var systemColorScheme
 
+    private var palette: ThemePalette {
+        ThemePalette(theme: store.resolvedTheme(), scheme: systemColorScheme)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-            Divider()
+            Rectangle()
+                .fill(palette.separator)
+                .frame(width: 1)
             detail
         }
         .frame(minWidth: 720, minHeight: 500)
-        // Only `ThemePane`'s preview cards read this — see the type doc.
-        .environment(
-            \.themePalette,
-            ThemePalette(theme: store.resolvedTheme(), scheme: systemColorScheme)
-        )
+        .environment(\.themePalette, palette)
     }
 
     // MARK: - Sidebar
@@ -145,53 +133,20 @@ struct SettingsView: View {
             Color.clear.frame(height: 8)
 
             ForEach(SettingsPane.allCases) { pane in
-                sidebarRow(for: pane)
+                SettingsSidebarRow(
+                    title: pane.title,
+                    symbol: pane.symbol,
+                    isSelected: pane == selectedPane
+                ) {
+                    selectedPane = pane
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .frame(width: 200, alignment: .top)
         .frame(maxHeight: .infinity)
-        .background(VisualEffect(material: .sidebar))
-    }
-
-    private func sidebarRow(for pane: SettingsPane) -> some View {
-        let isSelected = pane == selectedPane
-        return Button {
-            selectedPane = pane
-        } label: {
-            HStack(spacing: 8) {
-                chip(for: pane)
-                Text(pane.title)
-                    .font(.system(size: 13))
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isSelected ? Color.accentColor : Color.clear)
-            )
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-
-    /// The System Settings icon treatment: white glyph on a small colored
-    /// rounded square. This is most of what makes a sidebar read "native
-    /// settings" rather than "list of links."
-    private func chip(for pane: SettingsPane) -> some View {
-        RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-            .fill(pane.chipColor.gradient)
-            .frame(width: 22, height: 22)
-            .overlay(
-                Image(systemName: pane.symbol)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white)
-            )
-            .accessibilityHidden(true)
+        .background(palette.surface.opacity(palette.theme.useMaterialBackground ? 0.6 : 1))
     }
 
     // MARK: - Detail
@@ -200,23 +155,77 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(selectedPane.title)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(palette.font(size: 20, weight: .semibold))
+                    .foregroundStyle(palette.textPrimary)
                 Text(selectedPane.subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(palette.font(size: 12))
+                    .foregroundStyle(palette.textSecondary)
             }
             .padding(.top, 20)
             .padding(.horizontal, 24)
             .padding(.bottom, 10)
 
             content(for: selectedPane)
+                // The grouped forms keep native controls but shed their
+                // own system background so the theme's shows through.
+                .scrollContentBackground(.hidden)
                 // System Settings caps its form column; unbounded grouped
                 // forms stretch sliders to absurd widths on a big window.
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.62))
+        .background(palette.background)
+    }
+
+    // MARK: - Sidebar row
+
+    /// One sidebar entry in the app's own list idiom: monochrome 13pt SF
+    /// symbol, quiet `surfaceElevated` fill for the selected row (selection
+    /// is a state — never accent, per the handoff), a fainter fill on
+    /// hover. This replaces the colored System Settings icon chips.
+    private struct SettingsSidebarRow: View {
+        @Environment(\.themePalette) private var palette
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        let title: String
+        let symbol: String
+        let isSelected: Bool
+        let action: () -> Void
+
+        @State private var isHovered = false
+
+        var body: some View {
+            Button(action: action) {
+                HStack(spacing: 8) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 13))
+                        .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
+                        .frame(width: 20)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(palette.font(size: 13))
+                        .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isSelected
+                            ? palette.surfaceElevated
+                            : (isHovered ? palette.surfaceElevated.opacity(0.5) : Color.clear))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                withAnimation(ThemePalette.motion(reduceMotion: reduceMotion)) {
+                    isHovered = hovering
+                }
+            }
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        }
     }
 
     @ViewBuilder

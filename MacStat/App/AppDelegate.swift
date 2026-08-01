@@ -633,6 +633,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         dashboardViewModel.enabledModules = settings.enabledModules
         dashboardViewModel.detailedCharts = settings.detailedCharts
         insightsViewModel.theme = theme
+        // The window chrome (nav bar, its hairline, the base fill behind
+        // the titlebar) themes itself off this — see `MainWindowState`.
+        mainWindowState.theme = theme
 
         // Entitlement resolution first: `insightsViewModel.applySettings`
         // reads `proEntitlementStore.isUnlocked` synchronously below, so the

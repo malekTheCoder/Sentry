@@ -35,9 +35,16 @@ enum MainTab: String, CaseIterable, Identifiable {
 /// The selected tab, observable from both directions: the nav switcher
 /// writes it on click, and `AppDelegate` writes it when the dropdown's
 /// "Open Dashboard"/"Settings" actions open the window onto a specific tab.
+///
+/// Also carries the live theme for the window's own chrome: the nav bar
+/// used to render on system material regardless of theme, which made the
+/// top strip read as a different app the moment an opaque theme (One Dark,
+/// Paper, Ivory) painted the content below it. `AppDelegate` pushes theme
+/// changes here the same way it pushes them to the view models.
 @MainActor
 final class MainWindowState: ObservableObject {
     @Published var tab: MainTab = .dashboard
+    @Published var theme: Theme = .defaultTheme
 }
 
 // MARK: - Root view
@@ -49,6 +56,7 @@ final class MainWindowState: ObservableObject {
 /// window reads as a single surface with one control floating over it.
 struct MainWindowView: View {
     @ObservedObject var state: MainWindowState
+    @Environment(\.colorScheme) private var systemColorScheme
 
     /// Pre-built by the composition root (they carry observable models and
     /// injected stores); this view only decides which one is on screen.
@@ -61,17 +69,38 @@ struct MainWindowView: View {
     /// handoff's titlebar spec.
     static let navHeight: CGFloat = 52
 
+    private var palette: ThemePalette {
+        ThemePalette(theme: state.theme, scheme: systemColorScheme)
+    }
+
+    /// Fixed-appearance themes (same hex for light and dark — One Dark,
+    /// Paper, Ivory) force the native controls inside every tab to match
+    /// the theme's own brightness, judged by the background's luminance;
+    /// adaptive themes (Notion, System) keep following macOS. Without
+    /// this, Paper on a dark Mac renders dark system controls on a white
+    /// page — exactly the "not part of the app" seam being removed here.
+    private var forcedScheme: ColorScheme? {
+        let background = state.theme.background
+        guard background.light == background.dark else { return nil }
+        guard let rgb = ThemeColor.components(fromHex: background.light) else { return nil }
+        let luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
+        return luminance > 0.5 ? .light : .dark
+    }
+
     var body: some View {
         ZStack {
-            // The always-painted base. The window is non-opaque with a
-            // clear background (for behind-window glass), and SwiftUI's
-            // titlebar safe-area would otherwise leave the top strip and
-            // any uncovered region fully transparent — the window then
-            // renders as detached floating islands with the app behind
-            // showing through the gaps. This layer guarantees every pixel
-            // of the window is glass before content paints over it.
-            VisualEffect(material: .underWindowBackground)
-                .ignoresSafeArea()
+            // The always-painted base. Material themes get behind-window
+            // glass; opaque themes paint their own background wall to
+            // wall — including behind the titlebar, which is what makes
+            // the nav bar read as part of the app instead of a strip of
+            // system chrome floating above it.
+            if state.theme.useMaterialBackground {
+                VisualEffect(material: .underWindowBackground)
+                    .ignoresSafeArea()
+                palette.background.ignoresSafeArea()
+            } else {
+                palette.background.ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 // A real bar, not a floating overlay: the overlay version
@@ -99,12 +128,14 @@ struct MainWindowView: View {
             }
             .ignoresSafeArea()
         }
+        .environment(\.themePalette, palette)
+        .preferredColorScheme(forcedScheme)
         .frame(minWidth: 860, minHeight: 620)
     }
 
     /// The fixed top chrome: traffic lights live in the (transparent)
-    /// titlebar over its left edge, the glass switcher sits centered, and a
-    /// hairline closes it off from content.
+    /// titlebar over its left edge, the themed switcher sits centered, and
+    /// a themed hairline closes it off from content.
     private var navBar: some View {
         ZStack {
             navSwitcher
@@ -113,7 +144,7 @@ struct MainWindowView: View {
         .frame(height: Self.navHeight)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(.separator.opacity(0.4))
+                .fill(palette.separator)
                 .frame(height: 1)
         }
     }
@@ -140,17 +171,17 @@ struct MainWindowView: View {
                 Image(systemName: tab.symbol)
                     .font(.system(size: 11, weight: .medium))
                 Text(tab.title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(palette.font(size: 12, weight: .medium))
             }
-            .foregroundStyle(isSelected ? .primary : .secondary)
+            .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background {
                 if isSelected {
-                    // The selected pill is a second, brighter pane of glass
-                    // rather than an accent fill — the switcher stays
-                    // chrome, not content.
-                    SelectedPillBackground()
+                    // Selection is a state, not a CTA — a quiet themed
+                    // fill, never accent (handoff accent rules).
+                    Capsule(style: .continuous)
+                        .fill(palette.surfaceElevated)
                 }
             }
             .contentShape(Capsule(style: .continuous))
@@ -232,15 +263,3 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 }
 
 
-// MARK: - Switcher chrome
-
-/// The selected tab's pill: a quiet system fill, per the redesign
-/// handoff's accent rules — selection is a *state*, so it gets a neutral
-/// surface fill, never accent, never glass. The glass capsule the switcher
-/// used to float in is gone with it: minimal chrome is no chrome.
-private struct SelectedPillBackground: View {
-    var body: some View {
-        Capsule(style: .continuous)
-            .fill(Color(nsColor: .quaternarySystemFill))
-    }
-}
