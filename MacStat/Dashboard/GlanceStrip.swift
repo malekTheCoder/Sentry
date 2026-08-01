@@ -44,10 +44,10 @@ struct GlanceStrip: View {
                         samples: sparkValues(for: metric)
                     )
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, palette.spacing * 1.5)
+                    .padding(.horizontal, palette.spacingBlock)
                 }
             }
-            .padding(.horizontal, -palette.spacing * 1.5)
+            .padding(.horizontal, -palette.spacingBlock)
         }
     }
 
@@ -81,7 +81,7 @@ private struct GlanceTile: View {
                     .frame(width: 6, height: 6)
                 Text(metric.title.uppercased())
                     .font(palette.font(size: 10, weight: .semibold))
-                    .kerning(0.5)
+                    .kerning(0.6)
                     .foregroundStyle(palette.textTertiary)
                     .lineLimit(1)
             }

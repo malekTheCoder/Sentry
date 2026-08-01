@@ -56,7 +56,7 @@ struct AgentActivityCard: View {
     @ViewBuilder
     private var content: some View {
         if let summary, summary.eventCount > 0 {
-            HStack(alignment: .top, spacing: palette.spacing * 2.2) {
+            HStack(alignment: .top, spacing: palette.spacingSection) {
                 stat(
                     value: "\(summary.eventCount)",
                     label: summary.eventCount == 1 ? "action" : "actions"

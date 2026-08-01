@@ -186,6 +186,11 @@ struct ThemePalette: Equatable {
     /// Gap between major sections (header / vitals / keep-awake / actions).
     var spacingSection: CGFloat { spacing * 2 }
 
+    /// The main window's page gutter (and its column gap between side-by-side
+    /// cards). `SectionRule` un-pads by exactly this to run full-bleed, so
+    /// pages must use the token, not `spacing * 3` arithmetic.
+    var spacingPage: CGFloat { spacing * 3 }
+
     // MARK: Motion
     //
     // "Subtle and fast": 140ms ease-out, nothing bouncy. Returning an
@@ -224,12 +229,12 @@ extension View {
         if palette.theme.useMaterialBackground {
             if #available(macOS 26.0, *) {
                 self
-                    .padding(palette.spacing * 1.6)
+                    .padding(palette.spacingBlock)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .glassEffect(.regular, in: shape)
             } else {
                 self
-                    .padding(palette.spacing * 1.6)
+                    .padding(palette.spacingBlock)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(shape.fill(palette.surfaceElevated))
                     .background(.ultraThinMaterial, in: shape)
@@ -237,7 +242,7 @@ extension View {
             }
         } else {
             self
-                .padding(palette.spacing * 1.6)
+                .padding(palette.spacingBlock)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(palette.surfaceElevated)
                 .clipShape(shape)

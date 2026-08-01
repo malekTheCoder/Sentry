@@ -52,7 +52,7 @@ struct MetricCard<Detail: View>: View {
                 detail()
             }
         }
-        .padding(palette.spacing * 1.4)
+        .padding(palette.spacingBlock)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(palette.surface)
         .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
@@ -98,7 +98,7 @@ struct MetricCard<Detail: View>: View {
     }
 
     private func statsRow(for series: MetricSeries) -> some View {
-        HStack(spacing: palette.spacing * 2) {
+        HStack(spacing: palette.spacingSection) {
             statistic("min", series.minimum)
             statistic("avg", series.average)
             statistic("max", series.maximum)

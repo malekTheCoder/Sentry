@@ -20,7 +20,7 @@ struct BatteryHeroCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             if let battery {
-                HStack(alignment: .center, spacing: palette.spacing * 2) {
+                HStack(alignment: .center, spacing: palette.spacingSection) {
                     chargeArc(for: battery)
                     summary(for: battery)
                 }

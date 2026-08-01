@@ -61,6 +61,10 @@ struct ProtectionScoreRing: View {
 /// The Insights tab's hero: the overall score, the two domain subscores, and
 /// — critically — the honest qualifiers that stop the number from reading as
 /// more settled than it is.
+///
+/// Flat on the page like the Dashboard's `GlanceStrip` — the ring *is* the
+/// hero; boxing it in a bordered card just muffled it. The ring sits left,
+/// everything textual hangs off a single left-aligned column beside it.
 struct ProtectionScoreCard: View {
     @Environment(\.themePalette) private var palette
 
@@ -71,13 +75,16 @@ struct ProtectionScoreCard: View {
     /// When the security half was actually read.
     let postureCollectedAt: Date
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
-            title
+    /// Subscore rows read best as a compact ledger; unbounded they stretch
+    /// the value digits away from their labels on a wide window.
+    private static let subscoreMaxWidth: CGFloat = 300
 
-            HStack(alignment: .center, spacing: palette.spacing * 2) {
-                ProtectionScoreRing(score: score.overall, caption: bandCaption)
-                VStack(alignment: .leading, spacing: palette.spacing) {
+    var body: some View {
+        HStack(alignment: .center, spacing: palette.spacingSection) {
+            ProtectionScoreRing(score: score.overall, caption: bandCaption)
+            VStack(alignment: .leading, spacing: palette.spacingRow) {
+                title
+                VStack(alignment: .leading, spacing: palette.spacingTight) {
                     subscoreRow(
                         label: InsightDomain.hardware.displayName,
                         value: score.hardwareSubscore,
@@ -88,20 +95,19 @@ struct ProtectionScoreCard: View {
                         value: score.securitySubscore,
                         symbol: "lock.shield"
                     )
-                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: Self.subscoreMaxWidth, alignment: .leading)
+                qualifiers
             }
-
-            qualifiers
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .dashboardCard(palette)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var title: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Protection Score")
-                .font(palette.font(size: 14, weight: .semibold))
+                .font(palette.font(size: 13, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
             Text("100 minus the weight of everything Sentry found. Nothing adds points back.")
                 .font(palette.font(size: 11))

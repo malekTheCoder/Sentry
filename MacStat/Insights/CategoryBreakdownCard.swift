@@ -9,28 +9,24 @@ import MacStatKit
 /// class of mistake as the "0.0 W" reading this codebase removed on
 /// principle. `ProtectionScore.CategoryScore.hasData` carries that
 /// distinction and this view honours it.
+/// Flat on the page — the section header above it ("By Category") is the
+/// title, so this view is just the two domain columns side by side (the
+/// hardware/security split *is* the natural column split) with one quiet
+/// caption underneath explaining the arithmetic.
 struct CategoryBreakdownCard: View {
     @Environment(\.themePalette) private var palette
 
     let score: ProtectionScore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
-            header
-            ForEach(InsightDomain.allCases, id: \.self) { domain in
-                domainSection(domain)
+        VStack(alignment: .leading, spacing: palette.spacingRow) {
+            HStack(alignment: .top, spacing: palette.spacingPage) {
+                ForEach(InsightDomain.allCases, id: \.self) { domain in
+                    domainSection(domain)
+                }
             }
-        }
-        .dashboardCard(palette)
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("By Category")
-                .font(palette.font(size: 14, weight: .semibold))
-                .foregroundStyle(palette.textPrimary)
             Text("Each category starts at 100 and loses the weight of its own findings.")
-                .font(palette.font(size: 11))
+                .font(palette.font(size: 10))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -40,17 +36,13 @@ struct CategoryBreakdownCard: View {
     private func domainSection(_ domain: InsightDomain) -> some View {
         let rows = score.categories.filter { $0.category.domain == domain }
         if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(domain.displayName.uppercased())
-                    .font(palette.font(size: 9, weight: .semibold))
-                    .kerning(0.7)
-                    .foregroundStyle(palette.textTertiary)
-                    .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: palette.spacingTight) {
+                MicroHeaderLabel(title: domain.displayName)
                 ForEach(rows) { row in
                     categoryRow(row)
                 }
             }
-            .padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

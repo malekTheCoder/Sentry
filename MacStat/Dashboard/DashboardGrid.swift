@@ -48,7 +48,7 @@ struct DashboardGrid: View {
     private static let order: [ChartMetric] = [.cpu, .gpu, .ane, .memory, .disk, .network, .thermal]
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: palette.spacing * 1.5) {
+        LazyVGrid(columns: columns, spacing: palette.spacingBlock) {
             ForEach(Self.order.filter { enabledModules.contains($0.module) }) { metric in
                 card(for: metric)
             }
@@ -63,7 +63,7 @@ struct DashboardGrid: View {
     /// count would either waste width at the default size or crush cards
     /// too narrow to read a chart's y-axis labels once resized down.
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: 320, maximum: 460), spacing: palette.spacing * 1.5)]
+        [GridItem(.adaptive(minimum: 320, maximum: 460), spacing: palette.spacingBlock)]
     }
 
     // MARK: - Cards
@@ -235,12 +235,9 @@ private struct DashboardMetricCard<Detail: View>: View {
             }
             .padding(.top, subtitle == nil ? 6 : 2)
         }
-        .padding(palette.spacing * 1.4)
-        .frame(maxWidth: .infinity, alignment: .leading)
         // The one place boxes survive the de-carding: a chart wants a plot
         // area. Fill only — the border went with the rest of the chrome.
-        .background(palette.surface.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous))
+        .quietCard(palette)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(metric.title), \(headline)")
     }

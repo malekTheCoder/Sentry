@@ -36,7 +36,10 @@ struct InsightRowView: View {
                 expandedBody
             }
         }
-        .dashboardCard(palette)
+        // Quiet tile, not a bordered card — same weight as the Dashboard's
+        // grid cells, so a finding reads as a row of the page rather than a
+        // box competing with it. The fill doubles as the click affordance.
+        .quietCard(palette)
         .accessibilityElement(children: .contain)
     }
 
@@ -137,11 +140,7 @@ struct InsightRowView: View {
             evidenceBlock
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("What to do")
-                    .font(palette.font(size: 10, weight: .semibold))
-                    .kerning(0.6)
-                    .foregroundStyle(palette.textTertiary)
-                    .accessibilityAddTraits(.isHeader)
+                MicroHeaderLabel(title: "What to do")
                 Text(insight.recommendation)
                     .font(palette.font(size: 12))
                     .foregroundStyle(palette.textPrimary)
@@ -154,11 +153,7 @@ struct InsightRowView: View {
 
     private var evidenceBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Measured on this Mac")
-                .font(palette.font(size: 10, weight: .semibold))
-                .kerning(0.6)
-                .foregroundStyle(palette.textTertiary)
-                .accessibilityAddTraits(.isHeader)
+            MicroHeaderLabel(title: "Measured on this Mac")
             ForEach(Array(insight.evidence.enumerated()), id: \.offset) { _, line in
                 HStack(alignment: .top, spacing: 6) {
                     Circle()
@@ -320,15 +315,13 @@ struct LockedInsightRowView: View {
                 .foregroundStyle(palette.textTertiary)
         }
         .padding(.vertical, 8)
-        .padding(.horizontal, palette.spacing)
+        .padding(.horizontal, palette.spacingBlock)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Same quiet fill as the unlocked rows, no border — a locked row is
+        // dimmer *content*, not a differently-chromed widget.
         .background(
             RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .fill(palette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                .strokeBorder(palette.separator, lineWidth: 1)
+                .fill(palette.surface.opacity(0.6))
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Locked finding")

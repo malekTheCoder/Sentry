@@ -26,7 +26,7 @@ struct BatteryOverviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             if let battery {
-                HStack(alignment: .top, spacing: palette.spacing * 2) {
+                HStack(alignment: .top, spacing: palette.spacingSection) {
                     ring(for: battery)
                     statGrid(for: battery)
                 }
@@ -87,7 +87,7 @@ struct BatteryOverviewCard: View {
     /// table discipline the dropdown's vitals use, which is what makes a
     /// block of numbers scannable in one vertical pass.
     private func statGrid(for battery: BatteryStats) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: palette.spacing * 2, verticalSpacing: 4) {
+        Grid(alignment: .leading, horizontalSpacing: palette.spacingSection, verticalSpacing: 4) {
             GridRow {
                 statCell(label: "Power", value: wattageValue(for: battery))
                 statCell(label: "Health", value: MetricFormatting.percent(battery.healthPercent, decimals: 1))

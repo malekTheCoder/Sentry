@@ -27,7 +27,7 @@ struct ProUpsellCard: View {
             withheldBlock
             unavailableNotice
         }
-        .dashboardCard(palette)
+        .quietCard(palette)
         .accessibilityElement(children: .contain)
     }
 

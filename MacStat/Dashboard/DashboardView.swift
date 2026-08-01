@@ -89,7 +89,7 @@ struct DashboardView: View {
     /// Row gap inside a section; sections themselves are separated by their
     /// headers. One constant so nothing is "randomly placed" — every gap on
     /// this window is this, or the header's own spacing.
-    private var rowGap: CGFloat { palette.spacing * 1.5 }
+    private var rowGap: CGFloat { palette.spacingBlock }
 
     /// Battery rides the 30s slow tier — give it 45s of session age before
     /// letting the hero claim the Mac has no battery at all.
@@ -103,26 +103,26 @@ struct DashboardView: View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                    .padding(.bottom, palette.spacing * 2)
+                    .padding(.bottom, palette.spacingSection)
 
                 GlanceStrip(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
                     enabledModules: viewModel.enabledModules
                 )
-                .padding(.bottom, palette.spacing * 2)
+                .padding(.bottom, palette.spacingSection)
 
-                sectionRule
+                SectionRule()
 
-                sectionHeader("Power")
-                HStack(alignment: .top, spacing: palette.spacing * 3) {
+                SectionHeaderLabel(title: "Power")
+                HStack(alignment: .top, spacing: palette.spacingPage) {
                     BatteryOverviewCard(
                         historyStore: historyStore,
                         battery: viewModel.latestBattery,
                         isWarmingUp: isBatteryWarmingUp
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
-                    VStack(alignment: .leading, spacing: palette.spacing) {
+                    VStack(alignment: .leading, spacing: palette.spacingRow) {
                         SleepControlCard(powerControl: powerControl)
                         Rectangle()
                             .fill(palette.separator)
@@ -131,12 +131,12 @@ struct DashboardView: View {
                     }
                     .frame(minWidth: Self.energyMinWidth, maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.bottom, palette.spacing * 2)
+                .padding(.bottom, palette.spacingSection)
 
-                sectionRule
+                SectionRule()
 
-                sectionHeader("Activity")
-                HStack(alignment: .top, spacing: palette.spacing * 3) {
+                SectionHeaderLabel(title: "Activity")
+                HStack(alignment: .top, spacing: palette.spacingPage) {
                     AgentActivityCard(
                         summary: viewModel.agentActivity,
                         agentProcesses: Array(processMonitor.agentProcesses.prefix(4))
@@ -147,20 +147,20 @@ struct DashboardView: View {
                     TopProcessesCard(processes: Array(processMonitor.topProcesses.prefix(5)))
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(.bottom, palette.spacing * 2)
+                .padding(.bottom, palette.spacingSection)
 
-                sectionRule
+                SectionRule()
 
-                sectionHeader("History")
+                SectionHeaderLabel(title: "History")
                 DashboardGrid(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
                     enabledModules: viewModel.enabledModules
                 )
             }
-            .padding(.horizontal, palette.spacing * 3)
-            .padding(.bottom, palette.spacing * 3)
-            .padding(.top, palette.spacing * 2)
+            .padding(.horizontal, palette.spacingPage)
+            .padding(.bottom, palette.spacingPage)
+            .padding(.top, palette.spacingSection)
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
@@ -171,18 +171,6 @@ struct DashboardView: View {
         .task {
             viewModel.refresh()
         }
-    }
-
-    /// Full-bleed hairline between sections — the same organizing device
-    /// the dropdown uses. With the boxes gone, these rules and the section
-    /// labels are the entire structure, which is exactly the point: one
-    /// surface, quietly divided, instead of a pile of bordered containers.
-    private var sectionRule: some View {
-        Rectangle()
-            .fill(palette.separator)
-            .frame(height: 1)
-            .padding(.horizontal, -palette.spacing * 3)
-            .accessibilityHidden(true)
     }
 
     // MARK: - Header
@@ -217,7 +205,7 @@ struct DashboardView: View {
             Spacer(minLength: palette.spacing)
             TimeRangePickerView(selection: $viewModel.timeRange)
         }
-        .padding(.bottom, palette.spacing * 0.5)
+        .padding(.bottom, palette.spacingTight)
     }
 
     /// "updated 4s ago" — proof the numbers are alive. Quiet until the
@@ -229,17 +217,4 @@ struct DashboardView: View {
         return "updated \(Int(age / 60))m ago"
     }
 
-    /// The organizing device this window was missing: a small uppercase
-    /// label above each band of cards, so the page reads as Power →
-    /// Activity → History instead of a pile of boxes. Tertiary and tracked
-    /// out — a wayfinding whisper, never competing with card titles.
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(palette.font(size: 11, weight: .semibold))
-            .kerning(0.8)
-            .foregroundStyle(palette.textTertiary)
-            .padding(.top, palette.spacing * 2)
-            .padding(.bottom, palette.spacing * 1.5)
-            .accessibilityAddTraits(.isHeader)
-    }
 }
