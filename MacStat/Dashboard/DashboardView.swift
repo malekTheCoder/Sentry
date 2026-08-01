@@ -91,6 +91,16 @@ struct DashboardView: View {
     /// this window is this, or the header's own spacing.
     private var rowGap: CGFloat { palette.spacingBlock }
 
+    /// The overlay chart's series, in legend order: the three metrics the
+    /// handoff overlays, minus any module the user has disabled. Missing
+    /// series stay in the list as empty (the chart skips them) so the
+    /// legend order is stable as data arrives.
+    private var overlaySeries: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)] {
+        [ChartMetric.cpu, .memory, .gpu]
+            .filter { viewModel.enabledModules.contains($0.module) }
+            .map { ($0, viewModel.series[$0] ?? []) }
+    }
+
     /// Battery rides the 30s slow tier — give it 45s of session age before
     /// letting the hero claim the Mac has no battery at all.
     private var isBatteryWarmingUp: Bool {
@@ -110,7 +120,13 @@ struct DashboardView: View {
                     series: viewModel.series,
                     enabledModules: viewModel.enabledModules
                 )
-                .padding(.bottom, palette.spacingSection)
+                .padding(.bottom, palette.spacingBlock)
+
+                // The handoff's full-width Activity plot: the glance
+                // strip's numbers, drawn over time, one band — no header
+                // of its own because it *is* the glance band's second row.
+                ActivityOverlayChart(series: overlaySeries)
+                    .padding(.bottom, palette.spacingSection)
 
                 SectionRule()
 

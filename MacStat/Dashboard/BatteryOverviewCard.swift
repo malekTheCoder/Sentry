@@ -26,11 +26,9 @@ struct BatteryOverviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             if let battery {
-                HStack(alignment: .top, spacing: palette.spacingSection) {
-                    ring(for: battery)
-                    statGrid(for: battery)
-                }
-                statusLine(for: battery)
+                hero(for: battery)
+                progressHairline(for: battery)
+                statGrid(for: battery)
             } else {
                 emptyState
             }
@@ -48,37 +46,50 @@ struct BatteryOverviewCard: View {
         }
     }
 
-    // MARK: - Ring
+    // MARK: - Hero
 
-    private func ring(for battery: BatteryStats) -> some View {
-        ZStack {
-            Circle()
-                .stroke(palette.separator, lineWidth: 7)
-            Circle()
-                .trim(from: 0, to: CGFloat(min(max(battery.chargePercent / 100, 0), 1)))
-                .stroke(ringColor(for: battery), style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
+    /// The handoff's stat idiom in place of the old ring: a 24pt numeral
+    /// with the status sentence beside it, then a 4pt hairline meter.
+    /// Status color appears only as data — the bolt, the sentence, the
+    /// meter fill.
+    private func hero(for battery: BatteryStats) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: palette.spacingRow) {
+            HStack(alignment: .center, spacing: 4) {
                 Text(MetricFormatting.percent(battery.chargePercent, decimals: 0))
-                    .font(palette.numericFont(size: 21, weight: .semibold))
+                    .font(palette.numericFont(size: 24, weight: .semibold))
                     .foregroundStyle(palette.textPrimary)
                 if battery.isCharging {
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundStyle(palette.success)
+                        .accessibilityHidden(true)
                 }
             }
+            statusLine(for: battery)
+            Spacer(minLength: 0)
         }
-        .frame(width: 92, height: 92)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Battery \(MetricFormatting.percent(battery.chargePercent, decimals: 0))\(battery.isCharging ? ", charging" : "")")
+        .accessibilityElement(children: .combine)
     }
 
-    private func ringColor(for battery: BatteryStats) -> Color {
+    private func progressHairline(for battery: BatteryStats) -> some View {
+        let fraction = min(max(battery.chargePercent / 100, 0), 1)
+        return GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(palette.surfaceElevated)
+                Capsule()
+                    .fill(statusTint(for: battery))
+                    .frame(width: max(4, geometry.size.width * fraction))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityHidden(true)
+    }
+
+    private func statusTint(for battery: BatteryStats) -> Color {
         if battery.isCharging || Self.isEffectivelyFull(battery) { return palette.success }
         if battery.chargePercent <= 10 { return palette.danger }
         if battery.chargePercent <= 20 { return palette.warning }
-        return palette.accent
+        return palette.metricColor(.batteryChargePercent)
     }
 
     // MARK: - Stat grid

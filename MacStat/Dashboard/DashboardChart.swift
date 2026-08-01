@@ -238,3 +238,108 @@ struct DashboardChart: View {
         return "ranging from \(first.min) to \(last.max)"
     }
 }
+
+// MARK: - Activity overlay
+
+/// The redesign handoff's full-width Activity chart: up to three metric
+/// lines overlaid in one plot, a text legend in each metric's own tint,
+/// and a CPU stat sentence in place of axes.
+///
+/// **The honesty caveat, stated rather than hidden:** the overlaid series
+/// have incompatible units (percent vs bytes), so each line is normalized
+/// to its own observed peak — the plot shows each metric's *shape*, and
+/// the only absolute numbers on the chart are the ones in the sentence
+/// below it. That is exactly how the mock treats it (no y-axis at all),
+/// and it is why this view deliberately offers no hover-to-read-values:
+/// a read-off value from a normalized line would be a fabricated number.
+struct ActivityOverlayChart: View {
+    @Environment(\.themePalette) private var palette
+
+    /// Metric → its ranged samples, in the order the legend should list
+    /// them. Empty series are skipped; if everything is empty the view
+    /// renders the standard sentence empty state.
+    let series: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)]
+
+    var height: CGFloat = 120
+
+    private var drawable: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)] {
+        series.filter { !$0.samples.isEmpty }
+    }
+
+    var body: some View {
+        if drawable.isEmpty {
+            Text("No activity recorded for this range yet.")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+                .frame(maxWidth: .infinity, minHeight: height, alignment: .center)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                legend
+                plot
+                    .frame(height: height)
+                if let sentence = cpuSentence {
+                    Text(sentence)
+                        .font(palette.font(size: 10))
+                        .monospacedDigit()
+                        .foregroundStyle(palette.textTertiary)
+                }
+            }
+        }
+    }
+
+    private var legend: some View {
+        HStack(spacing: palette.spacingRow) {
+            ForEach(drawable, id: \.metric) { entry in
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(palette.metricColor(entry.metric.colorID))
+                        .frame(width: 6, height: 6)
+                    Text(entry.metric.title)
+                        .font(palette.font(size: 10))
+                        .foregroundStyle(palette.textSecondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var plot: some View {
+        Chart {
+            ForEach(drawable, id: \.metric) { entry in
+                let peak = max(entry.samples.map(\.max).max() ?? 1, .leastNonzeroMagnitude)
+                ForEach(Array(entry.samples.enumerated()), id: \.offset) { _, sample in
+                    LineMark(
+                        x: .value("Time", sample.timestamp),
+                        y: .value("Relative", sample.avg / peak),
+                        series: .value("Metric", entry.metric.title)
+                    )
+                    .lineStyle(StrokeStyle(lineWidth: palette.theme.chartLineWidth, lineJoin: .round))
+                    .foregroundStyle(palette.metricColor(entry.metric.colorID))
+                    .interpolationMethod(.monotone)
+                }
+            }
+        }
+        .chartYScale(domain: 0...1.05)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartPlotStyle { plotArea in
+            plotArea.background(
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface.opacity(0.6))
+            )
+        }
+        .accessibilityLabel("Activity chart, \(drawable.map(\.metric.title).joined(separator: ", "))")
+        .accessibilityValue(cpuSentence ?? "relative activity shapes")
+    }
+
+    /// "avg CPU 18% · peak 91% at 10:42" — real, unnormalized numbers for
+    /// the one metric whose unit needs no compaction.
+    private var cpuSentence: String? {
+        guard let cpu = drawable.first(where: { $0.metric == .cpu }) else { return nil }
+        let avg = cpu.samples.map(\.avg).reduce(0, +) / Double(max(cpu.samples.count, 1))
+        guard let peak = cpu.samples.max(by: { $0.max < $1.max }) else { return nil }
+        let time = peak.timestamp.formatted(date: .omitted, time: .shortened)
+        return String(format: "avg CPU %.0f%% · peak %.0f%% at %@", avg, peak.max, time)
+    }
+}

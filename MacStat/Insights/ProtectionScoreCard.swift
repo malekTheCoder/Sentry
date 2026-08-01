@@ -1,32 +1,23 @@
 import SwiftUI
 import MacStatKit
 
-/// The score ring.
+/// The bare score numeral, per the redesign handoff: a 64pt figure with
+/// the status word beside it in the status color — no ring, no gauge. The
+/// number *is* the hero; drawing a circle around it added chrome without
+/// adding information.
 ///
-/// Mirrors `MacStatWidget/Views/BatteryArcView.swift`'s construction exactly
-/// — a `Circle().trim(from:to:)` stroked with a round cap and rotated −90°
-/// so it starts at twelve o'clock — rather than inventing a second arc
-/// idiom. The differences are all theming: the track and fill come from the
-/// palette instead of `Color.secondary`/`.green`, and the centre carries the
-/// score plus a caption rather than a percentage.
-struct ProtectionScoreRing: View {
+/// Bands, and why these boundaries: 85 is "nothing here needs your
+/// attention today" (at most one minor finding), 60 is "there is at least
+/// one warning-level problem", below that means something critical or
+/// several serious things. They line up with `InsightWeight` — one
+/// `majorSecurity` finding (15 points) lands you at 85, and one
+/// `criticalSecurity` (25) lands you below it.
+struct ProtectionScoreFigure: View {
     @Environment(\.themePalette) private var palette
 
     let score: Int
     let caption: String
-    var diameter: CGFloat = 150
-    var lineWidth: CGFloat = 12
 
-    private var fraction: Double {
-        min(max(Double(score) / 100, 0), 1)
-    }
-
-    /// Bands, and why these boundaries: 85 is "nothing here needs your
-    /// attention today" (at most one minor finding), 60 is "there is at
-    /// least one warning-level problem", below that means something critical
-    /// or several serious things. They line up with `InsightWeight` — one
-    /// `majorSecurity` finding (15 points) lands you at 85, and one
-    /// `criticalSecurity` (25) lands you below it.
     private var tint: Color {
         if score >= 85 { return palette.success }
         if score >= 60 { return palette.warning }
@@ -34,26 +25,16 @@ struct ProtectionScoreRing: View {
     }
 
     var body: some View {
-        ZStack {
-            // Track is surfaceElevated per the handoff's fill rules —
-            // separators are for hairlines, not gauge tracks.
-            Circle()
-                .stroke(palette.surfaceElevated, lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text("\(score)")
-                    .font(palette.font(size: 38, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(palette.textPrimary)
-                Text(caption)
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-            }
+        HStack(alignment: .firstTextBaseline, spacing: palette.spacingRow) {
+            Text("\(score)")
+                .font(palette.font(size: 64, weight: .semibold))
+                .monospacedDigit()
+                .tracking(-1.5)
+                .foregroundStyle(palette.textPrimary)
+            Text(caption)
+                .font(palette.font(size: 13, weight: .medium))
+                .foregroundStyle(tint)
         }
-        .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Protection score")
         .accessibilityValue("\(score) out of 100, \(caption)")
@@ -77,31 +58,28 @@ struct ProtectionScoreCard: View {
     /// When the security half was actually read.
     let postureCollectedAt: Date
 
-    /// Subscore rows read best as a compact ledger; unbounded they stretch
-    /// the value digits away from their labels on a wide window.
-    private static let subscoreMaxWidth: CGFloat = 300
+    /// Subscore bars read best as a compact ledger; unbounded they stretch
+    /// across the whole window and the bar becomes a highway.
+    private static let subscoreMaxWidth: CGFloat = 340
 
     var body: some View {
-        HStack(alignment: .center, spacing: palette.spacingSection) {
-            ProtectionScoreRing(score: score.overall, caption: bandCaption)
+        VStack(alignment: .leading, spacing: palette.spacingRow) {
+            ProtectionScoreFigure(score: score.overall, caption: bandCaption)
+            title
             VStack(alignment: .leading, spacing: palette.spacingRow) {
-                title
-                VStack(alignment: .leading, spacing: palette.spacingTight) {
-                    subscoreRow(
-                        label: InsightDomain.hardware.displayName,
-                        value: score.hardwareSubscore,
-                        symbol: "laptopcomputer"
-                    )
-                    subscoreRow(
-                        label: InsightDomain.security.displayName,
-                        value: score.securitySubscore,
-                        symbol: "lock.shield"
-                    )
-                }
-                .frame(maxWidth: Self.subscoreMaxWidth, alignment: .leading)
-                qualifiers
+                subscoreRow(
+                    label: InsightDomain.hardware.displayName,
+                    value: score.hardwareSubscore,
+                    symbol: "laptopcomputer"
+                )
+                subscoreRow(
+                    label: InsightDomain.security.displayName,
+                    value: score.securitySubscore,
+                    symbol: "lock.shield"
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: Self.subscoreMaxWidth, alignment: .leading)
+            qualifiers
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -124,8 +102,13 @@ struct ProtectionScoreCard: View {
         return String(localized: "act on this")
     }
 
+    /// Label, a thin horizontal bar, value — the handoff's subscore idiom.
+    /// The bar is colored only by the score's own band (data, not accent),
+    /// on a `surfaceElevated` track.
     private func subscoreRow(label: String, value: Int, symbol: String) -> some View {
-        HStack(spacing: palette.spacingTight) {
+        let fraction = min(max(Double(value) / 100, 0), 1)
+        let tint: Color = value >= 85 ? palette.success : (value >= 60 ? palette.warning : palette.danger)
+        return HStack(spacing: palette.spacingTight) {
             Image(systemName: symbol)
                 .font(.system(size: 11))
                 .foregroundStyle(palette.textTertiary)
@@ -133,11 +116,22 @@ struct ProtectionScoreCard: View {
             Text(label)
                 .font(palette.font(size: 12))
                 .foregroundStyle(palette.textSecondary)
-            Spacer(minLength: palette.spacing)
+                .frame(width: 76, alignment: .leading)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(palette.surfaceElevated)
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(3, geometry.size.width * fraction))
+                }
+            }
+            .frame(height: 3)
+            .frame(maxWidth: .infinity)
             Text("\(value)")
-                .font(palette.font(size: 15, weight: .medium))
+                .font(palette.font(size: 13, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(palette.textPrimary)
+                .frame(width: 30, alignment: .trailing)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(label)

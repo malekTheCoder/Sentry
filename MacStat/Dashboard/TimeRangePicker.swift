@@ -79,41 +79,29 @@ enum TimeRangePicker: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-// MARK: - Pill segmented control
+// MARK: - Text range switcher
 
-/// Themed pill-style time-range control, per the Nocturne redesign's
-/// Dashboard mock: a rounded `palette.surface` container holding tappable
-/// segments, the active one filled solid with `palette.accent` and primary
-/// text, inactive ones transparent with `palette.textSecondary` text.
-///
-/// Deliberately not a native `Picker(...).pickerStyle(.segmented)` (what
-/// this view used to be, and what `HistoryRangeSelector` on iOS still is) —
-/// the redesign calls for the pill look specifically here, matching the
-/// rounded-container idiom `MetricCard` already uses for its own chrome
-/// (`palette.surface` background, `palette.cornerRadius`-radius clip).
+/// The redesign handoff's range switcher: plain text buttons separated by
+/// middots — active is `textPrimary` semibold, inactive `textTertiary`.
+/// No pill, no fill, no accent: a range is a view state, not an action,
+/// and the handoff reserves accent strictly for actions.
 struct TimeRangePickerView: View {
     @Environment(\.themePalette) private var palette
 
     @Binding var selection: TimeRangePicker
 
-    /// Padding between the container's edge and its segments — small enough
-    /// that the active pill's own fill reads as inset within the track
-    /// rather than flush against it.
-    private let containerPadding: CGFloat = 3
-    private let containerCornerRadius: CGFloat = 8
-
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(TimeRangePicker.allCases) { range in
+        HStack(spacing: 4) {
+            ForEach(Array(TimeRangePicker.allCases.enumerated()), id: \.element.id) { index, range in
+                if index > 0 {
+                    Text("·")
+                        .font(palette.font(size: 11))
+                        .foregroundStyle(palette.textTertiary)
+                        .accessibilityHidden(true)
+                }
                 segment(for: range)
             }
         }
-        .padding(containerPadding)
-        .background(palette.surface)
-        .clipShape(RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous))
-        // Intrinsic width only — a greedy `maxWidth: .infinity` on the
-        // segments once stretched this control across the entire window,
-        // colliding with the header. It's a compact pill, not a toolbar.
         .fixedSize()
         .accessibilityElement(children: .contain)
     }
@@ -125,13 +113,11 @@ struct TimeRangePickerView: View {
         } label: {
             Text(range.label)
                 .font(palette.font(size: 11, weight: isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.white : palette.textSecondary)
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: containerCornerRadius - containerPadding, style: .continuous)
-                        .fill(isSelected ? palette.accent : Color.clear)
-                )
+                .monospacedDigit()
+                .foregroundStyle(isSelected ? palette.textPrimary : palette.textTertiary)
+                .padding(.vertical, 2)
+                .padding(.horizontal, 2)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(range.accessibilityLabel)
