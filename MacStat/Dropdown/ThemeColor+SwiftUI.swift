@@ -3,59 +3,85 @@ import MacStatKit
 
 // MARK: - ThemeColor -> Color
 
+extension ColorScheme {
+    /// SwiftUI's appearance as the model layer's. Not exhaustive by choice:
+    /// `ColorScheme` is a non-frozen enum, and a future third case is far
+    /// more likely to resemble light than dark on a Mac whose default is
+    /// light — a `@unknown default` mapping to `.light` beats a crash and
+    /// beats an `Optional` every call site would have to unwrap.
+    var themeAppearance: ThemeAppearance {
+        self == .dark ? .dark : .light
+    }
+}
+
 extension ThemeColor {
-    /// Resolves this token against a color scheme. Parsing lives here rather
-    /// than in `Theme.swift` because hex-string -> `Color` is a rendering
-    /// concern; the data model deliberately stores unvalidated strings so a
-    /// bad import can round-trip through the theme editor instead of failing
-    /// to decode (see `ThemeColor.light`'s doc comment).
+    /// Resolves this token against a color scheme.
+    ///
+    /// The *parsing* moved to `MacStatKit` (see
+    /// `ThemeColor.components(fromHex:)` there) so the contrast auditor and
+    /// the `.sentrytheme` validator agree with the renderer byte for byte;
+    /// what stays here is the part that is genuinely a rendering concern —
+    /// turning numbers into a SwiftUI `Color`, and deciding what to draw when
+    /// the numbers don't exist. The data model still deliberately stores
+    /// unvalidated strings so a bad import can round-trip through the theme
+    /// editor instead of failing to decode (see `ThemeColor.light`'s doc
+    /// comment).
     func color(for scheme: ColorScheme) -> Color {
-        let hex = (scheme == .dark) ? dark : light
-        guard let rgba = Self.components(fromHex: hex) else {
+        guard let rgba = rgba(for: scheme.themeAppearance) else {
             // P5: a malformed theme must not take the UI down or render an
             // invisible view. Neutral gray is obviously "wrong" to the eye
             // without being unreadable.
             return Color(.sRGB, red: 0.5, green: 0.5, blue: 0.5, opacity: clampedOpacity)
         }
-        return Color(
-            .sRGB,
-            red: rgba.r,
-            green: rgba.g,
-            blue: rgba.b,
-            opacity: rgba.a * clampedOpacity
-        )
+        return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
     }
 
-    private var clampedOpacity: Double { min(max(opacity, 0), 1) }
-
-    /// Accepts `RGB`, `RRGGBB`, and `RRGGBBAA`, with or without a leading `#`.
-    /// Returns nil (never a force-unwrap or a crash) for anything else.
-    static func components(fromHex raw: String) -> (r: Double, g: Double, b: Double, a: Double)? {
-        var hex = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if hex.hasPrefix("#") { hex.removeFirst() }
-        guard hex.allSatisfy({ $0.isHexDigit }) else { return nil }
-
-        let expanded: String
-        switch hex.count {
-        case 3: expanded = hex.map { "\($0)\($0)" }.joined()
-        case 6, 8: expanded = hex
-        default: return nil
+    /// The token as a `Color` for a `ColorPicker` to bind to, with `opacity`
+    /// deliberately **excluded**.
+    ///
+    /// The editor gives opacity its own slider rather than folding it into
+    /// the well. `ColorPicker(supportsOpacity: true)` looks like the obvious
+    /// answer and is the wrong one here: `ThemeColor` stores opacity as a
+    /// separate multiplier on top of a hex string that may *itself* carry an
+    /// alpha byte (`#RRGGBBAA`), so a round-trip through a single alpha
+    /// channel would silently collapse the two into one and rewrite hex the
+    /// user hadn't touched. A well that edits the hue and a slider that edits
+    /// the multiplier map one-to-one onto what is actually stored.
+    func pickerColor(for scheme: ColorScheme) -> Color {
+        guard let rgba = rgba(for: scheme.themeAppearance) else {
+            return Color(.sRGB, red: 0.5, green: 0.5, blue: 0.5, opacity: 1)
         }
+        return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: 1)
+    }
+}
 
-        guard let value = UInt64(expanded, radix: 16) else { return nil }
-        if expanded.count == 8 {
-            return (
-                Double((value >> 24) & 0xFF) / 255,
-                Double((value >> 16) & 0xFF) / 255,
-                Double((value >> 8) & 0xFF) / 255,
-                Double(value & 0xFF) / 255
-            )
+// MARK: - Color -> hex (the theme editor's write path)
+
+extension Color {
+    /// `#RRGGBB` for this color, or `nil` if it can't be expressed in sRGB.
+    ///
+    /// Goes through `NSColor.usingColorSpace(.sRGB)` rather than reading
+    /// components off the `Color` directly: macOS color wells can hand back a
+    /// value in Display P3 or a named catalog color, and reading those
+    /// channels raw would store numbers that mean something different when
+    /// the theme is drawn. Conversion can fail (a pattern color, a color
+    /// space with no sRGB path), and `nil` is the honest answer — the editor
+    /// leaves the token unchanged and says so rather than writing `#000000`.
+    ///
+    /// Alpha is dropped, not encoded as `#RRGGBBAA`: the editor's wells never
+    /// produce a transparent color (see `pickerColor(for:)`), so an alpha
+    /// byte here could only come from rounding noise, and writing one would
+    /// double up with `ThemeColor.opacity`.
+    func themeHex() -> String? {
+        guard let srgb = NSColor(self).usingColorSpace(.sRGB) else { return nil }
+        func byte(_ component: CGFloat) -> Int {
+            Int((min(max(component, 0), 1) * 255).rounded())
         }
-        return (
-            Double((value >> 16) & 0xFF) / 255,
-            Double((value >> 8) & 0xFF) / 255,
-            Double(value & 0xFF) / 255,
-            1.0
+        return String(
+            format: "#%02X%02X%02X",
+            byte(srgb.redComponent),
+            byte(srgb.greenComponent),
+            byte(srgb.blueComponent)
         )
     }
 }

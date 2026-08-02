@@ -46,6 +46,9 @@ struct DropdownView: View {
     @Environment(\.colorScheme) private var systemColorScheme
 
     private let theme: Theme
+    /// Only the quick switcher reads this — the dropdown renders `theme`, not
+    /// a list. See `themeSwitcher`.
+    private let customThemes: [Theme]
     private let enabledModules: Set<MetricModule>
     private let cardListMaxHeight: CGFloat
     /// Section visibility, user-configurable in Settings → Menu Bar.
@@ -80,6 +83,12 @@ struct DropdownView: View {
         powerControl: PowerControlService,
         activityLog: MCPActivityLog,
         theme: Theme = .defaultTheme,
+        // The user's own themes, so the quick switcher below offers them
+        // alongside the presets. Defaulting to empty rather than making the
+        // parameter required keeps every preview and test call site unchanged
+        // — and an empty list is a truthful state (a user who has never opened
+        // the theme editor has no custom themes), not a placeholder.
+        customThemes: [Theme] = [],
         enabledModules: Set<MetricModule> = Set(MetricModule.allCases),
         // Callers pass the actual anchor screen's height so this scales with
         // the display the status item lives on rather than a guess — a
@@ -98,6 +107,7 @@ struct DropdownView: View {
         self._powerControl = ObservedObject(wrappedValue: powerControl)
         self._activityLog = ObservedObject(wrappedValue: activityLog)
         self.theme = theme
+        self.customThemes = customThemes
         self.enabledModules = enabledModules
         self.cardListMaxHeight = cardListMaxHeight
         self.showsKeepAwake = showsKeepAwake
@@ -383,21 +393,41 @@ struct DropdownView: View {
         }
     }
 
-    /// Quick theme switcher: every built-in preset one click away, without a
-    /// trip through Settings. Same 28pt icon treatment as its neighbors so
-    /// the action row reads as one control group.
+    /// Quick theme switcher: every theme one click away, without a trip
+    /// through Settings. Same 28pt icon treatment as its neighbors so the
+    /// action row reads as one control group.
+    ///
+    /// Custom themes come first and are separated by a divider: a user who
+    /// authored a theme is switching *to* it far more often than to Monokai,
+    /// and the fifteen presets below would otherwise bury it. When there are
+    /// none, no divider and no empty section appears — the menu is exactly
+    /// what it used to be.
+    /// One row of the switcher menu. Extracted so the custom and built-in
+    /// sections cannot drift — the checkmark rule in particular has to be
+    /// identical or the active theme appears unselected in one of them.
+    @ViewBuilder
+    private func themeSwitcherItem(_ candidate: Theme) -> some View {
+        Button {
+            onSelectTheme?(candidate.id)
+        } label: {
+            if candidate.id == theme.id {
+                Label(candidate.name, systemImage: "checkmark")
+            } else {
+                Text(candidate.name)
+            }
+        }
+    }
+
     private var themeSwitcher: some View {
         Menu {
+            ForEach(customThemes) { candidate in
+                themeSwitcherItem(candidate)
+            }
+            if !customThemes.isEmpty {
+                Divider()
+            }
             ForEach(Theme.builtInPresets) { candidate in
-                Button {
-                    onSelectTheme?(candidate.id)
-                } label: {
-                    if candidate.id == theme.id {
-                        Label(candidate.name, systemImage: "checkmark")
-                    } else {
-                        Text(candidate.name)
-                    }
-                }
+                themeSwitcherItem(candidate)
             }
         } label: {
             Image(systemName: "paintbrush")

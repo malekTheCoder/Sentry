@@ -304,6 +304,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// rebuild an `NSHostingController` each time — and can't stomp an open
     /// popover.
     private var lastAppliedTheme: Theme?
+    /// The list the dropdown's quick switcher was last built with. Tracked
+    /// separately from `lastAppliedTheme` because renaming or deleting a
+    /// custom theme the user isn't *currently* using changes the switcher's
+    /// menu without changing the active theme at all — without this, a theme
+    /// created in Settings wouldn't appear in that menu until something else
+    /// happened to force a rebuild.
+    private var lastAppliedCustomThemes: [Theme]?
     private var lastAppliedModules: Set<MetricModule>?
     /// The `cardListMaxHeight` baked into the current hosting controller, so
     /// `togglePopover` can tell a genuine display change from a no-op reopen
@@ -564,6 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the run.
         popover.delegate = self
         lastAppliedTheme = theme
+        lastAppliedCustomThemes = settingsStore.settings.customThemes
         lastAppliedModules = enabledModules
         let height = cardListMaxHeight()
         lastAppliedCardListMaxHeight = height
@@ -573,6 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 powerControl: powerControl,
                 activityLog: mcpActivityLog,
                 theme: theme,
+                customThemes: settingsStore.settings.customThemes,
                 enabledModules: enabledModules,
                 cardListMaxHeight: height,
                 showsKeepAwake: settingsStore.settings.dropdownShowsKeepAwake,
@@ -657,7 +666,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func selectTheme(id: String) {
         settingsStore.settings.themeID = id
         guard popover.isShown else { return }
-        let theme = Theme.builtInPresets.first { $0.id == id } ?? .defaultTheme
+        let theme = Theme.resolve(id: id, in: settingsStore.settings.customThemes)
         configurePopover(theme: theme, enabledModules: settingsStore.settings.enabledModules)
     }
 
@@ -701,7 +710,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // still the *old* value at emission time. It happens to work today
         // only because the async hop lands after the assignment — not
         // something a theme switch should depend on.
-        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .defaultTheme
+        let theme = Theme.resolve(id: settings.themeID, in: settings.customThemes)
 
         statusItemController?.apply(layout: settings.menuBarLayout)
         statusItemController?.apply(theme: theme)
@@ -832,7 +841,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             || settings.dropdownShowsAgentActivity != lastAppliedDropdownShowsAgentActivity
         lastAppliedDropdownShowsKeepAwake = settings.dropdownShowsKeepAwake
         lastAppliedDropdownShowsAgentActivity = settings.dropdownShowsAgentActivity
-        guard theme != lastAppliedTheme || settings.enabledModules != lastAppliedModules || dropdownOptionsChanged,
+        guard theme != lastAppliedTheme
+                || settings.customThemes != lastAppliedCustomThemes
+                || settings.enabledModules != lastAppliedModules
+                || dropdownOptionsChanged,
               !popover.isShown
         else { return }
         configurePopover(theme: theme, enabledModules: settings.enabledModules)

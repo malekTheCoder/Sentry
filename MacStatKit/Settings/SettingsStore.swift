@@ -96,12 +96,19 @@ public final class SettingsStore: ObservableObject {
 
     // MARK: - Theme resolution
 
-    /// Resolves `settings.themeID` against the built-in presets, falling back to
-    /// Terminal (Appendix B's default) when the id is unknown — e.g. a settings
-    /// file that references a custom theme the user has since deleted, or one
-    /// written by a build that shipped a preset this one doesn't have.
+    /// Resolves `settings.themeID` against the user's custom themes and then
+    /// the built-in presets, falling back to `Theme.defaultTheme` when the id
+    /// is unknown — e.g. a settings file that references a custom theme the
+    /// user has since deleted, or one written by a build that shipped a preset
+    /// this one doesn't have.
+    ///
+    /// Delegates to `Theme.resolve(id:in:)` rather than repeating the lookup,
+    /// because the same question is asked from `AppDelegate` (twice) and the
+    /// dropdown's quick switcher, and three copies of a two-line lookup is
+    /// exactly how a custom theme ends up applying to the Dashboard but not to
+    /// the status item.
     public func resolvedTheme() -> Theme {
-        Theme.builtInPresets.first { $0.id == settings.themeID } ?? .defaultTheme
+        Theme.resolve(id: settings.themeID, in: settings.customThemes)
     }
 
     // MARK: - Persistence

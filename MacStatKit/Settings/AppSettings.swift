@@ -18,6 +18,31 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// live in their own store later without bloating this file.
     public var themeID: String
 
+    /// The user's own themes (plan §9.3): duplicated from a preset in the
+    /// theme editor, or imported from a `.sentrytheme` file.
+    ///
+    /// **Why the whole theme lives here rather than only an id.** `themeID`
+    /// above deliberately stores a reference because the presets it points at
+    /// are code — but a custom theme isn't code, it's the user's data, and
+    /// there is nothing else to resolve it against. The same reasoning
+    /// `alertRules` and `protectionInsightSuppressions` already carry applies
+    /// verbatim: it's a small plain `Codable` value type, it belongs to the
+    /// user rather than to a machine, and carrying it in the one file
+    /// everything else round-trips through means copying `settings.json` to a
+    /// new Mac brings the themes along.
+    ///
+    /// **Absent and explicitly-empty mean the same thing here**, unlike
+    /// `alertRules`: the shipped default genuinely is "no custom themes," so
+    /// there is no missing-key-versus-emptied-by-the-user distinction to
+    /// preserve — a file from before the theme editor existed and a file
+    /// belonging to someone who deleted their last custom theme are the same
+    /// situation, and both should show the empty state the pane prints.
+    ///
+    /// A `themeID` naming a theme that was later deleted resolves back to the
+    /// default preset (`Theme.resolve(id:in:)`), rather than leaving the app
+    /// pointed at nothing.
+    public var customThemes: [Theme]
+
     /// Which metric modules are surfaced in the UI.
     public var enabledModules: Set<MetricModule>
 
@@ -311,6 +336,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(
         themeID: String = Theme.defaultTheme.id,
+        customThemes: [Theme] = [],
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
         detailedCharts: Bool = false,
@@ -346,6 +372,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
         self.themeID = themeID
+        self.customThemes = customThemes
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
         self.detailedCharts = detailedCharts
@@ -391,6 +418,11 @@ extension AppSettings {
 
     private enum CodingKeys: String, CodingKey {
         case themeID
+        // Theme editor, additive: absent in any settings.json written before
+        // custom themes existed, and its fallback is `[]` — the same
+        // "missing and explicitly-empty are the same situation" case as
+        // `protectionInsightSuppressions`, not the `alertRules` case.
+        case customThemes
         case enabledModules
         case menuBarLayout
         case detailedCharts
@@ -458,6 +490,11 @@ extension AppSettings {
         self.init(
             themeID: try container.decodeIfPresent(String.self, forKey: .themeID)
                 ?? fallback.themeID,
+            // `Theme` has its own additive-tolerant decoder (see
+            // `Theme.init(from:)`), so a stored custom theme written by an
+            // older build survives a token being added here as well.
+            customThemes: try container.decodeIfPresent([Theme].self, forKey: .customThemes)
+                ?? fallback.customThemes,
             enabledModules: try container.decodeIfPresent(Set<MetricModule>.self, forKey: .enabledModules)
                 ?? fallback.enabledModules,
             menuBarLayout: try container.decodeIfPresent(MenuBarLayout.self, forKey: .menuBarLayout)
