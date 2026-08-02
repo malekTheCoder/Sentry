@@ -749,6 +749,25 @@ targets:
       # dev.malekswilam.macstat.watch, which blocked every install of
       # MacStatMobile with the watch embedded).
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile.watch
+      # Without this the watch app crashes on every launch, 100% of the time,
+      # with `Library not loaded: @rpath/MacStatKit.framework/MacStatKit`.
+      #
+      # MacStatKit_watchOS is embedded (see `dependencies:` above) and lands in
+      # MacStatWatch.app/Frameworks/. But this target's only rpath was
+      # `@executable_path`, which resolves to the bundle root — so dyld looked
+      # for MacStatWatch.app/MacStatKit.framework, one directory too high, and
+      # aborted before `main` ever ran.
+      #
+      # Why it went unnoticed: the bug is invisible to every check this project
+      # was making. It builds cleanly, links cleanly, and the unit suite is
+      # macOS-hosted so it never loads this binary. It only appears when the
+      # app is actually launched. The sibling widget extension was fine the
+      # whole time — Xcode's default rpaths for an *app extension* already
+      # include `@executable_path/../../Frameworks`, and MacStatMobile gets
+      # `@executable_path/Frameworks` incidentally from its SwiftPM package
+      # dependencies. This target has neither: no SwiftPM deps, and it is an
+      # app rather than an extension, so nothing supplied it.
+      LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
       # App icon. The catalogs live under each target's existing `sources:`
       # path, so XcodeGen picks them up as resources by extension — no
       # explicit `resources:` entry needed (same mechanism as the
