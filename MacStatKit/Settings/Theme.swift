@@ -63,6 +63,28 @@ public enum MaterialToken: String, Codable, Equatable, Sendable {
 
 // MARK: - ThemeColor
 
+/// Which half of a `ThemeColor`'s light/dark pair a caller wants.
+///
+/// SwiftUI's `ColorScheme` is the type the rendering layers actually branch
+/// on, but it lives in SwiftUI and `MacStatKit` is deliberately
+/// Foundation-only for the model layer — the contrast auditor
+/// (`ThemeContrast`) and the `.sentrytheme` validator both need to resolve a
+/// token pair without importing a UI framework. The two SwiftUI bridges
+/// (`MacStat/Dropdown/ThemeColor+SwiftUI.swift` and its iOS mirror) map
+/// `ColorScheme` onto this.
+public enum ThemeAppearance: String, Codable, CaseIterable, Equatable, Sendable {
+    case light
+    case dark
+
+    /// For UI that names the appearance being edited or audited.
+    public var displayName: String {
+        switch self {
+        case .light: return String(localized: "Light")
+        case .dark: return String(localized: "Dark")
+        }
+    }
+}
+
 /// A color token expressed as a light/dark hex pair plus opacity, so a single
 /// token can answer `NSApp.effectiveAppearance` without the rendering layer
 /// needing per-appearance branching at every call site.
@@ -88,6 +110,116 @@ public struct ThemeColor: Codable, Equatable, Sendable {
         self.dark = hex
         self.opacity = opacity
     }
+
+    /// The raw hex string for one half of the pair, unparsed and unvalidated —
+    /// exactly what is stored. Callers that want numbers want `rgba(for:)`.
+    public func hex(for appearance: ThemeAppearance) -> String {
+        appearance == .dark ? dark : light
+    }
+
+    /// A copy with one half of the pair replaced. The editor's color wells
+    /// mutate a single appearance at a time (you can't pick two colors with
+    /// one well), so this is the shape every write in the editor takes.
+    public func settingHex(_ hex: String, for appearance: ThemeAppearance) -> ThemeColor {
+        var copy = self
+        switch appearance {
+        case .light: copy.light = hex
+        case .dark: copy.dark = hex
+        }
+        return copy
+    }
+
+    public var clampedOpacity: Double { min(max(opacity, 0), 1) }
+}
+
+// MARK: - Hex parsing
+
+extension ThemeColor {
+
+    /// Straight, premultiplication-free sRGB components in 0...1.
+    ///
+    /// A plain struct rather than the labelled tuple the SwiftUI bridges used
+    /// to return, because it now crosses a module boundary and appears in
+    /// `ThemeContrast`'s public surface, where `(r: Double, g: Double, ...)`
+    /// reads as an implementation detail that leaked.
+    public struct RGBA: Equatable, Sendable {
+        public var red: Double
+        public var green: Double
+        public var blue: Double
+        /// The alpha carried *by the hex string itself* (the `AA` of
+        /// `RRGGBBAA`). `ThemeColor.opacity` is a separate multiplier and is
+        /// deliberately not folded in here — see `rgba(for:)`.
+        public var alpha: Double
+
+        public init(red: Double, green: Double, blue: Double, alpha: Double = 1) {
+            self.red = red
+            self.green = green
+            self.blue = blue
+            self.alpha = alpha
+        }
+    }
+
+    /// Accepts `RGB`, `RRGGBB`, and `RRGGBBAA`, with or without a leading `#`.
+    /// Returns nil (never a force-unwrap or a crash) for anything else.
+    ///
+    /// **Why this lives in `MacStatKit` now.** It used to exist twice, as a
+    /// private helper inside each SwiftUI bridge, with a doc comment in the
+    /// iOS copy explaining that duplication was the intended state until
+    /// someone promoted the theming surface to the framework. This is a
+    /// partial version of that promotion: only the *parser* moved, because
+    /// the contrast auditor and the `.sentrytheme` validator are pure model
+    /// code that must agree, byte for byte, with what the renderer will draw
+    /// — a validator that accepts a hex string the renderer then falls back
+    /// to gray for is worse than no validator. `ThemePalette` itself stayed
+    /// put; promoting it is still the larger refactor that comment describes.
+    public static func components(fromHex raw: String) -> RGBA? {
+        var hex = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if hex.hasPrefix("#") { hex.removeFirst() }
+        guard !hex.isEmpty, hex.allSatisfy({ $0.isHexDigit }) else { return nil }
+
+        let expanded: String
+        switch hex.count {
+        case 3: expanded = hex.map { "\($0)\($0)" }.joined()
+        case 6, 8: expanded = hex
+        default: return nil
+        }
+
+        guard let value = UInt64(expanded, radix: 16) else { return nil }
+        if expanded.count == 8 {
+            return RGBA(
+                red: Double((value >> 24) & 0xFF) / 255,
+                green: Double((value >> 16) & 0xFF) / 255,
+                blue: Double((value >> 8) & 0xFF) / 255,
+                alpha: Double(value & 0xFF) / 255
+            )
+        }
+        return RGBA(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255,
+            alpha: 1.0
+        )
+    }
+
+    /// This token resolved for one appearance, with `opacity` already folded
+    /// into `alpha` — i.e. exactly the color the renderer produces.
+    ///
+    /// `nil` for a malformed hex string, which the *renderer* answers with a
+    /// neutral gray (see the bridges' `color(for:)`) and the *validator*
+    /// answers with a rejection. Both behaviours are correct for their
+    /// caller, so this returns the honest "couldn't parse" rather than
+    /// picking one of them here.
+    public func rgba(for appearance: ThemeAppearance) -> RGBA? {
+        guard var parsed = Self.components(fromHex: hex(for: appearance)) else { return nil }
+        parsed.alpha *= clampedOpacity
+        return parsed
+    }
+
+    /// True when both halves of the pair parse. The theme editor's own color
+    /// wells can't produce anything else; a hand-edited `.sentrytheme` can.
+    public var isWellFormed: Bool {
+        ThemeAppearance.allCases.allSatisfy { Self.components(fromHex: hex(for: $0)) != nil }
+    }
 }
 
 // MARK: - Theme
@@ -96,6 +228,26 @@ public struct Theme: Codable, Identifiable, Equatable, Sendable {
     public var id: String
     public var name: String
     public var isBuiltIn: Bool
+
+    /// For a custom theme, the `id` of the built-in preset it was duplicated
+    /// from; `nil` for the built-ins themselves and for a theme imported from
+    /// a `.sentrytheme` file that named no ancestor.
+    ///
+    /// This is what makes §9.3's "Reset to preset" answerable *per token* and
+    /// not merely globally: without a remembered ancestor, "reset this one
+    /// color well" has no value to reset to, and the only honest offer would
+    /// be "discard everything." The editor consults it through
+    /// `Theme.basePreset` and disables both reset affordances (with the reason
+    /// on screen) when it resolves to nothing, rather than silently resetting
+    /// to whatever the current default preset happens to be — a user who
+    /// imported someone else's theme has no relationship to Notion, and
+    /// snapping their accent to Notion blue would be an invented answer.
+    ///
+    /// Deliberately *not* a strong reference or an embedded copy: presets are
+    /// code, they change between builds, and a stored copy would silently
+    /// preserve a stale idea of "the preset value." An id that no longer
+    /// resolves is a real outcome and is handled as one.
+    public var basePresetID: String?
 
     // Color tokens — every UI surface references a token, never a literal
     public var background: ThemeColor
@@ -166,11 +318,13 @@ public struct Theme: Codable, Identifiable, Equatable, Sendable {
         useMaterialBackground: Bool,
         materialStyle: MaterialToken,
         glowIntensity: Double,
-        scanlineOverlay: Bool
+        scanlineOverlay: Bool,
+        basePresetID: String? = nil
     ) {
         self.id = id
         self.name = name
         self.isBuiltIn = isBuiltIn
+        self.basePresetID = basePresetID
         self.background = background
         self.surface = surface
         self.surfaceElevated = surfaceElevated
@@ -199,6 +353,191 @@ public struct Theme: Codable, Identifiable, Equatable, Sendable {
         self.materialStyle = materialStyle
         self.glowIntensity = glowIntensity
         self.scanlineOverlay = scanlineOverlay
+    }
+}
+
+// MARK: - Forward-compatible decoding
+
+extension Theme {
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, isBuiltIn, basePresetID
+        case background, surface, surfaceElevated
+        case textPrimary, textSecondary, textTertiary
+        case accent, success, warning, danger
+        case chartGrid, chartFill, separator
+        case metricColors
+        case fontFamily, barFontSize, barFontWeight, numericStyle
+        case cornerRadius, density, chartStyle, chartLineWidth
+        case showChartGrid, barGraphWidth
+        case useMaterialBackground, materialStyle, glowIntensity, scanlineOverlay
+    }
+
+    /// Hand-written for the same reason `AppSettings.init(from:)` is, and now
+    /// for the same *stakes*: from the theme editor onward a `Theme` is
+    /// user-owned data that round-trips through `settings.json`, so a build
+    /// that adds a token must not make every previously-saved custom theme
+    /// undecodable. `decodeIfPresent ?? fallback` on every key is what keeps
+    /// that promise; the fallback is the default preset's value for that
+    /// token, which is the only value in the program that is guaranteed to
+    /// exist and to be sane.
+    ///
+    /// **This decoder is deliberately permissive, and that is exactly why
+    /// import does not rely on it.** A `.sentrytheme` file is untrusted
+    /// input: run through this initializer alone, `{}` would decode into a
+    /// perfect copy of Notion wearing whatever name the file claimed, and the
+    /// user would be told the import succeeded. `ThemeDocument.decode(_:)`
+    /// therefore performs its own required-key and range checking *before*
+    /// handing anything to this initializer — see that type's doc comment.
+    /// Tolerance is right for our own file; it is wrong for someone else's.
+    ///
+    /// `id`, `name` and `isBuiltIn` have no meaningful per-token fallback, so
+    /// a settings file missing them yields an obviously-inert custom theme
+    /// (a fresh id, an "Untitled Theme" name, `isBuiltIn == false`) rather
+    /// than a throw that would take the whole settings file down with it —
+    /// `SettingsStore` falls back to wholesale defaults on a decode failure,
+    /// and losing every unrelated setting to one malformed theme object is a
+    /// far worse outcome than showing one oddly-named theme in the list.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = Theme.defaultTheme
+
+        self.init(
+            id: try container.decodeIfPresent(String.self, forKey: .id)
+                ?? Theme.newCustomID(),
+            name: try container.decodeIfPresent(String.self, forKey: .name)
+                ?? String(localized: "Untitled Theme"),
+            isBuiltIn: try container.decodeIfPresent(Bool.self, forKey: .isBuiltIn)
+                ?? false,
+            background: try container.decodeIfPresent(ThemeColor.self, forKey: .background)
+                ?? fallback.background,
+            surface: try container.decodeIfPresent(ThemeColor.self, forKey: .surface)
+                ?? fallback.surface,
+            surfaceElevated: try container.decodeIfPresent(ThemeColor.self, forKey: .surfaceElevated)
+                ?? fallback.surfaceElevated,
+            textPrimary: try container.decodeIfPresent(ThemeColor.self, forKey: .textPrimary)
+                ?? fallback.textPrimary,
+            textSecondary: try container.decodeIfPresent(ThemeColor.self, forKey: .textSecondary)
+                ?? fallback.textSecondary,
+            textTertiary: try container.decodeIfPresent(ThemeColor.self, forKey: .textTertiary)
+                ?? fallback.textTertiary,
+            accent: try container.decodeIfPresent(ThemeColor.self, forKey: .accent)
+                ?? fallback.accent,
+            success: try container.decodeIfPresent(ThemeColor.self, forKey: .success)
+                ?? fallback.success,
+            warning: try container.decodeIfPresent(ThemeColor.self, forKey: .warning)
+                ?? fallback.warning,
+            danger: try container.decodeIfPresent(ThemeColor.self, forKey: .danger)
+                ?? fallback.danger,
+            chartGrid: try container.decodeIfPresent(ThemeColor.self, forKey: .chartGrid)
+                ?? fallback.chartGrid,
+            chartFill: try container.decodeIfPresent([ThemeColor].self, forKey: .chartFill)
+                ?? fallback.chartFill,
+            separator: try container.decodeIfPresent(ThemeColor.self, forKey: .separator)
+                ?? fallback.separator,
+            // An explicitly-empty `metricColors` is honored verbatim rather
+            // than upgraded to the default map — `ThemePalette.metricColor`
+            // already falls back to the accent per metric, so "no per-metric
+            // colors" is a legal theme a user can deliberately author, and is
+            // a different statement from "this file predates the key."
+            metricColors: try container.decodeIfPresent([String: ThemeColor].self, forKey: .metricColors)
+                ?? fallback.metricColors,
+            fontFamily: try container.decodeIfPresent(FontChoice.self, forKey: .fontFamily)
+                ?? fallback.fontFamily,
+            barFontSize: try container.decodeIfPresent(CGFloat.self, forKey: .barFontSize)
+                ?? fallback.barFontSize,
+            barFontWeight: try container.decodeIfPresent(FontWeightToken.self, forKey: .barFontWeight)
+                ?? fallback.barFontWeight,
+            numericStyle: try container.decodeIfPresent(NumericStyle.self, forKey: .numericStyle)
+                ?? fallback.numericStyle,
+            cornerRadius: try container.decodeIfPresent(CGFloat.self, forKey: .cornerRadius)
+                ?? fallback.cornerRadius,
+            density: try container.decodeIfPresent(Density.self, forKey: .density)
+                ?? fallback.density,
+            chartStyle: try container.decodeIfPresent(ChartStyle.self, forKey: .chartStyle)
+                ?? fallback.chartStyle,
+            chartLineWidth: try container.decodeIfPresent(CGFloat.self, forKey: .chartLineWidth)
+                ?? fallback.chartLineWidth,
+            showChartGrid: try container.decodeIfPresent(Bool.self, forKey: .showChartGrid)
+                ?? fallback.showChartGrid,
+            barGraphWidth: try container.decodeIfPresent(CGFloat.self, forKey: .barGraphWidth)
+                ?? fallback.barGraphWidth,
+            useMaterialBackground: try container.decodeIfPresent(Bool.self, forKey: .useMaterialBackground)
+                ?? fallback.useMaterialBackground,
+            materialStyle: try container.decodeIfPresent(MaterialToken.self, forKey: .materialStyle)
+                ?? fallback.materialStyle,
+            glowIntensity: try container.decodeIfPresent(Double.self, forKey: .glowIntensity)
+                ?? fallback.glowIntensity,
+            scanlineOverlay: try container.decodeIfPresent(Bool.self, forKey: .scanlineOverlay)
+                ?? fallback.scanlineOverlay,
+            // Genuinely optional rather than defaulted: `nil` means "no known
+            // ancestor," which the editor reports on screen. There is no
+            // sensible fallback ancestor to invent.
+            basePresetID: try container.decodeIfPresent(String.self, forKey: .basePresetID)
+        )
+    }
+}
+
+// MARK: - Custom themes
+
+extension Theme {
+
+    /// Every user-authored theme's `id` starts with this. Built-ins use
+    /// `builtin.`, and `ThemeDocument` refuses to import anything claiming
+    /// the built-in namespace — a downloaded file that could name itself
+    /// `builtin.notion` would shadow a preset in `Theme.resolve(id:in:)` and
+    /// silently replace it everywhere in the app.
+    public static let customIDPrefix = "custom."
+    public static let builtInIDPrefix = "builtin."
+
+    /// Fresh identity for a duplicated or imported theme. A UUID rather than
+    /// a slug of the name, so two themes called "My Theme" (a duplicate of a
+    /// duplicate, an import of a file you already had) are two themes rather
+    /// than one overwriting the other.
+    public static func newCustomID() -> String {
+        customIDPrefix + UUID().uuidString.lowercased()
+    }
+
+    public var isCustom: Bool { !isBuiltIn }
+
+    /// §9.3's "Duplicate & Edit": an independent copy of the receiver with a
+    /// fresh identity, editable, and remembering where it came from.
+    ///
+    /// Duplicating a *custom* theme keeps that theme's own `basePresetID`
+    /// rather than pointing at the custom theme — "reset to preset" means the
+    /// shipped preset at the root of the chain, and a chain of forks all
+    /// resetting to each other's current state would make the button's answer
+    /// depend on edits the user made to an unrelated theme afterwards.
+    public func duplicated(named newName: String? = nil) -> Theme {
+        var copy = self
+        copy.id = Theme.newCustomID()
+        copy.isBuiltIn = false
+        copy.name = newName ?? String(localized: "\(name) Copy")
+        copy.basePresetID = isBuiltIn ? id : basePresetID
+        return copy
+    }
+
+    /// The shipped preset this theme was forked from, if it still exists in
+    /// this build. `nil` is a real answer — an import with no ancestor, or a
+    /// preset that was renamed or removed between versions.
+    public var basePreset: Theme? {
+        guard let basePresetID else { return nil }
+        return Theme.builtInPresets.first { $0.id == basePresetID }
+    }
+
+    /// The one place "which theme is `themeID`?" is answered, so custom
+    /// themes reach every surface the presets already do.
+    ///
+    /// Custom themes are searched **first**: a custom theme cannot legally
+    /// hold a `builtin.` id (see `customIDPrefix`), so the two namespaces
+    /// can't actually collide — but if a hand-edited `settings.json` ever
+    /// managed it, resolving to the user's own theme is the less surprising
+    /// of the two wrong answers, and the built-in remains reachable by
+    /// picking it again in the preset grid.
+    public static func resolve(id: String, in customThemes: [Theme]) -> Theme {
+        customThemes.first { $0.id == id }
+            ?? builtInPresets.first { $0.id == id }
+            ?? defaultTheme
     }
 }
 

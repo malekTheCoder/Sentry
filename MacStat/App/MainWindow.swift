@@ -83,7 +83,7 @@ struct MainWindowView: View {
         let background = state.theme.background
         guard background.light == background.dark else { return nil }
         guard let rgb = ThemeColor.components(fromHex: background.light) else { return nil }
-        let luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b
+        let luminance = 0.299 * rgb.red + 0.587 * rgb.green + 0.114 * rgb.blue
         return luminance > 0.5 ? .light : .dark
     }
 
