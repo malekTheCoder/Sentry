@@ -6,10 +6,6 @@ any of the three, and an AI-agent (MCP) integration layer.
 
 Private / proprietary — all rights reserved. Not licensed for reuse.
 
-**Status:** feature-complete for a first release; release engineering in
-progress. What remains before shipping is signing, notarization, and the
-Sparkle update channel — see [Before the first release](#before-the-first-release).
-
 ## What it does
 
 **On the Mac** — a menu bar readout (monochrome, layout-configurable) with a
