@@ -86,11 +86,15 @@ struct ProUpsellCard: View {
     private var noticeText: String {
         switch unlockSource {
         case .locked:
-            return String(localized: "Purchasing isn't available yet — Sentry isn't on the App Store, so there is deliberately no Buy button here that couldn't work. In the meantime you can unlock everything locally in Settings ▸ Advanced ▸ Developer.")
+            // Still true after the license system landed: verification
+            // exists (`LicenseProEntitlementStore`), but no checkout does —
+            // there is nowhere to buy a license yet, so a Buy button here
+            // would still be the inert control this copy refuses to be.
+            return String(localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened, so there is deliberately no Buy button here that couldn't work. In the meantime you can unlock everything locally in Settings ▸ Advanced ▸ Developer.")
         case .developerOverride:
             return String(localized: "Unlocked by the local developer override in Settings ▸ Advanced. This is not a purchase.")
-        case .purchase:
-            return String(localized: "Unlocked by purchase.")
+        case .license:
+            return String(localized: "Unlocked by your Sentry Pro license.")
         }
     }
 }

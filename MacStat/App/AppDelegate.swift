@@ -181,10 +181,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Protection Insights
 
-    /// The local, no-StoreKit entitlement check (see `ProEntitlementStore`'s
-    /// doc comment for how a real StoreKit implementation drops in later
-    /// without touching `InsightsViewModel`).
-    private lazy var proEntitlementStore = ProEntitlementStore(settingsStore: settingsStore)
+    /// The license-backed entitlement check (`LicenseProEntitlementStore`)
+    /// — the "change the one line in `AppDelegate`" step that
+    /// `ProEntitlementProviding`'s doc comment always promised, done.
+    /// `publicKey` is `LicenseKeys.productionPublicKey`, which is nil until
+    /// the owner embeds the real key (see `LicenseKeys` for the go-live
+    /// step), so today this behaves exactly like the override-only
+    /// `ProEntitlementStore` it replaced — while reporting *why* honestly
+    /// (`LicenseDenialReason.verificationUnavailableInThisBuild`) if a
+    /// license ever shows up anyway. `activationClient` stays nil until the
+    /// checkout side exists (`LicenseActivation.swift`), and
+    /// `revalidationPolicy` stays `.never` for exactly as long — see that
+    /// policy's doc comment for why enforcing a grace window with no
+    /// refresher would brick paying users.
+    private lazy var proEntitlementStore = LicenseProEntitlementStore(
+        settingsStore: settingsStore,
+        publicKey: LicenseKeys.productionPublicKey
+    )
 
     /// macOS-only, off-main-thread, TTL-cached — see
     /// `SecurityPostureCollector`'s doc comment. One instance for the app's
