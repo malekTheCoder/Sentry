@@ -2,11 +2,28 @@ import Foundation
 
 #if os(macOS)
 
-/// Mach service name `MacStat.app` registers an `NSXPCListener` under (plan
-/// §13.2). `MacStatMCP` connects to this exact string via
-/// `NSXPCConnection(machServiceName:options:)` — it must match on both ends,
-/// so it's hoisted here rather than duplicated as a string literal in both
-/// `AppDelegate` and `MacStatMCP/main.swift`.
+/// The well-known Mach service name for command-line access to Sentry.
+///
+/// **Correction, because this constant's doc comment was wrong for as long as
+/// it existed.** It used to read "Mach service name `MacStat.app` registers an
+/// `NSXPCListener` under". `MacStat.app` did call
+/// `NSXPCListener(machServiceName:)` with it — and that call could never have
+/// worked, because no launchd job anywhere in this project declared the name,
+/// and only the process launchd starts as a job may vend that job's Mach
+/// service. `NSXPCListener` reports a failed check-in nowhere, so the app
+/// looked healthy and every client failed. See
+/// `MacStatKit/MCPBridge/MCPBridgeContract.swift` for the measurement and the
+/// fix.
+///
+/// The name is now owned by `SentryMCPBridge`, an on-demand LaunchAgent that
+/// brokers a direct connection to the app. **The string did not change**, and
+/// that was a design goal: no MCP client config, no shell script, and no line
+/// of `integrations/` documentation had to be rewritten to pick up the fix.
+///
+/// Pinned equal to `MCPBridgeNaming.machService` by `MCPBridgeNamingTests`.
+/// The two are separate constants because `MCPBridgeNaming` is compiled into
+/// the `SentryMCPBridge` tool target, which links no framework of ours; see
+/// `project.yml`.
 public enum MacStatXPCServiceName {
     public static let machService = "dev.malekswilam.macstat.xpc"
 }

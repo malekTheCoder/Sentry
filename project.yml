@@ -266,6 +266,27 @@ targets:
           copyFiles:
             destination: wrapper
             subpath: Contents/Library/LaunchDaemons
+      # The command-line bridge's launchd job description, copied into
+      # Sentry.app/Contents/Library/LaunchAgents/ — the one directory
+      # `SMAppService.agent(plistName:)` looks in, by file name. Same
+      # arrangement as the fan daemon's plist above, one directory over
+      # (Agents, not Daemons: this one runs as the user).
+      #
+      # THIS FILE IS THE FIX. Its absence was the bug: `AppDelegate` published
+      # `NSXPCListener(machServiceName: "dev.malekswilam.macstat.xpc")` and no
+      # launchd job in this project had ever declared that name, so `macstat`
+      # and MacStatMCP failed against a running, healthy app. See
+      # MacStatKit/MCPBridge/MCPBridgeContract.swift.
+      #
+      # Data, not code: not compiled, and it must not land in Resources
+      # (where XcodeGen would otherwise put a .plist by extension), because
+      # SMAppService would then report `.notFound` for an agent sitting right
+      # there in the bundle.
+      - path: SentryMCPBridge/dev.malekswilam.macstat.xpc.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
     dependencies:
       - target: MacStatKit_macOS
         embed: true
@@ -329,6 +350,24 @@ targets:
       # every write control stays disabled. That is the intended inert
       # state, not a build failure: nothing here breaks an unsigned build.
       - target: SentryFanDaemon
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+      # The command-line bridge. Copied into Contents/MacOS beside the two
+      # tools and the fan daemon, because that is the path
+      # `dev.malekswilam.macstat.xpc.plist` names in its `BundleProgram` key.
+      #
+      # `codeSign: true` is load-bearing here for the same reason it is for
+      # SentryFanDaemon: `SMAppService.agent` registration requires the agent
+      # to be signed with the same real Team ID as the app registering it, and
+      # that check is made by launchd before any of our code runs. On a machine
+      # with no signing identities — the machine this was written on —
+      # registration fails, Settings ▸ AI Access says so verbatim, `macstat`
+      # fails with a message naming that as the cause, and the rest of the app
+      # is untouched. That is the intended inert state, not a build failure.
+      - target: SentryMCPBridge
         link: false
         embed: true
         codeSign: true
@@ -954,6 +993,88 @@ targets:
         # ---------------------------------------------------------------
         SMAuthorizedClients:
           - 'identifier "dev.malekswilam.macstat" and anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"'
+
+  # The command-line bridge — the on-demand LaunchAgent that owns the Mach
+  # service `macstat` and MacStatMCP dial, and hands them a direct connection
+  # to a running Sentry.
+  #
+  # THIS TARGET IS THE FIX. `AppDelegate` used to call
+  # `NSXPCListener(machServiceName: "dev.malekswilam.macstat.xpc")` on a name
+  # no launchd job declared, and only the process launchd starts as the job
+  # may vend that job's service — so the app's listener could never receive a
+  # connection and both tools failed against a healthy app.
+  # MacStatKit/MCPBridge/MCPBridgeContract.swift records the measurement that
+  # proved this and why a broker, rather than a relay or a socket, is the
+  # shape that follows from it.
+  #
+  # NOTE THE SOURCE LIST, same as SentryFanDaemon's and for the same reason.
+  # It compiles two files of its own plus the five in MacStatKit/MCPBridge/,
+  # and it links **no framework of ours** — not MacStatKit, not
+  # SystemMetricsKit. Sharing by compilation rather than by linking keeps this
+  # binary's whole surface to Foundation + Security + seven files, which is a
+  # tractable thing to review for a process that brokers access to every
+  # metric Sentry can report. It also means the agent has no @rpath dependency
+  # on the app's embedded frameworks and runs from Contents/MacOS with nothing
+  # else loaded — the same trap `MacStatCLI`/`MacStatMCP` had to be moved
+  # inside the bundle to escape.
+  #
+  # Unlike the fan daemon, this one runs as the logged-in user. It writes no
+  # hardware register, opens no database, and makes no network connection.
+  SentryMCPBridge:
+    type: tool
+    platform: macOS
+    templates:
+      - DeveloperIDSigned
+    sources:
+      - path: SentryMCPBridge
+        excludes:
+          # The launchd job description belongs to the app bundle, not to this
+          # binary (the MacStat target copies it into
+          # Contents/Library/LaunchAgents); the generated Info.plist is
+          # consumed via CREATE_INFOPLIST_SECTION_IN_BINARY below, not bundled.
+          - "*.plist"
+      # The naming, the wire contract, the peer gate, and the Security-
+      # framework evaluator. Shared with MacStatKit by compilation; see this
+      # target's header.
+      - path: MacStatKit/MCPBridge
+    dependencies:
+      - sdk: Security.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.xpcbridge
+        # A command-line tool has no Info.plist file in a bundle, so the plist
+        # is embedded as a __TEXT,__info_plist section instead. That is where
+        # launchd and SMAppService look for SMAuthorizedClients on a bare
+        # Mach-O.
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+    info:
+      path: SentryMCPBridge/Info.plist
+      properties:
+        CFBundleIdentifier: dev.malekswilam.macstat.xpcbridge
+        # ---------------------------------------------------------------
+        # Deliberately the LOOSER of the two requirements — the one in
+        # `MCPBridgePeerGate.consumerRequirement`, not the publisher one.
+        #
+        # This agent's clients include `macstat` and `MacStatMCP`, bare
+        # Mach-O tools whose signing identifiers codesign derives from the
+        # file name plus a hash of the signing identity (verified on a real
+        # build: `macstat-55554944088f6f87…`). No `identifier` clause can
+        # name them stably, so pinning one here would lock out the two
+        # binaries this feature exists to serve — and only on a properly
+        # signed build, i.e. nowhere it could be caught first.
+        #
+        # ⚠️ DUPLICATED IN `MacStatKit/MCPBridge/MCPBridgePeerGate.swift` AS
+        # `consumerRequirement`, AND THE TWO MUST STAY IDENTICAL. They cannot
+        # share a constant: launchd reads this plist and cannot read Swift.
+        # `MCPBridgePeerGateTests` asserts the exact expected text so a
+        # change on the Swift side fails a test that names this file.
+        #
+        # The publisher/consumer distinction is drawn inside BridgeService,
+        # where it is certain to be enforced. See SentryMCPBridge/Info.plist
+        # for why this key's behaviour for agents is itself unverified.
+        # ---------------------------------------------------------------
+        SMAuthorizedClients:
+          - 'anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"'
 
   MacStatTests:
     type: bundle.unit-test

@@ -139,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             historyStore: self.historyStore,
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
+                            endpointPublisher: self.mcpEndpointPublisher,
                             locationService: self.locationService,
                             fanControlService: self.fanControlService,
                             updateController: self.updateController
@@ -245,7 +246,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         accessController: mcpAccessController,
         activityLog: mcpActivityLog
     )
-    private var mcpListener: NSXPCListener?
+    /// Owns the anonymous `NSXPCListener` that `macstat`/`MacStatMCP`
+    /// eventually connect to, and the `SMAppService` registration of the
+    /// LaunchAgent that introduces them. Replaces the `mcpListener` that used
+    /// to live here — an `NSXPCListener(machServiceName:)` on a name no
+    /// launchd job had ever declared, which is why both tools failed against
+    /// a perfectly healthy app. See
+    /// `MacStatKit/MCPBridge/MCPBridgeContract.swift`.
+    ///
+    /// `lazy` for the same reason `mcpXPCService` is: it closes over it.
+    private lazy var mcpEndpointPublisher = MCPEndpointPublisher(service: mcpXPCService)
 
     /// Off by default, unlike `mcpListener`/`localSyncServer` below (both
     /// started unconditionally, gated internally) — this one actually
@@ -525,22 +535,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // MCP (plan §13.2): register the Mach service unconditionally, not
-        // gated behind `settings.mcpServerEnabled`. The permission model
-        // lives entirely inside `MCPXPCService`/`MCPAccessController` (every
-        // method checks live settings before doing anything real) rather
-        // than in whether the listener exists at all — same reasoning
-        // `AlertEngine`'s lazy-authorization-request pattern uses elsewhere
-        // in this file: a disabled feature should *reject cleanly*, not be
-        // unreachable in a way that makes `MacStatMCP` fail with an opaque
-        // connection error indistinguishable from "MacStat isn't running."
-        startMCPListener()
+        // MCP (plan §13.2): bring up the anonymous listener and, *if the user
+        // has already set up command-line access*, tell the bridge where to
+        // find it. Unconditional with respect to `settings.mcpServerEnabled`,
+        // for the reason that has always applied here: the permission model
+        // lives inside `MCPXPCService`/`MCPAccessController`, which check live
+        // settings on every method, rather than in whether a listener exists
+        // — a disabled feature should *reject cleanly*, not be unreachable in
+        // a way indistinguishable from a broken one. (That distinction used to
+        // be theoretical: the listener was unreachable for everybody, always.
+        // See `MCPBridgeContract`.)
+        //
+        // Conditional with respect to the *registration*, which is a different
+        // thing: constructing the publisher creates a process-local listener
+        // and reads a status, and `publishIfRegistered()` connects to nothing
+        // unless launchd already has the agent. On an install that never set
+        // this up — the default — this line opens no connection at all.
+        mcpEndpointPublisher.publishIfRegistered()
 
         // Local-network sync (plan §7.1 "v4"): another independent consumer
         // of `coordinator.snapshots()`, same shape as `historyStore`/
         // `dropdownViewModel`/etc. above — not a second poll loop. Started
-        // unconditionally, same reasoning `startMCPListener()`'s doc comment
-        // gives for its own unconditional registration: a disabled/unused
+        // unconditionally, same reasoning the MCP listener above uses for its
+        // own unconditional construction: a disabled/unused
         // feature should be an inert, harmless listener (nobody on the LAN
         // is browsing for `_macstat._tcp` if no phone app is installed),
         // not something that has to be reached through a settings gate to
@@ -576,6 +593,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the one that still works when this process doesn't. A no-op when
         // no helper is installed, which is the default.
         fanControlBackend.returnEveryFanToFirmware()
+        // Retire our endpoint from the bridge's table so the next `macstat`
+        // run is told "Sentry isn't running" — which will be true — instead of
+        // failing to connect to an endpoint that died with this process. Same
+        // courtesy-not-guarantee caveat as the fan revert above: this doesn't
+        // run on a crash or a force-quit, and the bridge's own
+        // `invalidationHandler` is what covers those. A no-op when command-line
+        // access was never set up, which is the default.
+        mcpEndpointPublisher.withdraw()
         // Best-effort: NIO's own graceful shutdown, not something worth
         // blocking app termination on if it's slow. See `MCPRemoteServer
         // .stop()`'s doc comment — idempotent either way.
@@ -875,41 +900,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     // MARK: - MCP XPC listener (plan §13.2)
-
-    /// Registers `NSXPCListener(machServiceName:)` under the well-known
-    /// service name `MacStatMCP` connects to, with `self` as its delegate
-    /// (see the `NSXPCListenerDelegate` conformance below) and starts
-    /// listening. This app ships unsandboxed — `MacStat/MacStat.entitlements`
-    /// says `com.apple.security.app-sandbox = false` outright — so a plain
-    /// Mach-service listener works without any entitlement or provisioning
-    /// profile, in a hardened-runtime Developer ID Release build exactly as in
-    /// the ad-hoc Debug one (hardened runtime constrains what code a process
-    /// may load, not what Mach services it may vend); the
-    /// XPC service's own methods, not code-signing, are what gate access
-    /// (see `MCPXPCService`'s type doc comment).
-    private func startMCPListener() {
-        let listener = NSXPCListener(machServiceName: MacStatXPCServiceName.machService)
-        listener.delegate = self
-        listener.resume()
-        mcpListener = listener
-    }
-}
-
-extension AppDelegate: NSXPCListenerDelegate {
-    /// Called once per incoming connection attempt from a spawned
-    /// `MacStatMCP` process. `exportedObject`/`exportedInterface` are set
-    /// per-connection (the standard `NSXPCListener` pattern) rather than
-    /// once globally — cheap, since `mcpXPCService` is a single shared
-    /// instance reused across every connection, not constructed per-client.
-    /// Returning `true` unconditionally and resuming is deliberate: there is
-    /// no connection-level identity check to perform (see
-    /// `MacStatXPCServiceProtocol`'s doc comment on why `clientName` is
-    /// self-reported, not a security boundary) — every actual authorization
-    /// decision happens per-method-call inside `MCPXPCService`, not here.
-    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
-        newConnection.exportedInterface = NSXPCInterface(with: MacStatXPCServiceProtocol.self)
-        newConnection.exportedObject = mcpXPCService
-        newConnection.resume()
-        return true
-    }
+    //
+    // The listener, its delegate, and the connection gate all moved to
+    // `MCPEndpointPublisher`. What used to be here was
+    // `NSXPCListener(machServiceName:)` plus an `NSXPCListenerDelegate`
+    // conformance that accepted every connection unconditionally, on the
+    // stated grounds that "there is no connection-level identity check to
+    // perform". Two things changed:
+    //
+    //   * The listener is now anonymous, because a Mach-service listener in
+    //     this process could never have received a connection — nothing had
+    //     registered the name with launchd, and only the process launchd
+    //     starts as the job may vend it. `MCPBridgeContract` has the
+    //     measurement.
+    //   * There *is* now a connection-level check, because introducing an
+    //     endpoint broker means something other than a spawned `MacStatMCP`
+    //     could plausibly try. It gates who may connect, and nothing more:
+    //     `MCPAccessController` inside `MCPXPCService` remains the only thing
+    //     deciding what a connected client may do, per call, from live
+    //     settings.
+    //
+    // Still true and still worth recording: this app ships unsandboxed
+    // (`MacStat/MacStat.entitlements` sets `com.apple.security.app-sandbox`
+    // to false), so none of this needs an entitlement or a provisioning
+    // profile, and hardened runtime is irrelevant to it — hardened runtime
+    // constrains what code a process may load, not what XPC it may do.
 }
