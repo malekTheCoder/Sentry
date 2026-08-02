@@ -147,6 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 )
             )
         },
+        navSwitcher: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            return AnyView(NavSwitcherPill(state: self.mainWindowState))
+        },
         onShow: { [weak self] in
             self?.dashboardViewModel.refresh()
             self?.processMonitor.start()

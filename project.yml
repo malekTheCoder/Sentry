@@ -988,6 +988,10 @@ targets:
       # spelled out or `xcodebuild test` can't find the host binary.
       TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Sentry.app/Contents/MacOS/Sentry"
       BUNDLE_LOADER: "$(TEST_HOST)"
+      # Required since the switch to automatic signing: a signed test
+      # bundle must carry an Info.plist, and this target has no
+      # hand-written one — generate it, same as the embedded frameworks.
+      GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   MacStat:
