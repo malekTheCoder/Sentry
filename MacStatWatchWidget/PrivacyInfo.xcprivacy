@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy manifest for MacStatWatchWidgetExtension (the watch complication).
+  It rides along inside the watch app, which rides inside the iPhone app's
+  upload, so App Store Connect scans this appex too.
+
+  Compile set: three Swift files under MacStatWatchWidget/, plus the embedded
+  MacStatKit.framework built from `MacStatKit_watchOS` — the deliberately
+  trimmed four-file source list in project.yml, not the whole MacStatKit
+  directory. Same consequence as the watch app's manifest records: the
+  boot-time and standard-defaults call sites that the iPhone side must declare
+  are not present in this binary.
+
+  Reason-code text quoted below comes from Apple's
+  "NSPrivacyAccessedAPITypeReasons" documentation:
+  https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitypereasons
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+
+	<!--
+	  A `TimelineProvider` that reads one App Group key and renders it.
+	  `Provider.swift`'s own doc comment calls it "deliberately almost no
+	  logic"; it opens no connection of any kind.
+	-->
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!--
+	  Nothing. The complication renders `WatchRelaySnapshot` — device name,
+	  timestamps, battery state, thermal pressure — read from a container on
+	  the user's own Watch. No location, no identifiers, nothing leaves.
+	-->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<!--
+			  1C8F.1 — "Declare this reason to access user defaults to read
+			  and write information only accessible to the apps, app
+			  extensions, and App Clips that are members of the same App
+			  Group as the app itself."
+			  Evidence: `WatchRelayStore.read()`
+			  (MacStatKit/Watch/WatchRelayStore.swift) opens
+			  `UserDefaults(suiteName: "group.dev.malekswilam.macstat")` — the
+			  group in MacStatWatchWidget/MacStatWatchWidget.entitlements — and
+			  is called from both `snapshot(for:in:)` and `timeline(for:in:)`
+			  in MacStatWatchWidget/Provider.swift. That is the extension's
+			  only data source and its only defaults access; it never writes.
+
+			  CA92.1 is deliberately not declared: no `UserDefaults.standard`
+			  and no `@AppStorage` exists anywhere in this bundle.
+			-->
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+		<!--
+		  Searched for and genuinely absent: no system boot time, disk space,
+		  file timestamp, or active-keyboard API in this bundle.
+		-->
+	</array>
+</dict>
+</plist>
