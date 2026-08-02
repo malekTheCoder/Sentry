@@ -11,8 +11,8 @@ import WatchConnectivity
 /// this bridge instead: it ships a `ControlCommand` to the already-running
 /// iPhone app over `WCSession.sendMessage(_:replyHandler:errorHandler:)`,
 /// and that phone forwards it through whatever `AppDataSource.shared
-/// .transport` it currently has (Bonjour at home, or the manual/remote
-/// — Tailscale — path away from home) — the exact same transport every
+/// .transport` it currently has (Bonjour on the LAN, or the TLS-PSK remote
+/// listener away from it) — the exact same transport every
 /// iPhone Siri intent (`MacStatMobile/Intents/MacStatIntents.swift`)
 /// already uses. Away-from-home Watch control therefore falls out of that
 /// work for free, as long as the phone itself is reachable from the watch
@@ -45,7 +45,7 @@ enum WatchControlBridge {
             return "Not connected to your iPhone yet."
         }
         guard session.isReachable else {
-            return "Your iPhone isn't reachable right now — bring it nearby and make sure MacStat is installed."
+            return "Your iPhone isn't reachable right now — bring it nearby and make sure Sentry is installed."
         }
         guard let payload = try? JSONEncoder().encode(command) else {
             return "Couldn't build that request."
