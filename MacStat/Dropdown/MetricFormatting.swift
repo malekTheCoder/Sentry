@@ -64,7 +64,9 @@ enum MetricFormatting {
     /// bare duration comes from `MetricFormatter.uptime`.
     static func uptime(_ interval: TimeInterval) -> String {
         guard interval.isFinite, interval >= 0 else { return placeholder }
-        return "up " + MetricFormatter.uptime(interval)
+        // One localized key, not `"up " + …` — a glued prefix pins English
+        // word order, while "up %@" lets a translator move or reword it.
+        return String(localized: "up \(MetricFormatter.uptime(interval))")
     }
 
     /// Battery time-to-full/empty. IOKit uses negative values (commonly -1)

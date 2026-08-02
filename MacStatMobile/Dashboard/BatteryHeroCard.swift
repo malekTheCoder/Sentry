@@ -33,8 +33,8 @@ struct BatteryHeroCard: View {
                 progressHairline(for: battery)
                 VStack(alignment: .leading, spacing: 3) {
                     DashboardDetailRow(label: timeLabel(for: battery), value: timeValue(for: battery))
-                    DashboardDetailRow(label: "Health", value: MetricFormatting.percent(battery.healthPercent, decimals: 1))
-                    DashboardDetailRow(label: "Cycles", value: MetricFormatting.integer(battery.cycleCount))
+                    DashboardDetailRow(label: String(localized: "Health"), value: MetricFormatting.percent(battery.healthPercent, decimals: 1))
+                    DashboardDetailRow(label: String(localized: "Cycles"), value: MetricFormatting.integer(battery.cycleCount))
                 }
             } else {
                 unavailable
@@ -122,13 +122,15 @@ struct BatteryHeroCard: View {
     }
 
     private func stateLabel(for battery: BatteryStats) -> String {
-        if battery.isCharging { return "Charging" }
-        if battery.isPluggedIn { return "Plugged in, not charging" }
-        return "On battery"
+        if battery.isCharging { return String(localized: "Charging") }
+        if battery.isPluggedIn { return String(localized: "Plugged in, not charging") }
+        return String(localized: "On battery")
     }
 
     private func timeLabel(for battery: BatteryStats) -> String {
-        battery.isCharging ? "Time to full" : "Time remaining"
+        battery.isCharging
+            ? String(localized: "Time to full")
+            : String(localized: "Time remaining")
     }
 
     private func timeValue(for battery: BatteryStats) -> String {

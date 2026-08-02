@@ -206,27 +206,29 @@ enum SystemVitals {
         let percent = cpu.totalPercent
         let level: VitalLevel = percent >= SystemAdvisor.highCPUPercent ? .warning : .normal
         var details: [VitalDetail] = [
-            VitalDetail(label: "E-cores", value: MetricFormatting.percent(cpu.ecorePercent, decimals: 1)),
-            VitalDetail(label: "P-cores", value: MetricFormatting.percent(cpu.pcorePercent, decimals: 1)),
+            VitalDetail(label: String(localized: "E-cores"), value: MetricFormatting.percent(cpu.ecorePercent, decimals: 1)),
+            VitalDetail(label: String(localized: "P-cores"), value: MetricFormatting.percent(cpu.pcorePercent, decimals: 1)),
             VitalDetail(
-                label: "Frequency",
+                label: String(localized: "Frequency"),
                 value: MetricFormatting.value(snapshot.value(for: .cpuFrequencyMHz), metric: .cpuFrequencyMHz)
             ),
-            VitalDetail(label: "Package power", value: MetricFormatting.watts(cpu.packagePowerWatts))
+            VitalDetail(label: String(localized: "Package power"), value: MetricFormatting.watts(cpu.packagePowerWatts))
         ]
         if let load = cpu.loadAverage1m {
-            details.append(VitalDetail(label: "Load average", value: String(format: "%.2f", load)))
+            // The value stays a bare number (load averages have no unit and
+            // no words), so only the label goes through the catalog.
+            details.append(VitalDetail(label: String(localized: "Load average"), value: String(format: "%.2f", load)))
         }
         if let processes = cpu.processCount {
-            details.append(VitalDetail(label: "Processes", value: MetricFormatting.integer(processes)))
+            details.append(VitalDetail(label: String(localized: "Processes"), value: MetricFormatting.integer(processes)))
         }
         return Vital(
             module: .cpu,
-            title: "CPU",
+            title: String(localized: "CPU"),
             value: .percent(percent),
             fraction: clampFraction(percent / 100),
             level: level,
-            levelNote: level == .normal ? nil : "Sustained high load",
+            levelNote: level == .normal ? nil : String(localized: "Sustained high load"),
             details: details
         )
     }
@@ -238,38 +240,38 @@ enum SystemVitals {
         switch memory.pressureLevel {
         case .critical:
             level = .critical
-            note = "Pressure critical"
+            note = String(localized: "Pressure critical")
         case .warning:
             level = .warning
-            note = "Pressure elevated"
+            note = String(localized: "Pressure elevated")
         case .normal:
             level = .normal
             note = nil
         case nil:
             if usedPercent >= memoryCriticalUsedPercent {
                 level = .critical
-                note = "Nearly all memory in use"
+                note = String(localized: "Nearly all memory in use")
             } else if usedPercent >= memoryWarningUsedPercent {
                 level = .warning
-                note = "Most memory in use"
+                note = String(localized: "Most memory in use")
             } else {
                 level = .normal
                 note = nil
             }
         }
         var details: [VitalDetail] = [
-            VitalDetail(label: "Used", value: MetricFormatting.bytes(memory.usedBytes)),
-            VitalDetail(label: "Total", value: MetricFormatting.bytes(memory.totalBytes)),
-            VitalDetail(label: "App", value: MetricFormatting.bytes(memory.appMemoryBytes)),
-            VitalDetail(label: "Wired", value: MetricFormatting.bytes(memory.wiredBytes)),
-            VitalDetail(label: "Compressed", value: MetricFormatting.bytes(memory.compressedBytes)),
-            VitalDetail(label: "Cached", value: MetricFormatting.bytes(memory.cachedBytes)),
-            VitalDetail(label: "Swap", value: MetricFormatting.bytes(memory.swapUsedBytes))
+            VitalDetail(label: String(localized: "Used"), value: MetricFormatting.bytes(memory.usedBytes)),
+            VitalDetail(label: String(localized: "Total"), value: MetricFormatting.bytes(memory.totalBytes)),
+            VitalDetail(label: String(localized: "App"), value: MetricFormatting.bytes(memory.appMemoryBytes)),
+            VitalDetail(label: String(localized: "Wired"), value: MetricFormatting.bytes(memory.wiredBytes)),
+            VitalDetail(label: String(localized: "Compressed"), value: MetricFormatting.bytes(memory.compressedBytes)),
+            VitalDetail(label: String(localized: "Cached"), value: MetricFormatting.bytes(memory.cachedBytes)),
+            VitalDetail(label: String(localized: "Swap"), value: MetricFormatting.bytes(memory.swapUsedBytes))
         ]
-        details.append(VitalDetail(label: "Pressure", value: pressureText(memory.pressureLevel)))
+        details.append(VitalDetail(label: String(localized: "Pressure"), value: pressureText(memory.pressureLevel)))
         return Vital(
             module: .memory,
-            title: "Memory",
+            title: String(localized: "Memory"),
             value: .percent(usedPercent),
             fraction: clampFraction(usedPercent / 100),
             level: level,
@@ -287,32 +289,32 @@ enum SystemVitals {
         let note: String?
         if freeFraction <= diskCriticalFreeFraction {
             level = .critical
-            note = "Almost out of space"
+            note = String(localized: "Almost out of space")
         } else if freeFraction <= diskWarningFreeFraction {
             level = .warning
-            note = "Running low on space"
+            note = String(localized: "Running low on space")
         } else {
             level = .normal
             note = nil
         }
         return Vital(
             module: .disk,
-            title: "Disk",
+            title: String(localized: "Disk"),
             value: .percent(usedPercent),
             fraction: clampFraction(usedPercent / 100),
             level: level,
             levelNote: note,
             details: [
-                VitalDetail(label: "Free", value: MetricFormatting.bytes(disk.freeBytes)),
-                VitalDetail(label: "Capacity", value: MetricFormatting.bytes(disk.totalBytes)),
-                VitalDetail(label: "Read", value: MetricFormatting.bytesPerSecond(disk.readBytesPerSec)),
-                VitalDetail(label: "Write", value: MetricFormatting.bytesPerSecond(disk.writeBytesPerSec)),
+                VitalDetail(label: String(localized: "Free"), value: MetricFormatting.bytes(disk.freeBytes)),
+                VitalDetail(label: String(localized: "Capacity"), value: MetricFormatting.bytes(disk.totalBytes)),
+                VitalDetail(label: String(localized: "Read"), value: MetricFormatting.bytesPerSecond(disk.readBytesPerSec)),
+                VitalDetail(label: String(localized: "Write"), value: MetricFormatting.bytesPerSecond(disk.writeBytesPerSec)),
                 VitalDetail(
-                    label: "Read IOPS",
+                    label: String(localized: "Read IOPS"),
                     value: MetricFormatting.value(disk.readIOPS, metric: .diskReadIOPS)
                 ),
                 VitalDetail(
-                    label: "Write IOPS",
+                    label: String(localized: "Write IOPS"),
                     value: MetricFormatting.value(disk.writeIOPS, metric: .diskWriteIOPS)
                 )
             ]
@@ -326,37 +328,41 @@ enum SystemVitals {
         let note: String?
         if onBattery, charge <= batteryCriticalPercent {
             level = .critical
-            note = "Critically low"
+            note = String(localized: "Critically low")
         } else if onBattery, charge <= SystemAdvisor.lowBatteryPercent {
             level = .warning
-            note = "Running low"
+            note = String(localized: "Running low")
         } else {
             level = .normal
             note = nil
         }
-        let timeLabel = battery.isCharging ? "Time to full" : "Time remaining"
+        let timeLabel = battery.isCharging
+            ? String(localized: "Time to full")
+            : String(localized: "Time remaining")
         let timeValue = MetricFormatting.minutesRemaining(
             battery.isCharging ? battery.timeToFullMinutes : battery.timeToEmptyMinutes
         )
-        let powerLabel = battery.isCharging ? "Charging at" : "Drawing"
+        let powerLabel = battery.isCharging
+            ? String(localized: "Charging at")
+            : String(localized: "Drawing")
         let powerValue = MetricFormatting.watts(
             battery.isCharging ? battery.chargingWatts : battery.systemPowerInWatts
         )
         return Vital(
             module: .battery,
-            title: "Battery",
+            title: String(localized: "Battery"),
             value: .percent(charge),
             fraction: clampFraction(charge / 100),
             level: level,
             levelNote: note,
             details: [
-                VitalDetail(label: "State", value: batteryStateText(battery)),
+                VitalDetail(label: String(localized: "State"), value: batteryStateText(battery)),
                 VitalDetail(label: timeLabel, value: timeValue),
                 VitalDetail(label: powerLabel, value: powerValue),
-                VitalDetail(label: "Health", value: MetricFormatting.percent(battery.healthPercent, decimals: 1)),
-                VitalDetail(label: "Cycles", value: MetricFormatting.integer(battery.cycleCount)),
-                VitalDetail(label: "Temperature", value: MetricFormatting.celsius(battery.temperatureCelsius)),
-                VitalDetail(label: "Adapter", value: adapterText(battery))
+                VitalDetail(label: String(localized: "Health"), value: MetricFormatting.percent(battery.healthPercent, decimals: 1)),
+                VitalDetail(label: String(localized: "Cycles"), value: MetricFormatting.integer(battery.cycleCount)),
+                VitalDetail(label: String(localized: "Temperature"), value: MetricFormatting.celsius(battery.temperatureCelsius)),
+                VitalDetail(label: String(localized: "Adapter"), value: adapterText(battery))
             ]
         )
     }
@@ -373,25 +379,25 @@ enum SystemVitals {
         enabledModules: Set<MetricModule>
     ) -> SystemStatus {
         guard let snapshot else {
-            return SystemStatus(level: .normal, headline: "Waiting for the first reading", reasons: [])
+            return SystemStatus(level: .normal, headline: String(localized: "Waiting for the first reading"), reasons: [])
         }
 
         var findings: [(level: VitalLevel, headline: String, reason: String)] = []
 
         if enabledModules.contains(.thermal), let thermal = snapshot.thermal {
             if thermal.isThrottling {
-                findings.append((.critical, "Your Mac is throttling", "Thermal throttling is active"))
+                findings.append((.critical, String(localized: "Your Mac is throttling"), String(localized: "Thermal throttling is active")))
             }
             switch thermal.pressureLevel {
             case .critical, .serious:
-                findings.append((.critical, "Running hot", "Thermal pressure is \(thermal.pressureLevel.displayName.lowercased())"))
+                findings.append((.critical, String(localized: "Running hot"), String(localized: "Thermal pressure is \(thermal.pressureLevel.displayName.lowercased())")))
             case .fair:
-                findings.append((.warning, "Warming up", "Thermal pressure is fair"))
+                findings.append((.warning, String(localized: "Warming up"), String(localized: "Thermal pressure is fair")))
             case .nominal:
                 break
             }
             if let temp = thermal.socTemperatureCelsius, temp > SystemAdvisor.highSoCTempCelsius {
-                findings.append((.critical, "Running hot", "SoC is at \(MetricFormatting.celsius(temp))"))
+                findings.append((.critical, String(localized: "Running hot"), String(localized: "SoC is at \(MetricFormatting.celsius(temp))")))
             }
         }
 
@@ -403,14 +409,14 @@ enum SystemVitals {
         }
 
         guard let worstLevel = findings.map(\.level).max() else {
-            return SystemStatus(level: .normal, headline: "Everything looks normal", reasons: [])
+            return SystemStatus(level: .normal, headline: String(localized: "Everything looks normal"), reasons: [])
         }
         // `first(where:)`, not `max(by:)`: with two findings at the same level
         // `max(by:)` returns the *last*, so a throttling Mac that was also low
         // on disk would headline the disk. Appending in priority order (thermal
         // first, then the vitals in list order) and taking the first match makes
         // that tie-break explicit instead of an artifact of the algorithm.
-        let headline = findings.first { $0.level == worstLevel }?.headline ?? "Everything looks normal"
+        let headline = findings.first { $0.level == worstLevel }?.headline ?? String(localized: "Everything looks normal")
 
         // Sorted by severity but *stably* — `sorted(by:)` is not guaranteed
         // stable, and reasons that reshuffle between two identical snapshots
@@ -431,11 +437,17 @@ enum SystemVitals {
 
     private static func headline(for vital: Vital) -> String {
         switch vital.module {
-        case .cpu: return "CPU is very busy"
-        case .memory: return vital.level == .critical ? "Memory pressure is critical" : "Memory is under pressure"
-        case .disk: return vital.level == .critical ? "Startup disk is almost full" : "Startup disk is filling up"
-        case .battery: return vital.level == .critical ? "Battery is critically low" : "Battery is low"
-        default: return "\(vital.title) needs attention"
+        case .cpu: return String(localized: "CPU is very busy")
+        case .memory: return vital.level == .critical
+            ? String(localized: "Memory pressure is critical")
+            : String(localized: "Memory is under pressure")
+        case .disk: return vital.level == .critical
+            ? String(localized: "Startup disk is almost full")
+            : String(localized: "Startup disk is filling up")
+        case .battery: return vital.level == .critical
+            ? String(localized: "Battery is critically low")
+            : String(localized: "Battery is low")
+        default: return String(localized: "\(vital.title) needs attention")
         }
     }
 
@@ -443,17 +455,17 @@ enum SystemVitals {
 
     private static func pressureText(_ level: MemoryPressureLevel?) -> String {
         switch level {
-        case .normal: return "Normal"
-        case .warning: return "Warning"
-        case .critical: return "Critical"
+        case .normal: return String(localized: "Normal")
+        case .warning: return String(localized: "Warning")
+        case .critical: return String(localized: "Critical")
         case nil: return MetricFormatting.placeholder
         }
     }
 
     private static func batteryStateText(_ battery: BatteryStats) -> String {
-        if battery.isCharging { return "Charging" }
-        if battery.isPluggedIn { return "Plugged in, not charging" }
-        return "On battery"
+        if battery.isCharging { return String(localized: "Charging") }
+        if battery.isPluggedIn { return String(localized: "Plugged in, not charging") }
+        return String(localized: "On battery")
     }
 
     private static func adapterText(_ battery: BatteryStats) -> String {
@@ -462,7 +474,7 @@ enum SystemVitals {
             return description
         }
         if let rated = battery.adapterRatedWatts { return "\(rated) W" }
-        return battery.isPluggedIn ? "Connected" : MetricFormatting.placeholder
+        return battery.isPluggedIn ? String(localized: "Connected") : MetricFormatting.placeholder
     }
 
     /// Guards the meter against a non-finite or out-of-range reading rather

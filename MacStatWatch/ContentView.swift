@@ -107,8 +107,8 @@ struct ContentView: View {
         } else {
             UnavailablePage(
                 symbol: "applewatch.radiowaves.left.and.right",
-                title: "No data yet",
-                detail: "Open Sentry on your iPhone while on the same Wi-Fi as your Mac."
+                title: String(localized: "No data yet"),
+                detail: String(localized: "Open Sentry on your iPhone while on the same Wi-Fi as your Mac.")
             )
         }
     }
@@ -132,10 +132,10 @@ struct ContentView: View {
         } else {
             UnavailablePage(
                 symbol: "moon.zzz",
-                title: "Sleep state unknown",
+                title: String(localized: "Sleep state unknown"),
                 detail: sessionController.latestSnapshot == nil
-                    ? "Nothing has been relayed from your iPhone yet."
-                    : "Your Mac hasn't reported whether it's being kept awake."
+                    ? String(localized: "Nothing has been relayed from your iPhone yet.")
+                    : String(localized: "Your Mac hasn't reported whether it's being kept awake.")
             )
         }
     }
@@ -162,8 +162,8 @@ struct ContentView: View {
         } else {
             UnavailablePage(
                 symbol: "sparkles",
-                title: "No agent data",
-                detail: "Nothing has been relayed from your iPhone yet."
+                title: String(localized: "No agent data"),
+                detail: String(localized: "Nothing has been relayed from your iPhone yet.")
             )
         }
     }
@@ -232,23 +232,23 @@ struct ContentView: View {
                     type: "keepAwake",
                     parametersJSON: #"{"mode":"systemOnly"}"#
                 )
-                successSentence = "Your Mac will stay awake until you turn it off."
+                successSentence = String(localized: "Your Mac will stay awake until you turn it off.")
             } else {
                 command = Self.command(
                     type: "keepAwake",
                     parametersJSON: #"{"durationSeconds":\#(max(minutes, 0) * 60),"mode":"systemOnly"}"#
                 )
-                successSentence = "Your Mac will stay awake for \(minutes) minutes."
+                successSentence = String(localized: "Your Mac will stay awake for \(String(minutes)) minutes.")
             }
         case .release:
             command = Self.command(type: "releaseAwake", parametersJSON: "{}")
-            successSentence = "Your Mac can sleep normally again."
+            successSentence = String(localized: "Your Mac can sleep normally again.")
         case .extend(let minutes):
             command = Self.command(
                 type: "extendAwake",
                 parametersJSON: #"{"deltaSeconds":\#(max(minutes, 0) * 60)}"#
             )
-            successSentence = "Added \(minutes) minutes to your Mac's keep-awake time."
+            successSentence = String(localized: "Added \(String(minutes)) minutes to your Mac's keep-awake time.")
         }
 
         Task { @MainActor in

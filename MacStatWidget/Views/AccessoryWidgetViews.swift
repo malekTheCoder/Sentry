@@ -87,7 +87,8 @@ struct AccessoryRectangularWidgetView: View {
         if snapshot.isCharging, let watts = snapshot.chargingWatts {
             parts.append("\(Int(watts.rounded()))W")
         }
-        parts.append("CPU \(Int(snapshot.cpuPercent.rounded()))%")
+        let cpuText = String(Int(snapshot.cpuPercent.rounded()))
+        parts.append(String(localized: "CPU \(cpuText)%"))
         return parts.joined(separator: " · ")
     }
 }

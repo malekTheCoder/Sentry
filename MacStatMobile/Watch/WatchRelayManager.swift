@@ -229,10 +229,13 @@ final class WatchRelayManager: NSObject {
     /// screen. The mode is the part that changes what the assertion does.
     private static func awakeModeLabel(_ state: SleepAssertionState?) -> String? {
         guard case .active(let mode, _, _) = state else { return nil }
+        // Localized here on the phone: the watch renders this string
+        // verbatim, so the phone's locale (which the paired watch shares)
+        // is the right place for the words to be chosen.
         switch mode {
-        case .displayAndSystem: return "Display & system"
-        case .systemOnly: return "System only"
-        case .systemWhileOnAC: return "System while on power"
+        case .displayAndSystem: return String(localized: "Display & system")
+        case .systemOnly: return String(localized: "System only")
+        case .systemWhileOnAC: return String(localized: "System while on power")
         }
     }
 

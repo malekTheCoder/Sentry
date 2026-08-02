@@ -17,9 +17,9 @@ enum MainTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .dashboard: return "Dashboard"
-        case .insights: return "Insights"
-        case .settings: return "Settings"
+        case .dashboard: return String(localized: "Dashboard")
+        case .insights: return String(localized: "Insights")
+        case .settings: return String(localized: "Settings")
         }
     }
 

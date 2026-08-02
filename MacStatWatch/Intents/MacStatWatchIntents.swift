@@ -38,26 +38,26 @@ enum WatchControlBridge {
     /// write intent below reports to Siri.
     static func sendAndDescribe(_ command: ControlCommand, whenCompleted successVerb: String) async -> String {
         guard WCSession.isSupported() else {
-            return "Apple Watch connectivity isn't available on this device."
+            return String(localized: "Apple Watch connectivity isn't available on this device.")
         }
         let session = WCSession.default
         guard session.activationState == .activated else {
-            return "Not connected to your iPhone yet."
+            return String(localized: "Not connected to your iPhone yet.")
         }
         guard session.isReachable else {
-            return "Your iPhone isn't reachable right now — bring it nearby and make sure Sentry is installed."
+            return String(localized: "Your iPhone isn't reachable right now — bring it nearby and make sure Sentry is installed.")
         }
         guard let payload = try? JSONEncoder().encode(command) else {
-            return "Couldn't build that request."
+            return String(localized: "Couldn't build that request.")
         }
 
         switch await raceReply(payload: ["watchControlCommand": payload], timeout: timeout) {
         case .reply(let reply):
             return describe(reply, whenCompleted: successVerb)
         case .timeout:
-            return "Sent the request, but didn't hear back from your iPhone in time."
+            return String(localized: "Sent the request, but didn't hear back from your iPhone in time.")
         case .failed(let message):
-            return "Couldn't reach your iPhone: \(message)"
+            return String(localized: "Couldn't reach your iPhone: \(message)")
         }
     }
 
@@ -103,20 +103,20 @@ enum WatchControlBridge {
     /// the phone side.
     private static func describe(_ reply: [String: Any], whenCompleted successVerb: String) -> String {
         if let errorMessage = reply["error"] as? String {
-            return "Your iPhone couldn't complete that: \(errorMessage)"
+            return String(localized: "Your iPhone couldn't complete that: \(errorMessage)")
         }
         guard let statusData = reply["controlStatus"] as? Data,
               let status = try? JSONDecoder().decode(ControlStatus.self, from: statusData)
         else {
-            return "Got an unexpected reply from your iPhone."
+            return String(localized: "Got an unexpected reply from your iPhone.")
         }
         switch status.state {
         case "completed":
             return successVerb
         case "rejected":
-            return "Your Mac declined that: \(status.message)"
+            return String(localized: "Your Mac declined that: \(status.message)")
         case "expired":
-            return "That request expired before your Mac could act on it."
+            return String(localized: "That request expired before your Mac could act on it.")
         default:
             return status.message
         }
@@ -145,7 +145,7 @@ struct WatchKeepAwakeIntent: AppIntent {
         )
         let dialog = await WatchControlBridge.sendAndDescribe(
             command,
-            whenCompleted: "Your Mac will stay awake for \(durationMinutes) minutes."
+            whenCompleted: String(localized: "Your Mac will stay awake for \(String(durationMinutes)) minutes.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -170,7 +170,7 @@ struct WatchReleaseAwakeIntent: AppIntent {
         )
         let dialog = await WatchControlBridge.sendAndDescribe(
             command,
-            whenCompleted: "Your Mac can sleep normally again."
+            whenCompleted: String(localized: "Your Mac can sleep normally again.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -198,7 +198,7 @@ struct WatchExtendAwakeIntent: AppIntent {
         )
         let dialog = await WatchControlBridge.sendAndDescribe(
             command,
-            whenCompleted: "Added \(minutes) minutes to your Mac's keep-awake time."
+            whenCompleted: String(localized: "Added \(String(minutes)) minutes to your Mac's keep-awake time.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -224,7 +224,7 @@ struct WatchTruncateAwakeIntent: AppIntent {
         )
         let dialog = await WatchControlBridge.sendAndDescribe(
             command,
-            whenCompleted: "Cut \(minutes) minutes off your Mac's keep-awake time."
+            whenCompleted: String(localized: "Cut \(String(minutes)) minutes off your Mac's keep-awake time.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -255,17 +255,20 @@ struct WatchGetBatteryStatusIntent: AppIntent {
         let freshness = Freshness(lastSeen: snapshot.lastSeen)
         let ageLabel = freshness.label(lastSeen: snapshot.lastSeen)
 
-        var sentence = "Your Mac's battery is at \(Int(snapshot.batteryPercent.rounded()))%"
+        // Whole localized sentences per charging state, mirroring the
+        // iPhone intent's shape — never English fragments glued together.
+        let chargeText = String(Int(snapshot.batteryPercent.rounded()))
+        var sentence: String
         if snapshot.isCharging {
-            sentence += ", charging"
+            sentence = String(localized: "Your Mac's battery is at \(chargeText)%, charging")
         } else if snapshot.isPluggedIn {
-            sentence += ", plugged in"
+            sentence = String(localized: "Your Mac's battery is at \(chargeText)%, plugged in")
         } else {
-            sentence += ", on battery"
+            sentence = String(localized: "Your Mac's battery is at \(chargeText)%, on battery")
         }
         sentence += " (\(ageLabel))."
         if snapshot.sourceIsDemoData {
-            sentence += " This is demo data, not a real Mac."
+            sentence += " " + String(localized: "This is demo data, not a real Mac.")
         }
 
         return .result(dialog: IntentDialog(stringLiteral: sentence))
