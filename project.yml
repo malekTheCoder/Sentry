@@ -28,9 +28,19 @@ packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
     from: 6.29.0
+  # The app's only update channel — Sentry ships outside the Mac App Store
+  # (Developer ID + notarization), so there is no StoreKit update path. See
+  # `MacStat/App/UpdateController.swift` and `docs/sparkle-release-signing.md`.
+  #
+  # Floor raised from 2.6.0 to 2.9.0 (current release: 2.9.4) for two fixes
+  # that matter to a first-ever release rather than to an upgrade: the
+  # signed-appcast handling and the delta-update validation corrections. A
+  # build that ships on 2.6.x and only discovers the difference when a delta
+  # silently fails to apply has no way to push a fix — the broken updater is
+  # the thing that would have delivered it.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle.git
-    from: 2.6.0
+    from: 2.9.0
   MCP:
     url: https://github.com/modelcontextprotocol/swift-sdk.git
     from: 0.11.0
@@ -165,9 +175,41 @@ targets:
         embed: true
       - target: MacStatWidgetExtension_macOS
         embed: true
+      # `link: true` — it was `false`, which is why Sparkle sat declared in
+      # this file while `SPUStandardUpdaterController` appeared nowhere in
+      # the source: unlinked, the module cannot even be imported, so the
+      # dependency was decorative.
+      #
+      # `embed: false` is deliberate and is NOT the old dead setting carried
+      # forward — Sparkle 2 ships through SPM as a `binaryTarget`
+      # (a pre-built XCFramework), and Xcode embeds and signs those into the
+      # app bundle automatically as part of linking them. Adding an explicit
+      # "Embed Frameworks" copy phase on top fails the build outright
+      # (`The file "Sparkle" couldn't be opened`), because there is no
+      # build-products framework at that path to copy. Every other package
+      # here (MCP, SwiftNIO) is a source target that links statically into
+      # the executable and genuinely needs nothing embedded; Sparkle is the
+      # one that *is* embedded, just not by us. Verify after a build with:
+      #   ls "$BUILT_PRODUCTS_DIR/Sentry.app/Contents/Frameworks/Sparkle.framework"
+      #
+      # SIGNING NOTE — this changes the bundle's nested-code shape.
+      # Sparkle.framework is not a single dylib. Verified in the 2.9.4
+      # bundle this resolves to, under Versions/B/:
+      #   Autoupdate              (bare helper executable)
+      #   Updater.app             (the progress UI that outlives the app)
+      #   XPCServices/Downloader.xpc
+      #   XPCServices/Installer.xpc
+      # — all of it because the updater has to outlive and relaunch the app
+      # it is replacing, so it cannot live in the app's own process. Every
+      # nested bundles must be signed inside-out with the same Developer ID
+      # identity and hardened runtime as the app, *before* notarization;
+      # `codesign --deep` does not do this correctly and Apple documents it
+      # as unsupported. Signing configuration is deliberately not touched
+      # here — see `docs/sparkle-release-signing.md`.
       - package: Sparkle
+        product: Sparkle
         embed: false
-        link: false
+        link: true
       - package: MCP
         product: MCP
         embed: false
@@ -221,6 +263,69 @@ targets:
         LSUIElement: true
         CFBundleDisplayName: Sentry
         NSHumanReadableCopyright: "Malek Swilam"
+        # ---------------------------------------------------------------
+        # Version strings — REAL BUG FIXED HERE, not a tidy-up.
+        #
+        # XcodeGen writes CFBundleShortVersionString "1.0" and
+        # CFBundleVersion "1" into a generated Info.plist unless told
+        # otherwise, and it did: the shipped plist said 1.0/1 while
+        # MARKETING_VERSION/CURRENT_PROJECT_VERSION above said 0.1.0/1.
+        # Harmless-looking, and fatal to updates — Sparkle compares exactly
+        # these two Info.plist keys (not the build settings) against the
+        # appcast's `sparkle:shortVersionString`/`sparkle:version` to decide
+        # whether a candidate is newer. A build that announces itself as
+        # "1.0" would consider every 0.x release in the feed older than
+        # itself and silently install nothing, forever, with no error
+        # anywhere. Substituting the build settings makes them the single
+        # source of truth, so bumping MARKETING_VERSION for a release is
+        # enough and there is no second place to forget.
+        # ---------------------------------------------------------------
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # ---------------------------------------------------------------
+        # Sparkle (MacStat/App/UpdateController.swift).
+        #
+        # ⚠️ SUFeedURL IS COMPILED INTO EVERY SHIPPED BINARY AND CANNOT BE
+        # CHANGED RETROACTIVELY ON COPIES ALREADY INSTALLED. ⚠️
+        # An installed Sentry looks at whatever address was baked into the
+        # copy the user downloaded — nothing on a server can redirect it. If
+        # this address ever has to move, the *only* migration path is to
+        # publish one more update through the OLD feed whose payload is a
+        # build pointing at the new one, and to keep the old feed alive
+        # indefinitely for anyone who skips it. Treat this string as
+        # permanent. GitHub Pages for the `Sentry` repo (confirmed via
+        # `git remote -v`: github.com/malekTheCoder/Sentry) is the intended
+        # host — a static file, no server to run, and the same account that
+        # publishes the releases.
+        SUFeedURL: "https://malekthecoder.github.io/Sentry/appcast.xml"
+        # ---------------------------------------------------------------
+        # ⚠️ PLACEHOLDER — NOT A REAL KEY. Updates are DISABLED while this
+        # is here, loudly and on screen (Settings ▸ General), never
+        # silently. `UpdateFeedConfiguration.placeholderPublicKey` must
+        # match this string exactly.
+        #
+        # Generate the pair yourself, once, and back the private half up
+        # before the first release. Sparkle's tools ship inside the resolved
+        # SPM artifact, so they exist only after one build; $DD below is that
+        # build's -derivedDataPath:
+        #
+        #     "$DD"/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
+        #
+        # (or `generate_keys` from the Sparkle distribution). It prints the
+        # PUBLIC key — paste that here — and stores the PRIVATE key in your
+        # login keychain as "Private key for signing Sparkle updates".
+        # Export and back it up somewhere you control, offline:
+        #
+        #     "$DD"/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_private_key.txt
+        #
+        # LOSING THE PRIVATE KEY PERMANENTLY ORPHANS EVERY INSTALL. There is
+        # no revocation, no re-key, and no recovery: existing copies only
+        # trust signatures from that one key, so a replacement key means
+        # every user must manually download the new build. Back it up before
+        # you ship, not after. Full procedure and release-time signing order
+        # in `docs/sparkle-release-signing.md`.
+        # ---------------------------------------------------------------
+        SUPublicEDKey: "REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY"
         # Required for `LocationService` (`MacStatKit/Services/LocationService.swift`)
         # — the honest "Location Log" feature (never "Find My," see that
         # type's doc comment). Only ever triggers a permission prompt when

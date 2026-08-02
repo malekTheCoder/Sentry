@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
@@ -28,5 +28,9 @@
 	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
+	<key>SUFeedURL</key>
+	<string>https://malekthecoder.github.io/Sentry/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY</string>
 </dict>
 </plist>
