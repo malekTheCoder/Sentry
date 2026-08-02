@@ -159,7 +159,7 @@ struct SleepStatusCard: View {
                     .font(palette.font(size: 11))
                     .foregroundStyle(palette.textTertiary)
             }
-            DashboardDetailRow(label: "Mode", value: mode.mobileShortLabel)
+            DashboardDetailRow(label: String(localized: "Mode"), value: mode.mobileShortLabel)
             Text(reason)
                 .font(palette.font(size: 10))
                 .foregroundStyle(palette.textTertiary)
@@ -234,13 +234,13 @@ struct SleepStatusCard: View {
     /// .perform()`'s "construct, send, report what actually happened" shape.
     private func sendCommand(_ command: ControlCommand) {
         feedbackTask?.cancel()
-        feedback = "Sending…"
+        feedback = String(localized: "Sending…")
         feedbackTask = Task {
             let transport = await AppDataSource.shared.transport
             do {
                 try await transport.send(command: command)
             } catch {
-                feedback = "Not sent — \(error.localizedDescription)"
+                feedback = String(localized: "Not sent — \(error.localizedDescription)")
                 await clearFeedbackAfterDelay()
                 return
             }
@@ -248,11 +248,11 @@ struct SleepStatusCard: View {
                 forNonce: command.nonce,
                 timeout: MacStatIntents.statusTimeout
             ) else {
-                feedback = "Sent, but no reply from your Mac yet."
+                feedback = String(localized: "Sent, but no reply from your Mac yet.")
                 await clearFeedbackAfterDelay()
                 return
             }
-            feedback = status.state == "completed" ? "Done." : status.message
+            feedback = status.state == "completed" ? String(localized: "Done.") : status.message
             await clearFeedbackAfterDelay()
         }
     }
@@ -287,9 +287,9 @@ struct SleepStatusCard: View {
 extension AwakeMode {
     var mobileShortLabel: String {
         switch self {
-        case .displayAndSystem: return "Keep display on"
-        case .systemOnly: return "System only"
-        case .systemWhileOnAC: return "Only while plugged in"
+        case .displayAndSystem: return String(localized: "Keep display on")
+        case .systemOnly: return String(localized: "System only")
+        case .systemWhileOnAC: return String(localized: "Only while plugged in")
         }
     }
 }

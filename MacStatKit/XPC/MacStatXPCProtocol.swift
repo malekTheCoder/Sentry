@@ -8,7 +8,7 @@ import Foundation
 /// so it's hoisted here rather than duplicated as a string literal in both
 /// `AppDelegate` and `MacStatMCP/main.swift`.
 public enum MacStatXPCServiceName {
-    public static let machService = "dev.malekswilam.macstat.xpc"
+    public static let machService = "com.sentry.macstat.xpc"
 }
 
 /// The XPC contract between `MacStat.app` (which implements this protocol,

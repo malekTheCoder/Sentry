@@ -17,9 +17,9 @@ enum MainTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .dashboard: return "Dashboard"
-        case .insights: return "Insights"
-        case .settings: return "Settings"
+        case .dashboard: return String(localized: "Dashboard")
+        case .insights: return String(localized: "Insights")
+        case .settings: return String(localized: "Settings")
         }
     }
 
@@ -103,11 +103,10 @@ struct MainWindowView: View {
             }
 
             VStack(spacing: 0) {
-                // A real bar, not a floating overlay: the overlay version
-                // let content scroll naked underneath the switcher —
-                // headers chopped at the window edge, tiles half-hidden
-                // behind the pill. Content now simply starts below it.
-                navBar
+                // The switcher itself lives in the window's toolbar (see
+                // `NavSwitcherPill`); content just reserves its height so
+                // headers clear the title region.
+                Color.clear.frame(height: Self.navHeight)
 
                 ZStack {
                     // Both stay alive; the hidden one keeps its scroll
@@ -133,25 +132,29 @@ struct MainWindowView: View {
         .frame(minWidth: 860, minHeight: 620)
     }
 
-    /// The fixed top chrome: traffic lights live in the (transparent)
-    /// titlebar over its left edge, the themed switcher sits centered, and
-    /// a themed hairline closes it off from content.
-    private var navBar: some View {
-        ZStack {
-            navSwitcher
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: Self.navHeight)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(palette.separator)
-                .frame(height: 1)
-        }
+}
+
+// MARK: - Nav switcher pill
+
+/// The Dashboard / Insights / Settings pill. Hosted as a **centered
+/// NSToolbarItem** (see `MainWindowController`), not drawn inside the
+/// SwiftUI content — the third home this control has had, and each move
+/// was forced by an observed failure: as a floating overlay it let content
+/// scroll naked underneath; as an in-content bar it needed a fake-toolbar
+/// trick to inset the traffic lights, and that trick's empty toolbar
+/// swallowed every click ("now the 3 pages arent accessible"). In a real
+/// toolbar item the system owns the geometry — tall title region, properly
+/// inset traffic lights — and the pill is genuinely clickable because it
+/// IS toolbar content rather than content trapped under toolbar glass.
+struct NavSwitcherPill: View {
+    @ObservedObject var state: MainWindowState
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    private var palette: ThemePalette {
+        ThemePalette(theme: state.theme, scheme: systemColorScheme)
     }
 
-    // MARK: Nav switcher
-
-    private var navSwitcher: some View {
+    var body: some View {
         HStack(spacing: 2) {
             ForEach(MainTab.allCases) { tab in
                 segment(for: tab)
@@ -201,15 +204,18 @@ struct MainWindowView: View {
 final class MainWindowController: NSWindowController, NSWindowDelegate {
 
     private let makeRootView: () -> AnyView
+    private let makeNavSwitcher: () -> AnyView
     private let onShow: (() -> Void)?
     private let onHide: (() -> Void)?
 
     init(
         rootView: @escaping () -> AnyView,
+        navSwitcher: @escaping () -> AnyView,
         onShow: (() -> Void)? = nil,
         onHide: (() -> Void)? = nil
     ) {
         self.makeRootView = rootView
+        self.makeNavSwitcher = navSwitcher
         self.onShow = onShow
         self.onHide = onHide
         super.init(window: nil)
@@ -249,6 +255,23 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         mainWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         mainWindow.titlebarAppearsTransparent = true
         mainWindow.titleVisibility = .hidden
+        // A real toolbar, holding exactly one centered item: the nav
+        // switcher pill. This does two jobs at once. The tall unified
+        // title region insets the traffic lights generously (a bare
+        // titlebar pins them into the corner — reported as cramped), and
+        // hosting the pill AS a toolbar item is what keeps it clickable:
+        // an earlier attempt used an *empty* toolbar purely for the
+        // geometry, and its glass swallowed every click headed for the
+        // pill drawn in content underneath ("the 3 pages arent
+        // accessible"). Toolbar content receives clicks; content under
+        // toolbar glass does not.
+        let toolbar = NSToolbar(identifier: "MainWindowToolbar")
+        toolbar.delegate = self
+        toolbar.allowsUserCustomization = false
+        toolbar.displayMode = .iconOnly
+        toolbar.centeredItemIdentifiers = [Self.navSwitcherItemID]
+        mainWindow.toolbar = toolbar
+        mainWindow.toolbarStyle = .unified
         mainWindow.isOpaque = false
         mainWindow.backgroundColor = .clear
         mainWindow.setContentSize(NSSize(width: 960, height: 700))
@@ -259,6 +282,34 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
 
         self.window = mainWindow
         return mainWindow
+    }
+}
+
+// MARK: - Toolbar delegate
+
+extension MainWindowController: NSToolbarDelegate {
+
+    static let navSwitcherItemID = NSToolbarItem.Identifier("dev.malekswilam.macstat.navswitcher")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.navSwitcherItemID]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.navSwitcherItemID]
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        guard itemIdentifier == Self.navSwitcherItemID else { return nil }
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        let hosting = NSHostingView(rootView: makeNavSwitcher())
+        hosting.setFrameSize(hosting.fittingSize)
+        item.view = hosting
+        return item
     }
 }
 

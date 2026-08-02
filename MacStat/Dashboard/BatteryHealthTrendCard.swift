@@ -123,13 +123,13 @@ struct BatteryHealthTrendCard: View {
         case .insufficientData:
             return nil
         case .stable:
-            return "No decline in sight at the current rate"
+            return String(localized: "No decline in sight at the current rate")
         case .alreadyBelow:
-            return "Below 80% — consider battery service"
+            return String(localized: "Below 80% — consider battery service")
         case .crosses(let date, let percentPerMonth):
             let month = date.formatted(.dateTime.month(.wide).year())
             let rate = String(format: "%.1f", percentPerMonth)
-            return "On pace to cross 80% around \(month) (−\(rate)%/mo)"
+            return String(localized: "On pace to cross 80% around \(month) (−\(rate)%/mo)")
         }
     }
 

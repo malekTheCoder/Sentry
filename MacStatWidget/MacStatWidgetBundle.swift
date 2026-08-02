@@ -74,9 +74,9 @@ struct MacStatWidget: Widget {
     /// `MockDataSource` demo data (its writer sets `sourceIsDemoData: true`).
     private static var galleryDescription: String {
         #if os(macOS)
-        "Battery, CPU, and sleep status for this Mac, live from the Sentry menu bar app."
+        String(localized: "Battery, CPU, and sleep status for this Mac, live from the Sentry menu bar app.")
         #else
-        "Battery, CPU, and sleep status for your Mac — live over your local Wi-Fi when Sentry is running on the Mac, demo data otherwise (and labeled as such)."
+        String(localized: "Battery, CPU, and sleep status for your Mac — live over your local Wi-Fi when Sentry is running on the Mac, demo data otherwise (and labeled as such).")
         #endif
     }
 

@@ -114,7 +114,10 @@ struct SleepControlCard: View {
                 .controlSize(.mini)
                 .tint(palette.accent)
                 .accessibilityLabel("Keep awake")
-                .accessibilityValue(isActive ? "On, preventing sleep" : "Off, sleep behaves normally")
+                // Two whole `Text`s rather than a String ternary: a ternary of
+                // two bare literals resolves to `String`, which silently picks
+                // the non-localizing `accessibilityValue(_: String)` overload.
+                .accessibilityValue(isActive ? Text("On, preventing sleep") : Text("Off, sleep behaves normally"))
         }
         .padding(.horizontal, palette.spacingTight)
         .frame(height: DropdownGrid.rowHeight)
@@ -139,11 +142,11 @@ struct SleepControlCard: View {
     /// redundancy the eye still has to read.
     private var optionsDisclosure: some View {
         DropdownDisclosureRow(
-            title: showsOptions ? "Options" : selectionSummary,
+            title: showsOptions ? String(localized: "Options") : selectionSummary,
             isExpanded: showsOptions,
             accessibilityLabel: showsOptions
-                ? "Hide keep awake options"
-                : "Keep awake options, currently \(selectionSummary)"
+                ? String(localized: "Hide keep awake options")
+                : String(localized: "Keep awake options, currently \(selectionSummary)")
         ) {
             withAnimation(ThemePalette.disclosureMotion(reduceMotion: reduceMotion)) {
                 showsOptions.toggle()
@@ -163,7 +166,7 @@ struct SleepControlCard: View {
     private var pickers: some View {
         VStack(alignment: .leading, spacing: 0) {
             optionMenu(
-                title: "For",
+                title: String(localized: "For"),
                 selection: trigger.menuLabel(
                     batteryThreshold: batteryThreshold,
                     cpuThreshold: cpuThreshold,
@@ -175,7 +178,7 @@ struct SleepControlCard: View {
                 }
             }
             thresholdStepper
-            optionMenu(title: "Mode", selection: mode.shortLabel) {
+            optionMenu(title: String(localized: "Mode"), selection: mode.shortLabel) {
                 ForEach(AwakeMode.allCases, id: \.self) { candidate in
                     Button(candidate.longLabel) { mode = candidate }
                 }
@@ -197,9 +200,9 @@ struct SleepControlCard: View {
     private var thresholdStepper: some View {
         switch trigger {
         case .batteryBelow:
-            percentStepper("Battery floor", value: $batteryThreshold, range: 5...95)
+            percentStepper(String(localized: "Battery floor"), value: $batteryThreshold, range: 5...95)
         case .cpuAbove:
-            percentStepper("CPU floor", value: $cpuThreshold, range: 10...100)
+            percentStepper(String(localized: "CPU floor"), value: $cpuThreshold, range: 10...100)
         case .processRunning:
             processNameRow
         case .indefinite, .fixed:
@@ -321,9 +324,9 @@ struct SleepControlCard: View {
                     countdownRow(remaining: expiresAt.timeIntervalSince(context.date))
                 }
             } else {
-                valueRow(label: "Ends", value: "When you turn it off")
+                valueRow(label: String(localized: "Ends"), value: String(localized: "When you turn it off"))
             }
-            valueRow(label: "Mode", value: active.mode.shortLabel)
+            valueRow(label: String(localized: "Mode"), value: active.mode.shortLabel)
             // Extend/truncate only mean something with an `expiresAt` to
             // adjust — an indefinite hold or a conditional trigger (both
             // `expiresAt == nil`) has no clock for these buttons to move,
@@ -372,8 +375,8 @@ struct SleepControlCard: View {
         DropdownInlineButton(
             title: title,
             accessibilityLabel: delta < 0
-                ? "Shorten by \(SleepCountdownFormatting.presetLabel(-delta))"
-                : "Extend by \(SleepCountdownFormatting.presetLabel(delta))"
+                ? String(localized: "Shorten by \(SleepCountdownFormatting.presetLabel(-delta))")
+                : String(localized: "Extend by \(SleepCountdownFormatting.presetLabel(delta))")
         ) {
             adjust(bySeconds: delta)
         }
@@ -385,15 +388,15 @@ struct SleepControlCard: View {
     /// user is about to commit to ending the session.
     private var endNowButton: some View {
         DropdownInlineButton(
-            title: "End Now",
+            title: String(localized: "End Now"),
             hoverTint: palette.danger,
-            accessibilityLabel: "End keep awake now",
+            accessibilityLabel: String(localized: "End keep awake now"),
             action: stop
         )
     }
 
     private func countdownRow(remaining: TimeInterval) -> some View {
-        valueRow(label: "Remaining", value: SleepCountdownFormatting.countdown(remaining))
+        valueRow(label: String(localized: "Remaining"), value: SleepCountdownFormatting.countdown(remaining))
     }
 
     /// The same label-left/value-right geometry as a vitals detail row, ending
@@ -447,12 +450,12 @@ struct SleepControlCard: View {
         if case .processRunning = trigger {
             let name = processName.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty else {
-                startError = "Enter a process name first."
+                startError = String(localized: "Enter a process name first.")
                 return
             }
             processName = name
             guard PowerControlService.isProcessRunning(named: name) else {
-                startError = "No process named “\(name)” is running right now."
+                startError = String(localized: "No process named “\(name)” is running right now.")
                 return
             }
         }
@@ -658,11 +661,11 @@ enum SleepTriggerOption: Hashable, Identifiable {
     /// threshold control to read the number off.
     var pickerLabel: String {
         switch self {
-        case .indefinite: return "Indefinitely"
+        case .indefinite: return String(localized: "Indefinitely")
         case .fixed(let seconds): return SleepCountdownFormatting.presetLabel(seconds)
-        case .batteryBelow: return "Until battery is low"
-        case .cpuAbove: return "While CPU is busy"
-        case .processRunning: return "While a process runs"
+        case .batteryBelow: return String(localized: "Until battery is low")
+        case .cpuAbove: return String(localized: "While CPU is busy")
+        case .processRunning: return String(localized: "While a process runs")
         }
     }
 
@@ -673,11 +676,15 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .indefinite, .fixed:
             return pickerLabel
         case .batteryBelow:
-            return "Battery < \(MetricFormatting.percent(batteryThreshold))"
+            return String(localized: "Battery < \(MetricFormatting.percent(batteryThreshold))")
         case .cpuAbove:
-            return "CPU > \(MetricFormatting.percent(cpuThreshold))"
+            return String(localized: "CPU > \(MetricFormatting.percent(cpuThreshold))")
         case .processRunning:
-            return "While \(processName.isEmpty ? "process" : processName) runs"
+            // The fallback noun is localized separately so a translator sees
+            // both the sentence and the placeholder word, instead of an
+            // English "process" being glued into a translated sentence.
+            let name = processName.isEmpty ? String(localized: "process") : processName
+            return String(localized: "While \(name) runs")
         }
     }
 
@@ -686,6 +693,15 @@ enum SleepTriggerOption: Hashable, Identifiable {
     /// that survives into `SleepAssertionState` for the active card to show.
     /// Prefixed with the app name because that's what shows up in system power
     /// diagnostics next to every other process's assertions.
+    ///
+    /// Deliberately NOT localized (l10n audit): this string is dual-purpose —
+    /// it is both the UI caption on the active card *and* the reason handed to
+    /// IOKit, where it lands in `pmset -g assertions` output, power logs, and
+    /// bug reports. Keeping it English keeps those diagnostics greppable and
+    /// comparable across machines regardless of the user's locale, which is
+    /// the same trade Apple's own daemons make. If the card ever needs a
+    /// localized caption, derive it separately at display time rather than
+    /// localizing what gets persisted into the assertion.
     func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
         switch self {
         case .indefinite:
@@ -752,9 +768,9 @@ enum SleepCountdownFormatting {
 extension AwakeMode {
     var shortLabel: String {
         switch self {
-        case .displayAndSystem: return "Keep display on"
-        case .systemOnly: return "System only"
-        case .systemWhileOnAC: return "Only while plugged in"
+        case .displayAndSystem: return String(localized: "Keep display on")
+        case .systemOnly: return String(localized: "System only")
+        case .systemWhileOnAC: return String(localized: "Only while plugged in")
         }
     }
 
@@ -762,20 +778,20 @@ extension AwakeMode {
     /// explanation line, which the open menu doesn't show.
     var longLabel: String {
         switch self {
-        case .displayAndSystem: return "Keep display on"
-        case .systemOnly: return "System only (display may sleep)"
-        case .systemWhileOnAC: return "Only while plugged in"
+        case .displayAndSystem: return String(localized: "Keep display on")
+        case .systemOnly: return String(localized: "System only (display may sleep)")
+        case .systemWhileOnAC: return String(localized: "Only while plugged in")
         }
     }
 
     var explanation: String {
         switch self {
         case .displayAndSystem:
-            return "Screen and system stay awake. Best for presenting or watching."
+            return String(localized: "Screen and system stay awake. Best for presenting or watching.")
         case .systemOnly:
-            return "System stays awake; the display may sleep. Best for builds and downloads."
+            return String(localized: "System stays awake; the display may sleep. Best for builds and downloads.")
         case .systemWhileOnAC:
-            return "Sleep is prevented only on AC power — on battery the Mac sleeps normally."
+            return String(localized: "Sleep is prevented only on AC power — on battery the Mac sleeps normally.")
         }
     }
 }

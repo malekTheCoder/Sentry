@@ -420,7 +420,14 @@ struct KeepAwakePage: View {
         }
     }
 
-    private func extendButton(minutes: Int, label: String) -> some View {
+    /// `label` is a `LocalizedStringKey`, not a `String`, and that is the
+    /// whole point: `Text(someString)` uses the non-localizing initializer,
+    /// so a `String` parameter here would silently bypass the string catalog
+    /// while looking identical at the call site. This is the exact
+    /// String-typed bypass the localization pass on `main` was written to
+    /// close; the dial redesign reintroduced it by accident when this helper
+    /// was rewritten, and it is fixed here rather than lost in the merge.
+    private func extendButton(minutes: Int, label: LocalizedStringKey) -> some View {
         Button {
             onExtend(minutes)
         } label: {

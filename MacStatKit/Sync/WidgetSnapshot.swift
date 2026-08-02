@@ -186,7 +186,7 @@ public enum WidgetBatteryHistory {
 
 // MARK: - WidgetSnapshotStore: the App Group read/write boundary
 
-/// Reads and writes `WidgetSnapshot` through the `group.dev.malekswilam.macstat`
+/// Reads and writes `WidgetSnapshot` through the `group.com.sentry.macstat`
 /// App Group container shared between `MacStatMobile` and
 /// `MacStatWidgetExtension` (plan §12.3).
 ///
@@ -217,10 +217,10 @@ public enum WidgetSnapshotStore {
     /// both targets are entitled to, rather than failing loudly. There is
     /// nowhere else in the tree this string is duplicated from except those
     /// two entitlements files and `SyncRecords.swift`'s CloudKit container
-    /// name comment (`iCloud.dev.malekswilam.macstat` — a different string,
+    /// name comment (`iCloud.com.sentry.macstat` — a different string,
     /// deliberately not reused for the App Group, since the two identify
     /// different Apple platform resources with different naming rules).
-    public static let appGroupIdentifier = "group.dev.malekswilam.macstat"
+    public static let appGroupIdentifier = "group.com.sentry.macstat"
 
     /// The macOS suite is deliberately *not* an App Group: iOS-style
     /// `group.*` identifiers on macOS require a provisioning profile (Xcode
@@ -231,9 +231,9 @@ public enum WidgetSnapshotStore {
     /// suite in `~/Library/Preferences` is readable by both. When the app
     /// gains real Developer ID signing, switch macOS back to
     /// `appGroupIdentifier` + entitlements in `project.yml`.
-    public static let macSuiteIdentifier = "dev.malekswilam.macstat.widgetcache"
+    public static let macSuiteIdentifier = "com.sentry.macstat.widgetcache"
 
-    private static let storageKey = "dev.malekswilam.macstat.widgetSnapshot.v1"
+    private static let storageKey = "com.sentry.macstat.widgetSnapshot.v1"
 
     /// `nil` when the suite isn't reachable (on iOS: the App Group
     /// entitlement isn't provisioned correctly for this build/signing

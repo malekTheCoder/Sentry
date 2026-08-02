@@ -25,13 +25,13 @@ public final class HistoryStore: @unchecked Sendable {
         case raw, hourly, daily
     }
 
-    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "HistoryStore")
+    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "HistoryStore")
 
     /// `nil` only if the database failed to open (see `init`) — every public
     /// method no-ops gracefully in that case rather than force-unwrapping.
     private let dbQueue: DatabaseQueue?
 
-    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.historystore", qos: .utility)
+    private let queue = DispatchQueue(label: "com.sentry.macstat.historystore", qos: .utility)
     private var buffer: [(ts: Double, metric: String, value: Double)] = []
     private var flushTimer: DispatchSourceTimer?
 

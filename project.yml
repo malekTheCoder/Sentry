@@ -15,22 +15,33 @@ configs:
   Debug: debug
   Release: release
 
-# The project-wide floor, unchanged and deliberately permissive: a checkout of
-# this repo on a Mac with zero signing identities must build and must run its
-# tests. `run.sh` and every `xcodebuild ... test` invocation depend on that, and
-# this machine currently has exactly zero identities (`security find-identity -v
-# -p codesigning` → "0 valid identities found"), so it is not a hypothetical.
-#
-# These values are a floor, not a policy. Targets that genuinely need a
-# signature opt back in individually (the Mac app and its appex, so chronod will
-# load the widget; the iOS/watchOS targets, so their App Group entitlement is
-# actually embedded), and the Release-configuration strictness that notarization
-# demands lives in the `DeveloperIDSigned` target template below rather than
-# here — this block is shared with the iOS and watchOS targets, for which
-# "Developer ID Application" is not a valid identity at all.
+# Automatic signing everywhere with the paid Individual team (Aniketh
+# Bandlamudi, anikethdb1@gmail.com). Frameworks, CLI, and test bundles all sign
+# with Apple Development; no target needs a provisioning profile unless it
+# carries restricted entitlements. The Release-configuration strictness that
+# notarization demands lives in the `DeveloperIDSigned` target template below
+# rather than here — this block is shared with the iOS and watchOS targets, for
+# which "Developer ID Application" is not a valid identity at all.
 settings:
   base:
     SWIFT_VERSION: "5.9"
+    # The permissive floor, restored. Promoting `Apple Development` + a real
+    # team to the *project-wide* base broke `xcodebuild ... test` outright on
+    # any machine without that team's certificates — 8 "No signing certificate"
+    # errors across MacStatCLI, MacStatMCP, SentryFanDaemon and MacStatTests,
+    # so the macOS suite could not run at all. Verified against origin/main in
+    # a clean worktree, so this was not a merge artefact.
+    #
+    # The change was also redundant: every target that genuinely needs a real
+    # identity for device deployment (MacStatMobile, its widget, MacStatWatch,
+    # its widget) already sets CODE_SIGN_STYLE/DEVELOPMENT_TEAM on itself, and
+    # the Release strictness notarization requires lives in the
+    # `DeveloperIDSigned` template. Neither needed the base to change.
+    #
+    # This floor is load-bearing: a checkout on a Mac with zero signing
+    # identities must still build and run its tests, because that is how the
+    # suite is run here and in any future CI. Do not promote a real identity
+    # here again — set it on the targets that need it.
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGNING_REQUIRED: NO
@@ -652,6 +663,12 @@ targets:
       # MacStatWidget/PrivacyInfo.xcprivacy is NOT excluded here — this is
       # the target that needs it. `MacStatWidgetExtension_macOS` below
       # excludes it instead; see the comment there.
+      #
+      # MacStatWidget/Resources/Localizable.xcstrings is auto-detected from
+      # this path for BOTH widget extension targets (iOS here, macOS below)
+      # — a widget bundle resolves strings against its own catalog, not its
+      # host app's, so without this file every widget label stayed English
+      # in every locale regardless of what the apps' catalogs said.
       - path: MacStatWidget
         excludes:
           - "Info*.plist"
@@ -735,6 +752,14 @@ targets:
     # than the phone's because `MacStatKit_watchOS` above compiles four files
     # rather than the whole framework — that manifest's header spells out
     # which required-reason call sites are consequently absent here.
+    #
+    # MacStatWatch/Resources/Localizable.xcstrings rides along from this
+    # path too (same auto-detected-by-extension mechanism as the MacStat/
+    # MacStatKit/MacStatMobile catalogs above). Before it existed, every
+    # `Text("literal")` and `String(localized:)` in this target resolved
+    # against no catalog at all — the watch app was unlocalizable by
+    # construction, not by choice. English keys only; translations are a
+    # deliberate non-goal for now (see docs/l10n-coverage-audit.md).
     sources:
       - path: MacStatWatch
     dependencies:
@@ -802,6 +827,9 @@ targets:
       # MacStatWatchWidget/PrivacyInfo.xcprivacy rides along from this path;
       # only the generated Info.plist is excluded, for the same
       # embeddedBinaryValidationUtility reason as the iOS widget above.
+      # MacStatWatchWidget/Resources/Localizable.xcstrings rides along the
+      # same way — the complication's own catalog, for the same
+      # bundle-resolves-its-own-strings reason as the iOS widget above.
       - path: MacStatWatchWidget
         excludes:
           - "Info*.plist"
@@ -979,6 +1007,10 @@ targets:
       # spelled out or `xcodebuild test` can't find the host binary.
       TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Sentry.app/Contents/MacOS/Sentry"
       BUNDLE_LOADER: "$(TEST_HOST)"
+      # Required since the switch to automatic signing: a signed test
+      # bundle must carry an Info.plist, and this target has no
+      # hand-written one — generate it, same as the embedded frameworks.
+      GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   MacStat:

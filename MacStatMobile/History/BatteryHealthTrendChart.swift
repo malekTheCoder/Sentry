@@ -111,7 +111,9 @@ struct BatteryHealthTrendChart: View {
     }
 
     private var rangeDescription: String {
-        guard let first = series.first, let last = series.last else { return "no data" }
-        return "ranging from \(first.healthPercent) to \(last.healthPercent) percent"
+        guard let first = series.first, let last = series.last else { return String(localized: "no data") }
+        let fromText = String(first.healthPercent)
+        let toText = String(last.healthPercent)
+        return String(localized: "ranging from \(fromText) to \(toText) percent")
     }
 }

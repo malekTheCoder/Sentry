@@ -190,7 +190,7 @@ struct DashboardChart: View {
             value.formatted(.number.notation(.compactName).precision(.significantDigits(3)))
         }
         let peakTime = peak.timestamp.formatted(date: .omitted, time: .shortened)
-        return "avg \(fmt(avgValue)) · peak \(fmt(peak.max)) at \(peakTime)"
+        return String(localized: "avg \(fmt(avgValue)) · peak \(fmt(peak.max)) at \(peakTime)")
     }
 
     @ViewBuilder
@@ -276,8 +276,10 @@ struct DashboardChart: View {
     }
 
     private var rangeDescription: String {
-        guard let first = samples.first, let last = samples.last else { return "no data" }
-        return "ranging from \(first.min) to \(last.max)"
+        guard let first = samples.first, let last = samples.last else { return String(localized: "no data") }
+        let fromText = String(first.min)
+        let toText = String(last.max)
+        return String(localized: "ranging from \(fromText) to \(toText)")
     }
 }
 
@@ -372,7 +374,7 @@ struct ActivityOverlayChart: View {
             )
         }
         .accessibilityLabel("Activity chart, \(drawable.map(\.metric.title).joined(separator: ", "))")
-        .accessibilityValue(cpuSentence ?? "relative activity shapes")
+        .accessibilityValue(cpuSentence ?? String(localized: "relative activity shapes"))
     }
 
     /// "avg CPU 18% · peak 91% at 10:42" — real, unnormalized numbers for
@@ -382,6 +384,11 @@ struct ActivityOverlayChart: View {
         let avg = cpu.samples.map(\.avg).reduce(0, +) / Double(max(cpu.samples.count, 1))
         guard let peak = cpu.samples.max(by: { $0.max < $1.max }) else { return nil }
         let time = peak.timestamp.formatted(date: .omitted, time: .shortened)
-        return String(format: "avg CPU %.0f%% · peak %.0f%% at %@", avg, peak.max, time)
+        // Pre-formatted numbers so the whole sentence goes through the
+        // catalog as one key with `%@` placeholders, instead of a
+        // `String(format:)` whose word order no translator could change.
+        let avgText = String(format: "%.0f%%", avg)
+        let peakText = String(format: "%.0f%%", peak.max)
+        return String(localized: "avg CPU \(avgText) · peak \(peakText) at \(time)")
     }
 }
