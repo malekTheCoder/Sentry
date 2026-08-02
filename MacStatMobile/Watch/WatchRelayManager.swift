@@ -14,6 +14,18 @@ import WatchConnectivity
 /// app), so the already-running, already-connected phone app is the only
 /// bridge — exactly the role `WCSession` exists to fill.
 ///
+/// **Also the phone-side half of Watch Siri.** The `WCSessionDelegate`
+/// extension below additionally implements `session(_:didReceiveMessage:
+/// replyHandler:)`, forwarding a `ControlCommand` a watch Siri intent
+/// constructed (`WatchControlBridge`, `MacStatWatch/Intents/
+/// MacStatWatchIntents.swift`) through `AppDataSource.shared.transport` —
+/// the same transport (Bonjour or the manual/remote path,
+/// `MacStatMobile/Data/AppDataSource.swift`) every iPhone Siri intent
+/// already uses — and replying with the real `ControlStatus` outcome. Watch
+/// control therefore automatically works away from home too, as long as the
+/// phone itself is reachable from the watch (ordinary `WCSession`
+/// semantics, unrelated to this type).
+///
 /// **Why a standalone singleton, started at app launch, not something
 /// `DashboardViewModel` owns the way it owns `WidgetSnapshotWriter`.**
 /// `WidgetSnapshotWriter` only has to run while the Dashboard tab's view
@@ -65,23 +77,8 @@ final class WatchRelayManager: NSObject {
     /// tick would.
     static let significantChangeCooldown: TimeInterval = 30
 
-    /// Floor between `transferCurrentComplicationUserInfo` calls
-    /// specifically — much longer than `minimumRelayInterval`, because the
-    /// two channels have wildly different budgets. `updateApplicationContext`
-    /// is effectively unbudgeted (last-value-wins) and safe to send on every
-    /// relay, but watchOS grants roughly **50 complication transfers per
-    /// day**; relaying one per 5-minute heartbeat (288/day) would blow that
-    /// budget before breakfast and get every later transfer silently
-    /// demoted to a plain `transferUserInfo`. 30 minutes caps this channel
-    /// at 48/day worst-case, just under the documented budget, and
-    /// `relay(_:at:)` additionally checks
-    /// `remainingComplicationUserInfoTransfers` so a budget already spent
-    /// (e.g. by an earlier burst) is respected rather than assumed.
-    static let complicationTransferInterval: TimeInterval = 30 * 60
-
     private var lastRelayed: WatchRelaySnapshot?
     private var lastRelayedAt: Date?
-    private var lastComplicationTransferAt: Date?
     private var transportSubscription: AnyCancellable?
     private var snapshotTask: Task<Void, Never>?
     private var deviceNameCache: String?
@@ -109,12 +106,6 @@ final class WatchRelayManager: NSObject {
 
     private func observeSnapshots(transport: any StatsTransport) {
         snapshotTask?.cancel()
-        // The cached device name belongs to the previous transport's
-        // catalog — when discovery swaps the mock out for a live
-        // `LocalSyncClient` (or vice versa), the Watch must not keep
-        // rendering the old transport's device name over the new
-        // transport's data.
-        deviceNameCache = nil
         snapshotTask = Task { [weak self] in
             for await snapshot in transport.snapshots() {
                 guard !Task.isCancelled else { return }
@@ -206,16 +197,7 @@ final class WatchRelayManager: NSObject {
         // for when the Watch app is actually installed (calling it
         // otherwise is a documented no-op that still counts against
         // nothing, but there is no reason to call it at all in that case).
-        // Separately throttled from the context update above — see
-        // `complicationTransferInterval`'s doc comment: this channel has a
-        // hard ~50/day system budget the 5-minute heartbeat would exhaust.
         guard session.isWatchAppInstalled else { return }
-        if let lastComplicationTransferAt,
-           now.timeIntervalSince(lastComplicationTransferAt) < Self.complicationTransferInterval {
-            return
-        }
-        guard session.remainingComplicationUserInfoTransfers > 0 else { return }
-        lastComplicationTransferAt = now
         session.transferCurrentComplicationUserInfo(payload)
     }
 }
@@ -233,6 +215,65 @@ extension WatchRelayManager: WCSessionDelegate {
         // "ready" flag off this callback, since the state can also change
         // later (e.g. the paired Watch is unpaired mid-session) and that
         // same check already handles it.
+    }
+
+    /// The other half of `WatchControlBridge.sendAndDescribe(_:whenCompleted:)`
+    /// (`MacStatWatch/Intents/MacStatWatchIntents.swift`) — a watch Siri
+    /// intent has no direct path to the Mac (see this type's top-level doc
+    /// comment: "a Watch cannot reach the Mac directly"), so it sends its
+    /// `ControlCommand` here instead, and this phone forwards it through
+    /// exactly the same `AppDataSource.shared.transport` every iPhone Siri
+    /// intent (`MacStatMobile/Intents/MacStatIntents.swift`) already uses.
+    ///
+    /// Reply shape: `["controlStatus": <JSON-encoded ControlStatus>]` on
+    /// success, `["error": "<message>"]` otherwise — the watch decides how
+    /// to phrase either outcome for its own Siri dialog; this side only
+    /// reports what actually happened, never a guess at wording.
+    nonisolated func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        guard let commandData = message["watchControlCommand"] as? Data else {
+            replyHandler(["error": "Unrecognized message from Apple Watch."])
+            return
+        }
+        Task { @MainActor in
+            await Self.handleWatchControlCommand(commandData, replyHandler: replyHandler)
+        }
+    }
+
+    /// `static` (rather than an instance method) since it needs nothing
+    /// from `WatchRelayManager` itself — it only touches the app-wide
+    /// `AppDataSource.shared`, the same composition root every other
+    /// command-sending call site in this app already reads from.
+    @MainActor
+    private static func handleWatchControlCommand(
+        _ commandData: Data,
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) async {
+        guard let command = try? JSONDecoder().decode(ControlCommand.self, from: commandData) else {
+            replyHandler(["error": "Couldn't decode that request."])
+            return
+        }
+
+        let transport = AppDataSource.shared.transport
+        do {
+            try await transport.send(command: command)
+        } catch {
+            replyHandler(["error": error.localizedDescription])
+            return
+        }
+
+        guard let status = await transport.awaitStatus(forNonce: command.nonce, timeout: MacStatIntents.statusTimeout) else {
+            replyHandler(["error": "Sent to your Mac, but didn't hear back — check that MacStat is open on your Mac."])
+            return
+        }
+        guard let statusData = try? JSONEncoder().encode(status) else {
+            replyHandler(["error": "Got a reply from your Mac, but couldn't encode it to send back."])
+            return
+        }
+        replyHandler(["controlStatus": statusData])
     }
 
     /// iOS-only requirement (watchOS has no notion of switching to a

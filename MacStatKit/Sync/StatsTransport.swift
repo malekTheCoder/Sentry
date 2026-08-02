@@ -77,6 +77,17 @@ public protocol StatsTransport: Sendable {
     /// side.
     func send(command: ControlCommand) async throws
 
+    /// Waits up to `timeout` seconds for a `ControlStatus` reply to a
+    /// command previously passed to `send(command:)`, matched by
+    /// `command.nonce`. Returns `nil` if no reply arrives in time (or if
+    /// this transport doesn't have a concept of a reply at all — see
+    /// `MockDataSource`'s conformance). Added alongside `LocalSyncClient`'s
+    /// real `send(command:)` implementation (`MacStatKit/LocalSync/LocalSyncClient.swift`)
+    /// so a caller (`KeepAwakeIntent`, `SleepStatusCard`) can learn what a
+    /// Mac actually did with a command rather than only knowing it was
+    /// transmitted.
+    func awaitStatus(forNonce nonce: String, timeout: TimeInterval) async -> ControlStatus?
+
     /// Uploads a batch of snapshots. Plan §7.4 is explicit that snapshots
     /// must never be saved one-at-a-time (`CKModifyRecordsOperation`,
     /// `savePolicy = .changedKeysOnly`, `qualityOfService = .utility`) — see

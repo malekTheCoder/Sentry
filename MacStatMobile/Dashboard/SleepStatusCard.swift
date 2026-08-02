@@ -15,20 +15,23 @@ import MacStatKit
 /// day it ships" — the same shape Siri's spoken dialog already uses for
 /// `KeepAwakeIntent`.
 ///
-/// **Why no toggle.** A toggle here would need to round-trip a
-/// `ControlCommand` to the Mac and observe a `ControlStatus` reply through a
-/// real, connected CloudKit container to mean anything. That container
-/// doesn't exist in this build — same constraint documented at length in
-/// `MacStat/Settings/Panes/SyncPane.swift` and `MacStatMobile/Data/MockDataSource.swift`
-/// (`send(command:)` is a logged no-op; there is no Mac on the other end).
-/// `SyncPane` establishes the precedent this card follows: its doc comment
-/// explains why it deliberately leaves `AppSettings.cloudKitSyncEnabled`
-/// unexposed rather than wiring it to a toggle that "has no reader anywhere
-/// in the app" — flipping it would "manufacture exactly that bug," the
-/// textbook P5 violation of a control that silently does nothing. A toggle
-/// specifically is still omitted (it has no natural "here's what happened"
-/// moment the way a button-plus-inline-feedback does); the extend/truncate/
-/// end buttons below are the honest alternative, not a reversal of the rule.
+/// **These buttons are real now.** They were originally inert (every tap
+/// reported "not sent — no connection to your Mac yet") because
+/// `StatsTransport.send(command:)` had no working conformer. It does now:
+/// `LocalSyncClient.send(command:)` transmits over the live connection —
+/// LAN (Bonjour) or remote (TLS-PSK), whichever `AppDataSource` resolved —
+/// and `awaitStatus(forNonce:timeout:)` reports what the Mac actually did.
+/// `sendCommand(_:)` below still never claims success unless a real
+/// `ControlStatus` said so: a send failure, a silent Mac, and a Mac that
+/// actively declined are three distinct messages, never collapsed into one
+/// optimistic "Done."
+///
+/// **Why still no toggle.** A toggle needs a persistent, always-current
+/// on/off binding to mean anything; this card has point-in-time taps plus
+/// whatever `SystemSnapshot.sleepAssertion` the Mac last reported, with no
+/// two-way binding in between. The extend/truncate/end buttons remain the
+/// right shape: each tap is its own request-and-report round trip, not a
+/// state the UI must keep synchronized between taps.
 ///
 /// **What's real and shown:** the *current* sleep-assertion state as last
 /// reported by the Mac, read straight off `SystemSnapshot.sleepAssertion` —
@@ -231,23 +234,42 @@ struct SleepStatusCard: View {
     /// .perform()`'s "construct, send, report what actually happened" shape.
     private func sendCommand(_ command: ControlCommand) {
         feedbackTask?.cancel()
-        feedback = "Not sent — no connection to your Mac yet."
+        feedback = "Sending…"
         feedbackTask = Task {
             let transport = await AppDataSource.shared.transport
-            try? await transport.send(command: command)
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled else { return }
-            feedback = nil
+            do {
+                try await transport.send(command: command)
+            } catch {
+                feedback = "Not sent — \(error.localizedDescription)"
+                await clearFeedbackAfterDelay()
+                return
+            }
+            guard let status = await transport.awaitStatus(
+                forNonce: command.nonce,
+                timeout: MacStatIntents.statusTimeout
+            ) else {
+                feedback = "Sent, but no reply from your Mac yet."
+                await clearFeedbackAfterDelay()
+                return
+            }
+            feedback = status.state == "completed" ? "Done." : status.message
+            await clearFeedbackAfterDelay()
         }
+    }
+
+    private func clearFeedbackAfterDelay() async {
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        guard !Task.isCancelled else { return }
+        feedback = nil
     }
 
     private var remoteControlNote: some View {
         HStack(alignment: .top, spacing: 5) {
             Image(systemName: "info.circle")
                 .font(.system(size: 10))
-            Text("Control from your Mac — remote control isn't available in this build yet.")
+            Text("Reaches your Mac over local Wi-Fi, or from anywhere if you've set up Remote Access. MacStat must be open on your Mac.")
                 .font(palette.font(size: 10))
-                .lineLimit(2)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(palette.textTertiary)

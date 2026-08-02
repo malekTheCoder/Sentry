@@ -44,6 +44,16 @@ import os.log
 /// normal case, not an edge case. A connection that fails or is cancelled
 /// removes itself from the dictionary via its `stateUpdateHandler`, so a
 /// dead connection is never retried against.
+///
+/// **Bidirectional as of `commandHandler`.** Originally this type only ever
+/// wrote to its connections (snapshots out); it now also reads from them, so
+/// a `ControlCommand` sent by `LocalSyncClient.send(command:)` — from an
+/// iPhone Siri intent, an Apple Watch intent relayed through the phone, or
+/// the iPhone's own sleep card — reaches a real `PowerControlService` here.
+/// See `receiveNext(on:)` and `LocalCommandExecutor`
+/// (`MacStatKit/Services/LocalCommandExecutor.swift`). Both listeners feed
+/// the same pool, so remote (TLS-PSK) clients get command support on exactly
+/// the same terms as LAN ones — already authenticated at handshake time.
 public final class LocalSyncServer: @unchecked Sendable {
 
     /// Must match `LocalSyncClient`'s browse type exactly — Bonjour service
@@ -88,15 +98,36 @@ public final class LocalSyncServer: @unchecked Sendable {
     /// first snapshot has actually been sent, so a just-connected client
     /// always receives the very next snapshot immediately rather than
     /// waiting out `minSendInterval` for no reason.
+    /// `receiveBuffer` accumulates raw bytes for this connection's own
+    /// receive loop, same role as `LocalSyncClient.receiveBuffer` but
+    /// per-connection here since one server holds several open at once.
     private final class ConnectionState {
         let connection: NWConnection
         var lastSendDate: Date?
+        var receiveBuffer = Data()
         init(connection: NWConnection) {
             self.connection = connection
         }
     }
 
     private var connections: [ObjectIdentifier: ConnectionState] = [:]
+
+    /// Invoked for every `.command` frame received from any connected
+    /// phone/watch-via-phone; its returned `ControlStatus` is framed and
+    /// sent straight back on the connection the command arrived on. `nil`
+    /// (the default) means commands are decoded but dropped with no reply —
+    /// the state `AppDelegate` is in before it constructs a
+    /// `LocalCommandExecutor` and assigns this, so tests/previews that only
+    /// exercise the snapshot-broadcast half don't need to supply one.
+    /// `async` because `LocalCommandExecutor.execute(_:)` is `@MainActor`.
+    ///
+    /// Not `@Sendable`: this type is already `@unchecked Sendable` as a
+    /// whole, and the closure `AppDelegate` assigns captures a
+    /// `@MainActor`-isolated executor, which a `@Sendable`-typed closure
+    /// would reject without ceremony for no real safety gain — every call
+    /// site (`handle(_:from:)`, inside its own `Task`) already hops off this
+    /// type's serial `queue` before invoking it.
+    public var commandHandler: ((ControlCommand) async -> ControlStatus)?
 
     /// `serviceName` is what shows up in Bonjour browse results on the
     /// phone — the device's own name (e.g. "Malek's MacBook Pro") is the
@@ -226,6 +257,7 @@ public final class LocalSyncServer: @unchecked Sendable {
             switch connectionState {
             case .ready:
                 self?.log.debug("LocalSyncServer: client connected")
+                self?.receiveNext(on: connection)
             case .failed, .cancelled:
                 self?.remove(connection)
             default:
@@ -255,6 +287,93 @@ public final class LocalSyncServer: @unchecked Sendable {
             self?.connections.removeValue(forKey: ObjectIdentifier(connection))
         }
         connection.cancel()
+    }
+
+    // MARK: - Receiving commands
+
+    /// Per-connection receive loop. This type was originally send-only
+    /// (snapshots out); it reads now because `LocalSyncClient.send(command:)`
+    /// needs a Mac-side listener on the other end of the same `NWConnection`
+    /// to actually receive a `ControlCommand`. Mirrors `LocalSyncClient
+    /// .receiveNext(on:)`/`.handleReceive(...)` structurally — both sides
+    /// speak the same `LocalSyncFraming` envelope: accumulate raw bytes into
+    /// this connection's `receiveBuffer`, hand them to
+    /// `LocalSyncFraming.extractFrames(from:)`, act on the complete frames,
+    /// keep the leftover partial frame for next time.
+    ///
+    /// Applies equally to LAN (Bonjour, plaintext) and remote (TLS-PSK)
+    /// connections — they share one pool, and by the time a frame reaches
+    /// here a remote client has already authenticated during the TLS
+    /// handshake (see `SyncSecurity`), so no per-frame auth check is
+    /// duplicated at this layer.
+    private func receiveNext(on connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            self.queue.async {
+                self.handleReceive(connection: connection, data: data, isComplete: isComplete, error: error)
+            }
+        }
+    }
+
+    private func handleReceive(connection: NWConnection, data: Data?, isComplete: Bool, error: NWError?) {
+        guard let state = connections[ObjectIdentifier(connection)] else { return }
+
+        if let data, !data.isEmpty {
+            state.receiveBuffer.append(data)
+            do {
+                let (messages, remainder) = try LocalSyncFraming.extractFrames(from: state.receiveBuffer)
+                state.receiveBuffer = remainder
+                for message in messages {
+                    handle(message, from: connection)
+                }
+            } catch {
+                log.error("LocalSyncServer: malformed frame from client, closing connection: \(String(describing: error))")
+                remove(connection)
+                return
+            }
+        }
+
+        if let error {
+            log.error("LocalSyncServer: receive error: \(String(describing: error))")
+            remove(connection)
+            return
+        }
+        guard !isComplete else {
+            remove(connection)
+            return
+        }
+        receiveNext(on: connection)
+    }
+
+    private func handle(_ message: LocalSyncMessage, from connection: NWConnection) {
+        switch message {
+        case .command(let command):
+            guard let commandHandler else {
+                log.debug("LocalSyncServer: received a command with no commandHandler installed — dropping it")
+                return
+            }
+            Task { [weak self] in
+                let status = await commandHandler(command)
+                guard let self else { return }
+                self.sendStatus(status, on: connection)
+            }
+        case .snapshot, .status:
+            // Clients never send either — logged and ignored rather than
+            // treated as a protocol violation.
+            log.debug("LocalSyncServer: received an unexpected snapshot/status frame from a client — ignoring")
+        }
+    }
+
+    private func sendStatus(_ status: ControlStatus, on connection: NWConnection) {
+        guard let framed = try? LocalSyncFraming.encode(.status(status)) else {
+            log.error("LocalSyncServer: failed to encode ControlStatus reply")
+            return
+        }
+        connection.send(content: framed, completion: .contentProcessed { [weak self] error in
+            if let error {
+                self?.log.error("LocalSyncServer: failed to send ControlStatus reply: \(String(describing: error))")
+            }
+        })
     }
 
     /// Sends `snapshot`, framed, to every connection that hasn't been sent
