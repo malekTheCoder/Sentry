@@ -41,7 +41,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     /// context instead of controls floating in space.
     var subtitle: String {
         switch self {
-        case .general: return String(localized: "Startup, sampling cadence, and data retention.")
+        case .general: return String(localized: "Startup, sampling cadence, and software updates.")
         case .modules: return String(localized: "Which metric modules Sentry samples and shows.")
         case .menuBar: return String(localized: "Compose the bar item and choose what the dropdown shows.")
         case .theme: return String(localized: "How Sentry's own surfaces look — dropdown, dashboard, widgets.")
@@ -103,13 +103,23 @@ struct SettingsView: View {
     /// has one to observe.
     @ObservedObject var locationService: LocationService
 
+    /// Backs `GeneralPane`'s Updates section. Optional, like `historyStore`
+    /// and `mcpActivityLog` and unlike the two services above: this view is
+    /// constructible in contexts with no app-lifetime updater (a preview, a
+    /// future settings surface hosted outside `AppDelegate`), and the pane
+    /// has a truthful thing to say for `nil` — it prints that this copy has
+    /// no update channel wired rather than showing a dead button. Passing
+    /// `nil` is therefore a real configuration, not a placeholder.
+    let updateController: UpdateController?
+
     init(
         store: SettingsStore,
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
         locationService: LocationService,
-        fanControlService: FanControlService
+        fanControlService: FanControlService,
+        updateController: UpdateController? = nil
     ) {
         self.store = store
         self.historyStore = historyStore
@@ -117,6 +127,7 @@ struct SettingsView: View {
         self.mcpActivityLog = mcpActivityLog
         self.locationService = locationService
         self.fanControlService = fanControlService
+        self.updateController = updateController
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -245,7 +256,7 @@ struct SettingsView: View {
     private func content(for pane: SettingsPane) -> some View {
         switch pane {
         case .general:
-            GeneralPane(store: store).formStyle(.grouped)
+            GeneralPane(store: store, updateController: updateController).formStyle(.grouped)
         case .modules:
             ModulesPane(store: store).formStyle(.grouped)
         case .menuBar:

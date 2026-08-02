@@ -8,6 +8,14 @@ struct GeneralPane: View {
 
     @ObservedObject var store: SettingsStore
 
+    /// Backs the Updates section. `nil` means this settings surface was
+    /// built without an update channel at all — a legitimate configuration
+    /// (see `SettingsView.updateController`), and one the section says
+    /// plainly rather than papering over with a disabled button.
+    var updateController: UpdateController?
+
+    @Environment(\.themePalette) private var palette
+
     /// Non-nil while a `LaunchAtLogin` call has failed. Surfaced rather than
     /// swallowed: `SMAppService.register()` genuinely fails (unsigned builds,
     /// an app not in /Applications, MDM policy), and silently leaving the
@@ -140,11 +148,7 @@ struct GeneralPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // No Updates section: `AppSettings.updateCheckDaily` exists, but
-            // no updater is wired yet (Sparkle is linked but not integrated) —
-            // a toggle that promises daily checks nothing performs is the
-            // "slider that silently does nothing" SyncPane's doc comment
-            // refuses to ship. Restore the section when the updater lands.
+            updatesSection
         }
         .formStyle(.grouped)
         .onAppear(perform: reconcileLaunchAtLogin)
@@ -158,6 +162,119 @@ struct GeneralPane: View {
             Button("OK") { launchAtLoginError = nil }
         } message: {
             Text(launchAtLoginError ?? "")
+        }
+    }
+
+    // MARK: - Updates
+
+    /// **Why this section exists again, and what changed since it didn't.**
+    ///
+    /// This is where a comment used to sit explaining that there was no
+    /// Updates section on purpose: `AppSettings.updateCheckDaily` was a
+    /// persisted field with no reader anywhere in the app, Sparkle was
+    /// declared in `project.yml` but neither linked nor embedded nor
+    /// imported, and a toggle promising daily checks that nothing performed
+    /// is precisely the "slider that silently does nothing" bug `SyncPane`'s
+    /// doc comment refuses to ship. That reasoning was right, and it has not
+    /// been discarded — it has been *satisfied*. `UpdateController`
+    /// (`MacStat/App/UpdateController.swift`) is constructed in `AppDelegate`
+    /// alongside `powerControl`/`localSyncServer`, and `AppDelegate
+    /// .applySettings` now reads `updateCheckDaily` on every emission and
+    /// pushes it into Sparkle's scheduler. The toggle below moves a real
+    /// dial.
+    ///
+    /// **The refusal has moved down a level, not away.** Sparkle can only
+    /// install an update it can verify against the Ed25519 public key baked
+    /// into this build, and this build ships a *placeholder* key (see
+    /// `UpdateFeedConfiguration.placeholderPublicKey` and
+    /// `docs/sparkle-release-signing.md` — generating the real pair is the
+    /// developer's job, because the private half is a secret that must never
+    /// pass through tooling and that permanently orphans every install if
+    /// lost). So on this build `availability` is `.publicKeyPlaceholder`,
+    /// and the section renders the second shape below.
+    ///
+    /// **What that second shape deliberately does and doesn't include**,
+    /// following `FanControlPane`'s two precedents exactly:
+    ///   - The automatic-check toggle is shown but `.disabled`, with a lock
+    ///     row naming the actual blocker — the same treatment the fan mode
+    ///     picker gets. It's visible so the feature is legible, and inert so
+    ///     it can't be believed.
+    ///   - "Check for Updates…" is **absent**, not present-and-greyed —
+    ///     the same call `FanControlPane` makes for "Return to Auto." A
+    ///     greyed button implies a working mechanism behind a temporary
+    ///     block; there isn't one. And the specific failure a live button
+    ///     would produce is worse than an error: Sparkle would fetch the
+    ///     feed, reject every item's signature, and report "You're up to
+    ///     date!" — a false statement that stops the user looking.
+    @ViewBuilder
+    private var updatesSection: some View {
+        Section {
+            if let controller = updateController {
+                let availability = controller.availability
+
+                if availability.canCheckForUpdates {
+                    Toggle("Check for updates automatically", isOn: $store.settings.updateCheckDaily)
+                        .accessibilityLabel("Check for updates automatically")
+                    Text("Sentry looks for a new version about once a day in the background, and tells you when one is ready. It never installs anything without asking.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button("Check for Updates…") { controller.checkForUpdates() }
+                        .accessibilityLabel("Check for updates now")
+                } else {
+                    // §9.4: never encode meaning in color alone — the icon
+                    // and the sentence both carry it.
+                    Label {
+                        Text(availability.headline)
+                            .fontWeight(.semibold)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(palette.warning)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Text(availability.explanation)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Toggle("Check for updates automatically", isOn: $store.settings.updateCheckDaily)
+                        .disabled(true)
+                        .accessibilityLabel("Check for updates automatically")
+                        .accessibilityHint("Unavailable: \(availability.headline)")
+
+                    Label {
+                        Text("This preference is saved, but nothing acts on it in this build.")
+                            .font(.callout)
+                    } icon: {
+                        Image(systemName: "lock")
+                            .foregroundStyle(palette.warning)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Label {
+                    Text("This copy of Sentry has no update channel.")
+                        .fontWeight(.semibold)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(palette.warning)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+
+                Text("No updater was wired into this build, so Sentry will never notice a new version. Check for one manually.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Updates")
+        } footer: {
+            Text("Sentry is distributed outside the Mac App Store, so updates come from Sentry itself rather than from the App Store. Every update is checked against a signing key built into this copy before it's installed — one that can't be verified is refused rather than run.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

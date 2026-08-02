@@ -129,7 +129,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
                             locationService: self.locationService,
-                            fanControlService: self.fanControlService
+                            fanControlService: self.fanControlService,
+                            updateController: self.updateController
                         )
                     )
                 )
@@ -273,6 +274,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         deviceID: coordinator.deviceID
     )
 
+    // MARK: - Updates
+    //
+    // Sentry's only update channel: it ships outside the Mac App Store
+    // (Developer ID + notarization), so there is no StoreKit path and no
+    // "check the App Store" fallback. One instance for the app's lifetime,
+    // same reasoning `powerControl` gives for its own singleton-ness —
+    // Sparkle persists its check schedule in `UserDefaults`, so a second
+    // updater would reconcile against the first's record.
+    //
+    // Non-lazy and unconditional, like `locationService`/`fanControlService`
+    // above: construction reads two `Info.plist` keys and, when they don't
+    // describe a working channel, deliberately builds no Sparkle object at
+    // all. That last part is the whole design — see `UpdateController`'s doc
+    // comment for why this service is the one exception to the "start it
+    // unconditionally, gate it internally" pattern `mcpListener` and
+    // `localSyncServer` follow. In this build it resolves to
+    // `.publicKeyPlaceholder`, and Settings ▸ General says so on screen
+    // instead of offering a Check for Updates button that could only ever
+    // come back empty.
+    private let updateController = UpdateController()
+
     private var snapshotTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
@@ -331,6 +353,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             hourlyDays: settings.hourlyRetentionDays
         )
         rollupJob.start()
+
+        // Give the updater the persisted preference before Sparkle's own
+        // scheduler has a chance to run its first check, so a user who
+        // turned automatic checks off on a previous launch isn't checked on
+        // this one. `applySettings` keeps it current after that — the same
+        // one-way flow `alertEngine.updateRules` and `fanControlService
+        // .settings` use, and the reader `AppSettings.updateCheckDaily` has
+        // been missing since it was added.
+        updateController.applySettings(settings)
 
         // Closes the loop between the two Phase 3 services without either
         // importing the other (see `AlertAction.releaseSleepAssertion`) —
@@ -740,6 +771,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // hardware, because nothing in this build can (see
         // `FanControlService`). It only keeps the computed preview honest.
         fanControlService.settings = settings.fanControl
+
+        // Same one-way flow again: the General pane writes
+        // `updateCheckDaily` to settings and never touches the updater, so
+        // this is the single place the toggle reaches Sparkle's scheduler.
+        // Idempotent, so the per-frame emissions of a slider drag cost
+        // nothing — and a no-op when no updater exists, which is honest
+        // because the pane disables the toggle in exactly that case.
+        updateController.applySettings(settings)
 
         // MCPRemoteServer start/stop is async (binding/tearing down a real
         // socket); `applySettings` itself isn't, so this hops into a
