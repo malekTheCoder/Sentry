@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Export options for `xcodebuild -exportArchive` (plan §15.2). Used by
+  scripts/release.sh; there is no reason to run xcodebuild against this by hand.
+
+  method = developer-id
+      Sentry is distributed outside the Mac App Store and always will be. It
+      reads private IOKit surfaces (libIOReport.dylib, IOHIDEventSystemClient)
+      that do not exist inside the App Sandbox, and the App Store requires the
+      sandbox — so `app-store` is not a method we are declining to use, it is a
+      method that cannot produce a working build of this app. See
+      MacStat/MacStat.entitlements and plan §14.1.
+
+  destination = export
+      Write the exported .app to disk and stop. The alternative, `upload`, hands
+      the archive to Xcode's own notarization pipeline. We want the artifact on
+      disk so it can go into a DMG first and be notarized as the DMG — that is
+      what makes the ticket staple-able onto the thing users actually download.
+
+  signingStyle = manual, signingCertificate = Developer ID Application
+      Matches CODE_SIGN_STYLE/CODE_SIGN_IDENTITY in project.yml's
+      `DeveloperIDSigned` target template. Automatic signing would let Xcode
+      pick an identity; on a machine that also has Apple Development certs for
+      the iOS targets, "pick one" is not a decision worth delegating.
+
+  No `provisioningProfiles` key, on purpose.
+      A Developer ID export only needs a profile when the app claims an
+      entitlement that must be authorized by one — App Groups, iCloud
+      containers, push. This app claims none of those (again: see
+      MacStat.entitlements, which is one key long and explains every absence).
+      Adding an empty or speculative profile mapping here would introduce a
+      moving part that expires annually in exchange for nothing.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>developer-id</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>teamID</key>
+	<string>H7T2D2GL7U</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Developer ID Application</string>
+</dict>
+</plist>

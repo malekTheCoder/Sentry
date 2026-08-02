@@ -15,6 +15,19 @@ configs:
   Debug: debug
   Release: release
 
+# The project-wide floor, unchanged and deliberately permissive: a checkout of
+# this repo on a Mac with zero signing identities must build and must run its
+# tests. `run.sh` and every `xcodebuild ... test` invocation depend on that, and
+# this machine currently has exactly zero identities (`security find-identity -v
+# -p codesigning` → "0 valid identities found"), so it is not a hypothetical.
+#
+# These values are a floor, not a policy. Targets that genuinely need a
+# signature opt back in individually (the Mac app and its appex, so chronod will
+# load the widget; the iOS/watchOS targets, so their App Group entitlement is
+# actually embedded), and the Release-configuration strictness that notarization
+# demands lives in the `DeveloperIDSigned` target template below rather than
+# here — this block is shared with the iOS and watchOS targets, for which
+# "Developer ID Application" is not a valid identity at all.
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -23,6 +36,45 @@ settings:
     CODE_SIGNING_REQUIRED: NO
     CODE_SIGNING_ALLOWED: NO
     DEVELOPMENT_TEAM: ""
+
+# Applied to every macOS target whose product ends up inside (or alongside) the
+# notarized Sentry.app: the app, the two embedded frameworks, the widget appex,
+# and the two command-line tools. Everything it sets is scoped to Release, so
+# adopting the template changes nothing about a Debug build.
+#
+# Notarization is non-negotiable about all four of these:
+#
+#   * A real `Developer ID Application` identity, from an enrolled Apple
+#     Developer Program team. Ad-hoc ("-") signatures are rejected outright.
+#   * Hardened runtime on every Mach-O in the bundle — not just the main
+#     executable. A single nested binary without it fails the submission.
+#   * A secure timestamp. `--timestamp` is passed explicitly rather than relying
+#     on xcodebuild's archive-time default, because that default differs between
+#     `build` and `archive` and a missing timestamp is a submission failure with
+#     an unhelpful message.
+#   * No `com.apple.security.get-task-allow`. Xcode injects it through
+#     CODE_SIGN_INJECT_BASE_ENTITLEMENTS so debuggers can attach; turning the
+#     injection off for Release is what guarantees it cannot ride along into an
+#     archive. (It stays on for Debug, where attaching a debugger is the point.)
+#
+# CODE_SIGNING_REQUIRED: YES is the important negative test here. Without it, a
+# Release build on a machine with no Developer ID certificate would quietly fall
+# back to producing an unsigned bundle and only fail much later, at
+# `notarytool submit`. With it, `xcodebuild archive` fails immediately and says
+# which identity it could not find.
+targetTemplates:
+  DeveloperIDSigned:
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          CODE_SIGNING_REQUIRED: YES
+          CODE_SIGNING_ALLOWED: YES
+          DEVELOPMENT_TEAM: H7T2D2GL7U
+          ENABLE_HARDENED_RUNTIME: YES
+          OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
 packages:
   GRDB:
@@ -48,21 +100,39 @@ targets:
   SystemMetricsKit:
     type: framework
     platform: macOS
+    # Embedded in Sentry.app/Contents/Frameworks, so it is nested code the
+    # notary service inspects in its own right — see the template's comment.
+    templates:
+      - DeveloperIDSigned
     sources:
       - path: SystemMetricsKit
     dependencies:
       - target: MacStatKit_macOS
         embed: false
+    # Spelled out as `base:` rather than the flat `settings: {KEY: value}` form
+    # every other target uses. That is not style: a target that adopts a
+    # template carrying `settings.configs` (as this one does, above) silently
+    # loses its flat settings during the merge — PRODUCT_NAME, bundle id and all
+    # — and the failure surfaces much later as "unable to resolve module
+    # dependency" from whatever imports the misnamed framework. Same reason for
+    # the identical shape on MacStatKit_macOS, MacStatMCP and MacStatCLI below.
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.systemmetricskit
-      # Frameworks embedded into an .app must carry an Info.plist — Xcode
-      # validates this at the embed step and fails the build without it.
-      # Matches the equivalent setting on MacStatKit_iOS below.
-      GENERATE_INFOPLIST_FILE: YES
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.systemmetricskit
+        # Frameworks embedded into an .app must carry an Info.plist — Xcode
+        # validates this at the embed step and fails the build without it.
+        # Matches the equivalent setting on MacStatKit_iOS below.
+        GENERATE_INFOPLIST_FILE: YES
 
   MacStatKit_macOS:
     type: framework
     platform: macOS
+    # Embedded in Sentry.app/Contents/Frameworks — same reasoning as
+    # SystemMetricsKit above. The iOS and watchOS variants of this target
+    # deliberately do NOT adopt the template: "Developer ID Application" is a
+    # Mac-only identity.
+    templates:
+      - DeveloperIDSigned
     # MacStatKit/Resources/Localizable.xcstrings (String Catalog, source
     # language en) lives under this same `sources: path` and is auto-detected
     # by XcodeGen as a resource (not compiled Swift) purely from its
@@ -91,13 +161,16 @@ targets:
         product: MCP
         embed: false
         link: true
+    # `base:` rather than the flat form — see the note on SystemMetricsKit above
+    # for why adopting a template forces this shape.
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
-      PRODUCT_NAME: MacStatKit
-      PRODUCT_MODULE_NAME: MacStatKit
-      # See the note on SystemMetricsKit above — embedded frameworks need an
-      # Info.plist or the MacStat app target fails at the embed step.
-      GENERATE_INFOPLIST_FILE: YES
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit
+        PRODUCT_NAME: MacStatKit
+        PRODUCT_MODULE_NAME: MacStatKit
+        # See the note on SystemMetricsKit above — embedded frameworks need an
+        # Info.plist or the MacStat app target fails at the embed step.
+        GENERATE_INFOPLIST_FILE: YES
 
   MacStatKit_iOS:
     type: framework
@@ -145,6 +218,8 @@ targets:
   MacStat:
     type: application
     platform: macOS
+    templates:
+      - DeveloperIDSigned
     # MacStat/Resources/Localizable.xcstrings — same auto-detected-by-
     # extension mechanism as MacStatKit_macOS above. Covers this target's own
     # display strings (Settings sidebar pane titles, Dashboard's
@@ -165,6 +240,44 @@ targets:
         embed: true
       - target: MacStatWidgetExtension_macOS
         embed: true
+      # The two command-line tools ship *inside* the app bundle, in
+      # Contents/MacOS alongside the main executable.
+      #
+      # This is a fix, not a packaging preference. Both tools link
+      # MacStatKit.framework with `embed: false` (below), so their Mach-O
+      # headers reference `@rpath/MacStatKit.framework/...` and their only
+      # useful rpath entry is `@executable_path/../Frameworks`. Built loose in
+      # the products directory they cannot resolve that at all — running
+      # `./macstat` there dies with `dyld: Library not loaded:
+      # @rpath/MacStatKit.framework/Versions/A/MacStatKit`. Dropped into
+      # Contents/MacOS, `@executable_path/../Frameworks` resolves to
+      # Sentry.app/Contents/Frameworks, where MacStatKit.framework already is,
+      # and they run. integrations/claude-code/README.md has been telling users
+      # to invoke `.../Sentry.app/Contents/MacOS/macstat` for a while; this is
+      # what makes that path exist.
+      #
+      # It also makes the notarization story complete. Nested executables must
+      # be signed with the same Team ID and hardened runtime as their host, and
+      # a stapled ticket covers the whole bundle — so shipping them inside means
+      # they are notarized and Gatekeeper-approved with the app. Shipped loose
+      # they could be notarized but never *stapled* (a bare Mach-O has nowhere
+      # to store a ticket), leaving them dependent on an online check.
+      #
+      # `codeSign: true` puts "Code Sign On Copy" on the phase, so each tool is
+      # re-signed with the app's identity as it is embedded, before the outer
+      # bundle is sealed — the inner-out order plan §15.2 requires.
+      - target: MacStatMCP
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+      - target: MacStatCLI
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
       - package: Sparkle
         embed: false
         link: false
@@ -189,27 +302,51 @@ targets:
         embed: false
         link: true
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
-      # The app is named Sentry; the module stays MacStat so `@testable
-      # import MacStat` and every internal reference keep compiling. Bundle
-      # id is unchanged on purpose — it's identity, not branding.
-      PRODUCT_NAME: Sentry
-      PRODUCT_MODULE_NAME: MacStat
-      MARKETING_VERSION: "0.1.0"
-      CURRENT_PROJECT_VERSION: "1"
-      # Hardened runtime turns on library validation, which rejects the
-      # ad-hoc-signed frameworks this dev-signing setup embeds. Re-enable for
-      # a real Developer-ID release build.
-      ENABLE_HARDENED_RUNTIME: NO
-      APP_SANDBOX: NO
-      # Ad-hoc signing (identity "-") so the embedded widget appex carries a
-      # signature chronod will load. Deliberately NO App Group entitlement on
-      # the macOS side: Xcode requires a provisioning profile for iOS-style
-      # `group.*` groups on macOS, which an ad-hoc/no-team setup can't
-      # produce. `WidgetSnapshotStore` uses a plain (non-group) suite on
-      # macOS instead — see its doc comment.
-      CODE_SIGNING_ALLOWED: YES
-      CODE_SIGN_IDENTITY: "-"
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat
+        # The app is named Sentry; the module stays MacStat so `@testable
+        # import MacStat` and every internal reference keep compiling. Bundle
+        # id is unchanged on purpose — it's identity, not branding.
+        PRODUCT_NAME: Sentry
+        PRODUCT_MODULE_NAME: MacStat
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Signing is on in both configurations, but for different reasons and
+        # with different identities (see `configs:` below and the
+        # `DeveloperIDSigned` template). In Debug it exists so the embedded
+        # widget appex carries a signature chronod will load; in Release it is
+        # the whole point of the build.
+        #
+        # Deliberately NO App Group entitlement on the macOS side: Xcode
+        # requires a provisioning profile for iOS-style `group.*` groups on
+        # macOS, which neither the ad-hoc Debug setup nor a profile-free
+        # Developer ID archive produces. `WidgetSnapshotStore` uses a plain
+        # (non-group) suite on macOS instead — see its doc comment.
+        CODE_SIGNING_ALLOWED: YES
+        # Replaces the former `APP_SANDBOX: NO`, which was not a real Xcode
+        # build setting and therefore did nothing — the sandbox was off only
+        # because off is the default. MacStat/MacStat.entitlements now states
+        # `com.apple.security.app-sandbox = false` outright, which is both the
+        # mechanism the signature actually carries and the place a reader can
+        # find out why (private IOReport/IOHID APIs are unreachable inside the
+        # sandbox; see that file's header and plan §14.1).
+        CODE_SIGN_ENTITLEMENTS: MacStat/MacStat.entitlements
+      configs:
+        Debug:
+          # Hardened runtime turns on library validation, which rejects
+          # ad-hoc-signed embedded frameworks — and in Debug every framework in
+          # this bundle (MacStatKit, SystemMetricsKit, the SwiftPM product
+          # frameworks) is ad-hoc-signed, because there is no team to sign them
+          # with. So Debug keeps hardened runtime off and the ad-hoc identity.
+          #
+          # That reasoning does not carry over to Release, which is why this is
+          # now per-configuration rather than a flat NO: in a Developer ID
+          # archive every one of those frameworks is signed by the same team as
+          # the app, so library validation is satisfied and hardened runtime
+          # (which notarization requires) causes no problem at all. The template
+          # turns it on for Release.
+          ENABLE_HARDENED_RUNTIME: NO
+          CODE_SIGN_IDENTITY: "-"
     info:
       path: MacStat/Resources/Info.plist
       properties:
@@ -328,6 +465,11 @@ targets:
   MacStatWidgetExtension_macOS:
     type: app-extension
     platform: macOS
+    # Embedded in Sentry.app/Contents/PlugIns. An appex is nested code with its
+    # own signature, and notarization checks hardened runtime on it separately
+    # from the app — a widget without it fails the whole submission.
+    templates:
+      - DeveloperIDSigned
     sources:
       # Same exclusion as MacStatWidgetExtension above.
       - path: MacStatWidget
@@ -339,12 +481,18 @@ targets:
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.widget
-      PRODUCT_NAME: MacStatWidget
-      # Ad-hoc signed, no entitlements — same provisioning constraint as the
-      # MacStat app target above; the store's macOS suite needs none.
-      CODE_SIGNING_ALLOWED: YES
-      CODE_SIGN_IDENTITY: "-"
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.widget
+        PRODUCT_NAME: MacStatWidget
+        # No entitlements file in either configuration — same provisioning
+        # constraint as the MacStat app target above; the store's macOS suite
+        # needs none.
+        CODE_SIGNING_ALLOWED: YES
+      configs:
+        Debug:
+          # Ad-hoc, so chronod will load the widget from a locally built app.
+          # Release swaps this for the Developer ID identity via the template.
+          CODE_SIGN_IDENTITY: "-"
     info:
       # Its own generated plist path — the iOS extension's `info:` block
       # already generates MacStatWidget/Info.plist, and two targets writing
@@ -426,6 +574,13 @@ targets:
   MacStatMCP:
     type: tool
     platform: macOS
+    # Copied into Sentry.app/Contents/MacOS by the MacStat target — nested
+    # code, so it needs the same identity, hardened runtime and timestamp as
+    # its host. The Copy Files phase re-signs it on the way in
+    # (`codeSign: true` there); these settings are what the tool is built and
+    # signed with beforehand, so `codesign -dv --strict` is clean either way.
+    templates:
+      - DeveloperIDSigned
     sources:
       - path: MacStatMCP
     dependencies:
@@ -435,25 +590,33 @@ targets:
         product: MCP
         embed: false
         link: true
+    # `base:` rather than the flat form — see the note on SystemMetricsKit above.
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mcp
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mcp
 
   MacStatCLI:
     type: tool
     platform: macOS
+    # Same as MacStatMCP above: copied into Sentry.app/Contents/MacOS as
+    # `macstat`, so it is notarized nested code rather than a loose binary.
+    templates:
+      - DeveloperIDSigned
     sources:
       - path: MacStatCLI
     dependencies:
       - target: MacStatKit_macOS
         embed: false
+    # `base:` rather than the flat form — see the note on SystemMetricsKit above.
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.cli
-      # EXECUTABLE_NAME (not PRODUCT_NAME) renames just the output binary to
-      # "macstat" — PRODUCT_NAME stays "MacStatCLI" so the module name it
-      # implies doesn't collide with the "MacStat" app target's own module
-      # on a case-insensitive filesystem (this collided as "cannot load
-      # module 'macstat' as 'MacStat'" when PRODUCT_NAME was set directly).
-      EXECUTABLE_NAME: macstat
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.cli
+        # EXECUTABLE_NAME (not PRODUCT_NAME) renames just the output binary to
+        # "macstat" — PRODUCT_NAME stays "MacStatCLI" so the module name it
+        # implies doesn't collide with the "MacStat" app target's own module
+        # on a case-insensitive filesystem (this collided as "cannot load
+        # module 'macstat' as 'MacStat'" when PRODUCT_NAME was set directly).
+        EXECUTABLE_NAME: macstat
 
   MacStatTests:
     type: bundle.unit-test
