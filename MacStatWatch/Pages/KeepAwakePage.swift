@@ -125,10 +125,17 @@ struct KeepAwakePage: View {
 
     /// Human-readable mode string (the Watch's counterpart to
     /// `AwakeMode.mobileShortLabel` — "Keep display on", "System only", "Only
-    /// while plugged in"). `nil` means the Mac did not report a mode, and is
-    /// rendered as an em dash, never as a guessed default: "System only" and
-    /// "we weren't told" are different facts, and silently printing the
-    /// former would be fabricating a reading.
+    /// while plugged in"). `nil` means the Mac did not report a mode, never a
+    /// guessed default: "System only" and "we weren't told" are different
+    /// facts, and silently printing the former would be fabricating a reading.
+    ///
+    /// It used to render as a bare em dash in a labelled "Mode" row. That row
+    /// is gone — folded into `activeStatus` to buy the vertical space that
+    /// brings "End Now" above the fold — and the absence is now spelled out in
+    /// words instead, as "Mode not reported". That is a strictly better
+    /// rendering of the same fact: an em dash on a line of its own needs the
+    /// adjacent label to be read before it means anything, and this string now
+    /// shares a line with three other fragments.
     let modeLabel: String?
 
     /// Requests a new hold for the given number of **minutes**, or for
@@ -147,11 +154,11 @@ struct KeepAwakePage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                header
+            VStack(alignment: .leading, spacing: 8) {
                 if isActive {
                     activeBody
                 } else {
+                    header
                     inactiveBody
                 }
             }
@@ -162,11 +169,14 @@ struct KeepAwakePage: View {
 
     // MARK: - Header
 
+    /// Rendered only in the **inactive** state now. When a hold is running,
+    /// the same words are folded into `activeStatus` as a caption above the
+    /// countdown — see `activeBody` for why that row had to go.
     private var header: some View {
         HStack(spacing: 6) {
-            Image(systemName: isActive ? "moon.zzz.fill" : "moon.zzz")
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
-            Text(isActive ? "Keeping awake" : "Keep Mac awake")
+            Image(systemName: "moon.zzz")
+                .foregroundStyle(Color.secondary)
+            Text("Keep Mac awake")
                 .font(.headline)
                 .minimumScaleFactor(0.8)
         }
@@ -201,15 +211,81 @@ struct KeepAwakePage: View {
 
     // MARK: - Active
 
+    /// **Why this state gained a hundred points of headroom.** On the
+    /// simulator at 46mm, "End Now" — the one destructive control on the page
+    /// — sat below the fold and needed a crown flick to reach. That is the
+    /// wrong thing to hide: a user who has decided to stop holding their Mac
+    /// awake should not have to hunt, and a control that is invisible until
+    /// scrolled to is a control most users will not know exists.
+    ///
+    /// The fix is not to move "End Now" up. Promoting it above the extend
+    /// buttons would put the destructive action directly under the thumb
+    /// reaching for "+1 hr", which is the exact fat-finger this page's red
+    /// tint was chosen to prevent (see `endButton`), and it would order the
+    /// page by severity rather than by how often each control is wanted.
+    /// Instead the state above it was compressed until everything fits:
+    ///
+    /// - The `.headline` "Keeping awake" row is gone. It was a full text line
+    ///   restating what the countdown directly beneath it already made
+    ///   obvious, and it was the single most expensive row on the page. The
+    ///   words survive as `activeStatus`, a `.caption2` line with the moon
+    ///   glyph inline — still present, a third of the height.
+    /// - The "Mode / System only" row is folded into that same line. The data
+    ///   is unchanged and the "we weren't told" case still renders explicitly
+    ///   (see `activeStatus`); it just no longer occupies a full-width row of
+    ///   its own to say two words.
+    /// - Stack spacing dropped from 10 to 8, matched to `OverviewPage`'s
+    ///   tightening for the same reason: on a wrist, every point of vertical
+    ///   gap is paid for once per row.
+    ///
+    /// Together that is roughly 40pt reclaimed, which is what puts the end
+    /// button on screen at rest at 46mm. It is **not** enough at 40mm with an
+    /// active timed hold, where five controls' worth of content still exceeds
+    /// the face; that case still scrolls, and that is the honest outcome
+    /// rather than shrinking tap targets below 44pt to force a fit.
     private var activeBody: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            activeStatus
             countdown
-            modeRow
             if expiresAt != nil {
                 extendRow
             }
             endButton
         }
+    }
+
+    /// The former header and the former mode row, on one caption line.
+    ///
+    /// `nil` mode still renders explicitly as "Mode not reported" rather than
+    /// being dropped: a missing mode would read as "there is no mode," which
+    /// is a stronger and wronger claim than "we weren't told which one." That
+    /// was the whole argument for the old `modeRow` and it survives the row
+    /// being deleted — what changed is the shape, not the honesty.
+    ///
+    /// **The three text runs are one concatenated `Text`, not three siblings
+    /// in the `HStack`.** As siblings they were separate layout children, so a
+    /// 40mm face resolved the squeeze by *truncating the first one* — the
+    /// simulator rendered "Keeping a… · System only", which loses the status
+    /// and keeps the qualifier, exactly backwards. `minimumScaleFactor` cannot
+    /// help there because it is applied per child and SwiftUI truncated rather
+    /// than scaled. Concatenated, they are a single `Text` with one intrinsic
+    /// width, so the scale factor applies to the whole line at once and the
+    /// sentence shrinks intact instead of losing its subject.
+    private var activeStatus: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "moon.zzz.fill")
+                .foregroundStyle(Color.accentColor)
+            Text("Keeping awake")
+                + Text("  ·  ").foregroundStyle(.secondary)
+                + Text(modeLabel ?? "Mode not reported").foregroundStyle(.secondary)
+        }
+        .font(.caption2)
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            modeLabel.map { "Keeping awake, mode \($0)" } ?? "Keeping awake, mode not reported"
+        )
     }
 
     /// The hero readout.
@@ -234,18 +310,45 @@ struct KeepAwakePage: View {
     /// is the Mac's, and only the Mac can say it actually released. So the
     /// correction is left to the next relayed state, which is the only source
     /// that knows.
+    ///
+    /// **This is the one place the new dial language was rejected, and the
+    /// reason matters.** A depleting arc is the obvious rendering for a
+    /// countdown and it is the single most on-brand thing this page could
+    /// draw — `SentryDial` exists, the icon is a timer face, it would have
+    /// been three lines. It is not drawn because an arc needs a denominator
+    /// and this page does not have one. The payload carries `awakeExpiresAt`
+    /// (an absolute instant) and nothing else; the hold's *original* duration
+    /// is not on the wire and cannot be derived, so any fraction would require
+    /// inventing a full-scale value — a nominal hour, say — and the arc would
+    /// then be a picture of a number the Mac never sent. A 90-minute hold
+    /// would render as a ring that had been full for half an hour already.
+    /// Adding the duration to `WatchRelaySnapshot` to enable it was considered
+    /// and dropped: a new wire field to justify a shape is the tail wagging
+    /// the dog. The monospaced digits stay.
     @ViewBuilder
     private var countdown: some View {
         if let expiresAt {
             if expiresAt > Date() {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(expiresAt, style: .timer)
-                        .font(.system(.title2, design: .monospaced, weight: .semibold))
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                    Text("remaining")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                // "remaining" sits on the timer's own baseline rather than on
+                // a line of its own. That was the last ~16pt needed to get
+                // "End Now" fully above the fold at 46mm (see `activeBody`),
+                // and it is the better shape anyway: a five-character
+                // monospaced countdown leaves half the widest line on the
+                // screen empty, and the word belongs to the number the way a
+                // unit does. `ViewThatFits` is safe here where it was not for
+                // `OverviewPage`'s dials — both children are plain `Text`
+                // with honest intrinsic widths, so the horizontal candidate
+                // can genuinely fail and the stacked fallback is reachable at
+                // large Dynamic Type sizes.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        timerText(deadline: expiresAt)
+                        remainingCaption
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        timerText(deadline: expiresAt)
+                        remainingCaption
+                    }
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Time remaining")
@@ -263,21 +366,28 @@ struct KeepAwakePage: View {
         }
     }
 
-    /// `nil` renders as an em dash rather than being hidden entirely: a
-    /// missing row would read as "there is no mode," which is a stronger and
-    /// wronger claim than "we weren't told which one."
-    private var modeRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text("Mode")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            Text(modeLabel ?? "—")
-                .font(.caption)
-                .multilineTextAlignment(.trailing)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(modeLabel.map { "Mode, \($0)" } ?? "Mode not reported")
+    /// Split out only so `countdown`'s two arrangements above can share one
+    /// definition rather than repeating the font stack and risking the two
+    /// drifting apart.
+    ///
+    /// Takes the deadline as a parameter rather than reading `self.expiresAt`
+    /// and unwrapping with a `?? Date()`: that fallback would compile, would
+    /// never be hit today, and would silently render a timer counting *up*
+    /// from now the first time somebody used this outside the `if let` in
+    /// `countdown` — which is precisely the already-expired failure that
+    /// property's doc comment exists to warn about.
+    private func timerText(deadline: Date) -> some View {
+        Text(deadline, style: .timer)
+            .font(.system(.title2, design: .monospaced, weight: .semibold))
+            .minimumScaleFactor(0.6)
+            .lineLimit(1)
+    }
+
+    private var remainingCaption: some View {
+        Text("remaining")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
     }
 
     /// Two side-by-side buttons are the right shape on any face at default
