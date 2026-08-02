@@ -22,11 +22,17 @@
 	<string>1</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_macstat._tcp</string>
+	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Malek Swilam</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sentry advertises this Mac on your local network so your iPhone and Apple Watch can find it and show its live stats over Wi-Fi, and — only if you turn on Remote Access — answers requests on the port you choose. None of this data is sent to any server.</string>
 	<key>NSLocationUsageDescription</key>
-	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
+	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while Sentry is running, and only if you turn it on in Settings.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings.</string>
+	<string>Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while Sentry is running, and only if you turn it on in Settings.</string>
 </dict>
 </plist>

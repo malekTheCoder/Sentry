@@ -156,6 +156,13 @@ targets:
     # `LocalizedStringKey` and Xcode's build-time string extraction picks
     # them up into this same catalog automatically, with no source change
     # needed.
+    #
+    # No PrivacyInfo.xcprivacy here, unlike the four iOS/watchOS bundles
+    # below. Privacy manifests gate uploads to App Store Connect; this app
+    # ships Developer ID + notarization (plan §15) precisely because it
+    # cannot be sandboxed (§14.1), and no manifest is read on that path. The
+    # honest privacy surface for this target is its Info.plist usage strings
+    # and the in-app privacy page §14.3 calls for.
     sources:
       - path: MacStat
     dependencies:
@@ -223,8 +230,43 @@ targets:
         # (`LocationPane`), never at launch. `NSLocationUsageDescription` is
         # the legacy key macOS's TCC prompt still reads; both are set to the
         # same text for safety across macOS versions.
-        NSLocationUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
-        NSLocationWhenInUseUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while MacStat is open and only if you turn it on in Settings."
+        #
+        # The wording covers the Location Log and nothing else, which is
+        # exactly what this build can do with location. The other macOS API
+        # that would pull location into TCC — `CWInterface.ssid()` in
+        # SystemMetricsKit/Collectors/NetworkCollector.swift, which trips the
+        # Location Services prompt on Sonoma+ — is behind that collector's
+        # `includeSSID` flag, and `AppDelegate` constructs
+        # `NetworkCollector()` with the flag at its `false` default, so no
+        # shipping code path reads an SSID. Naming Wi-Fi network names here
+        # would therefore be an overclaim; if `includeSSID` ever becomes
+        # reachable from the UI, this string has to grow a clause.
+        NSLocationUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while Sentry is running, and only if you turn it on in Settings."
+        NSLocationWhenInUseUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while Sentry is running, and only if you turn it on in Settings."
+        # macOS 15 gates the local network the way iOS has for years, and this
+        # app is squarely inside that gate on two counts: `LocalSyncServer`
+        # (MacStatKit/LocalSync/LocalSyncServer.swift) advertises
+        # `_macstat._tcp` over Bonjour and accepts connections from the
+        # phone/watch, and `MCPRemoteServer` (MacStat/App/MCPRemoteServer.swift)
+        # binds an HTTP listener to all interfaces when Remote Access is on.
+        # Mirrors the `MacStatMobile` block below, which already had both keys
+        # for the browsing side of the same conversation — `NSBonjourServices`
+        # must list the identical service type both sides agree on
+        # (`LocalSyncServer.serviceType` / `LocalSyncClient`'s browse type).
+        #
+        # Worth stating plainly rather than discovering later: this prompt
+        # appears at launch on macOS 15+, not on first use, because
+        # `AppDelegate.applicationDidFinishLaunching` starts `localSyncServer`
+        # unconditionally — a deliberate choice documented at that call site
+        # (an unused listener should be inert, not unreachable), but a real
+        # exception to plan §14.2's "ask late, ask contextually, never at
+        # launch." Adding these keys does not create the prompt; it gives the
+        # prompt an honest sentence instead of a blank one. Location and
+        # notifications remain strictly opt-in and are still never requested
+        # at launch.
+        NSLocalNetworkUsageDescription: "Sentry advertises this Mac on your local network so your iPhone and Apple Watch can find it and show its live stats over Wi-Fi, and — only if you turn on Remote Access — answers requests on the port you choose. None of this data is sent to any server."
+        NSBonjourServices:
+          - "_macstat._tcp"
 
   MacStatMobile:
     type: application
@@ -235,6 +277,12 @@ targets:
     # (`RootTabView`'s `Label("Dashboard"/"History"/"Alerts"/"Settings",
     # systemImage:)`) are plain `LocalizedStringKey` literals already and
     # need no source change — see the MacStat target's comment above for why.
+    #
+    # MacStatMobile/PrivacyInfo.xcprivacy is picked up from this same
+    # `sources: path` by extension, like the string catalogs above — no
+    # `resources:` entry needed, and it lands at the bundle root where the
+    # App Store's scanner looks. Its own header comment carries the audit
+    # behind every declaration in it.
     sources:
       - path: MacStatMobile
     dependencies:
@@ -286,7 +334,17 @@ targets:
         # `StatsTransport.swift`'s doc comment for why this transport exists
         # at all (CloudKit is blocked on Apple Developer Program enrollment;
         # this one isn't).
-        NSLocalNetworkUsageDescription: "Sentry uses your local network to show live data from your Mac when you're on the same Wi-Fi."
+        #
+        # The string names control as well as viewing, which the original
+        # ("...to show live data from your Mac...") did not. That connection
+        # has been bidirectional since `LocalSyncClient.send(command:)`
+        # landed: the sleep card and the Siri intents push a `ControlCommand`
+        # back up it to hold the Mac awake or let it sleep. Only the paired
+        # TLS-PSK listener actually accepts those commands, but it is
+        # reachable over the LAN too, so "control travels over your local
+        # network" is a true sentence and belongs in the prompt the user
+        # answers rather than only in a doc comment.
+        NSLocalNetworkUsageDescription: "Sentry uses your local network to find your Mac and show its live stats when you're on the same Wi-Fi, and to send it the keep-awake and sleep commands you tap or ask Siri for. None of this data is sent to any server."
         NSBonjourServices:
           - "_macstat._tcp"
 
@@ -299,6 +357,10 @@ targets:
       # neither target bundles the other's plist as a stray resource —
       # embeddedBinaryValidationUtility rejects an appex containing a plist
       # whose CFBundleIdentifier isn't prefixed by the parent app's.
+      #
+      # MacStatWidget/PrivacyInfo.xcprivacy is NOT excluded here — this is
+      # the target that needs it. `MacStatWidgetExtension_macOS` below
+      # excludes it instead; see the comment there.
       - path: MacStatWidget
         excludes:
           - "Info*.plist"
@@ -329,10 +391,18 @@ targets:
     type: app-extension
     platform: macOS
     sources:
-      # Same exclusion as MacStatWidgetExtension above.
+      # Same Info.plist exclusion as MacStatWidgetExtension above, plus the
+      # privacy manifest: it is written for the iOS extension specifically
+      # (App Group suite, iOS entitlements, the embedded MacStatKit_iOS
+      # binary), and this macOS appex ships inside a Developer ID app that
+      # never passes through App Store Connect's manifest check. Copying a
+      # manifest whose UserDefaults reasons don't describe this bundle —
+      # `WidgetSnapshotStore` uses the plain `macSuiteIdentifier` suite here,
+      # not an App Group — would be a false declaration for no benefit.
       - path: MacStatWidget
         excludes:
           - "Info*.plist"
+          - "PrivacyInfo.xcprivacy"
     dependencies:
       - target: MacStatKit_macOS
         embed: true
@@ -358,6 +428,11 @@ targets:
   MacStatWatch:
     type: application
     platform: watchOS
+    # MacStatWatch/PrivacyInfo.xcprivacy is auto-detected from this path, the
+    # same way MacStatMobile's is. Its declarations are deliberately shorter
+    # than the phone's because `MacStatKit_watchOS` above compiles four files
+    # rather than the whole framework — that manifest's header spells out
+    # which required-reason call sites are consequently absent here.
     sources:
       - path: MacStatWatch
     dependencies:
@@ -398,6 +473,9 @@ targets:
     type: app-extension
     platform: watchOS
     sources:
+      # MacStatWatchWidget/PrivacyInfo.xcprivacy rides along from this path;
+      # only the generated Info.plist is excluded, for the same
+      # embeddedBinaryValidationUtility reason as the iOS widget above.
       - path: MacStatWatchWidget
         excludes:
           - "Info*.plist"

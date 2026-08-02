@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy manifest for MacStatMobile (Sentry for iPhone).
+
+  App Store Connect rejects an iOS upload outright when a bundle that uses a
+  "required reason" API ships without one of these, so this file is an upload
+  gate rather than a review nicety. Every entry below was derived by reading
+  the code that actually compiles into this bundle — this target's own sources
+  plus the embedded MacStatKit.framework (project.yml's `MacStatKit_iOS`,
+  which compiles the whole MacStatKit directory, not the trimmed subset the
+  watchOS variant takes). Nothing here is copied from a template; a wrong
+  reason code is a rejection, so each one names its evidence.
+
+  Reason-code text quoted below comes from Apple's
+  "NSPrivacyAccessedAPITypeReasons" documentation:
+  https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitypereasons
+-->
+<plist version="1.0">
+<dict>
+	<!--
+	  Not a tracking app, and there is nothing to qualify. Plan §14.3 states
+	  the commitment this key encodes: no telemetry, no analytics, no
+	  third-party crash reporting, no advertising SDKs, and no network access
+	  at all beyond the user's own Mac. There is no third-party SDK in this
+	  bundle that could track on our behalf either — the only package this
+	  app links is GRDB (SQLite), which ships its own manifest declaring no
+	  collection.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+
+	<!--
+	  Empty because this app contacts no internet host whatsoever. Its only
+	  transport is `LocalSyncClient` (MacStatKit/LocalSync/LocalSyncClient.swift):
+	  a Bonjour-discovered TCP connection to a Mac on the same Wi-Fi, or a
+	  user-typed host:port dialed with TLS-PSK. Both are addresses the user
+	  supplied or that their own Mac advertised — no domain we control, and
+	  nothing to list here.
+	-->
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<!--
+		  The "Location Log" feature, and only that.
+
+		  What actually happens: the *Mac* (MacStatKit/Services/LocationService.swift,
+		  which is `#if os(macOS)` — this phone never opens a CLLocationManager
+		  and never asks for location permission) can, if the user turns the
+		  feature on in Settings ▸ Location, ask CoreLocation for an
+		  approximate fix every 30 minutes and put it in the `SystemSnapshot`
+		  it streams over the LAN. This app receives that fix and draws it on
+		  a Map in Settings (MacStatMobile/Settings/LocationLogSection.swift).
+		  Off by default; a user who never enables it never sees a coordinate
+		  here at all.
+
+		  A strict reading of Apple's definition of "collect" — transmitting
+		  data off the device in a way that lets the developer access it —
+		  would let this array be empty: the coordinate travels between two of
+		  the user's own devices over their own Wi-Fi, is never sent to any
+		  server, and we have no way to read it. It is declared anyway
+		  because the app genuinely handles real coordinates and displays them
+		  on a map, and under-declaring is the failure mode with consequences.
+
+		  Precise rather than Coarse: `LocationService` sets
+		  `desiredAccuracy = kCLLocationAccuracyReduced`, but that is a
+		  request, not a guarantee, and `MacLocation` carries the raw
+		  latitude/longitude doubles CoreLocation handed back with no rounding
+		  anywhere in the pipeline. Declaring the stronger of the two
+		  categories is the honest worst case.
+
+		  Linked = false: the payload is a coordinate, a timestamp and a
+		  horizontal-accuracy radius. There is no account, no user ID, no
+		  device advertising identifier, and no login in this app — see
+		  `MacLocation` and `SystemSnapshot`.
+
+		  Tracking = false: this is emphatically NOT Find My and must never be
+		  presented as such (LocationService's doc comment, and the on-screen
+		  disclaimer in LocationLogSection). It cannot locate a Mac that is
+		  off, asleep or offline; it is never combined with data from other
+		  companies; it is never used for advertising.
+		-->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<!--
+			  CA92.1 — "Declare this reason to access user defaults to read
+			  and write information that is only accessible to the app
+			  itself."
+			  Evidence: the `@AppStorage` properties in
+			  MacStatMobile/RootTabView.swift ("selectedThemeID") and
+			  MacStatMobile/Settings/SettingsTabView.swift ("selectedThemeID",
+			  "remoteSync.host", "remoteSync.port", "remoteSync.code"), and
+			  `UserDefaults.standard` in
+			  MacStatMobile/Data/AppDataSource.swift's
+			  `remoteEndpointFromDefaults()`, which reads those same four
+			  keys back. All of it is this app's own standard suite; nothing
+			  reads a key written by another app or the system.
+
+			  1C8F.1 — "Declare this reason to access user defaults to read
+			  and write information only accessible to the apps, app
+			  extensions, and App Clips that are members of the same App
+			  Group as the app itself."
+			  Evidence: `WidgetSnapshotStore`
+			  (MacStatKit/Sync/WidgetSnapshot.swift) and `WatchRelayStore`
+			  (MacStatKit/Watch/WatchRelayStore.swift) both open
+			  `UserDefaults(suiteName: "group.dev.malekswilam.macstat")`,
+			  which is exactly the group in
+			  MacStatMobile/MacStatMobile.entitlements. That suite is how the
+			  app hands a snapshot to its widget extension, which runs in a
+			  separate process that may not be alive when the snapshot
+			  arrives.
+			-->
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+				<string>1C8F.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<!--
+			  35F9.1 — "Declare this reason to access the system boot time in
+			  order to measure the amount of time that has elapsed between
+			  events that occurred within the app or to perform calculation to
+			  enable timers. Information accessed for this reason, or any
+			  derived information, may not be sent off-device. There is an
+			  exception that allows the app to send information about the
+			  amount of time that has elapsed between events that occurred
+			  within the app off-device."
+
+			  Evidence: `ProcessInfo.processInfo.systemUptime` in
+			  MacStatKit/Insights/DeviceFacts.swift (`DeviceFacts.current()`),
+			  which compiles into the MacStatKit.framework embedded in this
+			  app because `MacStatKit_iOS` takes the whole directory.
+
+			  What it is used for: "how long since the last restart," fed into
+			  `InsightContext` so a rule can say something specific about this
+			  machine. The only caller is `InsightContextBuilder`, and the
+			  only caller of *that* is MacStat/Insights/InsightsViewModel.swift
+			  — the Mac app. On iPhone the code is present in the binary but
+			  never executed, so the boot time is not merely kept on-device,
+			  it is never read at all. It is also deliberately excluded from
+			  the snapshot that goes over the wire: see the
+			  `case .systemUptimeSeconds: return nil` comment in
+			  MacStatKit/Models/SystemSnapshot+MetricValue.swift.
+			-->
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+		<!--
+		  Deliberately absent, having been searched for rather than assumed:
+
+		  NSPrivacyAccessedAPICategoryDiskSpace — nothing in this bundle calls
+		  `volumeAvailableCapacity*`, `statfs`, or
+		  `attributesOfFileSystem(forPath:)`. The disk figures the app shows
+		  are read on the *Mac* by SystemMetricsKit, which is a macOS-only
+		  target and is not part of this bundle. (Had they been read here,
+		  85F4.1 would be the reason — it explicitly permits sending disk
+		  space to another device of the same person over the local network.)
+
+		  NSPrivacyAccessedAPICategoryFileTimestamp — no `creationDate`,
+		  `contentModificationDate`, `attributesOfItem(atPath:)` or
+		  `URLResourceValues` timestamp read anywhere in this target or in
+		  MacStatKit. GRDB is the one third-party package linked here and it
+		  ships its own PrivacyInfo.xcprivacy.
+
+		  NSPrivacyAccessedAPICategoryActiveKeyboards — no
+		  `UITextInputMode.activeInputModes` anywhere; this app has no custom
+		  keyboard and no keyboard-dependent UI.
+		-->
+	</array>
+</dict>
+</plist>
