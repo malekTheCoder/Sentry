@@ -51,43 +51,50 @@ public struct FanState: Equatable, Sendable {
     public var displayName: String { "Fan \(descriptor.index + 1)" }
 }
 
-/// Plan §4.1's fan control service — the Phase 2 half of it.
+/// Plan §4.1's fan control service.
 ///
-/// **What this actually does, stated plainly: it reads, it computes, and it
-/// refuses.** It reads real fan speeds through whichever `FanControlBackend`
-/// it was handed (on a Mac, `SMCReadOnlyFanControlBackend` over the
-/// already-shipped `SMCFanBridge`). It computes what the user's persisted
+/// **What this actually does: it reads, it computes, and — as of Phase 3 —
+/// it may apply.** It reads real fan speeds through whichever
+/// `FanControlBackend` it was handed. It computes what the user's persisted
 /// policy would request, through the pure `FanControlResolver`. And when
-/// asked to actually apply any of that, it throws — because no backend in
-/// this build can write an SMC key, which needs root and a privileged
-/// helper that has not been built (`docs/fan-control-spike.md`).
+/// asked to apply that, it forwards to the backend, which either writes
+/// (via the root daemon, when the user has installed it) or throws a typed,
+/// printable reason.
 ///
-/// **Why the apply path exists at all in a build that can't apply
-/// anything.** So the failure is a real, typed, surfaced error rather than
-/// a missing method that the UI works around with a disabled button and a
-/// comment. `applyPolicy(forFan:)` throwing `FanControlWriteError
-/// .writesUnavailable(.needsPrivilegedHelper)` is testable today and is the
-/// same call the Settings pane would make if the control were enabled — so
-/// there is no untested gap between "the button is greyed out" and "the
-/// write is impossible."
+/// **The apply path's shape did not change when writes became possible, and
+/// that was the point of building it in Phase 2.** `applyPolicy(forFan:)`
+/// threw `writesUnavailable(.needsPrivilegedHelper)` then and can throw
+/// `helperRefused(reason:)` now; the Settings pane calls the same method it
+/// always called. There was never an untested gap between "the button is
+/// greyed out" and "the write is impossible", and there is now no untested
+/// gap between that and "the write happened."
 ///
-/// **What was deliberately not built here.**
+/// **The apply path is still not automatic.** Nothing in this type applies
+/// a policy on a timer, on a snapshot tick, or at launch. `ingest(_:)`
+/// updates the *computed preview* — what the policy would ask for — and
+/// stops there. Closing that loop (a control loop that pushes a curve's
+/// output to the hardware every few seconds) is genuinely more dangerous
+/// than a one-shot write and is deliberately not in this change: it needs
+/// its own rate limiting, its own oscillation analysis, and its own answer
+/// for what happens when three consecutive writes fail. Today a fan moves
+/// when a person asks it to.
+///
+/// **What is still deliberately not built here.**
 ///  - No timer, no polling loop of its own. Snapshots arrive via
 ///    `ingest(_:)` from the one `StatsCoordinator` stream every other
-///    consumer reads (plan §3.2 P3). A service that armed its own
-///    `DispatchSourceTimer` to sample fans it cannot control would burn
-///    cycles on every user's Mac for nothing — the same trade `SyncPane`
-///    documents refusing for `SyncService`.
-///  - No watchdog, no auto-revert-on-quit, no startup recovery. All three
-///    are plan §8 requirements and all three are meaningless before a write
-///    exists: there is nothing to revert, because nothing was ever changed.
-///    `FanControlSettings.restoreAutoOnLaunch` persists the *user's
-///    preference* about that behavior so Phase 3 has a setting to obey, and
-///    that is as far as this change goes.
-///  - No menu bar / dropdown surface (plan §7.1). A dropdown section whose
-///    every control is disabled is noise in the surface users look at most
-///    often; the honest disclosure belongs in Settings until there is
-///    something to toggle.
+///    consumer reads (plan §3.2 P3).
+///  - No startup recovery that re-arms a previous session's manual mode.
+///    `FanControlSettings.restoreAutoOnLaunch` defaults to `true` and plan
+///    §8 says "if state is ambiguous, default to Auto" — and after a
+///    relaunch the state *is* ambiguous, because the daemon may still be
+///    holding fans this process never took. The honest recovery is the one
+///    that happens on the other side of the boundary: the old process's
+///    disconnect already reverted them.
+///  - No menu bar / dropdown surface (plan §7.1). Now that the controls can
+///    do something this is worth revisiting; it is not revisited here,
+///    because a change that adds a root daemon should not also be the
+///    change that adds a one-click fan override to the surface users click
+///    most often by accident.
 @MainActor
 public final class FanControlService: ObservableObject {
 
@@ -150,11 +157,71 @@ public final class FanControlService: ObservableObject {
 
     public var backendIdentifier: String { backend.identifier }
 
+    /// Whether this backend has a privileged helper worth offering to
+    /// install. Forwarded so the pane never has to know which concrete
+    /// backend it got — see `FanControlBackend`'s note on why this is on
+    /// the protocol rather than reached by downcast.
+    public var supportsPrivilegedHelper: Bool { backend.supportsPrivilegedHelper }
+
+    /// Installs the privileged helper. **Called only from an explicit user
+    /// action** — there is no path from launch, from `ingest`, or from
+    /// `applyPolicy` to here, and adding one would mean an app that
+    /// registers a root LaunchDaemon as a side effect of something else.
+    public func installPrivilegedHelper() throws {
+        try backend.installPrivilegedHelper()
+    }
+
+    /// Removes the privileged helper. The backend hands every held fan back
+    /// to the firmware before unregistering; see
+    /// `PrivilegedFanControlBackend.removePrivilegedHelper`.
+    public func removePrivilegedHelper() throws {
+        try backend.removePrivilegedHelper()
+    }
+
+    /// Plan §8's mandatory escape hatch, across every fan at once.
+    ///
+    /// Collects failures rather than throwing on the first one. "Return
+    /// everything to Auto" that gave up halfway because fan 1 errored,
+    /// leaving fan 2 held, would be the single worst behavior this button
+    /// could have: the user pressed the panic control and it half-worked
+    /// without saying which half.
+    ///
+    /// - Returns: the fans that could *not* be reverted, with the reason
+    ///   each gave, for the pane to display. Empty means everything is back
+    ///   under firmware control.
+    @discardableResult
+    public func revertAllToAuto() -> [(fanIndex: Int, reason: String)] {
+        var failures: [(fanIndex: Int, reason: String)] = []
+        for descriptor in capability.fans {
+            do {
+                try backend.revertToAuto(fan: descriptor.index)
+            } catch {
+                failures.append((descriptor.index, error.localizedDescription))
+            }
+        }
+        return failures
+    }
+
     /// Re-probes the hardware. Worth offering only for the `.unreadable`
     /// case — a fanless Mac will not grow fans, so the UI exposes this as a
     /// "Try again" affordance on that state alone.
     public func refreshCapability() {
         capability = backend.capability()
+    }
+
+    /// Re-reads the backend's write availability and republishes, so the
+    /// pane redraws after the user approves the helper in System Settings —
+    /// the one state change that happens with this app in the background
+    /// and announces itself to nobody.
+    ///
+    /// `objectWillChange.send()` rather than a `@Published` mirror of
+    /// `writeAvailability`: the value is derived from the backend on every
+    /// read (`writeAvailability` above forwards), so a stored copy would be
+    /// a second source of truth that could go stale in exactly the case
+    /// this method exists for.
+    public func refreshWriteAvailability() {
+        backend.refreshWriteAvailability()
+        objectWillChange.send()
     }
 
     // MARK: - Ingest

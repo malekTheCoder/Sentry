@@ -3,14 +3,27 @@ import Foundation
 // MARK: - The write seam (fan-control plan §4.2)
 //
 // This file is the abstraction a real fan-write implementation plugs into.
-// It contains no implementation that can write, and — deliberately — no
-// *vocabulary* for "writing works", either: see `FanWriteAvailability`,
-// which has no `.available` case. That is not an oversight; it is the
-// strongest available compile-time statement that this build cannot move a
-// fan, and it means Phase 3 cannot half-land. Adding the write path
-// requires adding that case, which forces every `switch` over it — the
-// Settings pane's disabled-control copy above all — to be revisited in the
-// same change rather than silently continuing to say "not available".
+//
+// **`FanWriteAvailability.available` exists as of Phase 3, and its arrival
+// is the point.** Through Phase 2 this enum deliberately had no case
+// meaning "writing works" — the strongest compile-time statement available
+// that the build could not move a fan, and a tripwire ensuring Phase 3
+// could not half-land: adding the case breaks every `switch` over it and
+// forces each one to be revisited in the same change. That is what
+// happened. The Settings pane's disabled-control copy, the pane's
+// `canChangeMode` gate, and the tests that asserted "no case means writes
+// work" were all rewritten here rather than left to keep saying "not
+// available" while a daemon quietly wrote SMC keys behind them.
+//
+// **What `.available` does and does not claim.** It claims: a privileged
+// helper is registered with launchd, an XPC connection to it was
+// established, and the peer gate on the far side accepted this app. It
+// does not claim any write has ever succeeded — `applyTarget` still
+// `throws`, the daemon still refuses requests it cannot clamp, and the UI
+// still reports failures verbatim. "The path is open" and "the write
+// worked" stay separate, because on the machine this was written on the
+// former can be reasoned about and the latter cannot be observed at all
+// (see `MacStatKit/FanDaemon/FanDaemonContract.swift`).
 
 /// One fan, as far as the backend can describe it.
 ///
@@ -63,29 +76,79 @@ public enum FanControlCapability: Equatable, Sendable {
     }
 }
 
-/// Why a write can't happen.
+/// Whether a write can happen, and if not, why not.
 ///
-/// There is no `.available` case, on purpose — see this file's header.
+/// Exactly one case says yes. The other five are all the ways the answer is
+/// no, kept distinct because the *fix* differs for every one of them: one
+/// needs a click, one needs a trip to System Settings, one needs a bug
+/// report, one is a permanent fact about the hardware, and one is a
+/// transient read failure worth retrying. Collapsing any pair would produce
+/// a screen that tells at least one user the wrong thing to do next.
 public enum FanWriteAvailability: Equatable, Sendable {
+
+    /// The privileged helper is registered, reachable, and has accepted
+    /// this app's code signature. Write controls are live.
+    ///
+    /// See this file's header for the boundary this case does *not* cross:
+    /// it is a statement about the path, not a promise about any individual
+    /// write, all of which can still fail and all of which still surface
+    /// their failure verbatim.
+    case available
+
     /// The hardware supports it and the SMC keys carry the writable
     /// attribute bit (`F0Tg` attr `0xd4`, `F0Md` attr `0xd0`, measured in
-    /// the spike), but SMC writes require root on Apple Silicon and Sentry
-    /// runs unprivileged. Closing that gap means an `SMAppService`
-    /// LaunchDaemon, which this build does not contain.
+    /// the spike), but SMC writes require root and Sentry runs
+    /// unprivileged. The helper ships in the bundle and has not been
+    /// installed. **This is the default state of every fresh install**, and
+    /// it stays the state until the user asks for the helper by name.
     case needsPrivilegedHelper
+
+    /// The helper was registered, and macOS is waiting for the user to
+    /// approve it in System Settings ▸ General ▸ Login Items & Extensions.
+    /// A genuinely different situation from `.needsPrivilegedHelper`:
+    /// nothing more will happen here until the user visits a different app,
+    /// and a screen that said "install the helper" would be telling them to
+    /// redo something they already did.
+    case helperAwaitingApproval
+
+    /// The helper is registered and approved, and talking to it failed:
+    /// the connection dropped, the peer gate on the far side refused this
+    /// binary, or the daemon is not running and would not start.
+    ///
+    /// Carries the reason because these are the failures a user cannot
+    /// diagnose and a maintainer must — including the one that will be most
+    /// common in practice, a signature mismatch between the app and the
+    /// helper's `SMAuthorizedClients` requirement.
+    case helperUnreachable(reason: String)
+
     /// This Mac has no fans to write to.
     case noFans
+
     /// The fan keys couldn't be read, so nothing can be said about writing
     /// them either.
     case hardwareUnreadable
 
-    /// The sentence shown next to every disabled control. Kept on the model
-    /// rather than in the view so the pane can't drift out of sync with the
-    /// reason the backend actually reported.
+    /// Whether write controls should be live. The single place the UI asks
+    /// this question, so a future case cannot accidentally default to
+    /// "enabled" by being forgotten in a view.
+    public var canWrite: Bool {
+        if case .available = self { return true }
+        return false
+    }
+
+    /// The sentence shown next to every write control — live or disabled.
+    /// Kept on the model rather than in the view so the pane can't drift
+    /// out of sync with the reason the backend actually reported.
     public var explanation: String {
         switch self {
+        case .available:
+            return "Sentry's fan helper is installed and running as a background service, so the controls below really do change fan speed. The helper hands every fan back to your Mac's firmware if Sentry quits, crashes, or stops checking in — and it clamps every request to the speed range your Mac's own SMC reports, so it can't be asked for a speed the hardware doesn't allow."
         case .needsPrivilegedHelper:
-            return "Changing fan speed writes to the SMC, which macOS only allows as root. Sentry would need to install a privileged helper to do it, and this build doesn't include one — so these controls are switched off rather than pretending to work."
+            return "Changing fan speed writes to the SMC, which macOS only allows as root. Sentry can install a small background helper to do it — it runs only while it's needed, only accepts the three commands this feature uses, and hands the fans straight back to your Mac's firmware if Sentry goes away. Until you install it, these controls stay switched off rather than pretending to work."
+        case .helperAwaitingApproval:
+            return "The fan helper is installed but macOS is waiting for you to allow it. Open System Settings ▸ General ▸ Login Items & Extensions, find Sentry under “Allow in the Background,” and switch it on. Nothing here will work until you do — and nothing here will pretend to."
+        case .helperUnreachable(let reason):
+            return "Sentry couldn't talk to its fan helper, so every control that would change a fan is switched off. \(reason)"
         case .noFans:
             return "This Mac has no fans, so there's nothing to control."
         case .hardwareUnreadable:
@@ -93,10 +156,13 @@ public enum FanWriteAvailability: Equatable, Sendable {
         }
     }
 
-    /// Four words for a badge.
+    /// A few words for a badge.
     public var shortLabel: String {
         switch self {
+        case .available: return "Fan control active"
         case .needsPrivilegedHelper: return "Needs a privileged helper"
+        case .helperAwaitingApproval: return "Waiting for your approval"
+        case .helperUnreachable: return "Helper unreachable"
         case .noFans: return "No fans on this Mac"
         case .hardwareUnreadable: return "Fan hardware unreadable"
         }
@@ -105,8 +171,24 @@ public enum FanWriteAvailability: Equatable, Sendable {
 
 /// Every way applying a fan target can fail.
 public enum FanControlWriteError: Error, LocalizedError, Equatable, Sendable {
-    /// The only error any backend in this build can produce.
+    /// No write could even be attempted — see the availability case for
+    /// which of the five reasons applies.
     case writesUnavailable(FanWriteAvailability)
+    /// A write *was* attempted: the privileged helper was reachable, the
+    /// request reached it, and it declined or failed.
+    ///
+    /// Its own case rather than a `writesUnavailable` variant because the
+    /// two are opposite diagnoses. `writesUnavailable` means the path is
+    /// shut; this means the path is open and the far end said no — because
+    /// the SMC refused the write, because the fan's limits were unreadable
+    /// so the daemon would not clamp, or because the connection died
+    /// mid-call. Folding them together would put "install the helper" in
+    /// front of a user whose helper is installed and working.
+    ///
+    /// `reason` is the daemon's own sentence, rendered verbatim and never
+    /// parsed — see `FanDaemonProtocol`'s note on why the app branches on
+    /// `FanWriteAvailability` rather than on the daemon's prose.
+    case helperRefused(reason: String)
     case unknownFan(index: Int)
     case rpmOutsideHardwareLimits(requested: Double, limits: FanHardwareLimits)
     /// The policy never produced a request to begin with (no sensor
@@ -120,6 +202,8 @@ public enum FanControlWriteError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .writesUnavailable(let availability):
             return availability.explanation
+        case .helperRefused(let reason):
+            return reason
         case .policyProducedNoTarget(let reason):
             return reason
         case .unknownFan(let index):
@@ -133,12 +217,16 @@ public enum FanControlWriteError: Error, LocalizedError, Equatable, Sendable {
 /// The seam plan §4.2 asks for: "keep fan control behind a protocol so the
 /// app can support multiple backends."
 ///
-/// **There is no conforming type in this build that can write, and adding
-/// one is not in this change's scope.** The two conformers that exist are
-/// `SMCReadOnlyFanControlBackend` (`SystemMetricsKit`), which reads real
-/// hardware through the already-shipped `SMCFanBridge` and refuses every
-/// write, and `UnsupportedFanControlBackend` below, which refuses
-/// everything. The plan's `PrivilegedHelperFanControlBackend` is Phase 3.
+/// **Three conformers now, one of which can write.**
+/// `SMCReadOnlyFanControlBackend` (`SystemMetricsKit`) reads real hardware
+/// through the already-shipped `SMCFanBridge` and refuses every write;
+/// `UnsupportedFanControlBackend` below refuses everything; and
+/// `PrivilegedFanControlBackend` — the plan's
+/// `PrivilegedHelperFanControlBackend` — wraps the read-only one for
+/// capability and readings and routes writes to the root daemon over XPC.
+/// The wrapping is not incidental: it is what guarantees that **installing,
+/// breaking, or removing the helper cannot affect what the pane reports
+/// about this Mac's fans.** Reads never travel through the privileged path.
 ///
 /// **Why the write methods exist at all if nothing implements them.**
 /// Because the alternative — a read-only protocol today, plus a second
@@ -189,6 +277,56 @@ public protocol FanControlBackend: AnyObject {
     /// the escape hatch has to be part of the seam's shape before anything
     /// can take a fan out of auto, not bolted on afterwards.
     func revertToAuto(fan index: Int) throws
+
+    // MARK: - Helper lifecycle
+    //
+    // These three exist on the protocol rather than on
+    // `PrivilegedFanControlBackend` alone so `FanControlPane` is written
+    // against one type and the *backend* decides whether installing a
+    // helper is a meaningful thing to offer. A pane that had to downcast
+    // would be a pane that could forget to, and the failure mode of
+    // forgetting is an install button on a fanless Mac.
+
+    /// Whether this backend has a privileged helper to install at all.
+    /// `false` for both read-only conformers, which is what keeps the
+    /// install affordance off screens where it could only ever fail.
+    var supportsPrivilegedHelper: Bool { get }
+
+    /// Asks macOS to register the helper. **User-initiated only** — never
+    /// called at launch, never called from `applyTarget` as a
+    /// convenience. Registering a root LaunchDaemon is a decision a person
+    /// makes, and an app that did it lazily on first slider drag would be
+    /// installing a privileged service as a side effect of curiosity.
+    func installPrivilegedHelper() throws
+
+    /// Re-reads whatever the backend's `writeAvailability` derives from.
+    ///
+    /// Exists for one specific transition that happens entirely outside
+    /// this app: the user goes to System Settings ▸ Login Items and
+    /// approves the helper, turning `.helperAwaitingApproval` into
+    /// `.available`. No notification arrives; the pane calls this when it
+    /// appears. A no-op for backends whose availability is a fixed fact.
+    func refreshWriteAvailability()
+
+    /// Unregisters the helper. See `PrivilegedFanControlBackend`'s doc
+    /// comment for what this does *not* cover — a drag-to-Trash uninstall
+    /// never reaches it, and that residue is documented rather than
+    /// papered over.
+    func removePrivilegedHelper() throws
+}
+
+/// Defaults so the two read-only conformers say "no helper here" without
+/// three lines of boilerplate each, and so a future backend cannot
+/// accidentally advertise an install button by omission.
+public extension FanControlBackend {
+    var supportsPrivilegedHelper: Bool { false }
+    func refreshWriteAvailability() {}
+    func installPrivilegedHelper() throws {
+        throw FanControlWriteError.writesUnavailable(writeAvailability)
+    }
+    func removePrivilegedHelper() throws {
+        throw FanControlWriteError.writesUnavailable(writeAvailability)
+    }
 }
 
 // MARK: - Unsupported backend
