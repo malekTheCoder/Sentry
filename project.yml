@@ -194,6 +194,11 @@ targets:
       # import MacStat` and every internal reference keep compiling. Bundle
       # id is unchanged on purpose — it's identity, not branding.
       PRODUCT_NAME: Sentry
+      # App icon. The catalogs live under each target's existing `sources:`
+      # path, so XcodeGen picks them up as resources by extension — no
+      # explicit `resources:` entry needed (same mechanism as the
+      # Localizable.xcstrings catalogs documented above).
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       PRODUCT_MODULE_NAME: MacStat
       MARKETING_VERSION: "0.1.0"
       CURRENT_PROJECT_VERSION: "1"
@@ -253,6 +258,11 @@ targets:
       - sdk: WatchConnectivity.framework
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile
+      # App icon. The catalogs live under each target's existing `sources:`
+      # path, so XcodeGen picks them up as resources by extension — no
+      # explicit `resources:` entry needed (same mechanism as the
+      # Localizable.xcstrings catalogs documented above).
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       # Simulator builds don't need a signing team, but they DO need the
       # entitlements actually embedded (codesign runs even for the "Sign to
       # Run Locally" identity Xcode uses on Simulator) for the App Group
@@ -372,6 +382,11 @@ targets:
       # dev.malekswilam.macstat.watch, which blocked every install of
       # MacStatMobile with the watch embedded).
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.mobile.watch
+      # App icon. The catalogs live under each target's existing `sources:`
+      # path, so XcodeGen picks them up as resources by extension — no
+      # explicit `resources:` entry needed (same mechanism as the
+      # Localizable.xcstrings catalogs documented above).
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       # The App Group behind `WatchRelayStore` needs its entitlement file
       # actually embedded even under Simulator's "Sign to Run Locally"
       # identity, matching `MacStatMobile`'s identical reasoning above.
