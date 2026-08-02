@@ -62,19 +62,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// path that ever calls `requestAuthorization()`.
     private let locationService = LocationService()
 
-    /// Backs Settings ▸ Fans. Constructed with the real, read-only SMC
-    /// backend so the pane's RPM readouts and capability state come from
-    /// this Mac's actual hardware — and so its refusal to write comes from
-    /// the layer that actually knows why (root is required; Sentry runs
-    /// unprivileged; no privileged helper ships in this build). See
-    /// `FanControlService` and `docs/fan-control-spike.md`.
+    /// Backs Settings ▸ Fans.
     ///
-    /// Non-lazy and unconditional, like `locationService` above: probing
-    /// capability is a handful of SMC reads at construction and nothing
-    /// else — no timer, no poll loop of its own. Its samples arrive from
-    /// the shared `coordinator.snapshots()` stream below, the same single
-    /// source every other consumer reads (plan §3.2 P3).
-    private let fanControlService = FanControlService(backend: SMCReadOnlyFanControlBackend())
+    /// `PrivilegedFanControlBackend` **wrapping** the read-only SMC one, not
+    /// replacing it: capability detection and every RPM the pane shows come
+    /// from `SMCReadOnlyFanControlBackend` exactly as they did in Phase 2,
+    /// and only *writes* are routed to the root helper. So a helper that is
+    /// missing, unapproved, broken, or removed cannot change a single
+    /// number on that screen.
+    ///
+    /// **Constructing this is inert, and staying inert is the point.** The
+    /// privileged backend's `init` performs one `SMAppService.daemon(…)
+    /// .status` read — a local lookup that prompts nothing, launches
+    /// nothing, and opens no XPC connection — plus the same handful of SMC
+    /// reads the read-only backend has always done. Nothing here registers
+    /// a daemon; the only caller of `register()` is a button in the Fans
+    /// pane. On a machine with no helper installed (every fresh install,
+    /// and every build made without signing certificates, where
+    /// registration cannot succeed at all) the app behaves precisely as it
+    /// did before this change. See `PrivilegedFanControlBackend` and
+    /// `docs/fan-control-spike.md`.
+    private let fanControlBackend = PrivilegedFanControlBackend(
+        reading: SMCReadOnlyFanControlBackend()
+    )
+    private lazy var fanControlService = FanControlService(backend: fanControlBackend)
 
     /// Feeds the desktop widget's App Group cache from the same snapshot
     /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
@@ -545,6 +556,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         historyStore.flush()
         settingsStore.save()
         localSyncServer.stop()
+        // Ask the fan helper for every fan back before we go. This is a
+        // *courtesy*, not the guarantee, and the distinction matters enough
+        // to spell out: `applicationWillTerminate` is not called on a crash,
+        // on a force-quit, or on `kill -9`, which are precisely the
+        // circumstances a fan left spinning at a fixed speed would be worst.
+        // The guarantee lives in the daemon — the XPC connection dying fires
+        // its `invalidationHandler`, which hands every held fan back to the
+        // firmware, and its heartbeat expiry catches the case where the app
+        // is alive but wedged. `PowerControlService`'s doc comment makes the
+        // same split for IOPM assertions and names the OS-side mechanism as
+        // the one that still works when this process doesn't. A no-op when
+        // no helper is installed, which is the default.
+        fanControlBackend.returnEveryFanToFirmware()
         // Best-effort: NIO's own graceful shutdown, not something worth
         // blocking app termination on if it's slow. See `MCPRemoteServer
         // .stop()`'s doc comment — idempotent either way.

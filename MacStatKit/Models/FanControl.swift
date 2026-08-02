@@ -59,21 +59,33 @@ public enum FanControlMode: String, Codable, CaseIterable, Equatable, Sendable {
         }
     }
 
-    /// One sentence describing what the mode *would* do. Written in the
-    /// conditional ("would", "will") rather than the present tense on
-    /// purpose: none of these modes except `.auto` is in effect in this
-    /// build, and copy that says "keeps fans at…" would read as a
-    /// description of current behavior.
+    /// One sentence describing what the mode does.
+    ///
+    /// **Still conditional, and the reason changed in Phase 3.** Through
+    /// Phase 2 these read "would…" because nothing could write at all. They
+    /// still read "would" for `.sensorCurve` and `.hybrid` for a narrower
+    /// reason: nothing in this build runs a control *loop*, so a curve is
+    /// only ever evaluated when a person presses Apply (see
+    /// `FanControlService`'s note on why the loop is deliberately not in
+    /// the change that introduced the root daemon). Writing them in the
+    /// present tense would tell a user their curve is tracking temperature
+    /// when it is not.
+    ///
+    /// `.auto`'s sentence lost its old "…and what Sentry has never changed"
+    /// clause. That was true of every build that could not write, and it
+    /// silently stops being true the first time someone installs the helper
+    /// and applies a fixed speed — a claim that quietly becomes false is
+    /// worse than one never made.
     public var explanation: String {
         switch self {
         case .auto:
-            return "The Mac's own firmware decides fan speed. This is what's happening right now, and what Sentry has never changed."
+            return "The Mac's own firmware decides fan speed. This is the default, and the state Sentry returns every fan to whenever it stops controlling them."
         case .manual:
-            return "Would hold every fan at one fixed speed, clamped to the range the SMC reports for that fan."
+            return "Holds every fan at one fixed speed, clamped to the range the SMC reports for that fan. Needs the fan helper installed, and takes effect when you apply it."
         case .sensorCurve:
-            return "Would set fan speed from a temperature sensor, interpolating between the curve's points."
+            return "Would set fan speed from a temperature sensor, interpolating between the curve's points. Sentry computes and shows that target, but doesn't yet follow it continuously."
         case .hybrid:
-            return "Would follow the curve, but jump to maximum whenever thermal pressure turns serious or a sensor passes the safety ceiling."
+            return "Would follow the curve, but jump to maximum whenever thermal pressure turns serious or a sensor passes the safety ceiling. Like the curve mode, this is computed and shown rather than continuously applied."
         }
     }
 

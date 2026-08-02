@@ -250,6 +250,22 @@ targets:
     # and the in-app privacy page §14.3 calls for.
     sources:
       - path: MacStat
+      # The privileged fan helper's launchd job description, copied into
+      # Sentry.app/Contents/Library/LaunchDaemons/ — the one directory
+      # `SMAppService.daemon(plistName:)` looks in, by file name. It is
+      # listed here rather than in the SentryFanDaemon target because it
+      # describes where the *app* installs the helper from; the daemon
+      # binary itself never reads it.
+      #
+      # This is data, not code: it is not compiled, and it must not land in
+      # Resources (where XcodeGen would otherwise put a .plist by
+      # extension), because SMAppService would then report `.notFound` for
+      # a helper that is sitting right there in the bundle.
+      - path: SentryFanDaemon/dev.malekswilam.macstat.fandaemon.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchDaemons
     dependencies:
       - target: MacStatKit_macOS
         embed: true
@@ -290,6 +306,29 @@ targets:
         copy:
           destination: executables
       - target: MacStatCLI
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
+      # The privileged fan helper. Copied into Contents/MacOS alongside the
+      # two command-line tools, because that is the path
+      # `dev.malekswilam.macstat.fandaemon.plist` names in its
+      # `BundleProgram` key — a path relative to the app bundle, so the
+      # helper travels with the app instead of pinning it to /Applications.
+      #
+      # `codeSign: true` is not optional here the way it is a nicety
+      # elsewhere. `SMAppService.daemon` registration flatly requires the
+      # daemon to be signed with the same Team ID as the app that registers
+      # it, and the app must satisfy the daemon's own `SMAuthorizedClients`
+      # requirement (embedded in its binary — see the target below). Both
+      # are signature checks, both are made by launchd before any of our
+      # code runs, and neither can be satisfied on a machine with no signing
+      # identities. On such a machine — which is the machine this was
+      # written on — registration fails, the app reports it on screen, and
+      # every write control stays disabled. That is the intended inert
+      # state, not a build failure: nothing here breaks an unsigned build.
+      - target: SentryFanDaemon
         link: false
         embed: true
         codeSign: true
@@ -816,6 +855,87 @@ targets:
         # module 'macstat' as 'MacStat'" when PRODUCT_NAME was set directly).
         EXECUTABLE_NAME: macstat
 
+  # The privileged fan helper (fan-control plan Phase 3). Runs as root,
+  # launched on demand by launchd from
+  # Sentry.app/Contents/Library/LaunchDaemons/, and is the only thing in
+  # this project that can write an SMC key.
+  #
+  # NOTE THE SOURCE LIST, which is the security-relevant part of this
+  # target. It compiles four files of its own plus the four pure files in
+  # MacStatKit/FanDaemon/, and it links **no framework of ours at all** —
+  # not MacStatKit, not SystemMetricsKit. That is the same technique
+  # MacStatKit_watchOS uses above (list the files, not the directory), and
+  # here the motive is auditability rather than platform support: a root
+  # process whose entire compile surface is Foundation + IOKit + Security +
+  # eight files is a tractable thing to review, whereas one that dragged in
+  # GRDB, the MCP SDK and SwiftNIO would not be. It also means the daemon
+  # has no @rpath dependency on the app's embedded frameworks and runs
+  # correctly from Contents/MacOS with nothing else loaded.
+  #
+  # The duplication this costs (`SMCFanWriter` re-implements SMCFanBridge's
+  # protocol layer) buys a property stated in that file's header and worth
+  # restating: no binary inside Sentry.app can write to the SMC. Only this
+  # one can.
+  SentryFanDaemon:
+    type: tool
+    platform: macOS
+    # Copied into Sentry.app/Contents/MacOS — notarized nested code, same as
+    # MacStatMCP and MacStatCLI, and additionally subject to the Team ID
+    # match SMAppService enforces.
+    templates:
+      - DeveloperIDSigned
+    sources:
+      - path: SentryFanDaemon
+        excludes:
+          # The launchd job description belongs to the app bundle, not to
+          # this binary (the MacStat target copies it into
+          # Contents/Library/LaunchDaemons); the generated Info.plist is
+          # consumed via CREATE_INFOPLIST_SECTION_IN_BINARY below, not
+          # bundled. A `tool` target has no resources phase for either of
+          # them to land in anyway.
+          - "*.plist"
+      # The pure decision layer — clamping, the fail-safe state machine, the
+      # peer gate, and the XPC contract. Shared with MacStatKit by
+      # compilation rather than by linking; see this target's header.
+      - path: MacStatKit/FanDaemon
+    dependencies:
+      - sdk: Security.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.fandaemon
+        # A command-line tool has no Info.plist file in a bundle, so the
+        # plist is embedded as a __TEXT,__info_plist section instead. That
+        # is where launchd and SMAppService look for SMAuthorizedClients on
+        # a bare Mach-O.
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+    info:
+      path: SentryFanDaemon/Info.plist
+      properties:
+        CFBundleIdentifier: dev.malekswilam.macstat.fandaemon
+        # ---------------------------------------------------------------
+        # THE FIRST HALF OF PEER VERIFICATION (safety requirement 3).
+        #
+        # launchd refuses XPC connections from clients that do not satisfy
+        # this designated requirement, before any of the daemon's own code
+        # runs. The second half is FanDaemonPeerGate, which re-checks the
+        # same requirement inside the daemon process — because
+        # authorization that exists only in a configuration file is
+        # authorization that a configuration mistake removes silently.
+        #
+        # ⚠️ THIS STRING IS DUPLICATED IN
+        # `MacStatKit/FanDaemon/FanDaemonPeerGate.swift` AS
+        # `clientRequirement`, AND THE TWO MUST STAY IDENTICAL. They cannot
+        # share a constant: launchd reads this plist and cannot read Swift.
+        # `FanDaemonPeerGateTests` asserts the exact expected text so a
+        # change on the Swift side fails a test that names this file.
+        #
+        # Each clause is load-bearing — see FanDaemonPeerGate's doc comment
+        # for what each one prevents. The Team ID must match
+        # DEVELOPMENT_TEAM in the DeveloperIDSigned template above.
+        # ---------------------------------------------------------------
+        SMAuthorizedClients:
+          - 'identifier "dev.malekswilam.macstat" and anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"'
+
   MacStatTests:
     type: bundle.unit-test
     platform: macOS
@@ -848,6 +968,7 @@ schemes:
         MacStat: all
         MacStatMCP: all
         MacStatCLI: all
+        SentryFanDaemon: all
         MacStatTests: [test]
     run:
       config: Debug
