@@ -1,4 +1,4 @@
-# Sentry (codebase: MacStat)
+# Sentry 
 
 A macOS menu bar system monitor with iPhone and Apple Watch companions,
 remote access over the local network or a VPN, sleep-prevention control from
