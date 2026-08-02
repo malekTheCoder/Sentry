@@ -232,12 +232,21 @@ struct SyncPane: View {
     /// 600 s), which are always whole numbers of seconds or whole numbers of
     /// minutes, so there is no fractional case to handle.
     static func intervalLabel(_ seconds: TimeInterval) -> String {
-        guard seconds > 0 else { return "Immediately" }
+        guard seconds > 0 else { return String(localized: "Immediately") }
+        // Whole localized sentences per plural branch rather than a spliced
+        // "s" — suffix-gluing assumes English pluralization and leaves a
+        // translator with an untranslatable fragment.
         if seconds < 60 {
             let value = Int(seconds.rounded())
-            return "Every \(value) second\(value == 1 ? "" : "s")"
+            let valueText = String(value)
+            return value == 1
+                ? String(localized: "Every 1 second")
+                : String(localized: "Every \(valueText) seconds")
         }
         let minutes = Int((seconds / 60).rounded())
-        return "Every \(minutes) minute\(minutes == 1 ? "" : "s")"
+        let minutesText = String(minutes)
+        return minutes == 1
+            ? String(localized: "Every 1 minute")
+            : String(localized: "Every \(minutesText) minutes")
     }
 }

@@ -90,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Feeds the desktop widget's App Group cache from the same snapshot
     /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
     private let widgetWriter = MacWidgetSnapshotWriter(
-        deviceName: Host.current().localizedName ?? "This Mac"
+        deviceName: Host.current().localizedName ?? String(localized: "This Mac")
     )
     private lazy var alertEngine = AlertEngine(
         rules: settingsStore.settings.alertRules,

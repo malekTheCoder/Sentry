@@ -76,56 +76,56 @@ struct DashboardGrid: View {
         switch metric {
         case .cpu:
             DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples) {
-                MetricDetailRow(label: "E-cores", value: MetricFormatting.percent(snapshot?.cpu?.ecorePercent, decimals: 1))
-                MetricDetailRow(label: "P-cores", value: MetricFormatting.percent(snapshot?.cpu?.pcorePercent, decimals: 1))
-                MetricDetailRow(label: "Frequency", value: MetricFormatting.value(snapshot?.value(for: .cpuFrequencyMHz), metric: .cpuFrequencyMHz))
-                MetricDetailRow(label: "Package power", value: MetricFormatting.watts(snapshot?.cpu?.packagePowerWatts))
+                MetricDetailRow(label: String(localized: "E-cores"), value: MetricFormatting.percent(snapshot?.cpu?.ecorePercent, decimals: 1))
+                MetricDetailRow(label: String(localized: "P-cores"), value: MetricFormatting.percent(snapshot?.cpu?.pcorePercent, decimals: 1))
+                MetricDetailRow(label: String(localized: "Frequency"), value: MetricFormatting.value(snapshot?.value(for: .cpuFrequencyMHz), metric: .cpuFrequencyMHz))
+                MetricDetailRow(label: String(localized: "Package power"), value: MetricFormatting.watts(snapshot?.cpu?.packagePowerWatts))
             }
         case .gpu:
             DashboardMetricCard(metric: metric, headline: headline, samples: samples) {
-                MetricDetailRow(label: "Renderer", value: MetricFormatting.percent(snapshot?.gpu?.rendererPercent, decimals: 1))
-                MetricDetailRow(label: "Tiler", value: MetricFormatting.percent(snapshot?.gpu?.tilerPercent, decimals: 1))
-                MetricDetailRow(label: "VRAM", value: MetricFormatting.bytes(snapshot?.gpu?.vramUsedBytes))
-                MetricDetailRow(label: "Frequency", value: MetricFormatting.value(snapshot?.gpu?.frequencyMHz, metric: .gpuFrequencyMHz))
-                MetricDetailRow(label: "Power", value: MetricFormatting.watts(snapshot?.gpu?.powerWatts))
+                MetricDetailRow(label: String(localized: "Renderer"), value: MetricFormatting.percent(snapshot?.gpu?.rendererPercent, decimals: 1))
+                MetricDetailRow(label: String(localized: "Tiler"), value: MetricFormatting.percent(snapshot?.gpu?.tilerPercent, decimals: 1))
+                MetricDetailRow(label: String(localized: "VRAM"), value: MetricFormatting.bytes(snapshot?.gpu?.vramUsedBytes))
+                MetricDetailRow(label: String(localized: "Frequency"), value: MetricFormatting.value(snapshot?.gpu?.frequencyMHz, metric: .gpuFrequencyMHz))
+                MetricDetailRow(label: String(localized: "Power"), value: MetricFormatting.watts(snapshot?.gpu?.powerWatts))
             }
         case .ane:
             // Same "no public ANE utilization" caveat as `ModuleCardStack` —
             // see `ANEStats`'s doc comment.
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: "Power draw proxy", samples: samples) {
-                MetricDetailRow(label: "Active", value: aneActivity)
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples) {
+                MetricDetailRow(label: String(localized: "Active"), value: aneActivity)
             }
         case .memory:
             DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples) {
-                MetricDetailRow(label: "App", value: MetricFormatting.bytes(snapshot?.memory?.appMemoryBytes))
-                MetricDetailRow(label: "Wired", value: MetricFormatting.bytes(snapshot?.memory?.wiredBytes))
-                MetricDetailRow(label: "Compressed", value: MetricFormatting.bytes(snapshot?.memory?.compressedBytes))
-                MetricDetailRow(label: "Cached", value: MetricFormatting.bytes(snapshot?.memory?.cachedBytes))
-                MetricDetailRow(label: "Swap", value: MetricFormatting.bytes(snapshot?.memory?.swapUsedBytes))
-                MetricDetailRow(label: "Pressure", value: memoryPressure)
+                MetricDetailRow(label: String(localized: "App"), value: MetricFormatting.bytes(snapshot?.memory?.appMemoryBytes))
+                MetricDetailRow(label: String(localized: "Wired"), value: MetricFormatting.bytes(snapshot?.memory?.wiredBytes))
+                MetricDetailRow(label: String(localized: "Compressed"), value: MetricFormatting.bytes(snapshot?.memory?.compressedBytes))
+                MetricDetailRow(label: String(localized: "Cached"), value: MetricFormatting.bytes(snapshot?.memory?.cachedBytes))
+                MetricDetailRow(label: String(localized: "Swap"), value: MetricFormatting.bytes(snapshot?.memory?.swapUsedBytes))
+                MetricDetailRow(label: String(localized: "Pressure"), value: memoryPressure)
             }
         case .disk:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: "Read throughput", samples: samples) {
-                MetricDetailRow(label: "Write", value: MetricFormatting.bytesPerSecond(snapshot?.disk?.writeBytesPerSec))
-                MetricDetailRow(label: "Read IOPS", value: MetricFormatting.value(snapshot?.disk?.readIOPS, metric: .diskReadIOPS))
-                MetricDetailRow(label: "Write IOPS", value: MetricFormatting.value(snapshot?.disk?.writeIOPS, metric: .diskWriteIOPS))
-                MetricDetailRow(label: "Free", value: MetricFormatting.bytes(snapshot?.disk?.freeBytes))
-                MetricDetailRow(label: "Used", value: MetricFormatting.percent(snapshot?.value(for: .diskUsedPercent), decimals: 1))
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples) {
+                MetricDetailRow(label: String(localized: "Write"), value: MetricFormatting.bytesPerSecond(snapshot?.disk?.writeBytesPerSec))
+                MetricDetailRow(label: String(localized: "Read IOPS"), value: MetricFormatting.value(snapshot?.disk?.readIOPS, metric: .diskReadIOPS))
+                MetricDetailRow(label: String(localized: "Write IOPS"), value: MetricFormatting.value(snapshot?.disk?.writeIOPS, metric: .diskWriteIOPS))
+                MetricDetailRow(label: String(localized: "Free"), value: MetricFormatting.bytes(snapshot?.disk?.freeBytes))
+                MetricDetailRow(label: String(localized: "Used"), value: MetricFormatting.percent(snapshot?.value(for: .diskUsedPercent), decimals: 1))
             }
         case .network:
             DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples) {
-                MetricDetailRow(label: "Upload", value: MetricFormatting.bytesPerSecond(snapshot?.network?.txBytesPerSec))
-                MetricDetailRow(label: "Session ↓", value: MetricFormatting.bytes(snapshot?.network?.rxSessionTotalBytes))
-                MetricDetailRow(label: "Session ↑", value: MetricFormatting.bytes(snapshot?.network?.txSessionTotalBytes))
-                MetricDetailRow(label: "IP", value: snapshot?.network?.localIPAddress ?? MetricFormatting.placeholder)
-                MetricDetailRow(label: "Signal", value: MetricFormatting.value(snapshot?.network?.wifiRSSIdBm.map { Double($0) }, metric: .networkWifiRSSIdBm))
-                MetricDetailRow(label: "Link rate", value: MetricFormatting.value(snapshot?.network?.wifiTxRateMbps, metric: .networkWifiTxRateMbps))
+                MetricDetailRow(label: String(localized: "Upload"), value: MetricFormatting.bytesPerSecond(snapshot?.network?.txBytesPerSec))
+                MetricDetailRow(label: String(localized: "Session ↓"), value: MetricFormatting.bytes(snapshot?.network?.rxSessionTotalBytes))
+                MetricDetailRow(label: String(localized: "Session ↑"), value: MetricFormatting.bytes(snapshot?.network?.txSessionTotalBytes))
+                MetricDetailRow(label: String(localized: "IP"), value: snapshot?.network?.localIPAddress ?? MetricFormatting.placeholder)
+                MetricDetailRow(label: String(localized: "Signal"), value: MetricFormatting.value(snapshot?.network?.wifiRSSIdBm.map { Double($0) }, metric: .networkWifiRSSIdBm))
+                MetricDetailRow(label: String(localized: "Link rate"), value: MetricFormatting.value(snapshot?.network?.wifiTxRateMbps, metric: .networkWifiTxRateMbps))
             }
         case .thermal:
             DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples) {
-                MetricDetailRow(label: "Throttling", value: thermalThrottling)
+                MetricDetailRow(label: String(localized: "Throttling"), value: thermalThrottling)
                 ForEach(Array(fanRPMs.enumerated()), id: \.offset) { index, rpm in
-                    MetricDetailRow(label: "Fan \(index + 1)", value: "\(Int(rpm.rounded())) RPM")
+                    MetricDetailRow(label: String(localized: "Fan \(String(index + 1))"), value: String(localized: "\(String(Int(rpm.rounded()))) RPM"))
                 }
             }
         case .power:
@@ -143,10 +143,15 @@ struct DashboardGrid: View {
     private var cpuSubtitle: String? {
         var parts: [String] = []
         if let load = snapshot?.cpu?.loadAverage1m {
-            parts.append(String(format: "load %.2f", load))
+            // Number formatted first so the catalog key is "load %@" — a
+            // translatable word next to a plain placeholder, instead of a
+            // `String(format:)` no translator ever sees.
+            let loadText = String(format: "%.2f", load)
+            parts.append(String(localized: "load \(loadText)"))
         }
         if let processes = snapshot?.cpu?.processCount {
-            parts.append("\(processes) procs")
+            let processesText = String(processes)
+            parts.append(String(localized: "\(processesText) procs"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -154,21 +159,21 @@ struct DashboardGrid: View {
     private var memorySubtitle: String? {
         guard let memory = snapshot?.memory, memory.totalBytes > 0 else { return nil }
         let used = Double(memory.usedBytes) / Double(memory.totalBytes) * 100
-        return "\(MetricFormatting.percent(used)) of \(MetricFormatting.bytes(memory.totalBytes))"
+        return String(localized: "\(MetricFormatting.percent(used)) of \(MetricFormatting.bytes(memory.totalBytes))")
     }
 
     private var memoryPressure: String {
         guard let level = snapshot?.memory?.pressureLevel else { return MetricFormatting.placeholder }
         switch level {
-        case .normal: return "Normal"
-        case .warning: return "Warning"
-        case .critical: return "Critical"
+        case .normal: return String(localized: "Normal")
+        case .warning: return String(localized: "Warning")
+        case .critical: return String(localized: "Critical")
         }
     }
 
     private var aneActivity: String {
         guard let isActive = snapshot?.ane?.isActive else { return MetricFormatting.placeholder }
-        return isActive ? "Yes" : "No"
+        return isActive ? String(localized: "Yes") : String(localized: "No")
     }
 
     private var networkSubtitle: String? {
@@ -178,12 +183,12 @@ struct DashboardGrid: View {
     }
 
     private var thermalSubtitle: String? {
-        snapshot?.thermal.map { $0.pressureLevel.displayName + " pressure" }
+        snapshot?.thermal.map { String(localized: "\($0.pressureLevel.displayName) pressure") }
     }
 
     private var thermalThrottling: String {
         guard let thermal = snapshot?.thermal else { return MetricFormatting.placeholder }
-        return thermal.isThrottling ? "Yes" : "No"
+        return thermal.isThrottling ? String(localized: "Yes") : String(localized: "No")
     }
 
     private var fanRPMs: [Double] {

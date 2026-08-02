@@ -132,7 +132,7 @@ struct HistoryTabView: View {
 
     private var batteryHealthHeadline: String {
         let percent = MetricFormatting.percent(viewModel.dailyHealth.last?.healthPercent, decimals: 0)
-        return "Battery health · \(percent)"
+        return String(localized: "Battery health · \(percent)")
     }
 
     // MARK: - Charge/discharge sessions (deliberately not built — see type doc comment)

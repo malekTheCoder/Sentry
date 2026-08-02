@@ -277,7 +277,7 @@ struct KeepAwakePage: View {
                 .multilineTextAlignment(.trailing)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(modeLabel.map { "Mode, \($0)" } ?? "Mode not reported")
+        .accessibilityLabel(modeLabel.map { String(localized: "Mode, \($0)") } ?? String(localized: "Mode not reported"))
     }
 
     /// Two side-by-side buttons are the right shape on any face at default
@@ -299,13 +299,13 @@ struct KeepAwakePage: View {
     private var extendRow: some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(spacing: 6) {
-                extendButton(minutes: 15, label: "+15 min")
-                extendButton(minutes: 60, label: "+1 hr")
+                extendButton(minutes: 15, label: String(localized: "+15 min"))
+                extendButton(minutes: 60, label: String(localized: "+1 hr"))
             }
         } else {
             HStack(spacing: 6) {
-                extendButton(minutes: 15, label: "+15 min")
-                extendButton(minutes: 60, label: "+1 hr")
+                extendButton(minutes: 15, label: String(localized: "+15 min"))
+                extendButton(minutes: 60, label: String(localized: "+1 hr"))
             }
         }
     }

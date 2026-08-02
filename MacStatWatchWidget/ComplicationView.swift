@@ -157,7 +157,7 @@ struct CornerComplicationView: View {
             }
             .gaugeStyle(.accessoryCircular)
             .widgetLabel {
-                Text(snapshot.isCharging ? "Charging" : "Mac")
+                Text(snapshot.isCharging ? String(localized: "Charging") : String(localized: "Mac"))
             }
         } else {
             Gauge(value: 0, in: 0...100) {

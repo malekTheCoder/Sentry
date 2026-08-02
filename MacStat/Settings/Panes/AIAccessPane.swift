@@ -344,11 +344,11 @@ struct AIAccessPane: View {
 
     private func decisionLabel(_ decision: MCPAccessController.Decision) -> String {
         switch decision {
-        case .allow: return "Allowed"
-        case .denyMasterDisabled: return "Denied — MCP disabled"
-        case .denyToolDisabled: return "Denied — tool disabled"
-        case .denyRateLimited: return "Denied — rate limited"
-        case .requiresConfirmation: return "Denied — user declined"
+        case .allow: return String(localized: "Allowed")
+        case .denyMasterDisabled: return String(localized: "Denied — MCP disabled")
+        case .denyToolDisabled: return String(localized: "Denied — tool disabled")
+        case .denyRateLimited: return String(localized: "Denied — rate limited")
+        case .requiresConfirmation: return String(localized: "Denied — user declined")
         }
     }
 

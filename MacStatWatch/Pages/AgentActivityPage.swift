@@ -158,7 +158,7 @@ struct AgentActivityPage: View {
     /// the *link* that's missing rather than making a claim about agents.
     private var unreportedState: some View {
         VStack(alignment: .leading, spacing: 4) {
-            countLine(value: "—", caption: "Not reported by your Mac")
+            countLine(value: "—", caption: String(localized: "Not reported by your Mac"))
             if recentToolNames.isEmpty {
                 Text("This build of Sentry on your Mac may not send agent activity yet.")
                     .font(.caption2)
@@ -207,7 +207,7 @@ struct AgentActivityPage: View {
         VStack(alignment: .leading, spacing: 8) {
             countLine(
                 value: toolCallCount.map(String.init) ?? "—",
-                caption: toolCallCount == 1 ? "tool call" : "tool calls"
+                caption: toolCallCount == 1 ? String(localized: "tool call") : String(localized: "tool calls")
             )
             lastActivityRow
             toolList
@@ -267,7 +267,7 @@ struct AgentActivityPage: View {
                 .minimumScaleFactor(0.7)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(lastActivityAt == nil ? "Last activity not reported" : "Last activity")
+        .accessibilityLabel(lastActivityAt == nil ? Text("Last activity not reported") : Text("Last activity"))
     }
 
     /// Abbreviated units ("3 min. ago", not "3 minutes ago") because this

@@ -53,23 +53,23 @@ struct ModulesPane: View {
     private static func subtitle(for module: MetricModule) -> String {
         switch module {
         case .battery:
-            return "Charge, charging wattage, adapter profile, health, cycles, and temperature."
+            return String(localized: "Charge, charging wattage, adapter profile, health, cycles, and temperature.")
         case .cpu:
-            return "Total and per-core utilization, E/P-core split, frequency, package power, load averages."
+            return String(localized: "Total and per-core utilization, E/P-core split, frequency, package power, load averages.")
         case .gpu:
-            return "Device, renderer, and tiler utilization, frequency, VRAM in use, and GPU power."
+            return String(localized: "Device, renderer, and tiler utilization, frequency, VRAM in use, and GPU power.")
         case .ane:
-            return "Neural Engine power draw. There is no public ANE utilization figure — power is the standard proxy."
+            return String(localized: "Neural Engine power draw. There is no public ANE utilization figure — power is the standard proxy.")
         case .memory:
-            return "Used, wired, compressed, and cached memory, memory pressure, and swap."
+            return String(localized: "Used, wired, compressed, and cached memory, memory pressure, and swap.")
         case .disk:
-            return "Read/write throughput and IOPS, free space, and percentage used."
+            return String(localized: "Read/write throughput and IOPS, free space, and percentage used.")
         case .network:
-            return "Receive and transmit throughput, session totals, and Wi-Fi signal and link rate."
+            return String(localized: "Receive and transmit throughput, session totals, and Wi-Fi signal and link rate.")
         case .thermal:
-            return "SoC temperature, thermal pressure level, and whether the system is throttling."
+            return String(localized: "SoC temperature, thermal pressure level, and whether the system is throttling.")
         case .system:
-            return "Uptime, process count, and whether a sleep assertion is active."
+            return String(localized: "Uptime, process count, and whether a sleep assertion is active.")
         }
     }
 }
