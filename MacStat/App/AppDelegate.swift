@@ -62,6 +62,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// path that ever calls `requestAuthorization()`.
     private let locationService = LocationService()
 
+    /// Backs Settings ▸ Fans. Constructed with the real, read-only SMC
+    /// backend so the pane's RPM readouts and capability state come from
+    /// this Mac's actual hardware — and so its refusal to write comes from
+    /// the layer that actually knows why (root is required; Sentry runs
+    /// unprivileged; no privileged helper ships in this build). See
+    /// `FanControlService` and `docs/fan-control-spike.md`.
+    ///
+    /// Non-lazy and unconditional, like `locationService` above: probing
+    /// capability is a handful of SMC reads at construction and nothing
+    /// else — no timer, no poll loop of its own. Its samples arrive from
+    /// the shared `coordinator.snapshots()` stream below, the same single
+    /// source every other consumer reads (plan §3.2 P3).
+    private let fanControlService = FanControlService(backend: SMCReadOnlyFanControlBackend())
+
     /// Feeds the desktop widget's App Group cache from the same snapshot
     /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
     private let widgetWriter = MacWidgetSnapshotWriter(
@@ -114,7 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             historyStore: self.historyStore,
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
-                            locationService: self.locationService
+                            locationService: self.locationService,
+                            fanControlService: self.fanControlService
                         )
                     )
                 )
@@ -375,6 +390,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.debugDumpViewModel.ingest(snapshot)
                 self.dashboardViewModel.ingest(snapshot)
                 self.insightsViewModel.ingest(snapshot)
+                // Settings ▸ Fans reads live RPM from here rather than
+                // opening a second SMC connection of its own — two
+                // independent reads milliseconds apart would occasionally
+                // disagree, and a user shown two numbers for one fan has
+                // been lied to by at least one of them.
+                if let thermal = snapshot.thermal {
+                    self.fanControlService.ingest(thermal)
+                }
                 // Without these, both Phase 3 services are armed but inert —
                 // neither has a data source of its own by design (plan §3.2
                 // P3: one poll loop, many consumers). A conditional
@@ -413,6 +436,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // change (not polling from `StatsCoordinator`) is both correct and
         // cheap. `sink` (not `AsyncPublisher`) for the same "never drop an
         // emission" reasoning documented on the settings sink below.
+        // Seed the fan-control service with the persisted policy block so
+        // its resolution preview matches what's on disk from the first
+        // sample, not from the second. `applySettings` keeps it current
+        // after that.
+        fanControlService.settings = settings.fanControl
+
         locationService.$lastLocation
             .sink { [weak self] location in
                 self?.coordinator.location = location
@@ -703,6 +732,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // construction it would do nothing until relaunch.
         alertEngine.rateCapPerHour = settings.notificationRateCapPerHour
         alertEngine.doNotDisturb = settings.doNotDisturb
+
+        // Same one-way flow as `alertEngine.updateRules` above: the Fans
+        // pane writes to settings and never touches the service directly,
+        // so this is the single place a policy edit reaches the resolver.
+        // Note what this does *not* do — it does not apply anything to the
+        // hardware, because nothing in this build can (see
+        // `FanControlService`). It only keeps the computed preview honest.
+        fanControlService.settings = settings.fanControl
 
         // MCPRemoteServer start/stop is async (binding/tearing down a real
         // socket); `applySettings` itself isn't, so this hops into a

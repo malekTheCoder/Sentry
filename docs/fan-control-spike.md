@@ -42,5 +42,20 @@ it validated is `SystemMetricsKit/Bridges/SMCFanBridge.swift`.
 - [x] Phase 1: research spike (this document)
 - [x] Fan RPM readout via `SMCFanBridge` (read-only), surfaced in the
       existing Dashboard thermal card ("Fan 1 / Fan 2" rows)
-- [ ] Phase 2+: capability UI, write path via privileged helper — **not
-      started; needs an explicit decision on shipping a root helper.**
+- [x] Phase 2: read-only control shell — model types (`MacStatKit/Models/
+      FanControl.swift`), persisted policy block (`AppSettings.fanControl`),
+      the write seam (`MacStatKit/Services/FanControlBackend.swift`), the
+      read-only real backend (`SystemMetricsKit/Bridges/
+      SMCReadOnlyFanControlBackend.swift`), and Settings ▸ Fans
+      (`MacStat/Settings/Panes/FanControlPane.swift`). Live RPM is real;
+      **every control that would require a write is disabled and says why on
+      screen.** No curve editor, no "Return to Auto" button, no dropdown
+      surface — all three would be dead controls today, and the rationale
+      for each omission is recorded in `FanControlPane`'s doc comment.
+- [ ] Phase 3: the write path — a privileged helper. **Not started; still
+      needs an explicit decision on shipping a root helper**, and note the
+      finding above: `SMAppService` daemon registration under this project's
+      ad-hoc signing is the real risk, not the SMC protocol. There is
+      deliberately no `FanWriteAvailability` case meaning "writes work", so
+      Phase 3 cannot half-land: adding one breaks every `switch` over it,
+      including the Settings pane's disabled-control copy.
