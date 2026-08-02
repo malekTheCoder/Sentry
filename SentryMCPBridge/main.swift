@@ -5,7 +5,7 @@ import os
 //
 // This process runs as **the logged-in user** (not root — contrast
 // `SentryFanDaemon`), launched on demand by launchd from
-// `Sentry.app/Contents/Library/LaunchAgents/dev.malekswilam.macstat.xpc.plist`
+// `Sentry.app/Contents/Library/LaunchAgents/com.sentry.macstat.xpc.plist`
 // after the user explicitly sets it up in Settings ▸ AI Access.
 //
 // **Read `MacStatKit/MCPBridge/MCPBridgeContract.swift` first.** It carries

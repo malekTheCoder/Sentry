@@ -28,8 +28,8 @@ final class MCPBridgeNamingTests: XCTestCase {
     /// the `SentryMCPBridge` tool target, which links no framework of ours —
     /// so this is the thing that keeps them from drifting.
     func testLabelPlistNameAndMachServiceAgree() {
-        XCTAssertEqual(MCPBridgeNaming.label, "dev.malekswilam.macstat.xpc")
-        XCTAssertEqual(MCPBridgeNaming.plistName, "dev.malekswilam.macstat.xpc.plist")
+        XCTAssertEqual(MCPBridgeNaming.label, "com.sentry.macstat.xpc")
+        XCTAssertEqual(MCPBridgeNaming.plistName, "com.sentry.macstat.xpc.plist")
         XCTAssertEqual(MCPBridgeNaming.machService, MCPBridgeNaming.label)
     }
 
@@ -55,7 +55,7 @@ final class MCPBridgeNamingTests: XCTestCase {
     /// accident.
     func testMachServiceMatchesTheLongstandingClientFacingName() {
         XCTAssertEqual(MacStatXPCServiceName.machService, MCPBridgeNaming.machService)
-        XCTAssertEqual(MacStatXPCServiceName.machService, "dev.malekswilam.macstat.xpc")
+        XCTAssertEqual(MacStatXPCServiceName.machService, "com.sentry.macstat.xpc")
     }
 
     func testIdleExitIsLongerThanTheResolveTimeout() {

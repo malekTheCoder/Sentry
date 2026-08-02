@@ -284,7 +284,7 @@ targets:
       # (Agents, not Daemons: this one runs as the user).
       #
       # THIS FILE IS THE FIX. Its absence was the bug: `AppDelegate` published
-      # `NSXPCListener(machServiceName: "dev.malekswilam.macstat.xpc")` and no
+      # `NSXPCListener(machServiceName: "com.sentry.macstat.xpc")` and no
       # launchd job in this project had ever declared that name, so `macstat`
       # and MacStatMCP failed against a running, healthy app. See
       # MacStatKit/MCPBridge/MCPBridgeContract.swift.
@@ -293,7 +293,7 @@ targets:
       # (where XcodeGen would otherwise put a .plist by extension), because
       # SMAppService would then report `.notFound` for an agent sitting right
       # there in the bundle.
-      - path: SentryMCPBridge/dev.malekswilam.macstat.xpc.plist
+      - path: SentryMCPBridge/com.sentry.macstat.xpc.plist
         buildPhase:
           copyFiles:
             destination: wrapper
@@ -368,7 +368,7 @@ targets:
           destination: executables
       # The command-line bridge. Copied into Contents/MacOS beside the two
       # tools and the fan daemon, because that is the path
-      # `dev.malekswilam.macstat.xpc.plist` names in its `BundleProgram` key.
+      # `com.sentry.macstat.xpc.plist` names in its `BundleProgram` key.
       #
       # `codeSign: true` is load-bearing here for the same reason it is for
       # SentryFanDaemon: `SMAppService.agent` registration requires the agent
@@ -1027,7 +1027,7 @@ targets:
   # to a running Sentry.
   #
   # THIS TARGET IS THE FIX. `AppDelegate` used to call
-  # `NSXPCListener(machServiceName: "dev.malekswilam.macstat.xpc")` on a name
+  # `NSXPCListener(machServiceName: "com.sentry.macstat.xpc")` on a name
   # no launchd job declared, and only the process launchd starts as the job
   # may vend that job's service — so the app's listener could never receive a
   # connection and both tools failed against a healthy app.
@@ -1069,7 +1069,7 @@ targets:
       - sdk: Security.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.xpcbridge
+        PRODUCT_BUNDLE_IDENTIFIER: com.sentry.macstat.xpcbridge
         # A command-line tool has no Info.plist file in a bundle, so the plist
         # is embedded as a __TEXT,__info_plist section instead. That is where
         # launchd and SMAppService look for SMAuthorizedClients on a bare
@@ -1078,7 +1078,7 @@ targets:
     info:
       path: SentryMCPBridge/Info.plist
       properties:
-        CFBundleIdentifier: dev.malekswilam.macstat.xpcbridge
+        CFBundleIdentifier: com.sentry.macstat.xpcbridge
         # ---------------------------------------------------------------
         # Deliberately the LOOSER of the two requirements — the one in
         # `MCPBridgePeerGate.consumerRequirement`, not the publisher one.
