@@ -1,11 +1,24 @@
 # Sentry (codebase: MacStat)
 
-A macOS menu bar system monitor with an iPhone companion app, CloudKit sync,
-remote sleep-prevention control, and an AI-agent (MCP) integration layer.
+A macOS menu bar system monitor with iPhone and Apple Watch companions,
+remote access over the local network or a VPN, sleep-prevention control from
+any of the three, and an AI-agent (MCP) integration layer.
 
 Private / proprietary — all rights reserved. Not licensed for reuse.
 
-**Status:** early development (Phase 0).
+**Status:** feature-complete for a first release; release engineering in
+progress. The metric collection, history, alerting, menu bar, dashboard,
+Protection Insights, fan RPM readout, iPhone app, Watch app, widgets, MCP
+server, and CLI are all built and tested. What remains before shipping is
+signing, notarization, and the Sparkle update channel — see the checklist
+below.
+
+There is **no CloudKit sync**, despite what earlier drafts of the plan
+assumed. Mac↔iPhone sync runs over the local network (Bonjour) and, away
+from home, over a second TLS-PSK listener the user pairs with a code; both
+are documented in `MacStatKit/LocalSync/`. A CloudKit transport was never
+built, and the `StatsTransport` seam it was designed for has no CloudKit
+conformer.
 
 ## Building
 
@@ -28,16 +41,38 @@ Or build, install to /Applications, and (re)launch in one step:
 `run.sh` also documents the two quirks of building from this machine: the
 repo lives in iCloud-synced `~/Documents`, so derived data must live outside
 the repo (codesign rejects FileProvider xattrs), and `DEVELOPER_DIR` must
-point at Xcode-beta.
+point at an installed Xcode (`run.sh` resolves this itself now, preferring Xcode-beta if present).
 
 The app's product/display name is **Sentry**; the code, targets, and
 bundle identifiers keep the MacStat name.
 
-Targets: `MacStat` (menu bar app, builds `Sentry.app`), `MacStatKit` (shared models/services,
-macOS+iOS), `SystemMetricsKit` (macOS collectors), `MacStatMobile` (iOS
-companion), `MacStatWidgetExtension` (iOS home/lock-screen widget),
+Targets: `MacStat` (menu bar app, builds `Sentry.app`), `MacStatKit` (shared
+models/services; separate macOS, iOS, and watchOS variants), `SystemMetricsKit`
+(macOS collectors), `MacStatMobile` (iOS companion), `MacStatWatch` (watchOS
+app) and `MacStatWatchWidgetExtension` (complication),
+`MacStatWidgetExtension` (iOS home/lock-screen widget),
 `MacStatWidgetExtension_macOS` (desktop widget, fed live by the menu bar
 app), `MacStatMCP` (MCP stdio server), `MacStatCLI`, `MacStatTests`.
+
+## Before the first release
+
+- [ ] Generate the Sparkle EdDSA key pair and replace the `SUPublicEDKey`
+      placeholder — see [`docs/sparkle-release-signing.md`](docs/sparkle-release-signing.md).
+      **Back the private key up offline**: losing it permanently orphans every
+      installed copy, with no recovery path.
+- [ ] Sign into an enrolled Apple ID in Xcode and create a Developer ID
+      Application certificate, then verify the Release signing configuration
+      end to end (it is configured but has never been exercised — this machine
+      has no certificates).
+- [ ] Notarize and staple a DMG, and confirm it passes
+      `spctl -a -vvv -t install`.
+- [ ] Publish `appcast.xml` to the feed URL baked into the app
+      (`https://malekthecoder.github.io/Sentry/appcast.xml`). That URL is
+      compiled into every shipped binary and cannot be changed on copies
+      already installed — rename the GitHub account or repo *before* the first
+      release, never after.
+- [ ] Regenerate the marketing screenshots; the committed set predates both
+      the rename to Sentry and the visual redesign.
 
 > Desktop widgets note: the macOS widget builds and is embedded, but macOS
 > only lists widgets from apps signed with a real team identity. Add an

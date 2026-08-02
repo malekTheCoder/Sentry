@@ -19,7 +19,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+# Xcode-beta was hardcoded here and silently stopped existing when it was
+# replaced by a release Xcode — every run then died on "missing DEVELOPER_DIR
+# path" before building anything. Prefer whichever is actually installed, and
+# fall back to whatever xcode-select points at rather than guessing.
+for candidate in /Applications/Xcode-beta.app /Applications/Xcode.app; do
+  if [ -d "$candidate/Contents/Developer" ]; then
+    export DEVELOPER_DIR="$candidate/Contents/Developer"
+  fi
+done
+if [ -z "${DEVELOPER_DIR:-}" ]; then
+  DEVELOPER_DIR="$(xcode-select -p 2>/dev/null || true)"
+  export DEVELOPER_DIR
+fi
+if [ ! -x "$DEVELOPER_DIR/usr/bin/xcodebuild" ]; then
+  echo "No usable Xcode found (DEVELOPER_DIR=$DEVELOPER_DIR). Install Xcode or run: sudo xcode-select -s /Applications/Xcode.app" >&2
+  exit 1
+fi
 DD="$HOME/Library/Developer/MacStat-DerivedData"
 APP="$DD/Build/Products/Debug/Sentry.app"
 
