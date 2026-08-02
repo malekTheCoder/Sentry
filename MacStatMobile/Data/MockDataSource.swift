@@ -175,6 +175,13 @@ public actor MockDataSource: StatsTransport {
         #endif
     }
 
+    /// Always `nil` — there is no Mac on the other end to have sent a
+    /// `ControlStatus` reply in the first place, matching `send(command:)`'s
+    /// own "nothing happened, don't pretend otherwise" posture.
+    public func awaitStatus(forNonce nonce: String, timeout: TimeInterval) async -> ControlStatus? {
+        nil
+    }
+
     /// No-op for the same reason as `send(command:)` — nothing to upload to.
     public func upload(_ batch: UploadBatch) async throws {
         #if DEBUG

@@ -130,6 +130,12 @@ targets:
       - path: MacStatKit/Watch
       - path: MacStatKit/Sync/Freshness.swift
       - path: MacStatKit/Sync/FreshnessBadge.swift
+      # Added for the Watch Siri intents (MacStatWatch/Intents/
+      # MacStatWatchIntents.swift): ControlCommand/ControlStatus, so the
+      # watch constructs and decodes the real types rather than duplicating
+      # them. Despite its CloudKit-flavored header comment, SyncRecords.swift
+      # imports only Foundation, so it builds on watchOS unchanged.
+      - path: MacStatKit/Sync/SyncRecords.swift
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.macstat.kit.watch
       PRODUCT_NAME: MacStatKit

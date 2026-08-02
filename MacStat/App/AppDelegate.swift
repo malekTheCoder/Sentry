@@ -242,6 +242,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         serviceName: Host.current().localizedName ?? ProcessInfo.processInfo.hostName
     )
 
+    /// Turns a `ControlCommand` arriving over `localSyncServer` — from an
+    /// iPhone Siri intent, an Apple Watch intent relayed through the phone,
+    /// or the iPhone's sleep card — into a real `IOPMAssertion` change. See
+    /// `LocalCommandExecutor`'s doc comment
+    /// (`MacStatKit/Services/LocalCommandExecutor.swift`) for why it shares
+    /// `powerControl` with the MCP write-tool path rather than owning a
+    /// second `PowerControlService`. Wired into
+    /// `localSyncServer.commandHandler` in `applicationDidFinishLaunching`;
+    /// `lazy` for the same reason as `mcpXPCService` above (it closes over
+    /// `self.powerControl`/`self.coordinator`, so it can't be a plain
+    /// stored-property initializer).
+    private lazy var localCommandExecutor = LocalCommandExecutor(
+        powerControl: powerControl,
+        deviceID: coordinator.deviceID
+    )
+
     private var snapshotTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
@@ -451,6 +467,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // is browsing for `_macstat._tcp` if no phone app is installed),
         // not something that has to be reached through a settings gate to
         // exist at all.
+        // Assigned before `start(feedingFrom:)` so there's no window where a
+        // connection could be accepted with no handler installed. Commands
+        // arriving over the remote (TLS-PSK) listener are trusted on the
+        // same terms as LAN ones — a remote client authenticated during the
+        // TLS handshake, which is a strictly stronger check than the LAN
+        // path applies. See `LocalCommandExecutor`'s doc comment.
+        localSyncServer.commandHandler = { [localCommandExecutor] command in
+            await localCommandExecutor.execute(command)
+        }
         localSyncServer.start(feedingFrom: coordinator.snapshots())
     }
 

@@ -74,7 +74,9 @@ final class MacLocationTests: XCTestCase {
         )
 
         let framed = try LocalSyncFraming.encode(snapshot)
-        let decoded = try LocalSyncFraming.decode(framed)
+        guard case .snapshot(let decoded) = try LocalSyncFraming.decode(framed) else {
+            return XCTFail("expected .snapshot")
+        }
 
         XCTAssertEqual(decoded.location, location)
     }
@@ -83,7 +85,9 @@ final class MacLocationTests: XCTestCase {
         let snapshot = SystemSnapshot(deviceID: "test-device")
 
         let framed = try LocalSyncFraming.encode(snapshot)
-        let decoded = try LocalSyncFraming.decode(framed)
+        guard case .snapshot(let decoded) = try LocalSyncFraming.decode(framed) else {
+            return XCTFail("expected .snapshot")
+        }
 
         XCTAssertNil(decoded.location)
     }

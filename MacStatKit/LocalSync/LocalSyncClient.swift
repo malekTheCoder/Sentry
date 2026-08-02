@@ -30,16 +30,23 @@ import os.log
 /// work" convention (see `SettingsTabView`'s doc comment for the canonical
 /// example of that discipline).
 ///
-/// **Receive-only for this first pass.** `send(command:)` and
-/// `upload(_:)` both `throw` — see their doc comments below — rather than
-/// silently no-op-ing the way `MockDataSource`'s conformer does.
-/// `MockDataSource` no-ops because there is genuinely nothing on the other
-/// end to fail to reach; this type *is* connected to a real Mac, so
-/// silently swallowing a command would misrepresent a real, working
-/// connection as having done something it didn't. `AlertAction
-/// .pushToPhone`/`.runShortcut` in `MacStatKit/Services/AlertRule.swift`
-/// establish the same "throw/say-so rather than pretend" posture this
-/// follows.
+/// **`send(command:)` is real; `upload(_:)` still isn't.** `send(command:)`
+/// used to throw unconditionally ("receive-only for this first pass"); it
+/// now frames and writes the `ControlCommand` onto the live connection, and
+/// `awaitStatus(forNonce:timeout:)` lets a caller wait for the Mac's
+/// `ControlStatus` reply — see `LocalSyncServer`'s matching receive loop and
+/// `LocalCommandExecutor` (`MacStatKit/Services/LocalCommandExecutor.swift`).
+/// This works over both the LAN and remote (TLS-PSK) connections, so an
+/// iPhone or Apple Watch can control a Mac from anywhere the remote listener
+/// is reachable. `upload(_:)` still throws — see its doc comment — because
+/// uploading a snapshot batch genuinely isn't a meaningful concept for this
+/// transport, unlike sending one command, which only needed a wire format
+/// and a listener on the other end. Where either *does* fail, it throws
+/// rather than silently no-op-ing the way `MockDataSource`'s conformer does:
+/// `MockDataSource` no-ops because there's genuinely nothing on the other
+/// end to reach; this type *is* connected to a real Mac, so quietly
+/// swallowing a command would misrepresent a working connection as having
+/// done something it didn't.
 ///
 /// **Why an `actor`, matching `MockDataSource`.** `StatsTransport` requires
 /// `Sendable` conformers (see that protocol's doc comment, point 3); an
@@ -113,6 +120,13 @@ public actor LocalSyncClient: StatsTransport {
         lastReceivedAt
     }
 
+    /// Continuations waiting on a `ControlStatus` reply to a specific
+    /// `nonce` — see `awaitStatus(forNonce:timeout:)`. Keyed by nonce rather
+    /// than a single "next status" slot because nothing prevents a caller
+    /// from issuing a second command (another `SleepStatusCard` adjust tap,
+    /// a Siri phrase) while a first reply is still in flight.
+    private var statusWaiters: [String: CheckedContinuation<ControlStatus?, Never>] = [:]
+
     public init() {}
 
     deinit {
@@ -120,6 +134,7 @@ public actor LocalSyncClient: StatsTransport {
         directRetryTask?.cancel()
         connection?.cancel()
         for continuation in continuations.values { continuation.finish() }
+        for waiter in statusWaiters.values { waiter.resume(returning: nil) }
     }
 
     // MARK: - Discovery + connection lifecycle
@@ -214,6 +229,8 @@ public actor LocalSyncClient: StatsTransport {
         isConnecting = false
         for continuation in continuations.values { continuation.finish() }
         continuations.removeAll()
+        for waiter in statusWaiters.values { waiter.resume(returning: nil) }
+        statusWaiters.removeAll()
         resumeReadyWaiters(found: false)
     }
 
@@ -329,14 +346,10 @@ public actor LocalSyncClient: StatsTransport {
         if let data, !data.isEmpty {
             receiveBuffer.append(data)
             do {
-                let (snapshots, remainder) = try LocalSyncFraming.extractFrames(from: receiveBuffer)
+                let (messages, remainder) = try LocalSyncFraming.extractFrames(from: receiveBuffer)
                 receiveBuffer = remainder
-                for snapshot in snapshots {
-                    lastReceivedAt = Date()
-                    lastDeviceID = snapshot.deviceID
-                    for continuation in continuations.values {
-                        continuation.yield(snapshot)
-                    }
+                for message in messages {
+                    handle(message)
                 }
             } catch {
                 log.error("LocalSyncClient: malformed frame, closing connection: \(String(describing: error))")
@@ -355,6 +368,32 @@ public actor LocalSyncClient: StatsTransport {
             return
         }
         receiveNext(on: connection)
+    }
+
+    /// Routes a decoded `LocalSyncMessage` to whichever consumer it's for:
+    /// `.snapshot` fans out to every open `snapshots()` stream (the original
+    /// behavior); `.status` resolves the matching
+    /// `awaitStatus(forNonce:timeout:)` waiter, if one is still pending.
+    /// `.command` never arrives here — the Mac is never the one sending a
+    /// command over this connection — so it's logged and ignored rather than
+    /// treated as a protocol violation, matching `LocalSyncServer
+    /// .handle(_:from:)`'s identical posture for the frames it doesn't
+    /// expect.
+    private func handle(_ message: LocalSyncMessage) {
+        switch message {
+        case .snapshot(let snapshot):
+            lastReceivedAt = Date()
+            lastDeviceID = snapshot.deviceID
+            for continuation in continuations.values {
+                continuation.yield(snapshot)
+            }
+        case .status(let status):
+            if let waiter = statusWaiters.removeValue(forKey: status.respondsToNonce) {
+                waiter.resume(returning: status)
+            }
+        case .command:
+            log.debug("LocalSyncClient: received an unexpected command frame from the Mac — ignoring")
+        }
     }
 
     /// The `deviceID` of the most recent snapshot this instance has
@@ -410,18 +449,59 @@ public actor LocalSyncClient: StatsTransport {
         return Date().timeIntervalSince(lastReceivedAt)
     }
 
-    /// Always throws. This transport is receive-only for its first pass —
-    /// see this type's top-level doc comment for why that's a deliberate,
-    /// documented cut rather than a silent no-op: a phone connected to a
-    /// real Mac over this channel that silently dropped a "keep awake"
-    /// command would look, from the user's side, exactly like a command
-    /// that was sent and ignored, which is worse than an explicit failure a
-    /// caller can surface. Remote command support (and the keep-awake
-    /// control this would carry) is separate, later work.
+    /// Frames `command` and writes it onto the live connection to the Mac,
+    /// where `LocalSyncServer`'s receive loop hands it to
+    /// `LocalCommandExecutor` (`MacStatKit/Services/LocalCommandExecutor.swift`).
+    /// Works identically over the LAN (Bonjour) and remote (TLS-PSK)
+    /// connections — this method only needs *a* live connection, and by the
+    /// time one exists a remote client has already authenticated during the
+    /// TLS handshake.
+    ///
+    /// Throws `LocalSyncClientError.notConnected` when there's no open
+    /// connection right now, rather than silently dropping the command —
+    /// the same "say so, don't pretend" posture `MockDataSource
+    /// .send(command:)` documents, now with a real success path alongside
+    /// the honest failure one. Call `awaitStatus(forNonce:timeout:)`
+    /// afterward to learn what the Mac actually did with it.
     public func send(command: ControlCommand) async throws {
-        throw LocalSyncClientError.notSupported(
-            "Sending commands is not supported over the local-network transport yet — this connection only carries snapshots from the Mac to this phone, not commands the other direction."
-        )
+        guard let connection, isReady else {
+            throw LocalSyncClientError.notConnected(
+                "Not connected to a Mac right now — nothing to send this command to."
+            )
+        }
+        let framed = try LocalSyncFraming.encode(.command(command))
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: framed, completion: .contentProcessed { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            })
+        }
+    }
+
+    /// Waits up to `timeout` seconds for the `ControlStatus` reply whose
+    /// `respondsToNonce` matches `nonce` — what `LocalSyncServer` sends back
+    /// once `LocalCommandExecutor` has finished acting on that command.
+    /// Returns `nil` on timeout (the Mac never replied — a dropped
+    /// connection, a Mac running a build without command support, or simply
+    /// a slow reply) rather than throwing, because "no reply yet" is an
+    /// outcome callers (`KeepAwakeIntent`, `SleepStatusCard`) must render
+    /// honestly, not an exceptional failure.
+    public func awaitStatus(forNonce nonce: String, timeout: TimeInterval) async -> ControlStatus? {
+        await withCheckedContinuation { continuation in
+            statusWaiters[nonce] = continuation
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                await self.timeoutStatusWaiter(forNonce: nonce)
+            }
+        }
+    }
+
+    private func timeoutStatusWaiter(forNonce nonce: String) {
+        guard let waiter = statusWaiters.removeValue(forKey: nonce) else { return }
+        waiter.resume(returning: nil)
     }
 
     /// Always throws, for the same reason as `send(command:)`. Uploading
@@ -442,10 +522,11 @@ public actor LocalSyncClient: StatsTransport {
 /// operations, not a CloudKit-shaped upload failure.
 public enum LocalSyncClientError: Error, LocalizedError, Sendable {
     case notSupported(String)
+    case notConnected(String)
 
     public var errorDescription: String? {
         switch self {
-        case .notSupported(let message):
+        case .notSupported(let message), .notConnected(let message):
             return message
         }
     }

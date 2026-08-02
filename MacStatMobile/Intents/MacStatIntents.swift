@@ -3,46 +3,90 @@ import Foundation
 import MacStatKit
 import WidgetKit
 
-// MARK: - AppIntents: Phase 6 checklist — "keep awake, release, refresh"
+// MARK: - AppIntents: real Siri/Shortcuts control, over the local-network transport
 
-/// Three `AppIntent`s so Siri/Shortcuts integration exists and *compiles*
-/// against this build (plan §12.3: "'Hey Siri, keep my Mac awake for an
-/// hour' works" is the phase's exit criterion) — while staying honest about
-/// what actually happens when invoked, which today is "nothing reaches a
-/// real Mac" for two of the three.
+/// Six `AppIntent`s giving Siri/Shortcuts real control over (and read access
+/// to) a Mac on the same local Wi-Fi network, via `AppDataSource.shared
+/// .transport` (`MacStatMobile/Data/AppDataSource.swift`) — either a real
+/// `LocalSyncClient` connected to a Mac, or `MockDataSource` if none has
+/// been found yet.
 ///
-/// **Why `KeepAwakeIntent`/`ReleaseAwakeIntent` no-op instead of pretending
-/// to succeed.** Both are meant to eventually round-trip a `ControlCommand`
-/// to a real Mac over CloudKit (plan §7.6) — exactly the control path
-/// `SleepStatusCard`'s doc comment (`MacStatMobile/Dashboard/SleepStatusCard.swift`)
-/// already explains doesn't exist in this build, for the same reason
-/// `MockDataSource.send(command:)` is a logged no-op: there is no enrolled
-/// Apple Developer Program account, no `CKContainer`, and therefore no Mac
-/// on the other end of any command this intent could construct. An intent
-/// that returned `.result(dialog: "Done, your Mac will stay awake")` here
-/// would be Siri saying something false out loud — worse than the in-app
-/// "coming soon" `SleepStatusCard` settles for, because a spoken Siri
-/// response carries more implied confidence than a line of secondary-gray
-/// UI text. Both intents still construct and pass a real `ControlCommand`
-/// through `MockDataSource.send(command:)` (rather than skipping that call
-/// entirely) so the code path that will matter once a real transport exists
-/// is exercised today, exactly like every other `MockDataSource` call site
-/// in this app.
+/// **What changed from the previous "compiles but always says no" version
+/// of this file.** `KeepAwakeIntent`/`ReleaseAwakeIntent` used to
+/// unconditionally report "can't reach a Mac" no matter what, because
+/// `StatsTransport.send(command:)` had no real conformer — `LocalSyncClient
+/// .send(command:)` threw "not supported yet" and `MockDataSource.send
+/// (command:)` silently no-op'd. Both now have a real implementation (see
+/// `LocalSyncClient.swift`'s and `LocalSyncServer.swift`'s doc comments),
+/// and `StatsTransport.awaitStatus(forNonce:timeout:)` lets an intent learn
+/// what the Mac actually did with a command instead of just that it was
+/// transmitted. Every intent below still reports honestly when nothing
+/// answers — a connected-but-silent Mac, or `MockDataSource` (which always
+/// returns `nil` from `awaitStatus`) both read as "sent, but no reply,"
+/// never a fabricated success.
 ///
-/// **Why `RefreshWidgetIntent` is different.** Re-reading the widget's
-/// already-real, already-local `WidgetSnapshotStore` cache and asking
-/// WidgetKit to reload from it needs no CloudKit connection at all — the
-/// cache is written by `WidgetSnapshotWriter` from data the phone app
-/// already has in-process. This is the one intent in this file that
-/// actually does the thing its dialog claims.
-enum MacStatIntents {}
+/// **Why `sendAndDescribe(_:successVerb:)` is the one place that decides
+/// what Siri says.** Every write intent below constructs a `ControlCommand`
+/// then defers to this one helper for "send it, wait for a reply, phrase
+/// the result" — keeping that logic in one place is what guarantees the
+/// honesty rule above actually holds everywhere, instead of five
+/// independently-written dialog strings that could drift out of sync with
+/// each other over time.
+enum MacStatIntents {
+
+    /// How long an intent waits for the Mac's `ControlStatus` reply before
+    /// telling the user it sent the request but didn't hear back. Siri
+    /// itself times out a spoken interaction well before this if it's much
+    /// longer, so this stays short — a real local-network round trip
+    /// (Bonjour-discovered TCP connection, already established) should
+    /// reply in well under a second; this is generous headroom, not an
+    /// expected wait.
+    static let statusTimeout: TimeInterval = 5
+
+    /// Sends `command`, awaits its `ControlStatus` reply, and returns the
+    /// dialog every write intent below reports to Siri. `successVerb` is
+    /// folded into the "done" phrasing (e.g. "Your Mac will stay awake" vs.
+    /// "Your Mac's keep-awake was extended") — the actual completed/
+    /// rejected/expired/no-reply branching is identical for every command
+    /// type, so it lives here once rather than once per intent.
+    static func sendAndDescribe(_ command: ControlCommand, whenCompleted successVerb: String) async -> String {
+        let transport = await AppDataSource.shared.transport
+        do {
+            try await transport.send(command: command)
+        } catch {
+            return "Couldn't reach your Mac — \(error.localizedDescription)"
+        }
+        guard let status = await transport.awaitStatus(forNonce: command.nonce, timeout: statusTimeout) else {
+            return "Sent the request, but didn't hear back from your Mac — make sure MacStat is open and your iPhone is on the same Wi-Fi network."
+        }
+        switch status.state {
+        case "completed":
+            return successVerb
+        case "rejected":
+            return "Your Mac declined that: \(status.message)"
+        case "expired":
+            return "That request expired before your Mac could act on it."
+        default:
+            return status.message
+        }
+    }
+
+    /// The Mac this app's intents target — there's no device picker yet
+    /// (only one Mac is supported per `AppDataSource`'s own documented
+    /// simplification), so every intent falls back to whatever `AppDataSource
+    /// .devices()` already knows, or `"unknown"` if nothing has been seen —
+    /// same placeholder this file used before real transport existed.
+    static func targetDeviceID() async -> String {
+        await AppDataSource.shared.devices().first?.deviceID ?? "unknown"
+    }
+}
 
 // MARK: - KeepAwakeIntent
 
 struct KeepAwakeIntent: AppIntent {
     static var title: LocalizedStringResource = "Keep Mac Awake"
     static var description = IntentDescription(
-        "Requests that your Mac stay awake. Not available yet in this build — MacStat has no live connection to a Mac, so this request has nowhere to go."
+        "Asks your Mac to stay awake for a while. Needs MacStat open on a Mac on the same Wi-Fi network."
     )
 
     @Parameter(title: "Duration", description: "How long to keep the Mac awake, in minutes.", default: 60)
@@ -50,29 +94,18 @@ struct KeepAwakeIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let command = ControlCommand(
-            deviceID: "unknown",
+            deviceID: await MacStatIntents.targetDeviceID(),
             issuedAt: Date(),
             commandType: "keepAwake",
             parametersJSON: #"{"durationSeconds":\#(max(durationMinutes, 0) * 60),"mode":"systemOnly"}"#,
             nonce: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(5 * 60)
         )
-        // Routed through the app-wide `AppDataSource.shared.transport`
-        // (`MacStatMobile/Data/AppDataSource.swift`), not a locally
-        // constructed `MockDataSource()` — same shared instance every other
-        // call site in this app now reads from. Both conformers currently
-        // fail to actually deliver a command (`MockDataSource.send(command:)`
-        // is a documented no-op; `LocalSyncClient.send(command:)` throws
-        // "not supported yet" — see that type's doc comment), so calling it
-        // here (rather than skipping straight to the dialog below) keeps
-        // this intent's code path identical in shape to what it will be once
-        // a transport that actually delivers commands exists: construct the
-        // command, send it, report what happened.
-        let transport = await AppDataSource.shared.transport
-        try? await transport.send(command: command)
-        return .result(
-            dialog: "MacStat can't keep your Mac awake yet — this build has no live connection to a Mac to send that request to."
+        let dialog = await MacStatIntents.sendAndDescribe(
+            command,
+            whenCompleted: "Your Mac will stay awake for \(durationMinutes) minutes."
         )
+        return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
 }
 
@@ -81,34 +114,167 @@ struct KeepAwakeIntent: AppIntent {
 struct ReleaseAwakeIntent: AppIntent {
     static var title: LocalizedStringResource = "Release Mac Awake"
     static var description = IntentDescription(
-        "Cancels a keep-awake request. Not available yet in this build, for the same reason as \"Keep Mac Awake.\""
+        "Cancels a keep-awake request on your Mac, letting it sleep normally again."
     )
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let command = ControlCommand(
-            deviceID: "unknown",
+            deviceID: await MacStatIntents.targetDeviceID(),
             issuedAt: Date(),
             commandType: "releaseAwake",
             parametersJSON: "{}",
             nonce: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(5 * 60)
         )
-        let transport = await AppDataSource.shared.transport
-        try? await transport.send(command: command)
-        return .result(
-            dialog: "MacStat can't release your Mac's sleep assertion yet — this build has no live connection to a Mac to send that request to."
+        let dialog = await MacStatIntents.sendAndDescribe(
+            command,
+            whenCompleted: "Your Mac can sleep normally again."
         )
+        return .result(dialog: IntentDialog(stringLiteral: dialog))
+    }
+}
+
+// MARK: - ExtendAwakeIntent / TruncateAwakeIntent
+
+/// Siri-facing counterparts to `SleepStatusCard`'s "+15m"/"+1h" adjust
+/// buttons (`MacStatMobile/Dashboard/SleepStatusCard.swift`) — same
+/// `extendAwake` command type, same `deltaSeconds` parameter shape,
+/// same underlying `PowerControlService.adjustAssertion(bySeconds:)` on the
+/// Mac. Only meaningful against a *timed* keep-awake hold; a Mac with no
+/// active hold, or an indefinite/conditional one, reports back through the
+/// same "Your Mac declined that: ..." branch every other rejection uses
+/// (see `LocalCommandExecutor.execute(_:)`'s `PowerControlError
+/// .noAdjustableAssertion` handling).
+struct ExtendAwakeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Extend Mac Awake Time"
+    static var description = IntentDescription(
+        "Adds time to your Mac's current keep-awake countdown."
+    )
+
+    @Parameter(title: "Minutes", description: "How many extra minutes to add.", default: 30)
+    var minutes: Int
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let command = ControlCommand(
+            deviceID: await MacStatIntents.targetDeviceID(),
+            issuedAt: Date(),
+            commandType: "extendAwake",
+            parametersJSON: #"{"deltaSeconds":\#(max(minutes, 0) * 60)}"#,
+            nonce: UUID().uuidString,
+            expiresAt: Date().addingTimeInterval(5 * 60)
+        )
+        let dialog = await MacStatIntents.sendAndDescribe(
+            command,
+            whenCompleted: "Added \(minutes) minutes to your Mac's keep-awake time."
+        )
+        return .result(dialog: IntentDialog(stringLiteral: dialog))
+    }
+}
+
+struct TruncateAwakeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Shorten Mac Awake Time"
+    static var description = IntentDescription(
+        "Cuts time off your Mac's current keep-awake countdown."
+    )
+
+    @Parameter(title: "Minutes", description: "How many minutes to cut short.", default: 15)
+    var minutes: Int
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let command = ControlCommand(
+            deviceID: await MacStatIntents.targetDeviceID(),
+            issuedAt: Date(),
+            commandType: "truncateAwake",
+            parametersJSON: #"{"deltaSeconds":\#(max(minutes, 0) * 60)}"#,
+            nonce: UUID().uuidString,
+            expiresAt: Date().addingTimeInterval(5 * 60)
+        )
+        let dialog = await MacStatIntents.sendAndDescribe(
+            command,
+            whenCompleted: "Cut \(minutes) minutes off your Mac's keep-awake time."
+        )
+        return .result(dialog: IntentDialog(stringLiteral: dialog))
+    }
+}
+
+// MARK: - GetBatteryStatusIntent
+
+/// A read-only counterpart to the four control intents above — "Hey Siri,
+/// what's my Mac's battery" without opening the app. Reads the next
+/// `SystemSnapshot` the current transport produces rather than a command
+/// round-trip (there's no `ControlCommand` for "tell me your battery,"
+/// snapshots already stream continuously), bounded by the same
+/// `MacStatIntents.statusTimeout` every write intent uses for its own wait,
+/// so a Mac that's asleep/unreachable fails the same honest way instead of
+/// hanging Siri indefinitely.
+struct GetBatteryStatusIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Mac Battery Status"
+    static var description = IntentDescription(
+        "Reports your Mac's battery charge, charging state, and health."
+    )
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let transport = await AppDataSource.shared.transport
+        guard let snapshot = await Self.firstSnapshot(from: transport, timeout: MacStatIntents.statusTimeout) else {
+            return .result(dialog: "Couldn't get a reading from your Mac — make sure MacStat is open and your iPhone is on the same Wi-Fi network.")
+        }
+        guard let battery = snapshot.battery else {
+            return .result(dialog: "Your Mac reported in, but didn't include battery data — it might be a desktop Mac with no battery.")
+        }
+
+        let freshness = Freshness(lastSeen: snapshot.timestamp)
+        let ageLabel = freshness.label(lastSeen: snapshot.timestamp)
+
+        var sentence = "Your Mac's battery is at \(Int(battery.chargePercent.rounded()))%"
+        if battery.isCharging, let watts = battery.chargingWatts {
+            sentence += ", charging at \(String(format: "%.0f", watts)) watts"
+        } else if battery.isPluggedIn {
+            sentence += ", plugged in"
+        } else {
+            sentence += ", on battery"
+        }
+        if let health = battery.healthPercent {
+            sentence += ". Battery health is \(Int(health.rounded()))%"
+        }
+        if case .active(_, let expiresAt, _) = snapshot.sleepAssertion {
+            sentence += expiresAt != nil ? ". Sleep is currently being prevented" : ". Sleep is being prevented indefinitely"
+        }
+        sentence += " (\(ageLabel))."
+
+        return .result(dialog: IntentDialog(stringLiteral: sentence))
+    }
+
+    /// Races the transport's snapshot stream against `timeout` and returns
+    /// whichever comes first — `nil` on timeout. A plain `for try await`
+    /// loop over `transport.snapshots()` with no timeout would hang forever
+    /// against `MockDataSource`'s slower cadence or a genuinely unreachable
+    /// Mac, which is exactly the failure mode every other intent in this
+    /// file already guards against.
+    static func firstSnapshot(from transport: any StatsTransport, timeout: TimeInterval) async -> SystemSnapshot? {
+        await withTaskGroup(of: SystemSnapshot?.self) { group in
+            group.addTask {
+                for await snapshot in transport.snapshots() {
+                    return snapshot
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 }
 
 // MARK: - RefreshWidgetIntent
 
-/// The one intent in this file with real, local, working behavior — see
-/// this file's top-level doc comment for why it's different from the other
-/// two. Re-reads `WidgetSnapshotStore` (the same App Group cache
-/// `MacStatWidget`'s `Provider` reads) purely to report an honest dialog
-/// back to the user/Siri; the actual reload is `WidgetCenter
-/// .reloadAllTimelines()`, which doesn't need the read to succeed.
+/// Re-reads the widget's already-real, already-local `WidgetSnapshotStore`
+/// cache and asks WidgetKit to reload from it — needs no live Mac
+/// connection at all, since the cache is written by `WidgetSnapshotWriter`
+/// from data the phone app already has in-process.
 struct RefreshWidgetIntent: AppIntent {
     static var title: LocalizedStringResource = "Refresh MacStat Widget"
     static var description = IntentDescription(
@@ -128,14 +294,11 @@ struct RefreshWidgetIntent: AppIntent {
 
 // MARK: - AppShortcutsProvider
 
-/// Registers the plan §12.3 Siri phrases ("Hey Siri, keep my Mac awake for
-/// an hour") against `RefreshWidgetIntent`/`KeepAwakeIntent`/`ReleaseAwakeIntent`
-/// above. Registering the phrase doesn't change what the intent actually
-/// does — `KeepAwakeIntent.perform()` still reports the honest "can't reach
-/// a Mac" dialog no matter how it was invoked (Shortcuts app, widget
-/// button, or Siri) — this only makes the phrase *discoverable*, which is
-/// the compile-and-exist bar this task is scoped to, not a claim that the
-/// underlying action works yet.
+/// Registers every Siri phrase this app exposes. Registering a phrase
+/// doesn't change what its intent actually does — every write intent above
+/// still reports the honest outcome `sendAndDescribe(_:whenCompleted:)`
+/// produces no matter how it was invoked (Shortcuts app, widget button, or
+/// Siri).
 struct MacStatAppShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -155,6 +318,32 @@ struct MacStatAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Release Mac Awake",
             systemImageName: "moon.zzz"
+        )
+        AppShortcut(
+            intent: ExtendAwakeIntent(),
+            phrases: [
+                "Give my Mac more awake time with \(.applicationName)",
+                "Extend my Mac's awake time with \(.applicationName)",
+            ],
+            shortTitle: "Extend Awake Time",
+            systemImageName: "clock.badge.checkmark"
+        )
+        AppShortcut(
+            intent: TruncateAwakeIntent(),
+            phrases: [
+                "Shorten my Mac's awake time with \(.applicationName)",
+            ],
+            shortTitle: "Shorten Awake Time",
+            systemImageName: "clock.badge.xmark"
+        )
+        AppShortcut(
+            intent: GetBatteryStatusIntent(),
+            phrases: [
+                "What's my Mac's battery with \(.applicationName)",
+                "Check my Mac's battery with \(.applicationName)",
+            ],
+            shortTitle: "Mac Battery Status",
+            systemImageName: "battery.100"
         )
         AppShortcut(
             intent: RefreshWidgetIntent(),
