@@ -66,6 +66,32 @@ import SwiftUI
 /// clipping; system semantic colours only, following `ContentView` and
 /// `FreshnessBadge` rather than the Mac/iPhone `palette.*` tokens, which the
 /// Watch app does not have.
+///
+/// **What was wrong with the first version of this page, and what fixed it.**
+/// The unreported state — which, per the note above, is what *every* user sees
+/// *every* time, because nothing populates these fields yet — rendered a bare
+/// `title2` em dash left-aligned in the middle of an otherwise empty screen,
+/// with the explanation beneath it. It read as a rendering failure. The dash
+/// was doing the right job (this codebase's placeholder for "no value") in the
+/// wrong shape: floating on its own, an em dash is indistinguishable from a
+/// glyph that failed to load.
+///
+/// It now sits in the well of a `SentryDial` drawn in its not-reported form —
+/// a dotted, unfilled ring. That is the same mark `OverviewPage`'s metric
+/// dials use for a metric the Mac didn't send, so a user meets one visual
+/// vocabulary for absence across the whole app rather than a dash here and a
+/// gap there, and the ring gives the dash a container that positively asserts
+/// "this is an empty reading" instead of leaving it to look like debris. The
+/// states are also centred rather than flush-left: with one short line of
+/// content and a whole watch face to put it on, left alignment was leaving the
+/// page looking like the top of a list that never arrived.
+///
+/// **No arc is ever filled on this page, in any state.** A tool-call count has
+/// no denominator — there is no "out of" for "12 calls" — and drawing a
+/// partial arc would require inventing a maximum, which would be a fabricated
+/// number of exactly the kind the rest of this file argues against. The dial
+/// appears here only in its dotted, valueless form, as a mark of absence. The
+/// count, when there is one, stays a plain numeral.
 struct AgentActivityPage: View {
 
     /// How many MCP tool calls the Mac has logged, or `nil` if it didn't
@@ -98,9 +124,24 @@ struct AgentActivityPage: View {
     /// pane's job.
     private static let maximumListedTools = 4
 
+    /// Diameter of the dotted "no reading" ring in `unreportedState`. Tied to
+    /// `.title3` — the text style of the em dash it encloses — so the ring and
+    /// its contents grow together under Dynamic Type instead of the dash
+    /// outgrowing its well. Larger than `OverviewPage`'s 46pt metric dials
+    /// because this one is alone on the page rather than one of three in a
+    /// row, and at 40pt it read as a stray bullet rather than as the page's
+    /// subject. Capped at 50 rather than the 64 first drawn: at 64 the
+    /// explanatory sentence beneath ran off the bottom of a 46mm face, and the
+    /// fine print explaining *why* nothing is reported is the part of this
+    /// state that actually teaches the user something. The ring is the mark;
+    /// the sentence is the message, and the mark does not get to crowd it out.
+    @ScaledMetric(relativeTo: .title3) private var baseDialDiameter: CGFloat = 50
+
+    private var dialDiameter: CGFloat { baseDialDiameter * WatchFace.scale }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 header
                 if isStale {
                     staleBanner
@@ -156,13 +197,38 @@ struct AgentActivityPage: View {
     /// The Mac didn't send a count. Distinct from zero in both glyph and
     /// wording, so the two can never be confused at a glance — this one names
     /// the *link* that's missing rather than making a claim about agents.
+    ///
+    /// This is the state essentially every user is in, all the time (the
+    /// fields are wired and always `nil` — see `WatchRelaySnapshot`), so it
+    /// gets the most composition on the page rather than the least. See the
+    /// type header on why the em dash moved into a dotted dial.
     private var unreportedState: some View {
         VStack(alignment: .leading, spacing: 4) {
-            countLine(value: "—", caption: "Not reported by your Mac")
+            VStack(spacing: 6) {
+                SentryDial(fraction: nil, tint: .secondary, lineWidth: 4) {
+                    Text(WatchFormatting.placeholder)
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+                .frame(maxWidth: .infinity, maxHeight: dialDiameter)
+
+                Text("Not reported by your Mac")
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Tool call count not reported by your Mac")
+
             if recentToolNames.isEmpty {
                 Text("This build of Sentry on your Mac may not send agent activity yet.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 // Names arrived without a count. Show them — they're a real
@@ -175,23 +241,37 @@ struct AgentActivityPage: View {
         }
     }
 
-    /// The common case. Reads as a statement of fact, not as a void: a
+    /// The healthy zero. Reads as a statement of fact, not as a void: a
     /// secondary-coloured glyph, a plain sentence, and one line explaining
     /// what would appear here if something did happen — so a user who has
     /// never seen this page populated still learns what it's for.
+    ///
+    /// Centred and stacked rather than left-aligned in a row, matching
+    /// `unreportedState` above — but deliberately **not** given a dial. Zero
+    /// is a real reading, and the dotted ring is this app's mark for the
+    /// absence of one; putting it here would say "we weren't told", which is
+    /// the opposite of what this state means. A `checkmark.circle` is the
+    /// right glyph precisely because it is a closed, complete ring: the two
+    /// read as opposites at a glance, which is the whole point of keeping
+    /// `nil` and `0` visually distinct.
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Image(systemName: "checkmark.circle")
+                    .font(.title2)
                     .foregroundStyle(.secondary)
                 Text("No agent activity")
-                    .font(.body)
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
             }
+            .frame(maxWidth: .infinity)
             .accessibilityElement(children: .combine)
 
             Text("No AI assistant has used Sentry's tools on your Mac. Tool calls show up here as they happen.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
 
             // Even at zero, "last activity" can be a real, non-nil time — an
