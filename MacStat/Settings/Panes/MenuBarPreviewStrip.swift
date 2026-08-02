@@ -169,6 +169,26 @@ struct MenuBarPreviewStrip: View {
 
     // MARK: - Display-mode pieces
 
+    /// **Known divergence: the battery module.** The real bar no longer draws
+    /// an SF Symbol for `.battery` — `BarModuleRenderer` custom-draws
+    /// `BatteryGlyph` (a wider outline with a terminal nub and a fill that
+    /// tracks the live charge), because the symbol was being squashed into a
+    /// square slot and never reflected the reading. This strip still shows the
+    /// symbol, so its battery looks different from the one in the menu bar.
+    ///
+    /// Not fixed here because the glyph is Core Graphics drawing against an
+    /// `NSGraphicsContext` and this strip is SwiftUI; showing the real thing
+    /// means either an `NSViewRepresentable` wrapper or restating the geometry
+    /// in `Shape`s, and `BatteryGlyph.Metrics` is a pure value type precisely
+    /// so the second is possible. Either way it is a real piece of work that
+    /// wants visual review, not a one-line swap.
+    ///
+    /// Worth knowing that this strip is *already* deliberately approximate in
+    /// other ways — see the mono-tint note above, and the visibility-rule note
+    /// below explaining why conditional modules are dimmed rather than
+    /// resolved. This is one more entry on that list, not a new category of
+    /// dishonesty; but of the three it is the one a user is most likely to
+    /// notice, since the battery is the default module.
     private func icon(for module: BarModule, tint: Color) -> some View {
         Image(systemName: MenuBarPreviewStrip.symbolName(for: module.metric))
             .font(.system(size: theme.barFontSize))
