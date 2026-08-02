@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job description for Sentry's own Mach service - the XPC endpoint
+  the bundled `macstat` CLI and `MacStatMCP` stdio binary connect to.
+  Installed into Sentry.app/Contents/Library/LaunchAgents/ and registered by
+  `SMAppService.agent(plistName:)` from `MCPAgentRegistrar`, only when the
+  user explicitly asks for it in Settings > AI Access > Command-Line Access.
+
+  THE FILE NAME IS PART OF THE API, same rule as the fan daemon's plist one
+  directory over in the built bundle: `SMAppService.agent(plistName:)` looks
+  this file up by basename inside Contents/Library/LaunchAgents, launchd
+  requires `Label` to equal that basename minus ".plist", and here the Mach
+  service name is deliberately the SAME string again, so label, basename and
+  service name cannot drift apart. All three come from `MCPAgentNaming`,
+  and `MCPAgentRegistrationTests` pins the exact text.
+
+  WHY THE PROGRAM IS THE APP ITSELF. The listener for this service lives in
+  `AppDelegate` (`startMCPListener`), because the service's implementation -
+  `MCPXPCService` - needs the app's live object graph: StatsCoordinator,
+  HistoryStore, the access controller, all of it. A separate helper binary
+  would need its own copy of that state or a second hop back into the app.
+  So the agent's BundleProgram is the app binary, which means: when a client
+  connects and Sentry isn't running, launchd LAUNCHES SENTRY - menu bar
+  icon and all. That is the designed behavior, not an accident: the CLI's
+  whole promise is "ask this Mac about itself", and an answer requires the
+  process that has the answers.
+
+  WHAT IS DELIBERATELY ABSENT
+
+  RunAtLoad / KeepAlive
+      Omitted, so both default to false. Whether Sentry opens at login is
+      the user's call via the existing login-item mechanism, not something
+      this plist smuggles in; registering command-line access must not
+      also mean "and Sentry now autostarts". launchd starts the app on
+      demand when a client connects, and never resurrects it after quit.
+
+  LimitLoadToSessionType
+      Omitted; the default (Aqua) is exactly right for a job whose program
+      is a GUI app - it should exist only in real login sessions.
+
+  ProcessType
+      Omitted. The daemon declares Adaptive because it is a faceless
+      worker; Sentry is a foreground app whose QoS is its own business.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.malekswilam.macstat.xpc</string>
+
+	<!-- Relative to Sentry.app - the app binary itself (PRODUCT_NAME
+	     "Sentry", see project.yml), for the reasons in the header. -->
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/Sentry</string>
+
+	<!-- Must match MacStatXPCServiceName.machService exactly - the string
+	     MacStatXPCClient dials and AppDelegate's listener vends. -->
+	<key>MachServices</key>
+	<dict>
+		<key>dev.malekswilam.macstat.xpc</key>
+		<true/>
+	</dict>
+
+	<!-- Attributes the Login Items entry to Sentry in System Settings,
+	     same as the fan daemon's plist - the only honest presentation of
+	     a background item this app installed, and the switch the user
+	     flips to revoke it without deleting anything. -->
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>dev.malekswilam.macstat</string>
+	</array>
+</dict>
+</plist>

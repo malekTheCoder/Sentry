@@ -95,10 +95,11 @@ status line, are in
 The same page's siblings cover tmux (`docs/integrations/tmux.md`), Starship
 (`starship.md`), and the streaming `macstat watch` command (`watch.md`).
 Start at [`docs/integrations/README.md`](../../docs/integrations/README.md),
-which also documents a **current limitation**: the XPC Mach service the CLI
-connects to is not registered with `launchd` in this build, so no client can
-reach `Sentry.app` yet. That affects the hooks on this page exactly as much
-as it affects the status line.
+which also documents the **one-time setup step everything on this page
+requires**: enabling Command-Line Access in Sentry > Settings > AI Access,
+which registers the launch agent that makes the CLI's XPC service reachable.
+Until that's done (or on an unsigned local build, where macOS refuses the
+registration), every hook here fails with an error naming that cause.
 
 ## Sanity-check the CLI directly
 

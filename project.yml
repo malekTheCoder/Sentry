@@ -266,6 +266,17 @@ targets:
           copyFiles:
             destination: wrapper
             subpath: Contents/Library/LaunchDaemons
+      # The app's own launch agent — what makes the Mach service the
+      # `macstat` CLI and `MacStatMCP` dial actually reachable (registered
+      # by `MCPAgentRegistrar` from Settings ▸ AI Access, never silently at
+      # launch). Same rules as the daemon plist above: data not code, must
+      # land in Contents/Library/LaunchAgents (`SMAppService.agent`'s one
+      # lookup directory), and must NOT fall into Resources by extension.
+      - path: LaunchAgent/dev.malekswilam.macstat.xpc.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
     dependencies:
       - target: MacStatKit_macOS
         embed: true

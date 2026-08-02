@@ -54,31 +54,35 @@ Neither case ever produces a fabricated reading. This is worth stating
 plainly because a status line is the easiest place in a system to get away
 with one.
 
-## Known limitation — the XPC service is not registered yet
+## Enabling command-line access (one-time)
 
-**As of this writing none of the snippets on these pages will return data on
-a stock build, and it is not a bug in the snippets.**
+The Mach service every snippet on these pages depends on is published by a
+launch agent bundled inside Sentry.app, and it is **off until you turn it
+on**: Sentry > Settings > AI Access > Command-Line Access > "Turn On
+Command-Line Access". macOS may ask you to approve the item under System
+Settings > General > Login Items & Extensions; the Settings pane links
+straight there and reports which of the three states you are in
+(registered / waiting for approval / off). Once registered, a connecting
+`macstat` even starts Sentry on demand if it isn't running.
 
-`AppDelegate.startMCPListener()` creates an `NSXPCListener(machServiceName:
-"dev.malekswilam.macstat.xpc")`, but that name is not registered with
-`launchd` anywhere in this project — there is no `MachServices` declaration
-and no `SMAppService`-registered helper carrying one. A Mach service name
-has to be checked in from a launchd job for a listener to receive anything,
-so the listener resumes and then never hears from a client. Verified with
-the app running:
+Two honest caveats:
 
-```
-$ launchctl print gui/501/dev.malekswilam.macstat.xpc
-Could not find service "dev.malekswilam.macstat.xpc" in domain for user: 501
-```
+* **Signed builds only.** `SMAppService` refuses to register an agent for
+  an ad-hoc-signed build (any local Debug build without a
+  `DEVELOPMENT_TEAM`). The Settings pane says so instead of failing
+  silently, and the CLI's error text names the real cause rather than
+  asking "is MacStat running?".
+* **Only Sentry's own binaries can connect.** The app verifies each peer's
+  code signature (same team as the app, and one of the two bundled client
+  binaries) before the connection reaches the service; refusals are logged
+  under the `XPCListener` category in Console. Copying `macstat` out of
+  Sentry.app already didn't work (rpath), and re-signing it differently
+  won't either — both are by design.
 
-This affects **every** client of that service equally — `macstat check`,
-`wait`, `status` and `session-report` (all of which predate this page) and
-the stdio `MacStatMCP` binary, not just `watch` and `statusline`. Fixing it
-is an app-packaging change (ship the listener as a registered login-item
-helper, or vend the service from a bundled `.xpc` XPCService), not a CLI
-change, so it is called out here rather than papered over.
-
-What that means for these pages: the command surface, exit codes, formats
-and failure behavior below are all real and exercised. What has not been
-exercised end-to-end is a *successful* round trip to a live `Sentry.app`.
+This section replaces an earlier "Known limitation" that documented the
+service as unreachable: `AppDelegate` started an
+`NSXPCListener(machServiceName:)` but nothing ever declared the name in a
+launchd `MachServices` key, so launchd never routed a connection to it.
+The fix is `LaunchAgent/dev.malekswilam.macstat.xpc.plist` +
+`MCPAgentRegistrar` (SMAppService), i.e. the standard registered-agent
+shape — the same one the fan helper uses one privilege level up.

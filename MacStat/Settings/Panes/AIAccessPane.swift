@@ -35,9 +35,15 @@ struct AIAccessPane: View {
     /// that would read as "nothing has ever been called."
     @ObservedObject var activityLogHolder: ActivityLogHolder
 
-    init(store: SettingsStore, activityLog: MCPActivityLog?) {
+    /// `nil` when the host didn't wire a registrar (a preview) — rendered
+    /// as an explicit "unavailable" row, same convention as
+    /// `activityLogHolder` above.
+    private let agentRegistrar: MCPAgentRegistrar?
+
+    init(store: SettingsStore, activityLog: MCPActivityLog?, agentRegistrar: MCPAgentRegistrar? = nil) {
         self.store = store
         self._activityLogHolder = ObservedObject(wrappedValue: ActivityLogHolder(activityLog: activityLog))
+        self.agentRegistrar = agentRegistrar
     }
 
     @State private var copiedConfig = false
@@ -97,6 +103,24 @@ struct AIAccessPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // The section that makes `macstat` and stdio MCP *reachable* —
+            // see `MCPAgentRegistrar`'s doc comment for the launchd story.
+            // It lives on this pane because this pane is where the user
+            // already reasons about which external processes may talk to
+            // Sentry; registration is the on/off switch in front of every
+            // toggle above.
+            if let agentRegistrar {
+                CommandLineAccessSection(registrar: agentRegistrar)
+            } else {
+                Section {
+                    Text("Command-line access can't be managed in this context.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("Command-Line Access")
+                }
             }
 
             Section {
@@ -451,5 +475,94 @@ final class ActivityLogHolder: ObservableObject {
                 self?.objectWillChange.send()
             }
         }
+    }
+}
+
+/// The Settings surface for `MCPAgentRegistrar` — the explicit,
+/// user-visible moment the CLI/MCP Mach service gets registered with
+/// launchd, following the fan helper's install section in tone: a plain
+/// status row, one action button whose label says what it does, and a
+/// deep link when the OS is waiting on the user. Every state renders
+/// *something true*; none renders a control that can't work.
+private struct CommandLineAccessSection: View {
+
+    @ObservedObject var registrar: MCPAgentRegistrar
+
+    /// The last register/unregister failure, shown inline until the next
+    /// attempt. `nil` means the last action succeeded (or none happened).
+    @State private var lastError: String?
+
+    var body: some View {
+        Section {
+            switch registrar.status {
+            case .registered:
+                Label {
+                    Text("Registered — `macstat` and MCP clients can reach Sentry")
+                        .fontWeight(.medium)
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                Button("Turn Off Command-Line Access") {
+                    lastError = registrar.unregister()
+                }
+
+            case .requiresApproval:
+                Label {
+                    Text("Waiting for approval in System Settings")
+                        .fontWeight(.medium)
+                } icon: {
+                    Image(systemName: "hourglass.circle.fill")
+                        .foregroundStyle(.orange)
+                }
+                Text("macOS wants you to confirm this in System Settings ▸ General ▸ Login Items & Extensions before it takes effect.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Open Login Items Settings…") {
+                    registrar.openLoginItemsSettings()
+                }
+
+            case .notRegistered:
+                Label {
+                    Text("Off — command-line tools can't reach Sentry")
+                        .fontWeight(.medium)
+                } icon: {
+                    Image(systemName: "circle.slash")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Turn On Command-Line Access") {
+                    lastError = registrar.register()
+                }
+
+            case .unavailable(let reason):
+                Label {
+                    Text("Unavailable")
+                        .fontWeight(.medium)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                }
+                Text(reason)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let lastError {
+                Text(lastError)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Command-Line Access")
+        } footer: {
+            Text("Registers a launch agent inside Sentry.app with macOS so the bundled `macstat` command and MCP-over-stdio clients can connect. Nothing is copied outside the app, and macOS lists the item under Login Items, attributed to Sentry, where you can also switch it off. If Sentry isn't running when a command connects, macOS starts it. Turning this on restarts Sentry once, so the copy that stays running is the one macOS manages.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { registrar.refresh() }
     }
 }
