@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <defs>
+    <linearGradient id="body" x1="0.18" y1="0" x2="0.82" y2="1">
+      <stop offset="0" stop-color="#fcfbf8"></stop><stop offset="0.44" stop-color="#f3f0eb"></stop><stop offset="1" stop-color="#e0dbd2"></stop>
+    </linearGradient>
+    <linearGradient id="well" x1="0.24" y1="0" x2="0.76" y2="1">
+      <stop offset="0" stop-color="#e9e5dd"></stop><stop offset="1" stop-color="#f8f6f2"></stop>
+    </linearGradient>
+    <radialGradient id="topLight" cx="0.24" cy="0.08" r="0.72">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"></stop><stop offset="1" stop-color="#ffffff" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="botShade" cx="0.86" cy="1" r="0.7">
+      <stop offset="0" stop-color="#8c8070" stop-opacity="0.2"></stop><stop offset="1" stop-color="#8c8070" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="occl" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.62" stop-color="#8c8070" stop-opacity="0.17"></stop>
+      <stop offset="0.86" stop-color="#8c8070" stop-opacity="0.05"></stop>
+      <stop offset="1" stop-color="#8c8070" stop-opacity="0"></stop>
+    </radialGradient>
+    <linearGradient id="fill" gradientUnits="userSpaceOnUse" x1="278.9" y1="582.7" x2="495.9" y2="165.9">
+      <stop offset="0" stop-color="#f0a63c"></stop><stop offset="1" stop-color="#d97a2b"></stop>
+    </linearGradient>
+    <linearGradient id="collarShade" x1="0.16" y1="0" x2="0.84" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"></stop>
+      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0"></stop>
+      <stop offset="1" stop-color="#8c8070" stop-opacity="0.34"></stop>
+    </linearGradient>
+    <radialGradient id="cap" cx="0.32" cy="0.22" r="0.86">
+      <stop offset="0" stop-color="#fefdfb"></stop><stop offset="0.44" stop-color="#f7f5f0"></stop>
+      <stop offset="0.8" stop-color="#eae5dc"></stop><stop offset="1" stop-color="#e2ddd3"></stop>
+    </radialGradient>
+    <linearGradient id="pointer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4b4e57"></stop><stop offset="1" stop-color="#2f3238"></stop>
+    </linearGradient>
+    <filter id="bodyShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="70" stdDeviation="55" flood-color="#8c8070" flood-opacity="0.45"></feDropShadow>
+    </filter>
+    <filter id="capShadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feDropShadow dx="0" dy="34" stdDeviation="26" flood-color="#8c8070" flood-opacity="0.5"></feDropShadow>
+    </filter>
+    <filter id="ptrShadow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#8c8070" flood-opacity="0.45"></feDropShadow>
+    </filter>
+    <clipPath id="bodyClip"><rect x="180" y="180" width="720" height="720" rx="165" ry="165"></rect></clipPath>
+  </defs>
+
+  <rect width="1080" height="1080" fill="#f2efe9"></rect>
+
+  <g filter="url(#bodyShadow)">
+    <rect x="180" y="180" width="720" height="720" rx="165" ry="165" fill="url(#body)"></rect>
+  </g>
+  <g clip-path="url(#bodyClip)">
+    <rect x="180" y="180" width="720" height="720" fill="url(#topLight)"></rect>
+    <rect x="180" y="180" width="720" height="720" fill="url(#botShade)"></rect>
+  </g>
+  <rect x="181" y="181" width="718" height="718" rx="164" ry="164" fill="none" stroke="#8c8070" stroke-opacity="0.16" stroke-width="2"></rect>
+  <path d="M180 345 A165 165 0 0 1 345 180 H735 A165 165 0 0 1 900 345" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="4" clip-path="url(#bodyClip)"></path>
+
+  <circle cx="540" cy="540" r="294" fill="url(#well)"></circle>
+  <circle cx="540" cy="540" r="286" fill="none" stroke="#8c8070" stroke-opacity="0.13" stroke-width="16"></circle>
+  <circle cx="540" cy="540" r="292" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="4"></circle>
+
+  <g transform="translate(180 180)">
+    <path d="M278.9 582.7 A237 237 0 1 1 495.9 165.9" fill="none" stroke="url(#fill)" stroke-width="30" stroke-linecap="round"></path>
+    <path d="M495.9 165.9 A237 237 0 0 1 441.1 582.7" fill="none" stroke="#e3ded4" stroke-opacity="1" stroke-width="30" stroke-linecap="round"></path>
+  </g>
+
+  <circle cx="540" cy="540" r="225" fill="url(#occl)"></circle>
+
+  <circle cx="540" cy="540" r="190.5" fill="none" stroke="#f6f3ed" stroke-width="39"></circle>
+  <circle cx="540" cy="540" r="190.5" fill="none" stroke="#e5e0d6" stroke-width="39" stroke-dasharray="9.974 9.974"></circle>
+  <circle cx="540" cy="540" r="190.5" fill="none" stroke="url(#collarShade)" stroke-width="39"></circle>
+
+  <g filter="url(#capShadow)">
+    <circle cx="540" cy="540" r="171" fill="url(#cap)"></circle>
+  </g>
+  <circle cx="540" cy="540" r="170" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="3"></circle>
+  <g transform="rotate(35 540 540)" filter="url(#ptrShadow)">
+    <rect x="528" y="414" width="24" height="84" rx="12" fill="url(#pointer)"></rect>
+  </g>
+</svg>
