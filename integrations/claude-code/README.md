@@ -83,12 +83,31 @@ your typical session runs. `osascript -e 'display notification ...'` is
 macOS's built-in notification poster, so this needs no extra dependency
 beyond `macstat` itself being on `PATH`.
 
+## 3. `statusLine` — keep the Mac's numbers in view during a turn
+
+Claude Code's status line is an external command whose stdout it renders, so
+`macstat statusline --format compact` drops straight in. The wiring, a
+script that merges it with Claude Code's own session JSON (model, directory),
+and the one `|| true` that stops a missing Sentry from blanking the whole
+status line, are in
+[`../../docs/integrations/claude-code.md`](../../docs/integrations/claude-code.md).
+
+The same page's siblings cover tmux (`docs/integrations/tmux.md`), Starship
+(`starship.md`), and the streaming `macstat watch` command (`watch.md`).
+Start at [`docs/integrations/README.md`](../../docs/integrations/README.md),
+which also documents a **current limitation**: the XPC Mach service the CLI
+connects to is not registered with `launchd` in this build, so no client can
+reach `Sentry.app` yet. That affects the hooks on this page exactly as much
+as it affects the status line.
+
 ## Sanity-check the CLI directly
 
 ```bash
 macstat check
 macstat wait --until=thermal_normal --timeout=60
 macstat session-report --since=1800
+macstat statusline --format plain
+macstat watch --metric cpu.total_percent --interval 2s | head -5
 ```
 
 `macstat check` exits `0` for "go" and `1` for "wait" — usable directly as a

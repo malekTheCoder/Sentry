@@ -77,7 +77,12 @@ app), `MacStatMCP` (MCP stdio server), `MacStatCLI`, `MacStatTests`.
 `MacStatMCP` and `macstat` (the `MacStatCLI` product) are copied into
 `Sentry.app/Contents/MacOS/` — they link `MacStatKit.framework` and can only
 resolve it from inside the bundle, so that is where to invoke them from:
-`/Applications/Sentry.app/Contents/MacOS/macstat check`.
+`/Applications/Sentry.app/Contents/MacOS/macstat check`. Copy-pasteable
+configs for tmux, Starship, Claude Code's status line, and the streaming
+`macstat watch` command are in
+[`docs/integrations/`](docs/integrations/README.md) — which also records why
+none of them can return data yet (the XPC Mach service is not registered
+with `launchd`, so no client can reach the app).
 
 > Desktop widgets note: the macOS widget builds and is embedded, but macOS
 > only lists widgets from apps signed with a real team identity. Add an

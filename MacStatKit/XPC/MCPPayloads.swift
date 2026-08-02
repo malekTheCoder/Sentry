@@ -45,6 +45,107 @@ public enum MCPPayloads {
         }
     }
 
+    /// One line of `macstat watch --metric <id>`'s newline-delimited JSON
+    /// stream (plan §21.2.1's last row).
+    ///
+    /// **Why this lives here rather than in the CLI target.** §21.2.1's
+    /// standing rule for the whole CLI is "the *same* schema as the MCP
+    /// `get_*` tool results — one Codable model serialized two ways, not two
+    /// models drifting apart." No MCP tool streams a single metric today, so
+    /// there was no existing model to reuse; putting the new one in the
+    /// CLI's own target would have guaranteed the drift the rule exists to
+    /// prevent the moment a `stream_metric` tool is added. It sits beside
+    /// `MetricHistoryPoint` — which is the same idea sampled from
+    /// `HistoryStore` instead of live, and which deliberately stays a bare
+    /// `{timestamp, value}` because its `metric` and `unit` are already
+    /// implied by the request that returned the array. A stream has no
+    /// enclosing array to carry that context, so each line restates it;
+    /// `jq` over a mixed stream needs it, and so does a human reading a
+    /// scrollback.
+    ///
+    /// **`value` is nullable and `available` exists.** They are not
+    /// redundant. `value: null` alone would leave a consumer unable to
+    /// distinguish "this Mac cannot report GPU power" from "the JSON shape
+    /// changed"; `available: false` states it. What neither field will ever
+    /// do is report `0` for a metric this Mac can't read — the reason
+    /// `SystemSnapshot`'s sub-structs are optional in the first place, and
+    /// the reason a watch stream is worth trusting in a log.
+    public struct MetricSample: Codable, Sendable {
+        /// The sampling time of the snapshot this value came from — the
+        /// app's, not the CLI's. A stream stitched together from these is
+        /// therefore a series of real observation times, which is what
+        /// makes it usable as evidence after the fact.
+        public var timestamp: Date
+        /// `MetricID` raw value, e.g. `"cpu.total_percent"`.
+        public var metric: String
+        /// `MetricUnit` raw value, e.g. `"percent"` — restated per line so a
+        /// consumer never has to hold a lookup table of metric→unit.
+        public var unit: String
+        public var value: Double?
+        public var available: Bool
+        /// Seconds between this sample and the previous one, as actually
+        /// used. Not simply `--interval` echoed back: `macstat watch` widens
+        /// its own interval when the app's MCP rate limiter pushes back (see
+        /// `MacStatCLI/main.swift`), and a stream that silently changed
+        /// cadence while claiming a fixed one would be misleading in exactly
+        /// the way this whole type is built to avoid. `nil` on the first
+        /// sample, which has no predecessor.
+        public var intervalSeconds: Double?
+
+        public init(
+            timestamp: Date,
+            metric: String,
+            unit: String,
+            value: Double?,
+            available: Bool,
+            intervalSeconds: Double?
+        ) {
+            self.timestamp = timestamp
+            self.metric = metric
+            self.unit = unit
+            self.value = value
+            self.available = available
+            self.intervalSeconds = intervalSeconds
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case timestamp, metric, unit, value, available, intervalSeconds
+        }
+
+        /// Hand-written for one reason: the synthesized encoder **omits** a
+        /// nil `Optional` key entirely rather than writing `null`, and that
+        /// is the wrong shape for exactly the case this type cares most
+        /// about.
+        ///
+        /// A consumer walking a stream with `jq '.value'` gets `null` from a
+        /// missing key and `null` from an explicit null, so the difference
+        /// looks academic — until you consider what a *missing* key means to
+        /// someone reading the raw line, or to a strict schema, or to a
+        /// column-oriented loader: it reads as "this version of the tool
+        /// didn't have that field," not "this Mac couldn't answer." Those
+        /// are different claims and only one of them is true. `encodeNil`
+        /// makes the unavailability explicit and on the record.
+        ///
+        /// `intervalSeconds` keeps the omit-when-nil behavior, and that
+        /// asymmetry is deliberate rather than an oversight: its nil means
+        /// "there was no previous sample to measure from," which is a
+        /// property of the sample's position in the stream, not a failed
+        /// reading. There is nothing to state.
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(timestamp, forKey: .timestamp)
+            try container.encode(metric, forKey: .metric)
+            try container.encode(unit, forKey: .unit)
+            if let value {
+                try container.encode(value, forKey: .value)
+            } else {
+                try container.encodeNil(forKey: .value)
+            }
+            try container.encode(available, forKey: .available)
+            try container.encodeIfPresent(intervalSeconds, forKey: .intervalSeconds)
+        }
+    }
+
     /// `get_battery_health_history`: "Daily health/cycle series over a date
     /// range" (plan §13.3) — health percent and cycle count are two separate
     /// `sample_daily` metrics (`battery.health_percent`,
