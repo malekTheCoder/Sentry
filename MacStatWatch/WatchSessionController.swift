@@ -37,6 +37,79 @@ final class WatchSessionController: NSObject, ObservableObject {
         latestSnapshot = WatchRelayStore.read()
     }
 
+    #if DEBUG
+    /// Preview-only seam: builds a controller holding a fixed snapshot
+    /// instead of reading `WatchRelayStore`.
+    ///
+    /// **Why this exists rather than previewing the pages directly.**
+    /// `ContentView` is now a three-page shell whose whole job is deciding
+    /// which page gets real data and which gets `UnavailablePage` — that
+    /// routing is the part most likely to be got wrong, and it can only be
+    /// seen by previewing the shell, which means previewing something that
+    /// owns a `WatchSessionController`. A preview cannot seed the App Group
+    /// (Xcode's preview host has no relay and no phone), so without this the
+    /// only previewable state would be "nothing relayed yet."
+    ///
+    /// `#if DEBUG` because this is the one initialiser that can produce a
+    /// `latestSnapshot` no Mac ever sent. It must not exist in a shipping
+    /// build, where every value on screen has to be traceable to a real
+    /// relay — the same reason `sourceIsDemoData` travels with the payload at
+    /// all. Both fixtures below set `sourceIsDemoData: true` so even inside a
+    /// preview the screen discloses that its numbers are fabricated.
+    init(preview: PreviewFixture) {
+        super.init()
+        latestSnapshot = preview.snapshot
+    }
+
+    /// Two fixtures, chosen to cover the two states worth eyeballing: a Mac
+    /// that reported everything, and one that reported only what a v1 phone
+    /// would have sent — which is also exactly what an old phone paired with
+    /// a new watch produces, and therefore the case where every "—" and every
+    /// missing bar has to look deliberate rather than broken.
+    enum PreviewFixture {
+        case fullyPopulated
+        case batteryOnly
+
+        var snapshot: WatchRelaySnapshot {
+            let now = Date()
+            switch self {
+            case .fullyPopulated:
+                return WatchRelaySnapshot(
+                    deviceName: "Malek's MacBook Pro",
+                    lastSeen: now.addingTimeInterval(-45),
+                    relayedAt: now.addingTimeInterval(-40),
+                    sourceIsDemoData: true,
+                    batteryPercent: 68,
+                    isCharging: false,
+                    isPluggedIn: false,
+                    thermalPressure: .fair,
+                    batteryIsReported: true,
+                    cpuPercent: 37,
+                    memoryUsedPercent: 71,
+                    memoryPressure: .normal,
+                    diskUsedPercent: 59,
+                    batteryTimeRemainingMinutes: 220,
+                    isThrottling: false,
+                    awakeIsActive: true,
+                    awakeExpiresAt: now.addingTimeInterval(42 * 60),
+                    awakeModeLabel: "System only"
+                )
+            case .batteryOnly:
+                return WatchRelaySnapshot(
+                    deviceName: "Mac mini",
+                    lastSeen: now.addingTimeInterval(-9 * 60),
+                    relayedAt: now.addingTimeInterval(-9 * 60),
+                    sourceIsDemoData: true,
+                    batteryPercent: 0,
+                    isCharging: false,
+                    isPluggedIn: true,
+                    thermalPressure: .unknown
+                )
+            }
+        }
+    }
+    #endif
+
     func start() {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
