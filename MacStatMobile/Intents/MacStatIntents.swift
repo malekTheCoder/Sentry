@@ -284,7 +284,7 @@ struct RefreshWidgetIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         WidgetCenter.shared.reloadAllTimelines()
         guard let snapshot = WidgetSnapshotStore.read() else {
-            return .result(dialog: "Widget reload requested, but there's no cached data yet — open MacStat first.")
+            return .result(dialog: "Widget reload requested, but there's no cached data yet — open Sentry first.")
         }
         let freshness = Freshness(lastSeen: snapshot.lastSeen)
         let ageLabel = freshness.label(lastSeen: snapshot.lastSeen)

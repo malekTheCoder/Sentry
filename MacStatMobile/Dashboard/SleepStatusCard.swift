@@ -267,7 +267,7 @@ struct SleepStatusCard: View {
         HStack(alignment: .top, spacing: 5) {
             Image(systemName: "info.circle")
                 .font(.system(size: 10))
-            Text("Reaches your Mac over local Wi-Fi, or from anywhere if you've set up Remote Access. MacStat must be open on your Mac.")
+            Text("Reaches your Mac over local Wi-Fi, or from anywhere if you've set up Remote Access. Sentry must be open on your Mac.")
                 .font(palette.font(size: 10))
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)

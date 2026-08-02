@@ -249,7 +249,7 @@ struct WatchGetBatteryStatusIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let snapshot = WatchRelayStore.read() else {
-            return .result(dialog: "No battery data yet — open MacStat on your iPhone first.")
+            return .result(dialog: "No battery data yet — open Sentry on your iPhone first.")
         }
 
         let freshness = Freshness(lastSeen: snapshot.lastSeen)

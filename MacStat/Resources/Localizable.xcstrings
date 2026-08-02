@@ -1,939 +1,671 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "— sample values, not live readings" : {
-
-    },
-    "·" : {
-
-    },
-    "· %@" : {
-
-    },
-    "· limited history" : {
-
-    },
-    "“Must hold for” suppresses flapping — a metric bouncing across the threshold resets the timer instead of firing. “Cooldown” is the minimum gap between two firings of this rule once it has fired. They are independent: satisfying one does not substitute for the other." : {
-
-    },
-    "\"Require confirmation\" shows a native dialog in Sentry before the action runs, every time — the agent's call is paused until you allow or deny it." : {
-
-    },
-    "(no fields)" : {
-
-    },
-    "%@" : {
-
-    },
-    "%@ health · %@ cycles" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ health · %2$@ cycles"
+  "sourceLanguage": "en",
+  "strings": {
+    "\"Require confirmation\" shows a native dialog in Sentry before the action runs, every time — the agent's call is paused until you allow or deny it.": {},
+    "%@": {},
+    "%@ health · %@ cycles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ health · %2$@ cycles"
           }
         }
       }
     },
-    "%@ pt between modules" : {
-
-    },
-    "%@ ran %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ ran %2$@"
+    "%@ pt between modules": {},
+    "%@ ran %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ ran %2$@"
           }
         }
       }
     },
-    "%@: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@: %2$@"
+    "%@/%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@/%2$@"
           }
         }
       }
     },
-    "%@/%@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@/%2$@"
+    "%@: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@: %2$@"
           }
         }
       }
     },
-    "≈ %@" : {
-
-    },
-    "0 or 1" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "0 or 1"
+    "(no fields)": {},
+    "0 or 1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 or 1"
           }
         }
       }
     },
-    "0–3" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "0–3"
+    "0.5s": {},
+    "0–3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0–3"
           }
         }
       }
     },
-    "0.5s" : {
-
-    },
-    "1s" : {
-
-    },
-    "2" : {
-
-    },
-    "5s" : {
-
-    },
-    "6mo" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "6mo"
+    "100 minus the weight of everything Sentry found. Nothing adds points back.": {},
+    "12": {},
+    "120": {},
+    "1s": {},
+    "2": {},
+    "24h": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24h"
           }
         }
       }
     },
-    "7d" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "7d"
+    "30d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30d"
           }
         }
       }
     },
-    "12" : {
-
-    },
-    "24h" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "24h"
+    "30s": {},
+    "5s": {},
+    "600": {},
+    "60s": {},
+    "6mo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6mo"
           }
         }
       }
     },
-    "30d" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "30d"
+    "72%": {},
+    "7d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7d"
           }
         }
       }
     },
-    "30s" : {
-
-    },
-    "60s" : {
-
-    },
-    "72%" : {
-
-    },
-    "90d" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "90d"
+    "90d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90d"
           }
         }
       }
     },
-    "100 minus the weight of everything Sentry found. Nothing adds points back." : {
-
-    },
-    "120" : {
-
-    },
-    "600" : {
-
-    },
-    "Actions" : {
-
-    },
-    "Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless." : {
-
-    },
-    "Activity Log" : {
-
-    },
-    "Activity log unavailable in this window." : {
-
-    },
-    "Advanced" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Advanced"
+    "AI Access": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Access"
           }
         }
       }
     },
-    "AI Access" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI Access"
+    "AI Agent Activity": {},
+    "API Key": {},
+    "Actions": {},
+    "Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless.": {},
+    "Activity Log": {},
+    "Activity log unavailable in this window.": {},
+    "Advanced": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
           }
         }
       }
     },
-    "AI Agent Activity" : {
-
-    },
-    "Alerts" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alerts"
+    "Alerts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alerts"
           }
         }
       }
     },
-    "All checked conditions must hold at once. With none checked the rule is always eligible." : {
-
-    },
-    "Allow" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Allow"
+    "All checked conditions must hold at once. With none checked the rule is always eligible.": {},
+    "Allow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow"
           }
         }
       }
     },
-    "Anomalies" : {
-
-    },
-    "API Key" : {
-
-    },
-    "At or above" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "At or above"
+    "Anomalies": {},
+    "At or above": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At or above"
           }
         }
       }
     },
-    "At or below" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "At or below"
+    "At or below": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At or below"
           }
         }
       }
     },
-    "Automatically slows polling when on battery, in Low Power Mode, while the dropdown is closed, or when the display is asleep. Turn this off to sample at the exact interval above — useful while benchmarking." : {
-
-    },
-    "Battery Health · all-time" : {
-
-    },
-    "bytes" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "bytes"
+    "Automatically slows polling when on battery, in Low Power Mode, while the dropdown is closed, or when the display is asleep. Turn this off to sample at the exact interval above — useful while benchmarking.": {},
+    "Battery Health · all-time": {},
+    "CPU 14%": {},
+    "Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped. Do Not Disturb is a full mute instead of a cap — while it's on, nothing fires and nothing is recorded, the same as a rule's own quiet hours.": {},
+    "Changed by": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changed by"
           }
         }
       }
     },
-    "bytes/s" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "bytes/s"
+    "Charging below half the adapter's rated wattage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charging below half the adapter's rated wattage"
           }
         }
       }
     },
-    "Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped. Do Not Disturb is a full mute instead of a cap — while it's on, nothing fires and nothing is recorded, the same as a rule's own quiet hours." : {
-
-    },
-    "changed by" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "changed by"
+    "Charts": {},
+    "Choose what to monitor": {},
+    "Client Setup": {},
+    "Compared to this Mac's own trailing 14-day average — not a fixed threshold or another Mac's numbers.": {},
+    "Condition": {},
+    "Dashboard charts are simplified by default — no axes or gridlines, with an average/peak summary line instead. Turn this on to read exact values off the plot: gridlines, a value axis, and intermediate time labels.": {},
+    "Data will appear here once samples accumulate for this range.": {},
+    "Debug Snapshot Dump": {},
+    "Deny": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deny"
           }
         }
       }
     },
-    "Changed by" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Changed by"
+    "Disabled modules stop appearing in the dropdown. Metrics already in your menu bar layout keep working — remove them in the Menu Bar pane.": {},
+    "Do Not Disturb is a master mute: while it's on, no rule delivers a notification, menu bar highlight, or sleep-assertion release, no matter what its own quiet hours say. Nothing is recorded in History while muted this way, the same as a rule's own quiet hours — see the Alerts pane.": {},
+    "Dropdown shows:": {},
+    "Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it.": {},
+    "Each category starts at 100 and loses the weight of its own findings.": {},
+    "Enabled Modules": {},
+    "Energy": {},
+    "Equals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equals"
           }
         }
       }
     },
-    "Charging below half the adapter's rated wattage" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Charging below half the adapter's rated wattage"
+    "Estimates assume roughly 40 metrics recorded at your current %@ s refresh interval. Actual size varies with how many modules you enable and how well SQLite packs the rows.": {},
+    "Every finding is compared against this Mac's own recorded history — never against another machine or a fixed idea of \"normal\". Security settings are read with the same commands you could run yourself, without administrator rights; anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score.": {},
+    "Every rule Sentry could evaluate on this Mac came back clean. That is the expected result on a well-kept machine, not a placeholder — the findings below are the checks that passed.": {},
+    "Fires immediately": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires immediately"
           }
         }
       }
     },
-    "Charts" : {
-
-    },
-    "Choose what to monitor" : {
-
-    },
-    "Client Setup" : {
-
-    },
-    "Compared to this Mac's own trailing 14-day average — not a fixed threshold or another Mac's numbers." : {
-
-    },
-    "Condition" : {
-
-    },
-    "CPU 14%" : {
-
-    },
-    "Dashboard charts are simplified by default — no axes or gridlines, with an average/peak summary line instead. Turn this on to read exact values off the plot: gridlines, a value axis, and intermediate time labels." : {
-
-    },
-    "Data will appear here once samples accumulate for this range." : {
-
-    },
-    "Debug Snapshot Dump" : {
-
-    },
-    "Deny" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deny"
+    "Fires when %@ is %@ %@. “Above” and “below” are inclusive (≥ and ≤).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Fires when %1$@ is %2$@ %3$@. “Above” and “below” are inclusive (≥ and ≤)."
           }
         }
       }
     },
-    "Disabled modules stop appearing in the dropdown. Metrics already in your menu bar layout keep working — remove them in the Menu Bar pane." : {
-
-    },
-    "Do Not Disturb is a master mute: while it's on, no rule delivers a notification, menu bar highlight, or sleep-assertion release, no matter what its own quiet hours say. Nothing is recorded in History while muted this way, the same as a rule's own quiet hours — see the Alerts pane." : {
-
-    },
-    "Dropdown shows:" : {
-
-    },
-    "Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it." : {
-
-    },
-    "Each category starts at 100 and loses the weight of its own findings." : {
-
-    },
-    "Enabled Modules" : {
-
-    },
-    "Energy" : {
-
-    },
-    "Equals" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Equals"
+    "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
           }
         }
       }
     },
-    "Estimates assume roughly 40 metrics recorded at your current %@ s refresh interval. Actual size varies with how many modules you enable and how well SQLite packs the rows." : {
-
-    },
-    "Every finding is compared against this Mac's own recorded history — never against another machine or a fixed idea of \"normal\". Security settings are read with the same commands you could run yourself, without administrator rights; anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score." : {
-
-    },
-    "Every rule Sentry could evaluate on this Mac came back clean. That is the expected result on a well-kept machine, not a placeholder — the findings below are the checks that passed." : {
-
-    },
-    "Fires immediately" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fires immediately"
+    "Gathering process data…": {},
+    "General": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
           }
         }
       }
     },
-    "Fires when %@ is %@ %@. “Above” and “below” are inclusive (≥ and ≤)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Fires when %1$@ is %2$@ %3$@. “Above” and “below” are inclusive (≥ and ≤)."
+    "Global Limits": {},
+    "Health · all-time": {},
+    "Hiding a module only stops it drawing. Sentry keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on.": {},
+    "History Retention": {},
+    "In this range": {},
+    "Inside the window this rule does not fire at all — and its cooldown is not consumed, so it can fire promptly once the window ends. An end hour earlier than the start wraps past midnight.": {},
+    "Keep Awake": {},
+    "Kept forever — %@ per decade": {},
+    "Last 24 hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 24 hours"
           }
         }
       }
     },
-    "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
+    "Last 30 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days"
           }
         }
       }
     },
-    "Gathering process data…" : {
-
-    },
-    "General" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "General"
+    "Last 6 months": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 6 months"
           }
         }
       }
     },
-    "Global Limits" : {
-
-    },
-    "Health · all-time" : {
-
-    },
-    "Hiding a module only stops it drawing. Sentry keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on." : {
-
-    },
-    "History Retention" : {
-
-    },
-    "iCloud sync isn't available in this build" : {
-
-    },
-    "In this range" : {
-
-    },
-    "Inside the window this rule does not fire at all — and its cooldown is not consumed, so it can fire promptly once the window ends. An end hour earlier than the start wraps past midnight." : {
-
-    },
-    "Keep Awake" : {
-
-    },
-    "Kept forever — %@ per decade" : {
-
-    },
-    "Last 6 months" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 6 months"
+    "Last 7 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 7 days"
           }
         }
       }
     },
-    "Last 7 days" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 7 days"
+    "Last 90 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 90 days"
           }
         }
       }
     },
-    "Last 24 hours" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 24 hours"
+    "Last Captured": {},
+    "Last updated: %@": {},
+    "Location Log": {},
+    "MCP access is disabled in Sentry → Settings → AI Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP access is disabled in MacStat → Settings → AI Access."
           }
         }
       }
     },
-    "Last 30 days" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 30 days"
+    "MCP rate limit exceeded — configured in Sentry → Settings → AI Access. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment."
           }
         }
       }
     },
-    "Last 90 days" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 90 days"
+    "MacStat Dashboard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacStat Dashboard"
           }
         }
       }
     },
-    "Last Captured" : {
-
-    },
-    "Last updated: %@" : {
-
-    },
-    "Location Log" : {
-
-    },
-    "MacStat Dashboard" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MacStat Dashboard"
+    "MacStat Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacStat Settings"
           }
         }
       }
     },
-    "MacStat Settings" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MacStat Settings"
+    "Master Switches": {},
+    "Maximum width": {},
+    "Measured in %@.": {},
+    "Medium tier interval": {},
+    "Menu Bar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu Bar"
           }
         }
       }
     },
-    "Master Switches" : {
-
-    },
-    "Maximum width" : {
-
-    },
-    "MCP access is disabled in MacStat → Settings → AI Access." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP access is disabled in MacStat → Settings → AI Access."
+    "Modules": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modules"
           }
         }
       }
     },
-    "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment."
+    "No AI agent activity in this range. Enable write tools in Settings → AI Access to let Claude Code, Cursor, or another MCP client act on this Mac.": {},
+    "No MCP actions in this range.": {},
+    "No MCP calls yet this session.": {},
+    "No activity recorded for this range yet.": {},
+    "No history yet": {},
+    "No location has been captured yet. This can take a few minutes after enabling the toggle above.": {},
+    "No modules are turned on.": {},
+    "No modules — add one below": {},
+    "No power samples yet — leave Sentry running and this fills in.": {},
+    "No snapshot yet": {},
+    "Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more.": {},
+    "Nothing to act on": {},
+    "Nothing unusual — every tracked metric is within its normal range for this Mac.": {},
+    "Only When": {},
+    "Paste this into Claude Desktop's, Claude Code's, or Cursor's MCP server configuration to connect them to this Mac.": {},
+    "Permission": {},
+    "Plugged in but not charging, with a reason reported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugged in but not charging, with a reason reported"
           }
         }
       }
     },
-    "Measured in %@." : {
-
-    },
-    "Medium tier interval" : {
-
-    },
-    "Menu Bar" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Menu Bar"
+    "Preview": {},
+    "Privacy": {},
+    "Process": {},
+    "Protection Score": {},
+    "Quiet Hours": {},
+    "Re-reads this Mac's security settings and recomputes every finding": {},
+    "Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call Sentry's tools; regenerate it if it's ever shared by mistake.": {},
+    "Read Tools": {},
+    "Read tools are enabled by default and can only ever fetch data this app already has. Write tools — anything that changes power state, polling cadence, or alert rules — are off by default and gated by both this master switch and their own individual toggle below.": {},
+    "Reading this Mac's security settings and its recorded history. This takes a moment the first time.": {},
+    "Refresh interval": {},
+    "Remote Access": {},
+    "Report generated %@.": {},
+    "Reset All Settings to Defaults": {},
+    "Restores every setting, including your menu bar layout and theme, to the shipped defaults. Recorded history is not deleted.": {},
+    "Sampling": {},
+    "Select a module on the left to configure how it draws.": {},
+    "Select a rule on the left to edit when it fires.": {},
+    "Sentry has %@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %@ more before they can say anything defensible, so they are staying quiet rather than guessing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Sentry has %1$@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %2$@ more before they can say anything defensible, so they are staying quiet rather than guessing."
           }
         }
       }
     },
-    "Modules" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modules"
+    "Sentry isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build.": {},
+    "Shown only while %@ reads above %@. A metric with no reading counts as not above it.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Shown only while %1$@ reads above %2$@. A metric with no reading counts as not above it."
           }
         }
       }
     },
-    "No activity recorded for this range yet." : {
-
-    },
-    "No AI agent activity in this range. Enable write tools in Settings → AI Access to let Claude Code, Cursor, or another MCP client act on this Mac." : {
-
-    },
-    "No history yet" : {
-
-    },
-    "No location has been captured yet. This can take a few minutes after enabling the toggle above." : {
-
-    },
-    "No MCP actions in this range." : {
-
-    },
-    "No MCP calls yet this session." : {
-
-    },
-    "No modules — add one below" : {
-
-    },
-    "No modules are turned on." : {
-
-    },
-    "No power samples yet — leave Sentry running and this fills in." : {
-
-    },
-    "No snapshot yet" : {
-
-    },
-    "Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more." : {
-
-    },
-    "Nothing to act on" : {
-
-    },
-    "Nothing unusual — every tracked metric is within its normal range for this Mac." : {
-
-    },
-    "Only When" : {
-
-    },
-    "Paste this into Claude Desktop's, Claude Code's, or Cursor's MCP server configuration to connect them to this Mac." : {
-
-    },
-    "Permission" : {
-
-    },
-    "pid %@" : {
-
-    },
-    "Plugged in but not charging, with a reason reported" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plugged in but not charging, with a reason reported"
+    "Shows calls made since Sentry last launched — this is a live session view, not durable history, and clears on relaunch.": {},
+    "Slow tier interval": {},
+    "Spacing": {},
+    "Status": {},
+    "Still gathering history": {},
+    "Sync": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync"
           }
         }
       }
     },
-    "Preview" : {
-
-    },
-    "Privacy" : {
-
-    },
-    "Process" : {
-
-    },
-    "Protection Score" : {
-
-    },
-    "Quiet Hours" : {
-
-    },
-    "Re-reads this Mac's security settings and recomputes every finding" : {
-
-    },
-    "Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call Sentry's tools; regenerate it if it's ever shared by mistake." : {
-
-    },
-    "Read Tools" : {
-
-    },
-    "Read tools are enabled by default and can only ever fetch data this app already has. Write tools — anything that changes power state, polling cadence, or alert rules — are off by default and gated by both this master switch and their own individual toggle below." : {
-
-    },
-    "Reading this Mac's security settings and its recorded history. This takes a moment the first time." : {
-
-    },
-    "Refresh interval" : {
-
-    },
-    "Remote Access" : {
-
-    },
-    "Report generated %@." : {
-
-    },
-    "Reset All Settings to Defaults" : {
-
-    },
-    "Restores every setting, including your menu bar layout and theme, to the shipped defaults. Recorded history is not deleted." : {
-
-    },
-    "s" : {
-
-    },
-    "Sampling" : {
-
-    },
-    "Select a module on the left to configure how it draws." : {
-
-    },
-    "Select a rule on the left to edit when it fires." : {
-
-    },
-    "Sentry has %@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %@ more before they can say anything defensible, so they are staying quiet rather than guessing." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Sentry has %1$@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %2$@ more before they can say anything defensible, so they are staying quiet rather than guessing."
+    "System power drawn, integrated from live sampling": {},
+    "The bar always draws in plain white or black so it stays readable on any wallpaper. Near the high threshold a value counts as critical: it gets a “!” beside it and VoiceOver says so. Set low above high to invert — useful for metrics where a small number is the bad one.": {},
+    "The protection score and the two highest-priority findings stay free, permanently — including their evidence and what to do about them.": {},
+    "The refresh interval above controls the fast tier (CPU, GPU, memory, network, disk). These two sliders control the other two tiers — every module assigned to a tier shares that tier's interval, so this is per-tier control, not independently adjustable per module.": {},
+    "The security and privacy findings below are unaffected — they are read directly from this Mac's current settings, not from history.": {},
+    "The user declined to confirm this action in MacStat.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The user declined to confirm this action in MacStat."
           }
         }
       }
     },
-    "Sentry isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build." : {
-
-    },
-    "Shown only while %@ reads above %@. A metric with no reading counts as not above it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Shown only while %1$@ reads above %2$@. A metric with no reading counts as not above it."
+    "Theme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
           }
         }
       }
     },
-    "Shows calls made since Sentry last launched — this is a live session view, not durable history, and clears on relaunch." : {
-
-    },
-    "Slow tier interval" : {
-
-    },
-    "Spacing" : {
-
-    },
-    "Status" : {
-
-    },
-    "Still gathering history" : {
-
-    },
-    "Sync" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sync"
+    "This is the cadence Sentry's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above.": {},
+    "This rule has no actions and will only be recorded in history.": {},
+    "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
           }
         }
       }
     },
-    "System power drawn, integrated from live sampling" : {
-
-    },
-    "The bar always draws in plain white or black so it stays readable on any wallpaper. Near the high threshold a value counts as critical: it gets a “!” beside it and VoiceOver says so. Set low above high to invert — useful for metrics where a small number is the bad one." : {
-
-    },
-    "The protection score and the two highest-priority findings stay free, permanently — including their evidence and what to do about them." : {
-
-    },
-    "The refresh interval above controls the fast tier (CPU, GPU, memory, network, disk). These two sliders control the other two tiers — every module assigned to a tier shares that tier's interval, so this is per-tier control, not independently adjustable per module." : {
-
-    },
-    "The security and privacy findings below are unaffected — they are read directly from this Mac's current settings, not from history." : {
-
-    },
-    "The user declined to confirm this action in MacStat." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The user declined to confirm this action in MacStat."
+    "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
           }
         }
       }
     },
-    "Theme" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Theme"
+    "This tool is disabled in Sentry → Settings → AI Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This tool is disabled in MacStat → Settings → AI Access."
           }
         }
       }
     },
-    "This is the cadence Sentry's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above." : {
-
-    },
-    "This rule has no actions and will only be recorded in history." : {
-
-    },
-    "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
+    "Threshold": {},
+    "Tier Intervals": {},
+    "Timing": {},
+    "Top Processes": {},
+    "Trend appears after a day or two of readings — daily health snapshots accumulate while Sentry runs.": {},
+    "Trend appears after a day or two of readings.": {},
+    "Truncates at %@ pt instead of pushing other status items off a crowded bar.": {},
+    "Unavailable": {},
+    "Upload Schedule": {},
+    "Vitals rows follow Modules": {},
+    "Waiting for the first snapshot…": {},
+    "When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running, and it has no connection to Apple's Find My network.": {},
+    "Working it out…": {},
+    "Write Tools": {},
+    "You have no alert rules. Nothing will ever notify you until you add one or restore the defaults below.": {},
+    "Your %@ will be replaced by the %@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Your %1$@ will be replaced by the %2$@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted."
           }
         }
       }
     },
-    "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
+    "Your menu bar is empty. Use “Add Module” to start composing.": {},
+    "Your menu bar layout, theme, enabled modules, and all other preferences will be restored to their defaults. This can't be undone.": {},
+    "bytes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes"
           }
         }
       }
     },
-    "This tool is disabled in MacStat → Settings → AI Access." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This tool is disabled in MacStat → Settings → AI Access."
+    "bytes/s": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes/s"
           }
         }
       }
     },
-    "Threshold" : {
-
-    },
-    "Tier Intervals" : {
-
-    },
-    "Timing" : {
-
-    },
-    "Top Processes" : {
-
-    },
-    "Trend appears after a day or two of readings — daily health snapshots accumulate while Sentry runs." : {
-
-    },
-    "Trend appears after a day or two of readings." : {
-
-    },
-    "Truncates at %@ pt instead of pushing other status items off a crowded bar." : {
-
-    },
-    "Unavailable" : {
-
-    },
-    "Upload Schedule" : {
-
-    },
-    "Vitals rows follow Modules" : {
-
-    },
-    "Waiting for the first snapshot…" : {
-
-    },
-    "When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running, and it has no connection to Apple's Find My network." : {
-
-    },
-    "Working it out…" : {
-
-    },
-    "Write Tools" : {
-
-    },
-    "You have no alert rules. Nothing will ever notify you until you add one or restore the defaults below." : {
-
-    },
-    "Your %@ will be replaced by the %@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Your %1$@ will be replaced by the %2$@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted."
+    "changed by": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "changed by"
           }
         }
       }
     },
-    "Your menu bar is empty. Use “Add Module” to start composing." : {
-
-    },
-    "Your menu bar layout, theme, enabled modules, and all other preferences will be restored to their defaults. This can't be undone." : {
-
-    }
+    "iCloud sync isn't available in this build": {},
+    "pid %@": {},
+    "s": {},
+    "·": {},
+    "· %@": {},
+    "· limited history": {},
+    "— sample values, not live readings": {},
+    "“Must hold for” suppresses flapping — a metric bouncing across the threshold resets the timer instead of firing. “Cooldown” is the minimum gap between two firings of this rule once it has fired. They are independent: satisfying one does not substitute for the other.": {},
+    "≈ %@": {}
   },
-  "version" : "1.1"
+  "version": "1.1"
 }
