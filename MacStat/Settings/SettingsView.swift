@@ -1,9 +1,9 @@
 import SwiftUI
 import MacStatKit
 
-/// The 8 settings panes, in the Nocturne redesign's sidebar order.
+/// The settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, aiAccess, sync, location, advanced
+    case general, modules, menuBar, theme, alerts, fans, aiAccess, sync, location, advanced
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .menuBar: return String(localized: "Menu Bar")
         case .theme: return String(localized: "Theme")
         case .alerts: return String(localized: "Alerts")
+        case .fans: return String(localized: "Fans")
         case .aiAccess: return String(localized: "AI Access")
         case .sync: return String(localized: "Sync")
         case .location: return String(localized: "Location Log")
@@ -28,6 +29,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .menuBar: return "menubar.rectangle"
         case .theme: return "paintbrush"
         case .alerts: return "bell.badge"
+        case .fans: return "fan"
         case .aiAccess: return "bolt.shield"
         case .sync: return "arrow.triangle.2.circlepath.icloud"
         case .location: return "location"
@@ -44,6 +46,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .menuBar: return String(localized: "Compose the bar item and choose what the dropdown shows.")
         case .theme: return String(localized: "How Sentry's own surfaces look — dropdown, dashboard, widgets.")
         case .alerts: return String(localized: "Rules, notifications, and alert history.")
+        case .fans: return String(localized: "Live fan speeds, and what fan control would need to work.")
         case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
         case .sync: return String(localized: "iPhone companion and device sync.")
         case .location: return String(localized: "Opt-in last-known-location log for this Mac — not Find My.")
@@ -85,6 +88,14 @@ struct SettingsView: View {
     /// configuration, same as the two above.
     let mcpActivityLog: MCPActivityLog?
 
+    /// Backs `FanControlPane`. Not optional, for the same reason
+    /// `locationService` isn't: `FanControlService` has a real, meaningful
+    /// answer for every hardware situation it can encounter (including "no
+    /// fans" and "couldn't read"), so there is no genuine "unavailable"
+    /// state that a `nil` would represent — and inventing one would give
+    /// that pane a fourth empty state that can never actually occur.
+    @ObservedObject var fanControlService: FanControlService
+
     /// Backs `LocationPane`. Unlike `historyStore`/`mcpActivityLog`, this
     /// isn't optional — `LocationService` has no meaningful "unavailable"
     /// state of its own (unlike a database that can fail to open), so
@@ -97,13 +108,15 @@ struct SettingsView: View {
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
-        locationService: LocationService
+        locationService: LocationService,
+        fanControlService: FanControlService
     ) {
         self.store = store
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
         self.locationService = locationService
+        self.fanControlService = fanControlService
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -241,6 +254,8 @@ struct SettingsView: View {
             ThemePane(store: store)
         case .alerts:
             AlertsPane(store: store, historyStore: historyStore).formStyle(.grouped)
+        case .fans:
+            FanControlPane(store: store, service: fanControlService).formStyle(.grouped)
         case .aiAccess:
             AIAccessPane(store: store, activityLog: mcpActivityLog).formStyle(.grouped)
         case .sync:

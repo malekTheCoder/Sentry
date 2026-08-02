@@ -240,6 +240,27 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Advanced.
     public var proUnlockOverrideEnabled: Bool
 
+    // MARK: - Fan control (fan-control plan §5.2)
+
+    /// Modes, curves, per-fan overrides, hysteresis, safety ceiling, and
+    /// startup behavior for the fan-control feature — one nested object
+    /// rather than a dozen top-level fields, so `settings.json` grows one
+    /// readable `"fanControl": { … }` block and `init(from:)` below gains
+    /// exactly one additive key to defend.
+    ///
+    /// **Nothing in here changes this build's behavior, and that is not a
+    /// bug.** Writing an SMC fan key requires root through a privileged
+    /// helper that Sentry does not ship (`docs/fan-control-spike.md`), so
+    /// every mode except `.auto` is currently unreachable and the Settings
+    /// pane says so on screen next to each disabled control. This block is
+    /// persisted now because the user's *intent* — which curve, which
+    /// sensor, what ceiling — is worth keeping across the relaunches
+    /// between now and a write path existing, and because a settings shape
+    /// that arrives with the feature is a settings shape nobody has to
+    /// migrate into later. The defaults are all inert:
+    /// `defaultPolicy.mode == .auto`, `controlEnabledOnLaunch == false`.
+    public var fanControl: FanControlSettings
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -320,6 +341,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         locationLogEnabled: Bool = false,
         protectionInsightSuppressions: [InsightSuppression] = [],
         proUnlockOverrideEnabled: Bool = false,
+        fanControl: FanControlSettings = FanControlSettings(),
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -354,6 +376,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.locationLogEnabled = locationLogEnabled
         self.protectionInsightSuppressions = protectionInsightSuppressions
         self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
+        self.fanControl = fanControl
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -408,6 +431,11 @@ extension AppSettings {
         // decodeIfPresent ?? fallback pattern as every other field.
         case protectionInsightSuppressions
         case proUnlockOverrideEnabled
+        // Fan control, additive: absent in any settings.json written before
+        // the fan-control shell existed, and its fallback is a fully inert
+        // block (auto mode, control not enabled on launch) — an upgrading
+        // install must not find itself opted into a thermal feature.
+        case fanControl
         case updateCheckDaily
         case schemaVersion
     }
@@ -509,6 +537,8 @@ extension AppSettings {
             // gating existed has not been granted anything.
             proUnlockOverrideEnabled: try container.decodeIfPresent(Bool.self, forKey: .proUnlockOverrideEnabled)
                 ?? fallback.proUnlockOverrideEnabled,
+            fanControl: try container.decodeIfPresent(FanControlSettings.self, forKey: .fanControl)
+                ?? fallback.fanControl,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;

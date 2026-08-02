@@ -111,6 +111,57 @@ final class SMCFanBridge {
         return (0...Self.maxFans).contains(count) ? count : nil
     }
 
+    /// One fan's static-ish hardware description: the range the SMC itself
+    /// reports (`F{i}Mn` / `F{i}Mx`) plus the current target (`F{i}Tg`).
+    ///
+    /// Every field is optional and independently so — a Mac that answers
+    /// `F0Ac` but not `F0Mx` is a real possibility, and the fan-control
+    /// shell is written to show the speed while admitting the range is
+    /// unknown rather than substituting a plausible-looking ceiling.
+    struct FanHardwareDescription {
+        let index: Int
+        let minRPM: Double?
+        let maxRPM: Double?
+        /// `F{i}Tg`. On Apple Silicon at idle this legitimately reads 0.0
+        /// alongside a 0.0 actual — the fans are parked, not unreported.
+        let targetRPM: Double?
+    }
+
+    /// Per-fan limits and targets, in fan order.
+    ///
+    /// **Still read-only, and deliberately so.** These are exactly the keys
+    /// a write path would need (`F{i}Mn`/`F{i}Mx` to clamp against,
+    /// `F{i}Tg` to write and to verify by readback), and reading them is
+    /// what lets the fan-control settings shell clamp against measured
+    /// hardware instead of hardcoded numbers — the spike found fan 0 and
+    /// fan 1 of the *same* MacBook Pro topping out 462 rpm apart, so no
+    /// constant could be correct. Nothing here writes: this type's only
+    /// SMC commands remain `READ_KEYINFO` and `READ_BYTES`, and adding a
+    /// write command is a separate, separately-reviewed change requiring a
+    /// privileged helper (see this file's header and
+    /// `docs/fan-control-spike.md`).
+    func readFanHardware() -> [FanHardwareDescription] {
+        guard connection != 0 else { return [] }
+        guard let count = readFanCount(), count > 0 else { return [] }
+
+        return (0..<min(count, Self.maxFans)).map { index in
+            FanHardwareDescription(
+                index: index,
+                minRPM: plausible(readFloatKey("F\(index)Mn")),
+                maxRPM: plausible(readFloatKey("F\(index)Mx")),
+                targetRPM: plausible(readFloatKey("F\(index)Tg"))
+            )
+        }
+    }
+
+    /// Same "no data beats bad data" filter `readFanRPMs()` applies, reused
+    /// so a misdecoded limit can't quietly become a clamp the whole feature
+    /// trusts.
+    private func plausible(_ value: Double?) -> Double? {
+        guard let value, Self.plausibleRPM.contains(value) else { return nil }
+        return value
+    }
+
     // MARK: - SMC protocol
 
     /// One selector-2 round trip. `nil` unless the kernel call succeeds,

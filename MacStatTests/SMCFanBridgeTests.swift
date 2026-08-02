@@ -50,4 +50,36 @@ final class SMCFanBridgeTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(rpms.count, count)
     }
+
+    // MARK: - Hardware description (still read-only)
+
+    func testFanHardwareMatchesTheFanCount() {
+        // Added for the fan-control shell, which clamps against the SMC's
+        // own `F{i}Mn`/`F{i}Mx` rather than hardcoded numbers. Same
+        // hardware-agnostic posture as everything above: an empty result is
+        // legitimate, an oversized one is not.
+        let hardware = SMCFanBridge.shared.readFanHardware()
+        guard let count = SMCFanBridge.shared.readFanCount() else {
+            XCTAssertTrue(hardware.isEmpty, "no fan count must mean no hardware descriptions")
+            return
+        }
+        XCTAssertLessThanOrEqual(hardware.count, count)
+        XCTAssertEqual(hardware.map(\.index), Array(0..<hardware.count))
+    }
+
+    func testFanHardwareValuesAreEitherPlausibleOrAbsent() {
+        // The bridge's contract, all the way down: a misdecoded field
+        // becomes `nil`, never a number the fan-control layer would then
+        // trust as a clamp.
+        for fan in SMCFanBridge.shared.readFanHardware() {
+            for value in [fan.minRPM, fan.maxRPM, fan.targetRPM].compactMap({ $0 }) {
+                XCTAssertTrue(value.isFinite)
+                XCTAssertGreaterThanOrEqual(value, 0)
+                XCTAssertLessThanOrEqual(value, 20_000)
+            }
+            if let minRPM = fan.minRPM, let maxRPM = fan.maxRPM {
+                XCTAssertLessThanOrEqual(minRPM, maxRPM, "a fan's floor cannot exceed its ceiling")
+            }
+        }
+    }
 }
