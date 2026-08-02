@@ -251,6 +251,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         mainWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         mainWindow.titlebarAppearsTransparent = true
         mainWindow.titleVisibility = .hidden
+        // An empty toolbar, for geometry only: without one, macOS treats
+        // the titlebar as the short plain kind and pins the traffic lights
+        // tight into the corner — visibly cramped against the 52pt nav bar
+        // this window actually draws (`MainWindowView.navHeight`). A
+        // unified-style toolbar makes the system's idea of the title
+        // region match ours, which centers the lights in it at the
+        // generous inset every toolbar'd Mac app gets. Nothing is ever
+        // added to it, and the transparent titlebar keeps it invisible.
+        mainWindow.toolbar = NSToolbar()
+        mainWindow.toolbarStyle = .unified
         mainWindow.isOpaque = false
         mainWindow.backgroundColor = .clear
         mainWindow.setContentSize(NSSize(width: 960, height: 700))
