@@ -130,6 +130,9 @@
     "last 60 s" : {
 
     },
+    "Lets this phone reach your Mac when it isn't on the same Wi-Fi. Enable Remote Access on the Mac (Settings ▸ Sync), then enter its address, port, and pairing code here. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only." : {
+
+    },
     "LOCATION LOG" : {
 
     },
@@ -178,6 +181,9 @@
           }
         }
       }
+    },
+    "REMOTE MAC" : {
+
     },
     "Reporting from your Mac" : {
 
