@@ -605,13 +605,13 @@ enum VisibilityRuleKind: String, CaseIterable, Hashable {
 
     var displayName: String {
         switch self {
-        case .always: return "Always"
-        case .whenAboveThreshold: return "When above a threshold"
-        case .whenOnBattery: return "When on battery"
-        case .whenCharging: return "When charging"
+        case .always: return String(localized: "Always")
+        case .whenAboveThreshold: return String(localized: "When above a threshold")
+        case .whenOnBattery: return String(localized: "When on battery")
+        case .whenCharging: return String(localized: "When charging")
         // Named for what the user did ("keep my Mac awake"), not for the
         // IOPMAssertion underneath it — plan §10.5's own framing.
-        case .whenAssertionActive: return "While keeping the Mac awake"
+        case .whenAssertionActive: return String(localized: "While keeping the Mac awake")
         }
     }
 
@@ -643,13 +643,13 @@ extension VisibilityRule {
         case .always:
             return nil
         case .whenAboveThreshold(let value):
-            return "Only shown when above \(MetricFormatter.compact(value, unit: unit))"
+            return String(localized: "Only shown when above \(MetricFormatter.compact(value, unit: unit))")
         case .whenOnBattery:
-            return "Only shown when on battery"
+            return String(localized: "Only shown when on battery")
         case .whenCharging:
-            return "Only shown when charging"
+            return String(localized: "Only shown when charging")
         case .whenAssertionActive:
-            return "Only shown while Sentry is keeping the Mac awake"
+            return String(localized: "Only shown while Sentry is keeping the Mac awake")
         }
     }
 }
@@ -713,23 +713,26 @@ enum VisibilityThreshold {
     /// units that need the explanation most.
     static func unitDescription(for unit: MetricUnit) -> String {
         switch unit {
-        case .percent: return "percent"
-        case .watts: return "watts"
-        case .celsius: return "degrees Celsius"
-        case .megahertz: return "megahertz"
-        case .bytes: return "bytes"
-        case .bytesPerSecond: return "bytes per second"
-        case .operationsPerSecond: return "operations per second"
-        case .megabitsPerSecond: return "megabits per second"
-        case .minutes: return "minutes"
-        case .seconds: return "seconds"
-        case .millivolts: return "millivolts"
-        case .milliamps: return "milliamps"
-        case .decibelMilliwatts: return "dBm"
-        case .boolean: return "0 or 1"
-        case .decimal: return "a plain number"
-        case .thermalLevel: return "a thermal level from 0 to 3"
-        case .count: return "a count"
+        case .percent: return String(localized: "percent")
+        case .watts: return String(localized: "watts")
+        case .celsius: return String(localized: "degrees Celsius")
+        case .megahertz: return String(localized: "megahertz")
+        case .bytes: return String(localized: "bytes")
+        case .bytesPerSecond: return String(localized: "bytes per second")
+        case .operationsPerSecond: return String(localized: "operations per second")
+        case .megabitsPerSecond: return String(localized: "megabits per second")
+        case .minutes: return String(localized: "minutes")
+        case .seconds: return String(localized: "seconds")
+        case .millivolts: return String(localized: "millivolts")
+        case .milliamps: return String(localized: "milliamps")
+        // "dBm" is an SI-style unit symbol, but it still goes through the
+        // catalog: some locales prefer a spelled-out form, and a key that
+        // exists can be left identical where the symbol is universal.
+        case .decibelMilliwatts: return String(localized: "dBm")
+        case .boolean: return String(localized: "0 or 1")
+        case .decimal: return String(localized: "a plain number")
+        case .thermalLevel: return String(localized: "a thermal level from 0 to 3")
+        case .count: return String(localized: "a count")
         }
     }
 }

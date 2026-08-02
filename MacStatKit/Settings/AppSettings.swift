@@ -265,6 +265,25 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Advanced.
     public var proUnlockOverrideEnabled: Bool
 
+    /// The installed Sentry Pro license blob (`SignedLicense` format —
+    /// `sentry-pro-v1.<payload>.<signature>`), or nil when none is
+    /// installed. Unlike `proUnlockOverrideEnabled` above, keeping this in
+    /// a user-editable JSON file *is* appropriate for a purchase, by
+    /// construction: the blob is Ed25519-signed, so hand-editing it doesn't
+    /// grant anything — verification (`LicenseProEntitlementStore`) fails
+    /// closed. Carried in `settings.json` for the same copy-one-file
+    /// portability reason as `alertRules`: a user who moves their settings
+    /// to a new Mac brings their license with them.
+    public var proLicenseBlob: String?
+
+    /// When the installed license last passed an *online* check (install
+    /// counts as one — see `LicenseProEntitlementStore.installLicense`).
+    /// Feeds `LicenseRevalidationPolicy`'s offline grace window; nil means
+    /// never. Plain local state, not secured, deliberately: the doc
+    /// comment on `LicenseProEntitlementStore` explains why pretending a
+    /// local timestamp could be tamper-proof would be theater.
+    public var proLicenseLastVerifiedAt: Date?
+
     // MARK: - Fan control (fan-control plan §5.2)
 
     /// Modes, curves, per-fan overrides, hysteresis, safety ceiling, and
@@ -367,6 +386,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         locationLogEnabled: Bool = false,
         protectionInsightSuppressions: [InsightSuppression] = [],
         proUnlockOverrideEnabled: Bool = false,
+        proLicenseBlob: String? = nil,
+        proLicenseLastVerifiedAt: Date? = nil,
         fanControl: FanControlSettings = FanControlSettings(),
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
@@ -403,6 +424,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.locationLogEnabled = locationLogEnabled
         self.protectionInsightSuppressions = protectionInsightSuppressions
         self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
+        self.proLicenseBlob = proLicenseBlob
+        self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
         self.fanControl = fanControl
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
@@ -463,6 +486,12 @@ extension AppSettings {
         // decodeIfPresent ?? fallback pattern as every other field.
         case protectionInsightSuppressions
         case proUnlockOverrideEnabled
+        // Pro license, additive: absent in any settings.json written before
+        // the license system existed. Fallbacks are nil (no license, never
+        // verified) — an upgrading install has not been granted anything,
+        // same principle as proUnlockOverrideEnabled below.
+        case proLicenseBlob
+        case proLicenseLastVerifiedAt
         // Fan control, additive: absent in any settings.json written before
         // the fan-control shell existed, and its fallback is a fully inert
         // block (auto mode, control not enabled on launch) — an upgrading
@@ -574,6 +603,13 @@ extension AppSettings {
             // gating existed has not been granted anything.
             proUnlockOverrideEnabled: try container.decodeIfPresent(Bool.self, forKey: .proUnlockOverrideEnabled)
                 ?? fallback.proUnlockOverrideEnabled,
+            // Missing and explicitly-nil collapse to "no license", which is
+            // correct here: unlike `alertRules`, the shipped default and
+            // the deliberate empty state genuinely mean the same thing.
+            proLicenseBlob: try container.decodeIfPresent(String.self, forKey: .proLicenseBlob)
+                ?? fallback.proLicenseBlob,
+            proLicenseLastVerifiedAt: try container.decodeIfPresent(Date.self, forKey: .proLicenseLastVerifiedAt)
+                ?? fallback.proLicenseLastVerifiedAt,
             fanControl: try container.decodeIfPresent(FanControlSettings.self, forKey: .fanControl)
                 ?? fallback.fanControl,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)

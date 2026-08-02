@@ -202,7 +202,7 @@ struct FanControlPane: View {
             // install button that failed silently would be worse than one
             // that isn't there.
             lastActionWasFailure = true
-            lastActionMessage = "macOS wouldn't install the fan helper: \(error.localizedDescription)"
+            lastActionMessage = String(localized: "macOS wouldn't install the fan helper: \(error.localizedDescription)")
         }
     }
 
@@ -210,10 +210,10 @@ struct FanControlPane: View {
         do {
             try service.removePrivilegedHelper()
             lastActionWasFailure = false
-            lastActionMessage = "The fan helper is removed and every fan is back under your Mac's own control."
+            lastActionMessage = String(localized: "The fan helper is removed and every fan is back under your Mac's own control.")
         } catch {
             lastActionWasFailure = true
-            lastActionMessage = "macOS wouldn't remove the fan helper: \(error.localizedDescription)"
+            lastActionMessage = String(localized: "macOS wouldn't remove the fan helper: \(error.localizedDescription)")
         }
     }
 
@@ -255,10 +255,10 @@ struct FanControlPane: View {
         do {
             try service.applyPolicy(forFan: index)
             lastActionWasFailure = false
-            lastActionMessage = "Fan \(index + 1): the helper accepted the request."
+            lastActionMessage = String(localized: "Fan \(String(index + 1)): the helper accepted the request.")
         } catch {
             lastActionWasFailure = true
-            lastActionMessage = "Fan \(index + 1): \(error.localizedDescription)"
+            lastActionMessage = String(localized: "Fan \(String(index + 1)): \(error.localizedDescription)")
         }
     }
 
@@ -266,14 +266,17 @@ struct FanControlPane: View {
         let failures = service.revertAllToAuto()
         if failures.isEmpty {
             lastActionWasFailure = false
-            lastActionMessage = "Every fan is back under your Mac's own control."
+            lastActionMessage = String(localized: "Every fan is back under your Mac's own control.")
         } else {
             // Names the fans that failed rather than reporting a bare
             // "something went wrong" — this is the panic button, and a user
             // pressing it needs to know exactly which fan is still held.
             lastActionWasFailure = true
             lastActionMessage = failures
-                .map { "Fan \($0.fanIndex + 1): \($0.reason)" }
+                .map { failure -> String in
+                    let indexText = String(failure.fanIndex + 1)
+                    return String(localized: "Fan \(indexText): \(failure.reason)")
+                }
                 .joined(separator: "\n")
         }
     }
@@ -284,9 +287,10 @@ struct FanControlPane: View {
     /// (`FanControlPolicy.manualTargetRPM`).
     static func targetLabel(_ policy: FanControlPolicy) -> String {
         guard let rpm = policy.manualTargetRPM, rpm.isFinite else {
-            return "No fixed speed set"
+            return String(localized: "No fixed speed set")
         }
-        return "\(Int(rpm.rounded())) rpm"
+        let rpmText = String(Int(rpm.rounded()))
+        return String(localized: "\(rpmText) rpm")
     }
 
     // MARK: - Live fans
@@ -450,11 +454,14 @@ struct FanControlPane: View {
     static func capabilityHeadline(_ capability: FanControlCapability) -> String {
         switch capability {
         case .supported(let fans):
-            return fans.count == 1 ? "1 fan detected" : "\(fans.count) fans detected"
+            let countText = String(fans.count)
+            return fans.count == 1
+                ? String(localized: "1 fan detected")
+                : String(localized: "\(countText) fans detected")
         case .noFansPresent:
-            return "This Mac has no fans"
+            return String(localized: "This Mac has no fans")
         case .unreadable:
-            return "Fan hardware couldn't be read"
+            return String(localized: "Fan hardware couldn't be read")
         }
     }
 
@@ -469,9 +476,9 @@ struct FanControlPane: View {
             // than one that was never made — so the control claim now lives
             // in the Fan Helper section, where it is derived from the
             // backend's live answer rather than baked into a string.
-            return "Sentry can read these fans directly from this Mac's SMC, including their individual speed ranges."
+            return String(localized: "Sentry can read these fans directly from this Mac's SMC, including their individual speed ranges.")
         case .noFansPresent:
-            return "Sentry asked the SMC how many fans this Mac has and it answered none — a fanless Mac cools passively, so there's nothing here to monitor or control."
+            return String(localized: "Sentry asked the SMC how many fans this Mac has and it answered none — a fanless Mac cools passively, so there's nothing here to monitor or control.")
         case .unreadable(let reason):
             return reason
         }
@@ -494,7 +501,9 @@ struct FanControlPane: View {
     /// `F{i}Mx` keys couldn't be read. Never a fabricated range — a made-up
     /// ceiling is what a clamp would later be trusted against.
     static func limitsLabel(_ limits: FanHardwareLimits?) -> String {
-        guard let limits, limits.isValid else { return "Range unknown" }
-        return "\(Int(limits.minRPM.rounded()))–\(Int(limits.maxRPM.rounded())) rpm"
+        guard let limits, limits.isValid else { return String(localized: "Range unknown") }
+        let minText = String(Int(limits.minRPM.rounded()))
+        let maxText = String(Int(limits.maxRPM.rounded()))
+        return String(localized: "\(minText)–\(maxText) rpm")
     }
 }

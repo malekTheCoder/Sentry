@@ -663,6 +663,12 @@ targets:
       # MacStatWidget/PrivacyInfo.xcprivacy is NOT excluded here — this is
       # the target that needs it. `MacStatWidgetExtension_macOS` below
       # excludes it instead; see the comment there.
+      #
+      # MacStatWidget/Resources/Localizable.xcstrings is auto-detected from
+      # this path for BOTH widget extension targets (iOS here, macOS below)
+      # — a widget bundle resolves strings against its own catalog, not its
+      # host app's, so without this file every widget label stayed English
+      # in every locale regardless of what the apps' catalogs said.
       - path: MacStatWidget
         excludes:
           - "Info*.plist"
@@ -746,6 +752,14 @@ targets:
     # than the phone's because `MacStatKit_watchOS` above compiles four files
     # rather than the whole framework — that manifest's header spells out
     # which required-reason call sites are consequently absent here.
+    #
+    # MacStatWatch/Resources/Localizable.xcstrings rides along from this
+    # path too (same auto-detected-by-extension mechanism as the MacStat/
+    # MacStatKit/MacStatMobile catalogs above). Before it existed, every
+    # `Text("literal")` and `String(localized:)` in this target resolved
+    # against no catalog at all — the watch app was unlocalizable by
+    # construction, not by choice. English keys only; translations are a
+    # deliberate non-goal for now (see docs/l10n-coverage-audit.md).
     sources:
       - path: MacStatWatch
     dependencies:
@@ -813,6 +827,9 @@ targets:
       # MacStatWatchWidget/PrivacyInfo.xcprivacy rides along from this path;
       # only the generated Info.plist is excluded, for the same
       # embeddedBinaryValidationUtility reason as the iOS widget above.
+      # MacStatWatchWidget/Resources/Localizable.xcstrings rides along the
+      # same way — the complication's own catalog, for the same
+      # bundle-resolves-its-own-strings reason as the iOS widget above.
       - path: MacStatWatchWidget
         excludes:
           - "Info*.plist"

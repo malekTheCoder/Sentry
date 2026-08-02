@@ -1,63 +1,61 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "": {},
-    "%@ · %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "%1$@ · %2$@"
-          }
-        }
-      }
-    },
-    ". Battery health is %@%%": {
+    "%@ left": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": ". Battery health is %@%%"
+            "value": "%@ left"
           }
         }
       }
     },
-    ". Sleep is being prevented indefinitely": {
+    "%@ to full": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": ". Sleep is being prevented indefinitely"
+            "value": "%@ to full"
           }
         }
       }
     },
-    ". Sleep is currently being prevented": {
+    "%@, not reported": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": ". Sleep is currently being prevented"
+            "value": "%@, not reported"
           }
         }
       }
     },
-    "ANE": {
+    "+1 hr": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "ANE"
+            "value": "+1 hr"
           }
         }
       }
     },
-    "Active": {},
-    "Activity appears after a few seconds of readings.": {},
+    "+15 min": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+15 min"
+          }
+        }
+      }
+    },
     "Added %@ minutes to your Mac's keep-awake time.": {
       "extractionState": "manual",
       "localizations": {
@@ -69,10 +67,39 @@
         }
       }
     },
-    "Alert history isn't synced to this iPhone yet": {},
-    "Alerts": {},
-    "Approximate — accurate to roughly ±%@ meters, not precise GPS.": {},
-    "As of %@": {},
+    "Agent Activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent Activity"
+          }
+        }
+      }
+    },
+    "Apple Watch connectivity isn't available on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Watch connectivity isn't available on this device."
+          }
+        }
+      }
+    },
+    "Asks your Mac to stay awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asks your Mac to stay awake"
+          }
+        }
+      }
+    },
     "Battery": {
       "extractionState": "manual",
       "localizations": {
@@ -80,17 +107,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Battery"
-          }
-        }
-      }
-    },
-    "Battery health · %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Battery health · %@"
           }
         }
       }
@@ -106,7 +122,28 @@
         }
       }
     },
-    "Charge sessions — not available yet on this build": {},
+    "CPU load": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU load"
+          }
+        }
+      }
+    },
+    "CPU not reported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU not reported"
+          }
+        }
+      }
+    },
     "Charging": {
       "extractionState": "manual",
       "localizations": {
@@ -118,36 +155,24 @@
         }
       }
     },
-    "Charging below half the adapter's rated wattage": {
+    "Couldn't build that request.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Charging below half the adapter's rated wattage"
+            "value": "Couldn't build that request."
           }
         }
       }
     },
-    "Compressed": {
+    "Couldn't reach your iPhone: %@": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Compressed"
-          }
-        }
-      }
-    },
-    "Control from your Mac — remote control isn't available in this build yet.": {},
-    "Couldn't reach your Mac — %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't reach your Mac — %@"
+            "value": "Couldn't reach your iPhone: %@"
           }
         }
       }
@@ -163,7 +188,6 @@
         }
       }
     },
-    "Current values only — no per-metric history query exists yet": {},
     "Cut %@ minutes off your Mac's keep-awake time.": {
       "extractionState": "manual",
       "localizations": {
@@ -175,57 +199,57 @@
         }
       }
     },
-    "Cycles": {
+    "DISK": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cycles"
+            "value": "DISK"
           }
         }
       }
     },
-    "Disk": {
+    "Demo data": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Disk"
+            "value": "Demo data"
           }
         }
       }
     },
-    "Display & system": {
+    "Demo data. These numbers are fabricated, not from a real Mac.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Display & system"
+            "value": "Demo data. These numbers are fabricated, not from a real Mac."
           }
         }
       }
     },
-    "Done.": {
+    "End Now": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Done."
+            "value": "End Now"
           }
         }
       }
     },
-    "E-Cores": {
+    "Extend Awake Time": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "E-Cores"
+            "value": "Extend Awake Time"
           }
         }
       }
@@ -241,93 +265,145 @@
         }
       }
     },
-    "Fans": {
+    "Got an unexpected reply from your iPhone.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fans"
+            "value": "Got an unexpected reply from your iPhone."
           }
         }
       }
     },
-    "Frequency": {
+    "Keep Awake": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Frequency"
+            "value": "Keep Awake"
           }
         }
       }
     },
-    "GPU": {
+    "Keep Mac Awake": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "GPU"
+            "value": "Keep Mac Awake"
           }
         }
       }
     },
-    "Health": {
+    "Last": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Health"
+            "value": "Last"
           }
         }
       }
     },
-    "Health drops by %@ or more": {
+    "Last activity": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Health drops by %@ or more"
+            "value": "Last activity"
           }
         }
       }
     },
-    "History": {},
-    "Keep display on": {
+    "Last activity not reported": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keep display on"
+            "value": "Last activity not reported"
           }
         }
       }
     },
-    "LOCATION LOG": {},
-    "Lets this phone reach your Mac when it isn't on the same Wi-Fi. Enable Remote Access on the Mac (Settings ▸ Sync), then enter its address, port, and pairing code here. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only.": {},
-    "Load Avg": {
+    "Lets your Mac sleep normally again": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Load Avg"
+            "value": "Lets your Mac sleep normally again"
           }
         }
       }
     },
-    "Memory": {
+    "MEM": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Memory"
+            "value": "MEM"
+          }
+        }
+      }
+    },
+    "Mac Battery Status": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mac Battery Status"
+          }
+        }
+      }
+    },
+    "Memory OK": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory OK"
+          }
+        }
+      }
+    },
+    "Memory critical": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory critical"
+          }
+        }
+      }
+    },
+    "Memory pressure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory pressure"
+          }
+        }
+      }
+    },
+    "Memory: unrecognised": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory: unrecognised"
           }
         }
       }
@@ -343,30 +419,79 @@
         }
       }
     },
-    "NOTIFICATION CATEGORIES": {},
-    "Network": {
+    "Mode not reported": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Network"
+            "value": "Mode not reported"
           }
         }
       }
     },
-    "No battery health history yet": {},
-    "No change this range": {},
-    "No countdown — ends when turned off on the Mac": {},
-    "No location received yet.": {},
-    "No snapshot yet": {},
-    "Nominal": {
+    "Mode, %@": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nominal"
+            "value": "Mode, %@"
+          }
+        }
+      }
+    },
+    "No AI assistant has used Sentry's tools on your Mac. Tool calls show up here as they happen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No AI assistant has used Sentry's tools on your Mac. Tool calls show up here as they happen."
+          }
+        }
+      }
+    },
+    "No agent activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No agent activity"
+          }
+        }
+      }
+    },
+    "No agent data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No agent data"
+          }
+        }
+      }
+    },
+    "No countdown — ends when turned off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No countdown — ends when turned off."
+          }
+        }
+      }
+    },
+    "No data yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No data yet"
           }
         }
       }
@@ -382,165 +507,116 @@
         }
       }
     },
-    "Not Find My — Sentry has no connection to Apple's Find My network. This is a periodic location log: while Sentry is running on your Mac and location access is granted, it occasionally reports its approximate location to this phone over your local Wi-Fi network. It cannot be located while off, asleep, or offline.": {},
-    "Not sent — %@": {
+    "Not connected to your iPhone yet.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Not sent — %@"
+            "value": "Not connected to your iPhone yet."
           }
         }
       }
     },
-    "On battery": {
+    "Not reported by your Mac": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "On battery"
+            "value": "Not reported by your Mac"
           }
         }
       }
     },
-    "Only while plugged in": {
+    "Nothing has been relayed from your iPhone yet.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Only while plugged in"
+            "value": "Nothing has been relayed from your iPhone yet."
           }
         }
       }
     },
-    "P-Cores": {
+    "OK": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "P-Cores"
+            "value": "OK"
           }
         }
       }
     },
-    "Per-Metric Browser": {},
-    "Performance": {
+    "Open Sentry on your iPhone while on the same Wi-Fi as your Mac.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Performance"
+            "value": "Open Sentry on your iPhone while on the same Wi-Fi as your Mac."
           }
         }
       }
     },
-    "Plugged in but not charging, with a reason reported": {
+    "Out of date — your Mac hasn't reported recently.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Plugged in but not charging, with a reason reported"
+            "value": "Out of date — your Mac hasn't reported recently."
           }
         }
       }
     },
-    "Plugged in, not charging": {
+    "Plugged in": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Plugged in, not charging"
+            "value": "Plugged in"
           }
         }
       }
     },
-    "Power": {
+    "Recent tools": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Power"
+            "value": "Recent tools"
           }
         }
       }
     },
-    "Pressure": {
+    "Release Mac Awake": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pressure"
+            "value": "Release Mac Awake"
           }
         }
       }
     },
-    "Processes": {
+    "Sent the request, but didn't hear back from your iPhone in time.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Processes"
+            "value": "Sent the request, but didn't hear back from your iPhone in time."
           }
         }
       }
     },
-    "REMOTE MAC": {},
-    "Read": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Read"
-          }
-        }
-      }
-    },
-    "Reporting from your Mac": {},
-    "Sending…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sending…"
-          }
-        }
-      }
-    },
-    "Sent the request, but didn't hear back from your Mac — make sure MacStat is open and your iPhone is on the same Wi-Fi network.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sent the request, but didn't hear back from your Mac — make sure MacStat is open and your iPhone is on the same Wi-Fi network."
-          }
-        }
-      }
-    },
-    "Sent, but no reply from your Mac yet.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sent, but no reply from your Mac yet."
-          }
-        }
-      }
-    },
-    "Sentry logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone.": {},
     "Serious": {
       "extractionState": "manual",
       "localizations": {
@@ -552,43 +628,28 @@
         }
       }
     },
-    "Settings": {},
-    "Showing demo data — this build has no live iCloud sync yet": {},
-    "Signal": {
+    "Shorten Awake Time": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Signal"
+            "value": "Shorten Awake Time"
           }
         }
       }
     },
-    "Sleep behaves normally on this Mac.": {},
-    "System only": {
+    "Sleep state unknown": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "System only"
+            "value": "Sleep state unknown"
           }
         }
       }
     },
-    "System while on power": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "System while on power"
-          }
-        }
-      }
-    },
-    "THEME": {},
     "That request expired before your Mac could act on it.": {
       "extractionState": "manual",
       "localizations": {
@@ -600,31 +661,39 @@
         }
       }
     },
-    "The same presets as the Mac app (MacStatKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.": {},
-    "Thermal": {
+    "This build of Sentry on your Mac may not send agent activity yet.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thermal"
+            "value": "This build of Sentry on your Mac may not send agent activity yet."
           }
         }
       }
     },
-    "Thermals": {
+    "This hold's time is up. Waiting for your Mac to confirm it ended.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thermals"
+            "value": "This hold's time is up. Waiting for your Mac to confirm it ended."
           }
         }
       }
     },
-    "These mirror the Mac app's alert rules (AlertRule/AlertAction, MacStatKit/Services/AlertRule.swift) — shown for reference, not as working preferences. Notifications require a live sync connection this build doesn't have, so there's nothing here to turn on or off yet.": {},
-    "This Mac reported no battery data.": {},
+    "This is demo data, not a real Mac.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is demo data, not a real Mac."
+          }
+        }
+      }
+    },
     "Throttling": {
       "extractionState": "manual",
       "localizations": {
@@ -647,82 +716,13 @@
         }
       }
     },
-    "Time to full": {
+    "Unknown": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Time to full"
-          }
-        }
-      }
-    },
-    "Total": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total"
-          }
-        }
-      }
-    },
-    "Unavailable": {},
-    "Upload": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Upload"
-          }
-        }
-      }
-    },
-    "VITALS": {},
-    "VRAM": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VRAM"
-          }
-        }
-      }
-    },
-    "Warning": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Warning"
-          }
-        }
-      }
-    },
-    "Widgets show the Dashboard's latest reading — nothing to configure here yet.": {},
-    "Wired": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wired"
-          }
-        }
-      }
-    },
-    "Write": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Write"
+            "value": "Unknown"
           }
         }
       }
@@ -749,6 +749,28 @@
         }
       }
     },
+    "Your Mac hasn't reported whether it's being kept awake.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac hasn't reported whether it's being kept awake."
+          }
+        }
+      }
+    },
+    "Your Mac sleeps normally right now.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac sleeps normally right now."
+          }
+        }
+      }
+    },
     "Your Mac will stay awake for %@ minutes.": {
       "extractionState": "manual",
       "localizations": {
@@ -760,13 +782,24 @@
         }
       }
     },
-    "Your Mac's battery is at %@%%, charging at %@ watts": {
+    "Your Mac will stay awake until you turn it off.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Your Mac's battery is at %1$@%%, charging at %2$@ watts"
+            "value": "Your Mac will stay awake until you turn it off."
+          }
+        }
+      }
+    },
+    "Your Mac's battery is at %@%%, charging": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac's battery is at %@%%, charging"
           }
         }
       }
@@ -793,196 +826,61 @@
         }
       }
     },
-    "active": {
+    "Your iPhone couldn't complete that: %@": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "active"
+            "value": "Your iPhone couldn't complete that: %@"
           }
         }
       }
     },
-    "at or above": {
+    "Your iPhone isn't reachable right now — bring it nearby and make sure Sentry is installed.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "at or above"
+            "value": "Your iPhone isn't reachable right now — bring it nearby and make sure Sentry is installed."
           }
         }
       }
     },
-    "at or below": {
+    "remaining": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "at or below"
+            "value": "remaining"
           }
         }
       }
     },
-    "avg CPU %@ · peak %@": {
+    "tool call": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "avg CPU %1$@ · peak %2$@"
+            "value": "tool call"
           }
         }
       }
     },
-    "changed by": {
+    "tool calls": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "changed by"
+            "value": "tool calls"
           }
         }
       }
-    },
-    "critical": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "critical"
-          }
-        }
-      }
-    },
-    "equals": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "equals"
-          }
-        }
-      }
-    },
-    "fans silent": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "fans silent"
-          }
-        }
-      }
-    },
-    "free": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "free"
-          }
-        }
-      }
-    },
-    "iCloud sync isn't available in this build yet.": {},
-    "idle": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "idle"
-          }
-        }
-      }
-    },
-    "last 60 s": {},
-    "no data": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "no data"
-          }
-        }
-      }
-    },
-    "no pressure": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "no pressure"
-          }
-        }
-      }
-    },
-    "ranging from %@ to %@ percent": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ranging from %1$@ to %2$@ percent"
-          }
-        }
-      }
-    },
-    "relative activity shapes": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "relative activity shapes"
-          }
-        }
-      }
-    },
-    "serious pressure": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "serious pressure"
-          }
-        }
-      }
-    },
-    "some pressure": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "some pressure"
-          }
-        }
-      }
-    },
-    "throttling": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "throttling"
-          }
-        }
-      }
-    },
-    "●": {}
+    }
   },
   "version": "1.1"
 }

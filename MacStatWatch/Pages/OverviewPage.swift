@@ -201,19 +201,23 @@ private struct HeroReadout: View {
     /// phrase.
     private var heroCaption: String? {
         guard showsBattery else {
-            return snapshot.cpuPercent == nil ? "CPU not reported" : "CPU load"
+            return snapshot.cpuPercent == nil
+                ? String(localized: "CPU not reported")
+                : String(localized: "CPU load")
         }
         if let minutes = snapshot.batteryTimeRemainingMinutes {
             let duration = WatchFormatting.duration(minutes: minutes)
-            return snapshot.isCharging ? "\(duration) to full" : "\(duration) left"
+            return snapshot.isCharging
+                ? String(localized: "\(duration) to full")
+                : String(localized: "\(duration) left")
         }
-        if snapshot.isCharging { return "Charging" }
-        if snapshot.isPluggedIn { return "Plugged in" }
+        if snapshot.isCharging { return String(localized: "Charging") }
+        if snapshot.isPluggedIn { return String(localized: "Plugged in") }
         return nil
     }
 
     private var accessibilityText: String {
-        let subject = showsBattery ? "Battery" : "CPU"
+        let subject = showsBattery ? String(localized: "Battery") : String(localized: "CPU")
         let caption = heroCaption.map { ", \($0)" } ?? ""
         return "\(subject) \(heroValue)\(caption)"
     }
@@ -238,6 +242,9 @@ private struct MetricTiles: View {
     /// `Identifiable` to hold onto.
     private struct Metric: Identifiable {
         let id: String
+        /// Shown on the tile. Separate from `id`, which stays a stable
+        /// English identity for `ForEach` while the label localizes.
+        let label: String
         let percent: Double?
         let tint: Color
     }
@@ -257,9 +264,9 @@ private struct MetricTiles: View {
     /// true of any interval but the one it was sampled over.
     private var metrics: [Metric] {
         [
-            Metric(id: "CPU", percent: snapshot.cpuPercent, tint: .blue),
-            Metric(id: "MEM", percent: snapshot.memoryUsedPercent, tint: .purple),
-            Metric(id: "DISK", percent: snapshot.diskUsedPercent, tint: .teal),
+            Metric(id: "CPU", label: String(localized: "CPU"), percent: snapshot.cpuPercent, tint: .blue),
+            Metric(id: "MEM", label: String(localized: "MEM"), percent: snapshot.memoryUsedPercent, tint: .purple),
+            Metric(id: "DISK", label: String(localized: "DISK"), percent: snapshot.diskUsedPercent, tint: .teal),
         ]
     }
 
@@ -267,12 +274,12 @@ private struct MetricTiles: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 6) {
                 ForEach(metrics) { metric in
-                    MetricTile(label: metric.id, percent: metric.percent, tint: metric.tint)
+                    MetricTile(label: metric.label, percent: metric.percent, tint: metric.tint)
                 }
             }
             VStack(spacing: 6) {
                 ForEach(metrics) { metric in
-                    MetricTile(label: metric.id, percent: metric.percent, tint: metric.tint)
+                    MetricTile(label: metric.label, percent: metric.percent, tint: metric.tint)
                 }
             }
         }
@@ -317,8 +324,10 @@ private struct MetricTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
+            // Localized explicitly: a ternary of interpolated literals is a
+            // plain `String`, which would pick the verbatim overload.
             percent == nil
-                ? "\(label), not reported"
+                ? String(localized: "\(label), not reported")
                 : "\(label) \(WatchFormatting.percent(percent))"
         )
     }
@@ -380,7 +389,7 @@ private struct StatusChips: View {
             )
         ]
         if snapshot.isThrottling == true {
-            specs.append(ChipSpec(id: "Throttling", symbol: "tortoise.fill", tint: .red))
+            specs.append(ChipSpec(id: String(localized: "Throttling"), symbol: "tortoise.fill", tint: .red))
         }
         if let pressure = snapshot.memoryPressure, pressure != .normal {
             specs.append(
@@ -431,11 +440,11 @@ private struct StatusChips: View {
     /// this chip is the only place the screen can say so.
     static func thermalLabel(_ pressure: ThermalPressureSummary) -> String {
         switch pressure {
-        case .nominal: return "Normal"
-        case .fair: return "Fair"
-        case .serious: return "Serious"
-        case .critical: return "Critical"
-        case .unknown: return "Unknown"
+        case .nominal: return String(localized: "Normal")
+        case .fair: return String(localized: "Fair")
+        case .serious: return String(localized: "Serious")
+        case .critical: return String(localized: "Critical")
+        case .unknown: return String(localized: "Unknown")
         }
     }
 
@@ -455,10 +464,10 @@ private struct StatusChips: View {
     /// watch knows something is being said and cannot repeat it.
     static func memoryPressureLabel(_ pressure: MemoryPressureSummary) -> String {
         switch pressure {
-        case .normal: return "Memory OK"
-        case .warning: return "Memory pressure"
-        case .critical: return "Memory critical"
-        case .unknown: return "Memory: unrecognised"
+        case .normal: return String(localized: "Memory OK")
+        case .warning: return String(localized: "Memory pressure")
+        case .critical: return String(localized: "Memory critical")
+        case .unknown: return String(localized: "Memory: unrecognised")
         }
     }
 }

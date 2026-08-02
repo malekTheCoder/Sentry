@@ -18,11 +18,11 @@ struct LargeWidgetView: View {
                     BatteryArcView(percent: snapshot.batteryPercent, isCharging: snapshot.isCharging)
                         .frame(width: 72, height: 72)
                     VStack(alignment: .leading, spacing: 4) {
-                        metricRow(label: "CPU", value: "\(Int(snapshot.cpuPercent.rounded()))%")
-                        metricRow(label: "RAM", value: "\(Int((snapshot.memoryUsedFraction * 100).rounded()))%")
-                        metricRow(label: "Sleep", value: sleepLabel(snapshot.sleepAssertion))
+                        metricRow(label: String(localized: "CPU"), value: "\(Int(snapshot.cpuPercent.rounded()))%")
+                        metricRow(label: String(localized: "RAM"), value: "\(Int((snapshot.memoryUsedFraction * 100).rounded()))%")
+                        metricRow(label: String(localized: "Sleep"), value: sleepLabel(snapshot.sleepAssertion))
                         if snapshot.isCharging, let watts = snapshot.chargingWatts {
-                            metricRow(label: "Charging", value: "\(Int(watts.rounded()))W")
+                            metricRow(label: String(localized: "Charging"), value: "\(Int(watts.rounded()))W")
                         }
                     }
                     Spacer(minLength: 0)
@@ -65,8 +65,8 @@ struct LargeWidgetView: View {
 
     private func sleepLabel(_ assertion: SleepAssertionState) -> String {
         switch assertion {
-        case .inactive: return "Normal"
-        case .active: return "Awake"
+        case .inactive: return String(localized: "Normal")
+        case .active: return String(localized: "Awake")
         }
     }
 

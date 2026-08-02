@@ -93,19 +93,19 @@ enum MetricFormatting {
     static func pressureLevel(_ level: ThermalStats.PressureLevel?) -> String {
         guard let level else { return placeholder }
         switch level {
-        case .nominal: return "Nominal"
-        case .fair: return "Fair"
-        case .serious: return "Serious"
-        case .critical: return "Critical"
+        case .nominal: return String(localized: "Nominal")
+        case .fair: return String(localized: "Fair")
+        case .serious: return String(localized: "Serious")
+        case .critical: return String(localized: "Critical")
         }
     }
 
     static func memoryPressureLevel(_ level: MemoryPressureLevel?) -> String {
         guard let level else { return placeholder }
         switch level {
-        case .normal: return "Normal"
-        case .warning: return "Warning"
-        case .critical: return "Critical"
+        case .normal: return String(localized: "Normal")
+        case .warning: return String(localized: "Warning")
+        case .critical: return String(localized: "Critical")
         }
     }
 }

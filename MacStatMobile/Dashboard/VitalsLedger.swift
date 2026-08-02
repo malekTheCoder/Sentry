@@ -131,88 +131,88 @@ struct VitalsLedger: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VitalsLedgerRow(
-                label: "CPU",
+                label: String(localized: "CPU"),
                 headline: MetricFormatting.percent(snapshot?.cpu?.totalPercent),
                 sparkline: series[.cpuTotalPercent] ?? [],
                 tint: palette.metricColor(.cpuTotalPercent),
                 details: snapshot?.cpu.map {
                     [
-                        ("E-Cores", MetricFormatting.percent($0.ecorePercent)),
-                        ("P-Cores", MetricFormatting.percent($0.pcorePercent)),
-                        ("Load Avg", MetricFormatting.decimal($0.loadAverage1m)),
-                        ("Processes", MetricFormatting.integer($0.processCount)),
+                        (String(localized: "E-Cores"), MetricFormatting.percent($0.ecorePercent)),
+                        (String(localized: "P-Cores"), MetricFormatting.percent($0.pcorePercent)),
+                        (String(localized: "Load Avg"), MetricFormatting.decimal($0.loadAverage1m)),
+                        (String(localized: "Processes"), MetricFormatting.integer($0.processCount)),
                     ]
                 } ?? []
             )
             VitalsLedgerRow(
-                label: "GPU",
+                label: String(localized: "GPU"),
                 headline: MetricFormatting.percent(snapshot?.gpu?.utilizationPercent),
                 sparkline: series[.gpuUtilizationPercent] ?? [],
                 tint: palette.metricColor(.gpuUtilizationPercent),
                 details: snapshot?.gpu.map {
                     [
-                        ("VRAM", MetricFormatting.bytes($0.vramUsedBytes)),
-                        ("Frequency", MetricFormatting.megahertz($0.frequencyMHz)),
-                        ("Power", MetricFormatting.watts($0.powerWatts)),
+                        (String(localized: "VRAM"), MetricFormatting.bytes($0.vramUsedBytes)),
+                        (String(localized: "Frequency"), MetricFormatting.megahertz($0.frequencyMHz)),
+                        (String(localized: "Power"), MetricFormatting.watts($0.powerWatts)),
                     ]
                 } ?? []
             )
             VitalsLedgerRow(
-                label: "Memory",
+                label: String(localized: "Memory"),
                 headline: MetricFormatting.percent(memoryUsedPercent),
                 context: snapshot?.memory.map { MetricFormatting.bytes($0.usedBytes) },
                 sparkline: series[.memoryUsedBytes] ?? [],
                 tint: palette.metricColor(.memoryUsedBytes),
                 details: snapshot?.memory.map {
                     [
-                        ("Wired", MetricFormatting.bytes($0.wiredBytes)),
-                        ("Compressed", MetricFormatting.bytes($0.compressedBytes)),
-                        ("Pressure", MetricFormatting.memoryPressureLevel($0.pressureLevel)),
+                        (String(localized: "Wired"), MetricFormatting.bytes($0.wiredBytes)),
+                        (String(localized: "Compressed"), MetricFormatting.bytes($0.compressedBytes)),
+                        (String(localized: "Pressure"), MetricFormatting.memoryPressureLevel($0.pressureLevel)),
                     ]
                 } ?? []
             )
             VitalsLedgerRow(
-                label: "Disk",
+                label: String(localized: "Disk"),
                 headline: snapshot?.disk.map { MetricFormatting.bytes($0.freeBytes) } ?? MetricFormatting.placeholder,
-                context: snapshot?.disk == nil ? nil : "free",
+                context: snapshot?.disk == nil ? nil : String(localized: "free"),
                 details: snapshot?.disk.map {
                     [
-                        ("Total", MetricFormatting.bytes($0.totalBytes)),
-                        ("Read", MetricFormatting.bytesPerSecond($0.readBytesPerSec)),
-                        ("Write", MetricFormatting.bytesPerSecond($0.writeBytesPerSec)),
+                        (String(localized: "Total"), MetricFormatting.bytes($0.totalBytes)),
+                        (String(localized: "Read"), MetricFormatting.bytesPerSecond($0.readBytesPerSec)),
+                        (String(localized: "Write"), MetricFormatting.bytesPerSecond($0.writeBytesPerSec)),
                     ]
                 } ?? []
             )
             VitalsLedgerRow(
-                label: "Network",
+                label: String(localized: "Network"),
                 headline: MetricFormatting.bytesPerSecond(snapshot?.network?.rxBytesPerSec),
                 context: snapshot?.network.flatMap { $0.wifiSSID ?? $0.activeInterface },
                 sparkline: series[.networkRxBytesPerSec] ?? [],
                 tint: palette.metricColor(.networkRxBytesPerSec),
                 details: snapshot?.network.map {
                     [
-                        ("Upload", MetricFormatting.bytesPerSecond($0.txBytesPerSec)),
-                        ("Signal", MetricFormatting.decibelMilliwatts($0.wifiRSSIdBm)),
+                        (String(localized: "Upload"), MetricFormatting.bytesPerSecond($0.txBytesPerSec)),
+                        (String(localized: "Signal"), MetricFormatting.decibelMilliwatts($0.wifiRSSIdBm)),
                     ]
                 } ?? []
             )
             VitalsLedgerRow(
-                label: "ANE",
+                label: String(localized: "ANE"),
                 headline: MetricFormatting.watts(snapshot?.ane?.powerWatts),
                 context: snapshot?.ane.flatMap { ane in
-                    ane.isActive.map { $0 ? "active" : "idle" }
+                    ane.isActive.map { $0 ? String(localized: "active") : String(localized: "idle") }
                 },
                 details: []
             )
             VitalsLedgerRow(
-                label: "Thermals",
+                label: String(localized: "Thermals"),
                 headline: MetricFormatting.celsius(snapshot?.thermal?.socTemperatureCelsius),
                 context: thermalContext,
                 details: snapshot?.thermal.map {
                     [
-                        ("Pressure", MetricFormatting.pressureLevel($0.pressureLevel)),
-                        ("Throttling", MetricFormatting.boolean($0.isThrottling)),
-                        ("Fans", Self.fanSummary($0.fanRPMs)),
+                        (String(localized: "Pressure"), MetricFormatting.pressureLevel($0.pressureLevel)),
+                        (String(localized: "Throttling"), MetricFormatting.boolean($0.isThrottling)),
+                        (String(localized: "Fans"), Self.fanSummary($0.fanRPMs)),
                     ]
                 } ?? []
             )
@@ -228,14 +228,14 @@ struct VitalsLedger: View {
     /// instead of a second number — only claims the data supports.
     private var thermalContext: String? {
         guard let thermal = snapshot?.thermal else { return nil }
-        if thermal.isThrottling { return "throttling" }
+        if thermal.isThrottling { return String(localized: "throttling") }
         switch thermal.pressureLevel {
         case .nominal:
             let fansParked = !thermal.fanRPMs.isEmpty && thermal.fanRPMs.allSatisfy { $0 < 1 }
-            return fansParked ? "fans silent" : "no pressure"
-        case .fair: return "some pressure"
-        case .serious: return "serious pressure"
-        case .critical: return "critical"
+            return fansParked ? String(localized: "fans silent") : String(localized: "no pressure")
+        case .fair: return String(localized: "some pressure")
+        case .serious: return String(localized: "serious pressure")
+        case .critical: return String(localized: "critical")
         }
     }
 
@@ -257,9 +257,9 @@ struct MobileActivityChart: View {
     let series: [MetricID: [Double]]
 
     private static let plotted: [(metric: MetricID, title: String)] = [
-        (.cpuTotalPercent, "CPU"),
-        (.memoryUsedBytes, "Memory"),
-        (.gpuUtilizationPercent, "GPU"),
+        (.cpuTotalPercent, String(localized: "CPU")),
+        (.memoryUsedBytes, String(localized: "Memory")),
+        (.gpuUtilizationPercent, String(localized: "GPU")),
     ]
 
     private var drawable: [(metric: MetricID, title: String, values: [Double])] {
@@ -319,7 +319,7 @@ struct MobileActivityChart: View {
                         .fill(palette.surface.opacity(0.6))
                 )
                 .accessibilityLabel("Activity chart, last 60 seconds")
-                .accessibilityValue(cpuSentence ?? "relative activity shapes")
+                .accessibilityValue(cpuSentence ?? String(localized: "relative activity shapes"))
                 if let sentence = cpuSentence {
                     Text(sentence)
                         .font(palette.font(size: 11))
@@ -334,6 +334,10 @@ struct MobileActivityChart: View {
         guard let cpu = series[.cpuTotalPercent], !cpu.isEmpty else { return nil }
         let avg = cpu.reduce(0, +) / Double(cpu.count)
         let peak = cpu.max() ?? 0
-        return String(format: "avg CPU %.0f%% · peak %.0f%%", avg, peak)
+        // Pre-formatted numbers so the sentence is one catalog key with
+        // `%@` placeholders a translator can reorder.
+        let avgText = String(format: "%.0f%%", avg)
+        let peakText = String(format: "%.0f%%", peak)
+        return String(localized: "avg CPU \(avgText) · peak \(peakText)")
     }
 }
