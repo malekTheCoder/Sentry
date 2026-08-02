@@ -88,6 +88,15 @@ struct SettingsView: View {
     /// configuration, same as the two above.
     let mcpActivityLog: MCPActivityLog?
 
+    /// Backs `AIAccessPane`'s Command-Line Access section. Optional for the
+    /// same reason `mcpActivityLog` is — this view is constructible in a
+    /// preview or a future settings surface hosted outside `AppDelegate` —
+    /// and, like that one, `nil` is rendered as an explicit "unavailable"
+    /// state rather than as a section that quietly isn't there. A user who
+    /// went looking for the setup button and found no section at all would
+    /// reasonably conclude the feature had been removed.
+    let endpointPublisher: MCPEndpointPublisher?
+
     /// Backs `FanControlPane`. Not optional, for the same reason
     /// `locationService` isn't: `FanControlService` has a real, meaningful
     /// answer for every hardware situation it can encounter (including "no
@@ -117,6 +126,7 @@ struct SettingsView: View {
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
+        endpointPublisher: MCPEndpointPublisher? = nil,
         locationService: LocationService,
         fanControlService: FanControlService,
         updateController: UpdateController? = nil
@@ -125,6 +135,7 @@ struct SettingsView: View {
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
+        self.endpointPublisher = endpointPublisher
         self.locationService = locationService
         self.fanControlService = fanControlService
         self.updateController = updateController
@@ -313,7 +324,11 @@ struct SettingsView: View {
         case .fans:
             FanControlPane(store: store, service: fanControlService).formStyle(.grouped)
         case .aiAccess:
-            AIAccessPane(store: store, activityLog: mcpActivityLog).formStyle(.grouped)
+            AIAccessPane(
+                store: store,
+                activityLog: mcpActivityLog,
+                endpointPublisher: endpointPublisher
+            ).formStyle(.grouped)
         case .sync:
             SyncPane(store: store).formStyle(.grouped)
         case .location:
