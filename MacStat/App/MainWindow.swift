@@ -134,19 +134,21 @@ struct MainWindowView: View {
     }
 
     /// The fixed top chrome: traffic lights live in the (transparent)
-    /// titlebar over its left edge, the themed switcher sits centered, and
-    /// a themed hairline closes it off from content.
+    /// titlebar over its left edge, and the themed switcher sits centered —
+    /// with **no closing hairline**. An earlier version drew a 1px
+    /// separator under this bar "to close it off from content", but content
+    /// never scrolls beneath it (the VStack starts content below), so the
+    /// line separated nothing and split the window's one background into a
+    /// title strip and a body — the seam the user pointed at and asked
+    /// "why is there a bar separating??". The switcher pill is the only
+    /// thing that distinguishes this region, which is the point: one app,
+    /// one surface.
     private var navBar: some View {
         ZStack {
             navSwitcher
         }
         .frame(maxWidth: .infinity)
         .frame(height: Self.navHeight)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(palette.separator)
-                .frame(height: 1)
-        }
     }
 
     // MARK: Nav switcher
