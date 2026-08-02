@@ -51,9 +51,20 @@ import os.log
 /// iPhone Siri intent, an Apple Watch intent relayed through the phone, or
 /// the iPhone's own sleep card — reaches a real `PowerControlService` here.
 /// See `receiveNext(on:)` and `LocalCommandExecutor`
-/// (`MacStatKit/Services/LocalCommandExecutor.swift`). Both listeners feed
-/// the same pool, so remote (TLS-PSK) clients get command support on exactly
-/// the same terms as LAN ones — already authenticated at handshake time.
+/// (`MacStatKit/Services/LocalCommandExecutor.swift`).
+///
+/// **Reads and writes have deliberately different trust requirements.**
+/// Both listeners feed one connection pool and both receive the snapshot
+/// broadcast, but only connections accepted by the TLS-PSK `remoteListener`
+/// may issue commands (`ConnectionState.isAuthenticated`). Streaming
+/// read-only telemetry to an unauthenticated device on the same Wi-Fi is
+/// the bargain this listener was always designed around; letting that same
+/// device hold the machine awake indefinitely, or drop its keep-awake
+/// mid-render, is not — control is a materially larger grant than
+/// observation, so it requires proof of the pairing code even on the LAN.
+/// Users who want control at home turn on Remote Access and pair once; that
+/// listener is reachable over the local network too, not only from outside
+/// it.
 public final class LocalSyncServer: @unchecked Sendable {
 
     /// Must match `LocalSyncClient`'s browse type exactly — Bonjour service
@@ -105,8 +116,19 @@ public final class LocalSyncServer: @unchecked Sendable {
         let connection: NWConnection
         var lastSendDate: Date?
         var receiveBuffer = Data()
-        init(connection: NWConnection) {
+
+        /// Whether this connection proved knowledge of the pairing code.
+        /// True only for connections accepted by the TLS-PSK
+        /// `remoteListener` — reaching `.ready` there *is* the proof, since
+        /// the handshake fails closed without the derived key (see
+        /// `SyncSecurity`). Always false for the plaintext Bonjour
+        /// listener. Gates `.command` frames only; snapshot broadcast is
+        /// unaffected.
+        let isAuthenticated: Bool
+
+        init(connection: NWConnection, isAuthenticated: Bool) {
             self.connection = connection
+            self.isAuthenticated = isAuthenticated
         }
     }
 
@@ -162,8 +184,11 @@ public final class LocalSyncServer: @unchecked Sendable {
         }
         listener.service = NWListener.Service(name: serviceName, type: Self.serviceType)
 
+        // Plaintext LAN listener — read-only by policy. Commands arriving
+        // here are refused with an explanatory `ControlStatus`, never
+        // executed. See `handle(_:from:)`.
         listener.newConnectionHandler = { [weak self] connection in
-            self?.accept(connection)
+            self?.accept(connection, isAuthenticated: false)
         }
         listener.stateUpdateHandler = { [weak self] state in
             switch state {
@@ -223,8 +248,12 @@ public final class LocalSyncServer: @unchecked Sendable {
             log.error("LocalSyncServer: failed to open remote listener on port \(port)")
             return
         }
+        // Reaching `.ready` on this listener means the TLS-PSK handshake
+        // succeeded, which is itself proof the client holds the pairing
+        // code — so these connections are the authenticated ones, and the
+        // only ones allowed to issue commands.
         listener.newConnectionHandler = { [weak self] connection in
-            self?.accept(connection)
+            self?.accept(connection, isAuthenticated: true)
         }
         listener.stateUpdateHandler = { [weak self] state in
             if case .failed(let error) = state {
@@ -251,8 +280,10 @@ public final class LocalSyncServer: @unchecked Sendable {
 
     // MARK: - Connection handling
 
-    private func accept(_ connection: NWConnection) {
-        let state = ConnectionState(connection: connection)
+    /// - Parameter isAuthenticated: `true` only from `enableRemote`'s
+    ///   TLS-PSK listener. See `ConnectionState.isAuthenticated`.
+    private func accept(_ connection: NWConnection, isAuthenticated: Bool) {
+        let state = ConnectionState(connection: connection, isAuthenticated: isAuthenticated)
         connection.stateUpdateHandler = { [weak self] connectionState in
             switch connectionState {
             case .ready:
@@ -348,6 +379,36 @@ public final class LocalSyncServer: @unchecked Sendable {
     private func handle(_ message: LocalSyncMessage, from connection: NWConnection) {
         switch message {
         case .command(let command):
+            // Control requires proof of the pairing code. The plaintext LAN
+            // listener authenticates nobody, so a command arriving there is
+            // refused — otherwise any device on the same Wi-Fi could put
+            // this Mac to sleep or hold it awake indefinitely, which is a
+            // materially different exposure from the read-only telemetry
+            // that listener was designed around.
+            //
+            // Refused *explicitly*, with a `ControlStatus` the sender can
+            // surface, rather than dropped silently: a phone whose commands
+            // vanish looks identical to a broken connection, and this
+            // codebase's whole posture is that a control which does nothing
+            // must say so. The remedy is real and one step — turn on
+            // Settings ▸ Sync ▸ Remote Access and enter the code once; it
+            // works over the LAN too, not only from outside it.
+            guard connections[ObjectIdentifier(connection)]?.isAuthenticated == true else {
+                log.error("LocalSyncServer: refusing a command on an unauthenticated (LAN) connection")
+                sendStatus(
+                    ControlStatus(
+                        deviceID: command.deviceID,
+                        respondsToNonce: command.nonce,
+                        state: "rejected",
+                        message: "This Mac only accepts commands over an authenticated connection. Turn on Remote Access on the Mac and enter its pairing code on this device.",
+                        assertionActive: false,
+                        assertionExpiresAt: nil,
+                        updatedAt: Date()
+                    ),
+                    on: connection
+                )
+                return
+            }
             guard let commandHandler else {
                 log.debug("LocalSyncServer: received a command with no commandHandler installed — dropping it")
                 return
