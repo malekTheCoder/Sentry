@@ -245,8 +245,22 @@ public enum MetricModule: String, Codable, Sendable, CaseIterable, Hashable {
     public var symbolName: String {
         switch self {
         case .battery: return "battery.100"
-        case .cpu: return "cpuchip"
-        case .gpu: return "cpu"
+        // "cpuchip" is not a real SF Symbol — `NSImage(systemSymbolName:)`
+        // returns nil for it, so every CPU icon in the menu bar and the
+        // settings preview drew an empty gap. Verified against the installed
+        // symbol set; "cpu" and "cpu.fill" resolve, "cpuchip" and "gpu" do not.
+        // `MetricModuleSymbolTests` now fails loudly on any such name.
+        //
+        // Fixing it meant moving GPU off "cpu" as well: handing CPU its own
+        // correct symbol while GPU kept it would have put an identical glyph
+        // on two different modules, which at 16pt is the same
+        // indistinguishable-label problem the iOS module picker was just
+        // rebuilt to avoid. GPU takes "display" — SF Symbols ships no GPU
+        // glyph, and of the legible-at-16pt candidates a monitor is the
+        // clearest stand-in for graphics output; "cube" reads as 3D but is
+        // vaguer at small sizes.
+        case .cpu: return "cpu"
+        case .gpu: return "display"
         case .ane: return "brain"
         case .memory: return "memorychip"
         case .disk: return "internaldrive"
