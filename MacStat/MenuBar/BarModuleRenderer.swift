@@ -150,13 +150,35 @@ final class BarModuleRenderer {
 
     /// Intrinsic width of a module. Kept separate from `draw` so the view can
     /// size the status item without a drawing context.
-    func width(for module: BarModule, value: Double?, normalized: Double?, history: [Double]) -> CGFloat {
-        cueWidth(for: module, value: value) + contentWidth(for: module, value: value, normalized: normalized, history: history)
+    ///
+    /// `battery` is threaded through because the battery module's glyph is
+    /// custom-drawn and is *not* the same width as the square icon slot every
+    /// other module uses (`BatteryGlyph`). Measuring with the square width and
+    /// then drawing the wider glyph would overlap whatever module sits to the
+    /// right, so the two passes have to agree — hence the same argument on
+    /// both entry points, defaulted so callers with no battery in hand (the
+    /// existing tests, any future preview) keep working.
+    func width(
+        for module: BarModule,
+        value: Double?,
+        normalized: Double?,
+        history: [Double],
+        battery: BatteryGlyph.State = .unknown
+    ) -> CGFloat {
+        cueWidth(for: module, value: value)
+            + contentWidth(for: module, value: value, normalized: normalized, history: history, battery: battery)
     }
 
     /// Draws into the current `NSGraphicsContext`. `rect` is the module's slot
     /// in the bar item's (unflipped) coordinate space.
-    func draw(_ module: BarModule, value: Double?, normalized: Double?, history: [Double], in rect: CGRect) {
+    func draw(
+        _ module: BarModule,
+        value: Double?,
+        normalized: Double?,
+        history: [Double],
+        battery: BatteryGlyph.State = .unknown,
+        in rect: CGRect
+    ) {
         var slot = rect
         let cue = cueWidth(for: module, value: value)
         if cue > 0 {
@@ -169,11 +191,11 @@ final class BarModuleRenderer {
         let tint = color(for: module, value: value)
         switch module.displayMode {
         case .iconOnly:
-            drawIconOnly(module, value: value, tint: tint, in: slot)
+            drawIconOnly(module, value: value, tint: tint, battery: battery, in: slot)
         case .valueOnly:
             drawValueOnly(module, value: value, tint: tint, in: slot)
         case .iconAndValue:
-            drawIconAndValue(module, value: value, tint: tint, in: slot)
+            drawIconAndValue(module, value: value, tint: tint, battery: battery, in: slot)
         case .sparkline:
             drawSparkline(module, value: value, history: history, tint: tint, in: slot, showsValue: false)
         case .sparklineAndValue:
@@ -185,14 +207,20 @@ final class BarModuleRenderer {
         }
     }
 
-    private func contentWidth(for module: BarModule, value: Double?, normalized: Double?, history: [Double]) -> CGFloat {
+    private func contentWidth(
+        for module: BarModule,
+        value: Double?,
+        normalized: Double?,
+        history: [Double],
+        battery: BatteryGlyph.State
+    ) -> CGFloat {
         switch module.displayMode {
         case .iconOnly:
-            return iconSize
+            return iconWidth(for: module, battery: battery)
         case .valueOnly:
             return textSize(valueText(module, value)).width
         case .iconAndValue:
-            return iconSize + iconTextGap + textSize(valueText(module, value)).width
+            return iconWidth(for: module, battery: battery) + iconTextGap + textSize(valueText(module, value)).width
         case .sparkline:
             return labelWidth(module) + graphWidth(history: history)
         case .sparklineAndValue:
@@ -232,18 +260,57 @@ final class BarModuleRenderer {
         drawText(text, in: rect, x: rect.minX, color: value == nil ? palette.textTertiary : tint)
     }
 
-    private func drawIconOnly(_ module: BarModule, value: Double?, tint: NSColor, in rect: CGRect) {
+    private func drawIconOnly(
+        _ module: BarModule,
+        value: Double?,
+        tint: NSColor,
+        battery: BatteryGlyph.State,
+        in rect: CGRect
+    ) {
         // An icon-only module has no number to dim, so unavailability is
         // expressed by dimming the glyph itself rather than swapping in a dash
         // that would change the module's width from frame to frame.
         let color = value == nil ? palette.textTertiary : tint
-        drawSymbol(for: module.metric, color: color, in: iconRect(at: rect.minX, in: rect))
+        drawIcon(for: module, color: color, battery: battery, at: rect.minX, in: rect)
     }
 
-    private func drawIconAndValue(_ module: BarModule, value: Double?, tint: NSColor, in rect: CGRect) {
+    private func drawIconAndValue(
+        _ module: BarModule,
+        value: Double?,
+        tint: NSColor,
+        battery: BatteryGlyph.State,
+        in rect: CGRect
+    ) {
         let color = value == nil ? palette.textTertiary : tint
-        drawSymbol(for: module.metric, color: color, in: iconRect(at: rect.minX, in: rect))
-        drawText(valueText(module, value), in: rect, x: rect.minX + iconSize + iconTextGap, color: color)
+        let consumed = drawIcon(for: module, color: color, battery: battery, at: rect.minX, in: rect)
+        drawText(valueText(module, value), in: rect, x: rect.minX + consumed + iconTextGap, color: color)
+    }
+
+    /// Draws whichever glyph the module owns and returns the width it used,
+    /// which is always what `iconWidth(for:battery:)` reserved for it.
+    @discardableResult
+    private func drawIcon(
+        for module: BarModule,
+        color: NSColor,
+        battery: BatteryGlyph.State,
+        at x: CGFloat,
+        in rect: CGRect
+    ) -> CGFloat {
+        let width = iconWidth(for: module, battery: battery)
+        guard usesBatteryGlyph(module) else {
+            drawSymbol(for: module.metric, color: color, in: iconRect(at: x, in: rect))
+            return width
+        }
+        guard let charge = battery.charge else {
+            // No battery hardware, or a failed read. Drawing an outline with
+            // *any* fill — including none — would assert a charge level we do
+            // not have, so this falls back to the em dash the bar and arc
+            // modes already use for the same situation (P5).
+            drawText(MetricFormatter.unavailable, in: rect, x: x, color: palette.textTertiary)
+            return width
+        }
+        drawBatteryGlyph(charge: charge, isCharging: battery.showsBolt, color: color, at: x, in: rect)
+        return width
     }
 
     // MARK: - Sparkline
@@ -451,6 +518,121 @@ final class BarModuleRenderer {
         ctx.restoreGState()
     }
 
+    // MARK: - Battery glyph
+
+    /// True for every metric in the battery module, not just the charge
+    /// percentage.
+    ///
+    /// The renderer has always used one glyph per *module* rather than per
+    /// metric (see `symbolName(for:)`), and that stays true here: a bar
+    /// showing "Health 94%" with an icon draws the same battery the charge
+    /// module does, filled to the same charge. The alternative — filling the
+    /// outline to the metric's own value — would draw a battery that looks 94%
+    /// full while the pack is at 20%, which is a fabricated reading in the
+    /// most literal sense.
+    private func usesBatteryGlyph(_ module: BarModule) -> Bool {
+        module.metric.module == .battery
+    }
+
+    /// Width reserved for a module's leading glyph. Non-battery modules keep
+    /// the square icon slot; the battery gets its own proportions, or the em
+    /// dash's width when there is no reading to draw.
+    private func iconWidth(for module: BarModule, battery: BatteryGlyph.State) -> CGFloat {
+        guard usesBatteryGlyph(module) else { return iconSize }
+        guard battery.isKnown else { return textSize(MetricFormatter.unavailable).width }
+        return BatteryGlyph.width(iconSize: iconSize)
+    }
+
+    /// Strokes the outline, fills to `charge`, and knocks a bolt out of the
+    /// fill when charging.
+    ///
+    /// **Caching: deliberately none.** `tintedSymbol(for:color:)` caches
+    /// because tinting an `NSImage` means re-rendering the whole bitmap, and
+    /// the cached result is reused verbatim for hours. Neither half holds
+    /// here. There is no `NSImage` — this is three `CGPath` fills and one
+    /// stroke straight into the context, cheaper than the dictionary lookup
+    /// plus FIFO bookkeeping that a cache would add in front of it. And the
+    /// result is not reusable: the fill width moves with the charge, so a
+    /// faithful key would have to include the charge as a `Double`, giving
+    /// unbounded cardinality against a 64-entry FIFO — every distinct reading
+    /// evicting some other module's genuinely stable glyph, which is the exact
+    /// thrash the FIFO was introduced to stop. Quantising the charge into the
+    /// key would fix the cardinality by reintroducing the bucketing this whole
+    /// change exists to remove. So: redraw every tick, once every few seconds,
+    /// on a glyph that occupies about 170 square points.
+    private func drawBatteryGlyph(
+        charge: Double,
+        isCharging: Bool,
+        color: NSColor,
+        at x: CGFloat,
+        in rect: CGRect
+    ) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let metrics = BatteryGlyph.metrics(iconSize: iconSize, x: x, midY: rect.midY, charge: charge)
+
+        ctx.saveGState()
+
+        // Outline and nub carry the shape, not the reading, so they sit at the
+        // same weight the SF Symbol did — and, like `drawBar`'s track, they
+        // take no glow: haloing the frame as well as the fill turns the whole
+        // glyph into a blob at 10pt.
+        ctx.setStrokeColor(color.cgColor)
+        ctx.setLineWidth(metrics.lineWidth)
+        ctx.addPath(CGPath(
+            roundedRect: metrics.outline,
+            cornerWidth: metrics.cornerRadius,
+            cornerHeight: metrics.cornerRadius,
+            transform: nil
+        ))
+        ctx.strokePath()
+
+        ctx.setFillColor(color.cgColor)
+        let nubRadius = min(metrics.terminal.width, metrics.terminal.height) / 2
+        ctx.addPath(CGPath(
+            roundedRect: metrics.terminal,
+            cornerWidth: nubRadius,
+            cornerHeight: nubRadius,
+            transform: nil
+        ))
+        ctx.fillPath()
+
+        if let fill = metrics.fill {
+            ctx.saveGState()
+            if isCharging {
+                // The bar is strictly monochrome (see `MenuBarPalette`), so a
+                // bolt drawn in the fill color on top of the fill is invisible.
+                // Clipping an oversized copy of the bolt *out* of the fill
+                // gives it a gap to sit in, and does it without a `.clear`
+                // blend — which would also punch through the alert highlight
+                // wash `StatusItemView` draws behind the modules.
+                ctx.addRect(metrics.body.insetBy(dx: -2, dy: -2))
+                ctx.addPath(BatteryGlyph.boltPath(in: metrics.bolt, scale: BatteryGlyph.boltHaloScale))
+                ctx.clip(using: .evenOdd)
+            }
+            applyGlow(ctx, color: color)
+            ctx.setFillColor(color.cgColor)
+            ctx.addPath(CGPath(
+                roundedRect: fill,
+                cornerWidth: metrics.cavityRadius,
+                cornerHeight: metrics.cavityRadius,
+                transform: nil
+            ))
+            ctx.fillPath()
+            ctx.restoreGState()
+        }
+
+        if isCharging {
+            // Drawn last and unclipped so the bolt reads the same whether it
+            // lands on filled battery (tint bolt inside a knocked-out gap) or
+            // on empty (tint bolt on bare background).
+            ctx.setFillColor(color.cgColor)
+            ctx.addPath(BatteryGlyph.boltPath(in: metrics.bolt))
+            ctx.fillPath()
+        }
+
+        ctx.restoreGState()
+    }
+
     // MARK: - Color rules
 
     /// Monochrome bar: every color rule resolves to the mono base. The rules
@@ -594,6 +776,12 @@ final class BarModuleRenderer {
     /// One glyph per module rather than per metric — every battery metric
     /// reads as "battery" in a 16pt slot, and picking per-metric symbols would
     /// mean maintaining a 60-case table that mostly repeats itself.
+    ///
+    /// The battery module no longer reaches this at draw time: it is
+    /// custom-drawn by `drawBatteryGlyph(...)` because the SF Symbol is both
+    /// static and the wrong aspect for the square icon slot. The case is still
+    /// in `MetricModule.symbolName` for the settings preview strip, which is
+    /// SwiftUI and still uses symbols.
     private static func symbolName(for metric: MetricID) -> String {
         metric.module.symbolName
     }

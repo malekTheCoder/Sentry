@@ -163,7 +163,8 @@ final class StatusItemView: NSView {
                 for: module,
                 value: value,
                 normalized: normalized,
-                history: history[module.metric] ?? []
+                history: history[module.metric] ?? [],
+                battery: batteryGlyphState
             )
             let advance = built.isEmpty ? width : gap + width
 
@@ -204,6 +205,21 @@ final class StatusItemView: NSView {
     }
 
     private var horizontalPadding: CGFloat { 4 }
+
+    /// Charge and charging state for the custom battery glyph.
+    ///
+    /// Derived from the snapshot on demand rather than stored on `RenderItem`
+    /// because it is a property of the machine, not of a module: every battery
+    /// module in the bar draws the same battery, and caching one copy per item
+    /// would just be several chances for them to disagree. Recomputing is two
+    /// optional unwraps and a divide.
+    ///
+    /// A nil snapshot (first run, before the first sample lands) and a Mac
+    /// with no battery both resolve to `.unknown`, which the renderer draws as
+    /// an em dash — never as an empty battery.
+    private var batteryGlyphState: BatteryGlyph.State {
+        BatteryGlyph.State(stats: snapshot?.battery)
+    }
 
     /// Gap between modules. `.dot`/`.line` need room for the glyph itself on
     /// top of the user's spacing; `.space` is simply a wider gap.
@@ -289,6 +305,7 @@ final class StatusItemView: NSView {
                 value: item.value,
                 normalized: item.normalized,
                 history: history[item.module.metric] ?? [],
+                battery: batteryGlyphState,
                 in: CGRect(x: x, y: slot.minY, width: item.width, height: slot.height)
             )
             x += item.width
