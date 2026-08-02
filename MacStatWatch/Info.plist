@@ -27,6 +27,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>dev.malekswilam.macstat.mobile</string>
+	<string>com.sentry.macstat.mobile</string>
 </dict>
 </plist>

@@ -15,27 +15,19 @@ configs:
   Debug: debug
   Release: release
 
-# The project-wide floor, unchanged and deliberately permissive: a checkout of
-# this repo on a Mac with zero signing identities must build and must run its
-# tests. `run.sh` and every `xcodebuild ... test` invocation depend on that, and
-# this machine currently has exactly zero identities (`security find-identity -v
-# -p codesigning` → "0 valid identities found"), so it is not a hypothetical.
-#
-# These values are a floor, not a policy. Targets that genuinely need a
-# signature opt back in individually (the Mac app and its appex, so chronod will
-# load the widget; the iOS/watchOS targets, so their App Group entitlement is
-# actually embedded), and the Release-configuration strictness that notarization
-# demands lives in the `DeveloperIDSigned` target template below rather than
-# here — this block is shared with the iOS and watchOS targets, for which
-# "Developer ID Application" is not a valid identity at all.
+# Automatic signing everywhere with the paid Individual team (Aniketh
+# Bandlamudi, anikethdb1@gmail.com). Frameworks, CLI, and test bundles all sign
+# with Apple Development; no target needs a provisioning profile unless it
+# carries restricted entitlements. The Release-configuration strictness that
+# notarization demands lives in the `DeveloperIDSigned` target template below
+# rather than here — this block is shared with the iOS and watchOS targets, for
+# which "Developer ID Application" is not a valid identity at all.
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "-"
-    CODE_SIGNING_REQUIRED: NO
-    CODE_SIGNING_ALLOWED: NO
-    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "Apple Development"
+    DEVELOPMENT_TEAM: H7T2D2GL7U
 
 # Applied to every macOS target whose product ends up inside (or alongside) the
 # notarized Sentry.app: the app, the two embedded frameworks, the widget appex,

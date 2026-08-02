@@ -59,8 +59,8 @@ public actor LocalSyncClient: StatsTransport {
     /// Must match `LocalSyncServer.serviceType` exactly.
     public static let serviceType = "_macstat._tcp"
 
-    private let log = Logger(subsystem: "dev.malekswilam.macstat.mobile", category: "LocalSyncClient")
-    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.localsyncclient")
+    private let log = Logger(subsystem: "com.sentry.macstat.mobile", category: "LocalSyncClient")
+    private let queue = DispatchQueue(label: "com.sentry.macstat.localsyncclient")
 
     private var browser: NWBrowser?
     private var connection: NWConnection?
@@ -145,11 +145,14 @@ public actor LocalSyncClient: StatsTransport {
     /// (timeout:)` (the composition root's normal entry point) but also
     /// exposed directly for callers that want to kick off discovery without
     /// blocking on the result.
-    /// Registers the remote fallback endpoint. Call before `start()` (or
-    /// `waitForFirstConnection`); passing an empty host or code clears it.
-    /// Bonjour remains the preferred path — same network means lower
-    /// latency and no round trip through a tunnel — the direct endpoint is
-    /// dialed only while no connection exists.
+    /// Registers the remote fallback endpoint. Normally called before
+    /// `start()`/`waitForFirstConnection`, but safe after them too — a QR
+    /// pairing scanned mid-session (`RemotePairing`) lands here on an
+    /// already-started client, so the retry loop is kicked off on the spot
+    /// rather than only from `start()`. Passing an empty host or code
+    /// clears it. Bonjour remains the preferred path — same network means
+    /// lower latency and no round trip through a tunnel — the direct
+    /// endpoint is dialed only while no connection exists.
     public func configureDirectEndpoint(host: String, port: UInt16, pairingCode: String) {
         let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let code = SyncSecurity.normalize(pairingCode)
@@ -158,6 +161,9 @@ public actor LocalSyncClient: StatsTransport {
             return
         }
         directConfig = (trimmedHost, port, code)
+        if isStarted() {
+            startDirectRetryLoopIfConfigured()
+        }
     }
 
     public func start() {

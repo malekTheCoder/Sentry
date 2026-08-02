@@ -165,6 +165,41 @@ public final class AppDataSource: ObservableObject {
         }
     }
 
+    // MARK: - QR pairing (macstat://pair deep link)
+
+    /// Applies a pairing scanned from the Mac's QR code
+    /// (`RemotePairing` in MacStatKit — `MacStatMobileApp`'s `onOpenURL`
+    /// calls this after the user confirms). Three responsibilities:
+    /// persist the endpoint under the same defaults keys the Settings
+    /// tab's `@AppStorage` fields read (so the form shows the scanned
+    /// values immediately), hand it to a live `LocalSyncClient` if one
+    /// exists (its direct-dial retry loop picks it up without an app
+    /// relaunch), and — the case that actually matters for a fresh
+    /// install — re-run resolution if the app had already given up and
+    /// fallen back to `MockDataSource`, since that fallback was decided
+    /// before any remote endpoint existed to try.
+    public func applyPairing(_ endpoint: RemotePairing.Endpoint) async {
+        let defaults = UserDefaults.standard
+        defaults.set(endpoint.host, forKey: "remoteSync.host")
+        defaults.set(String(endpoint.port), forKey: "remoteSync.port")
+        defaults.set(endpoint.code, forKey: "remoteSync.code")
+
+        // Let any in-flight first resolution finish before deciding whether
+        // a second attempt is needed — racing it could stand up two clients.
+        if let resolveTask {
+            await resolveTask.value
+        }
+
+        if let localClient {
+            await localClient.configureDirectEndpoint(
+                host: endpoint.host, port: endpoint.port, pairingCode: endpoint.code
+            )
+        } else {
+            resolveTask = nil
+            await resolveIfNeeded()
+        }
+    }
+
     // MARK: - Mock-only conveniences, generalized across both transports
 
     /// See this type's top-level doc comment for why this exists outside

@@ -421,7 +421,7 @@ final class ChannelResolver {
     // produced a corrupted-object crash, not a clean data race warning), so
     // every read/write of `availableChannelNames`/`resolved`/`hasAnyChannel`
     // is confined to this serial queue.
-    private let stateQueue = DispatchQueue(label: "dev.malekswilam.macstat.channelresolver")
+    private let stateQueue = DispatchQueue(label: "com.sentry.macstat.channelresolver")
     private var availableChannelNames: Set<String> = []
     private var resolved: [Metric: String] = [:]
     private var hasAnyChannelStorage = false
