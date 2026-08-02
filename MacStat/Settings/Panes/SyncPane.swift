@@ -6,9 +6,12 @@ import MacStatKit
 /// dashboard for one that does.
 ///
 /// **Why this pane exists at all when there is nothing to show.** Plan §7's
-/// CloudKit sync is blocked on an enrolled Apple Developer Program account —
-/// `project.yml` ships `CODE_SIGNING_REQUIRED: NO` and `DEVELOPMENT_TEAM: ""`
-/// today, so there is no `CKContainer`, no push subscription, and no schema
+/// CloudKit sync is blocked on an enrolled Apple Developer Program account.
+/// `project.yml` now names a team for Release builds and the app has a real
+/// `MacStat.entitlements`, but neither buys CloudKit: that file deliberately
+/// claims no iCloud container and no `aps-environment` (see its header for
+/// why entitlements for unwritten features are not added speculatively), and
+/// there is still no `CKContainer`, no push subscription, and no schema
 /// promotion anywhere in this app. `SyncService` (`MacStatKit/Sync/SyncService.swift`)
 /// is real, tested, adaptive-cadence scheduling logic, but it is constructed
 /// nowhere in `AppDelegate` and has no `uploadAttempt` closure that talks to a

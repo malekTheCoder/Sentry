@@ -843,10 +843,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Registers `NSXPCListener(machServiceName:)` under the well-known
     /// service name `MacStatMCP` connects to, with `self` as its delegate
     /// (see the `NSXPCListenerDelegate` conformance below) and starts
-    /// listening. This app already ships unsandboxed
-    /// (`CODE_SIGNING_REQUIRED: NO`, no Apple Developer Program enrollment —
-    /// same constraint documented on `SyncPane`), so a plain Mach-service
-    /// listener works without any entitlement or provisioning profile; the
+    /// listening. This app ships unsandboxed — `MacStat/MacStat.entitlements`
+    /// says `com.apple.security.app-sandbox = false` outright — so a plain
+    /// Mach-service listener works without any entitlement or provisioning
+    /// profile, in a hardened-runtime Developer ID Release build exactly as in
+    /// the ad-hoc Debug one (hardened runtime constrains what code a process
+    /// may load, not what Mach services it may vend); the
     /// XPC service's own methods, not code-signing, are what gate access
     /// (see `MCPXPCService`'s type doc comment).
     private func startMCPListener() {

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the Sentry Mac app (plan §14.1).
+
+  This file is deliberately one key long, and the reasoning for everything
+  that is NOT here matters more than the one thing that is.
+
+  WHAT IS HERE
+
+  com.apple.security.app-sandbox = false
+      The sandbox is off, and it is off as a stated fact rather than as a
+      default that happens to be false. Sentry reads `libIOReport.dylib`
+      (SystemMetricsKit/Bridges/IOReportBridge.swift) and the private
+      `IOHIDEventSystemClient` API (SystemMetricsKit/Collectors/
+      ThermalCollector.swift) through dlopen/dlsym, walks the IOKit registry,
+      and spawns `/usr/bin/fdesetup` and friends
+      (SystemMetricsKit/Security/SecurityPostureCollector.swift). None of that
+      is reachable from inside the sandbox, which is precisely why this app is
+      distributed with Developer ID + notarization and why the Mac App Store is
+      not a fallback we are choosing not to take — it is categorically closed.
+      Writing the key explicitly means a reader of this file learns that from
+      the file, and means a future `ENABLE_APP_SANDBOX` default flip in Xcode
+      cannot quietly sandbox the app and break thermal/power collection.
+
+  WHAT IS NOT HERE, AND WHY
+
+  iCloud container / iCloud services / aps-environment
+      Plan §14.1 lists these, and they would be lies today. There is no
+      `CKContainer` or `CKDatabase` constructed anywhere in this codebase —
+      `MacStatKit/Sync/` imports CloudKit for its record *types* and its
+      scheduling arithmetic, and `SyncPane`'s doc comment spells out at length
+      that no upload path exists. An entitlement for a capability the code does
+      not use buys nothing at runtime, and costs a provisioning-profile
+      requirement plus an App ID capability that must be kept in sync forever.
+      These get added in the same change that adds the first real `CKContainer`,
+      not before.
+
+  com.apple.security.application-groups
+      The macOS side has no App Group on purpose; `WidgetSnapshotStore` uses a
+      plain (non-group) UserDefaults suite on macOS for exactly this reason —
+      see its doc comment, and the comment on the MacStat target in project.yml.
+      Adding one here would require a Developer ID provisioning profile just to
+      reach data the widget already reaches without it.
+
+  Hardened-runtime exceptions (com.apple.security.cs.*)
+      None are needed, and none are here. Library validation permits loading
+      code signed by Apple or by the same Team ID: `libIOReport.dylib` and
+      `IOKit.framework` are Apple-signed platform binaries, and every framework
+      embedded in the bundle (MacStatKit, SystemMetricsKit, and the SwiftPM
+      product frameworks) is built and signed by the same Developer ID identity
+      during the Release archive. So no `disable-library-validation`. There is
+      no JIT, no writable-executable memory, no DYLD_* reliance, and no
+      Apple-events automation anywhere in the app, so no `allow-jit`,
+      `allow-unsigned-executable-memory`, `allow-dyld-environment-variables`, or
+      `automation.apple-events` either. Each of those exceptions weakens the
+      runtime protections notarization is checking for; adding one "just in
+      case" is a real security regression in exchange for nothing.
+
+  com.apple.security.get-task-allow
+      Never in a Release build — it is an automatic notarization rejection.
+      Xcode injects it for Debug builds via CODE_SIGN_INJECT_BASE_ENTITLEMENTS
+      (which is what lets you attach a debugger), and project.yml turns that
+      injection off for Release specifically so it cannot leak into a shipped
+      archive. It is therefore correct that it does not appear in this file at
+      all: Debug gets it injected, Release gets it withheld.
+
+  com.apple.security.device.* / com.apple.security.network.*
+      Sandbox-only keys. Outside the sandbox they grant nothing, so listing
+      them would be decoration that reads like a security posture.
+
+  CoreLocation (LocationService) needs no entitlement on unsandboxed macOS —
+  it is gated by TCC and the NSLocation*UsageDescription strings in
+  MacStat/Resources/Info.plist, which are already set.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+</dict>
+</plist>
