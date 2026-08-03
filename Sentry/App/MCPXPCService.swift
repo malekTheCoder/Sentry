@@ -44,6 +44,13 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     private let settingsStore: SettingsStore
     private let accessController: MCPAccessController
     private let activityLog: MCPActivityLog
+    /// Multi-agent coordination state (`get_agent_capacity`'s session list,
+    /// `preflight_check`'s `another_agent_active` reason). Owned here rather
+    /// than injected: this service's `authorize` path is the only place MCP
+    /// calls flow through, so it is both the sole writer and (via the two
+    /// tools above) the sole reader — see `AgentSessionRegistry`'s doc
+    /// comment for the advisory/self-reported caveats.
+    private let sessionRegistry = AgentSessionRegistry()
 
     init(
         coordinator: StatsCoordinator,
@@ -81,6 +88,25 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         let settings = settingsStore.settings
         var decision = accessController.evaluate(tool: tool, settings: settings)
 
+        // Conditional guardrails + termination controls (kill switch,
+        // per-client revocation, battery floor, on-battery restriction,
+        // quiet hours, thermal) — the pure engine in
+        // `SentryKit/Services/AgentGuardrails.swift`, fed the live snapshot
+        // the same way the permission model above is fed live settings.
+        // Checked *before* the confirmation branch below on purpose: a call
+        // a guardrail is going to deny must never put a confirmation dialog
+        // in front of the user first — approving it would mean approving
+        // something that then doesn't run, which is the dialog lying.
+        if !decision.isDenied,
+           case .deny(let reason) = AgentGuardrails.evaluate(
+               tool: tool,
+               clientName: clientName,
+               settings: settings.agentGuardrails,
+               context: .from(snapshot: coordinator.latestSnapshot())
+           ) {
+            decision = .denyGuardrail(reason: reason)
+        }
+
         if decision == .requiresConfirmation {
             let approved = presentConfirmationAlert(tool: tool, clientName: clientName, argumentsSummary: argumentsSummary)
             decision = approved ? .allow : .requiresConfirmation
@@ -88,15 +114,12 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
         if decision == .allow {
             accessController.recordCall()
-            // Durable counterpart to `activityLog` below — write tools only
-            // (see `logAgentActivity`'s doc comment for why), so the
-            // Dashboard's agent-activity panel has real history to query
-            // beyond this session. Read tools aren't logged here: they're
-            // high-volume and, unlike a write tool, never change anything
-            // on this Mac worth correlating against a thermal/CPU chart.
-            if tool.isWrite {
-                historyStore.logAgentActivity(clientName: clientName, tool: tool.rawValue)
-            }
+            // The durable counterpart to `activityLog` below no longer lives
+            // here: `authorizeInstrumented` (end of this file) writes to
+            // `historyStore.logAgentActivity` *after* the call completes, so
+            // the row can carry duration and outcome — things unknowable at
+            // authorize time. Agent-session attribution pass; see the v5
+            // migration in SentryKit/Persistence/Migrations.swift.
         }
 
         activityLog.record(
@@ -107,6 +130,11 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 decision: decision
             )
         )
+
+        // Session presence, regardless of decision — a denied client is
+        // still *present*, which is what the registry measures (see its
+        // `recordCall` doc comment).
+        sessionRegistry.recordCall(clientName: clientName, tool: tool)
 
         return decision
     }
@@ -158,6 +186,12 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             return String(localized: "MCP rate limit exceeded — configured in Sentry → Settings → AI Access. Try again in a moment.")
         case .requiresConfirmation:
             return String(localized: "The user declined to confirm this action in Sentry.")
+        case .denyGuardrail(let reason):
+            // Already a complete, honest sentence built by
+            // `AgentGuardrails.evaluate` ("Sentry declined this: battery is
+            // at 14% and unplugged…") — passed through verbatim so the
+            // denial the agent reads names the actual condition.
+            return reason
         }
     }
 
@@ -165,14 +199,14 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func getSystemSnapshot(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.getSystemSnapshot, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getSystemSnapshot, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             self.encodeAndReply(self.coordinator.latestSnapshot(), reply: reply)
         }
     }
 
     nonisolated func getBatteryStatus(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.getBatteryStatus, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getBatteryStatus, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             guard let battery = self.coordinator.latestSnapshot().battery else {
                 reply(nil, "No battery data available yet (or this Mac has no battery).")
                 return
@@ -184,7 +218,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func getBatteryHealthHistory(clientName: String, sinceDays: Int, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "sinceDays=\(sinceDays)"
-            guard self.checkAndReplyIfDenied(.getBatteryHealthHistory, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getBatteryHealthHistory, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
 
             let since = Date().addingTimeInterval(-Double(max(1, sinceDays)) * 86400)
             let health = self.historyStore.samples(metric: MetricID.batteryHealthPercent.rawValue, since: since, tier: .daily)
@@ -205,7 +239,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func getMetricHistory(clientName: String, metric: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "metric=\(metric), sinceSeconds=\(sinceSeconds)"
-            guard self.checkAndReplyIfDenied(.getMetricHistory, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getMetricHistory, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
 
             guard sinceSeconds > 0 else {
                 reply(nil, "sinceSeconds must be positive.")
@@ -220,7 +254,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func getThermalStatus(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.getThermalStatus, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getThermalStatus, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             guard let thermal = self.coordinator.latestSnapshot().thermal else {
                 reply(nil, "No thermal data available yet.")
                 return
@@ -231,7 +265,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func getResourceUsage(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.getResourceUsage, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getResourceUsage, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             let snapshot = self.coordinator.latestSnapshot()
             let usage = MCPPayloads.ResourceUsage(
                 cpu: snapshot.cpu,
@@ -249,7 +283,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func getAlertHistory(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "limit=\(limit)"
-            guard self.checkAndReplyIfDenied(.getAlertHistory, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getAlertHistory, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             let clampedLimit = min(max(1, limit), 500)
             let entries = self.historyStore.recentAlertFirings(limit: clampedLimit).map(MCPPayloads.AlertHistoryEntry.init)
             self.encodeAndReply(entries, reply: reply)
@@ -258,7 +292,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func getDeviceInfo(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.getDeviceInfo, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getDeviceInfo, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             let snapshot = self.coordinator.latestSnapshot()
             var capable: [String] = []
             if snapshot.battery != nil { capable.append(MetricModule.battery.rawValue) }
@@ -284,7 +318,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func getSleepState(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.getSleepState, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getSleepState, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             self.encodeAndReply(self.powerControl.state, reply: reply)
         }
     }
@@ -293,36 +327,46 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func preflightCheck(clientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.preflightCheck, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.preflightCheck, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             let snapshot = self.coordinator.latestSnapshot()
-            var recommendation = SystemAdvisor.recommend(snapshot, lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled)
-            // Attach the cool-down ETA only when the "wait" is thermal —
-            // history lives here, not in the pure advisor, hence this seam.
-            // An agent that gets a number can schedule; one that doesn't
-            // falls back to wait_until_ready's polling, so nil costs nothing.
-            if recommendation.recommendation == "wait",
-               recommendation.isThrottling
-                || recommendation.thermalPressure == "serious"
-                || recommendation.thermalPressure == "critical"
-                || (recommendation.socTemperatureCelsius ?? 0) > SystemAdvisor.highSoCTempCelsius {
+
+            // Recent temperature trend, fetched only when a thermal wait is
+            // even possible — history lives here, not in the pure policy,
+            // hence this seam. An agent that gets a `suggestedWaitSeconds`
+            // can schedule; one that doesn't falls back to
+            // wait_until_ready's polling, so skipping the query costs
+            // nothing on the (common) all-clear path.
+            var tempSamples: [(timestamp: Date, celsius: Double)] = []
+            if let thermal = snapshot.thermal,
+               thermal.isThrottling
+                || thermal.pressureLevel == .serious
+                || thermal.pressureLevel == .critical
+                || (thermal.socTemperatureCelsius ?? 0) > SystemAdvisor.highSoCTempCelsius {
                 let since = Date().addingTimeInterval(-15 * 60)
-                let temps = self.historyStore
+                tempSamples = self.historyStore
                     .samples(metric: MetricID.thermalSocTempC.rawValue, since: since)
                     .map { (timestamp: $0.timestamp, celsius: $0.value) }
-                if let eta = SystemAdvisor.cooldownETASeconds(tempSamples: temps) {
-                    recommendation.cooldownETASeconds = eta
-                    let minutes = max(1, Int((eta / 60).rounded()))
-                    recommendation.reasons.append("Cooling — estimated thermal nominal in ~\(minutes) min.")
-                }
             }
-            self.encodeAndReply(recommendation, reply: reply)
+
+            // The caller's own session is excluded — its presence in the
+            // registry (recorded by `authorize` above) must not make the
+            // preflight warn about itself.
+            let others = self.sessionRegistry.otherActiveSessions(excluding: self.sessionIdentity(fromWire: clientName).clientName)
+            let assessment = AgentPreflight.assess(
+                snapshot,
+                lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+                otherActiveAgentSessionCount: others.count,
+                otherActiveAgentLabels: others.map(\.clientName),
+                recentSoCTemperatureSamples: tempSamples
+            )
+            self.encodeAndReply(assessment, reply: reply)
         }
     }
 
     nonisolated func getResourceEventsSince(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "sinceSeconds=\(sinceSeconds)"
-            guard self.checkAndReplyIfDenied(.getResourceEventsSince, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getResourceEventsSince, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             guard sinceSeconds > 0 else {
                 reply(nil, "sinceSeconds must be positive.")
                 return
@@ -355,7 +399,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func getAgentCapacity(clientName: String, requestedAgents: Int, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "requestedAgents=\(requestedAgents)"
-            guard self.checkAndReplyIfDenied(.getAgentCapacity, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getAgentCapacity, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
 
             let snapshot = self.coordinator.latestSnapshot()
             // Upper-bounded, not just lower-bounded: a caller passing an
@@ -398,13 +442,60 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 reasoning = "CPU headroom (\(Int(cpuHeadroom))%) is likely too tight for \(clampedAgents) more agent(s)."
             }
 
-            let payload = MCPPayloads.AgentCapacity(
+            let headroom = MCPPayloads.AgentCapacity(
                 requestedAgents: clampedAgents,
                 hasCapacity: hasCapacity,
                 freeMemoryBytes: freeBytes,
                 estimatedBytesPerAgent: estimatedBytesPerAgent,
                 cpuHeadroomPercent: cpuHeadroom,
                 reasoning: reasoning
+            )
+
+            // Coordination picture: who else is active (caller excluded —
+            // capacity for *you* shouldn't warn about *you*), and whether an
+            // agent holds keep-awake. The registry's flag is cross-checked
+            // against the live assertion: a timed hold can expire without
+            // another MCP call arriving to tell the registry.
+            let others = self.sessionRegistry.otherActiveSessions(excluding: self.sessionIdentity(fromWire: clientName).clientName)
+            let assertionActive: Bool
+            if case .active = self.powerControl.state {
+                assertionActive = true
+            } else {
+                assertionActive = false
+            }
+            let agentHeldKeepAwake = assertionActive
+                && self.sessionRegistry.activeSessions().contains(where: \.holdsKeepAwake)
+
+            let sessions = others.map { session in
+                MCPPayloads.AgentSessionInfo(
+                    clientName: session.clientName,
+                    connectedAt: session.connectedAt,
+                    lastCallAt: session.lastCallAt,
+                    recentTools: session.recentTools.map(\.rawValue),
+                    holdsKeepAwake: session.holdsKeepAwake && assertionActive
+                )
+            }
+
+            // One sentence weighing both halves — worded so a model reads
+            // "contend", not "forbidden": this whole tool is advisory.
+            var judgmentParts: [String] = []
+            if !others.isEmpty {
+                let names = others.map(\.clientName).joined(separator: ", ")
+                if cpuHeadroom <= 100 - SystemAdvisor.highCPUPercent {
+                    judgmentParts.append("\(others.count) other agent session(s) active (\(names)) and CPU is already at \(Int(100 - cpuHeadroom))% — starting another heavy workload now will contend; prefer waiting or coordinating.")
+                } else {
+                    judgmentParts.append("\(others.count) other agent session(s) recently active (\(names)) — currently light, but re-check before starting sustained heavy work.")
+                }
+            }
+            judgmentParts.append(reasoning)
+            let judgment = judgmentParts.joined(separator: " ")
+
+            let payload = MCPPayloads.AgentCapacityReport(
+                headroom: headroom,
+                activeSessions: sessions,
+                agentHeldKeepAwake: agentHeldKeepAwake,
+                judgment: judgment,
+                sessionIdentityNote: "Session client names are self-reported by each MCP client and are not authenticated — treat them as labels, not identities."
             )
             self.encodeAndReply(payload, reply: reply)
         }
@@ -413,7 +504,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func getAgentActivity(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "limit=\(limit)"
-            guard self.checkAndReplyIfDenied(.getAgentActivity, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getAgentActivity, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             let clampedLimit = min(max(1, limit), 200)
             let entries = self.activityLog.entries.prefix(clampedLimit).map { entry in
                 MCPPayloads.AgentActivityEntry(
@@ -431,7 +522,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func getSessionResourceReport(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "sinceSeconds=\(sinceSeconds)"
-            guard self.checkAndReplyIfDenied(.getSessionResourceReport, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.getSessionResourceReport, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             guard sinceSeconds > 0 else {
                 reply(nil, "sinceSeconds must be positive.")
                 return
@@ -458,6 +549,31 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 previousTimestamp = sample.timestamp
             }
 
+            // Session attribution (agent-session attribution pass): correlate
+            // the *caller's own* session — identified by the composite wire
+            // `clientName`, see `AgentSessionIdentity` — with the durable
+            // activity log, the keep-awake ledger, and battery/thermal
+            // history. Falls back to grouping by client display name when
+            // this session hasn't logged any calls in the window yet (e.g.
+            // this report is its very first call).
+            let identity = self.sessionIdentity(fromWire: clientName)
+            let allEvents = self.historyStore.agentActivityEvents(since: since)
+            let sessionEvents = allEvents.filter { $0.sessionID == identity.sessionID }
+            let scopedEvents = sessionEvents.isEmpty
+                ? allEvents.filter { $0.clientName == identity.clientName }
+                : sessionEvents
+            let batterySamples = self.historyStore.samples(metric: MetricID.batteryChargePercent.rawValue, since: since)
+            let pressureSamples = self.historyStore.samples(metric: MetricID.thermalPressureLevel.rawValue, since: since)
+            let attribution = AgentSessionReport.attribution(
+                sessionID: identity.sessionID,
+                clientName: identity.clientName,
+                events: scopedEvents,
+                awakeHolds: self.powerControl.awakeHolds,
+                batterySamples: batterySamples,
+                thermalPressureSamples: pressureSamples,
+                window: since...now
+            )
+
             let report = MCPPayloads.SessionResourceReport(
                 windowStart: since,
                 windowEnd: now,
@@ -466,7 +582,16 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 peakSoCTemperatureCelsius: socTemps.max(),
                 secondsThrottling: secondsThrottling,
                 peakMemoryPressurePercent: memPressure.max(),
-                alertsFired: firings.count
+                alertsFired: firings.count,
+                sessionID: attribution.sessionID,
+                sessionClientName: attribution.clientName,
+                sessionStart: attribution.sessionStart,
+                sessionEnd: attribution.sessionEnd,
+                toolCallCounts: attribution.toolCallCounts,
+                keepAwakeSecondsHeld: attribution.keepAwakeSecondsHeld,
+                batteryPercentDrained: attribution.batteryPercentDrained,
+                thermalPressureElevated: attribution.thermalPressureElevated,
+                thermalPressureElevatedSeconds: attribution.thermalPressureElevatedSeconds
             )
             self.encodeAndReply(report, reply: reply)
         }
@@ -477,7 +602,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func keepAwake(clientName: String, mode: String, durationSeconds: Double, reason: String, reply: @escaping (Bool, String?) -> Void) {
         Task { @MainActor in
             let summary = "mode=\(mode), durationSeconds=\(durationSeconds), reason=\(reason)"
-            guard self.checkAndReplyIfDenied(.keepAwake, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.keepAwake, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             guard let awakeMode = AwakeMode(rawValue: mode) else {
                 reply(false, "Unknown mode '\(mode)'. Expected one of: \(AwakeMode.allCases.map(\.rawValue).joined(separator: ", ")).")
                 return
@@ -491,13 +616,31 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 return
             }
             let clampedDuration = min(durationSeconds, 24 * 3600)
-            let clampedReason = reason.isEmpty ? "Requested via MCP by \(clientName)" : reason
+            // Parsed once, used three ways below. The wire string is
+            // "name\u{1F}uuid" since the session-identity pass (see
+            // `AgentSessionIdentity`) — every human- or policy-facing use
+            // must take the parsed display name, never the wire string.
+            let identity = self.sessionIdentity(fromWire: clientName)
+            let clampedReason = reason.isEmpty ? "Requested via MCP by \(identity.clientName)" : reason
             do {
-                try self.powerControl.startAssertion(
+                // The agent-tagged variant, not plain `startAssertion` — one
+                // call carries both ownership tags. The *client name* is what
+                // lets the kill switch and guardrail auto-revocation release
+                // an agent's hold without touching one the user started; the
+                // *session ID* is what lets the awake-hold ledger
+                // (`PowerControlService.awakeHolds`) attribute held time to
+                // this session in `get_session_resource_report`.
+                try self.powerControl.startAgentAssertion(
                     mode: awakeMode,
                     duration: clampedDuration > 0 ? clampedDuration : nil,
-                    reason: clampedReason
+                    reason: clampedReason,
+                    clientName: identity.clientName,
+                    sessionID: identity.sessionID
                 )
+                // Attribute the (single) live assertion to this session for
+                // get_agent_capacity's coordination picture — only after
+                // the assertion actually exists.
+                self.sessionRegistry.recordKeepAwake(clientName: identity.clientName)
                 reply(true, nil)
             } catch {
                 reply(false, error.localizedDescription)
@@ -507,8 +650,11 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func releaseAwake(clientName: String, reply: @escaping (Bool, String?) -> Void) {
         Task { @MainActor in
-            guard self.checkAndReplyIfDenied(.releaseAwake, clientName: clientName, argumentsSummary: "—", reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.releaseAwake, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             self.powerControl.releaseAssertion()
+            // One assertion app-wide, so a release clears every session's
+            // keep-awake attribution — see `AgentSessionRegistry.clearKeepAwake`.
+            self.sessionRegistry.clearKeepAwake()
             reply(true, nil)
         }
     }
@@ -516,7 +662,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func setRefreshInterval(clientName: String, tier: String, seconds: Double, reply: @escaping (Bool, String?) -> Void) {
         Task { @MainActor in
             let summary = "tier=\(tier), seconds=\(seconds)"
-            guard self.checkAndReplyIfDenied(.setRefreshInterval, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.setRefreshInterval, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             // Mutating `settingsStore.settings` (rather than calling
             // `coordinator.set*Interval` directly) is deliberate: the
             // existing `settingsStore.$settings` sink in `AppDelegate`
@@ -544,7 +690,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func setAlertRuleEnabled(clientName: String, ruleID: String, enabled: Bool, reply: @escaping (Bool, String?) -> Void) {
         Task { @MainActor in
             let summary = "ruleID=\(ruleID), enabled=\(enabled)"
-            guard self.checkAndReplyIfDenied(.setAlertRuleEnabled, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.setAlertRuleEnabled, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             guard let uuid = UUID(uuidString: ruleID) else {
                 reply(false, "'\(ruleID)' isn't a valid rule ID.")
                 return
@@ -563,7 +709,11 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func createAlertRule(clientName: String, ruleJSON: Data, reply: @escaping (Bool, String?) -> Void) {
         Task { @MainActor in
             let summary = String(data: ruleJSON, encoding: .utf8).map { "rule=\($0.prefix(200))" } ?? "rule=<binary>"
-            guard self.checkAndReplyIfDenied(.createAlertRule, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            // The dialog shows the JSON so the user can judge what they're
+            // approving, but the durable log must not persist raw arguments
+            // (`logAgentActivity`'s contract) — hence the separate short
+            // persisted summary.
+            guard let reply = self.authorizeInstrumented(.createAlertRule, wireClientName: clientName, argumentsSummary: summary, persistedSummary: "proposed new alert rule (JSON not persisted)", reply: reply) else { return }
             do {
                 let request = try JSONDecoder().decode(MCPPayloads.NewAlertRule.self, from: ruleJSON)
                 var rules = self.settingsStore.settings.alertRules
@@ -579,10 +729,10 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func waitUntilReady(clientName: String, condition: String, timeoutSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
             let summary = "condition=\(condition), timeoutSeconds=\(timeoutSeconds)"
-            guard self.checkAndReplyIfDenied(.waitUntilReady, clientName: clientName, argumentsSummary: summary, reply: reply) else { return }
+            guard let reply = self.authorizeInstrumented(.waitUntilReady, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
 
             guard let parsedCondition = WaitCondition(condition) else {
-                reply(nil, "Unrecognized condition '\(condition)'. Expected thermal_normal, cpu_below:N, battery_above:N, or memory_below:N.")
+                reply(nil, "Unrecognized condition '\(condition)'. Expected ready, thermal_normal, cpu_below:N, battery_above:N, or memory_below:N.")
                 return
             }
 
@@ -675,6 +825,146 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             return false
         }
         return true
+    }
+
+    // MARK: - Instrumented authorization (agent-session attribution pass)
+
+    /// Stable per-launch fallback session IDs for callers whose `clientName`
+    /// carries no `AgentSessionIdentity` marker (e.g. the in-process
+    /// `LocalXPCServiceCaller` path, or an old `SentryMCP` binary). Keyed by
+    /// display name so such a caller still gets *a* stable-for-this-run ID —
+    /// its calls group into one session — rather than a fresh UUID per call.
+    private var fallbackSessionIDs: [String: String] = [:]
+
+    /// Splits the composite wire `clientName` (see `AgentSessionIdentity`,
+    /// SentryKit/Services/AgentSessionIdentity.swift) into the display name
+    /// — what dialogs and the in-memory activity log should show — and the
+    /// per-connection session ID the durable log records.
+    private func sessionIdentity(fromWire wireClientName: String) -> (clientName: String, sessionID: String) {
+        let parsed = AgentSessionIdentity.parse(wireClientName)
+        if let sessionID = parsed.sessionID {
+            return (parsed.clientName, sessionID)
+        }
+        if let existing = fallbackSessionIDs[parsed.clientName] {
+            return (parsed.clientName, existing)
+        }
+        let minted = UUID().uuidString
+        fallbackSessionIDs[parsed.clientName] = minted
+        return (parsed.clientName, minted)
+    }
+
+    private static func durableOutcome(for decision: MCPAccessController.Decision) -> AgentActivityOutcome {
+        switch decision {
+        case .allow: return .succeeded
+        case .denyRateLimited: return .rateLimited
+        case .denyMasterDisabled, .denyToolDisabled, .requiresConfirmation: return .denied
+        // A guardrail denial (battery floor, quiet hours, thermal, kill
+        // switch, per-client revocation) is a policy "no", same as the
+        // static permission model saying no — the durable log doesn't need
+        // to distinguish them because the args-summary row already carries
+        // the guardrail's specific reason.
+        case .denyGuardrail: return .denied
+        }
+    }
+
+    /// Writes one durable `agent_activity_log` row. The summary is
+    /// sanitized/flattened and capped harder than the dialog's 300 chars —
+    /// this is a persisted-forever audit line, and `logAgentActivity`'s
+    /// contract is a SHORT human-readable summary, never raw arguments.
+    private func logDurable(
+        _ tool: MCPToolID,
+        clientName: String,
+        sessionID: String,
+        summary: String,
+        startedAt: Date,
+        outcome: AgentActivityOutcome
+    ) {
+        historyStore.logAgentActivity(
+            clientName: clientName,
+            sessionID: sessionID,
+            tool: tool.rawValue,
+            argsSummary: Self.sanitizedForDialog(summary, maxLength: 120),
+            durationMs: Int(Date().timeIntervalSince(startedAt) * 1000),
+            outcome: outcome
+        )
+    }
+
+    /// Supersedes `checkAndReplyIfDenied` (kept above for any parallel
+    /// branch still calling it): performs the same authorize-or-deny flow,
+    /// but also writes the durable per-session activity row — *after* the
+    /// tool actually replies, so it can record real duration and outcome.
+    /// Returns `nil` after replying with the denial (row logged as
+    /// denied/rate_limited), or a wrapped `reply` the caller must use in
+    /// place of the original — invoking it logs succeeded/errored and then
+    /// forwards to the real reply. Call sites shadow their `reply` parameter
+    /// with the returned closure so the rest of each method body is
+    /// untouched.
+    ///
+    /// - Parameter persistedSummary: override for the durable row when the
+    ///   dialog summary would leak raw arguments (see `createAlertRule`).
+    private func authorizeInstrumented(
+        _ tool: MCPToolID,
+        wireClientName: String,
+        argumentsSummary: String,
+        persistedSummary: String? = nil,
+        reply: @escaping (Data?, String?) -> Void
+    ) -> ((Data?, String?) -> Void)? {
+        let (clientName, sessionID) = sessionIdentity(fromWire: wireClientName)
+        let startedAt = Date()
+        let durableSummary = persistedSummary ?? argumentsSummary
+        let decision = authorize(tool: tool, clientName: clientName, argumentsSummary: argumentsSummary)
+        guard decision == .allow else {
+            logDurable(tool, clientName: clientName, sessionID: sessionID, summary: durableSummary, startedAt: startedAt, outcome: Self.durableOutcome(for: decision))
+            reply(nil, denialMessage(decision))
+            return nil
+        }
+        return { [weak self] data, errorMessage in
+            Task { @MainActor in
+                self?.logDurable(
+                    tool,
+                    clientName: clientName,
+                    sessionID: sessionID,
+                    summary: durableSummary,
+                    startedAt: startedAt,
+                    outcome: data == nil ? .errored : .succeeded
+                )
+            }
+            reply(data, errorMessage)
+        }
+    }
+
+    /// Bool-reply overload for write tools — mirrors the pairing of the two
+    /// `checkAndReplyIfDenied` overloads above; `success == false` logs as
+    /// `.errored`.
+    private func authorizeInstrumented(
+        _ tool: MCPToolID,
+        wireClientName: String,
+        argumentsSummary: String,
+        persistedSummary: String? = nil,
+        reply: @escaping (Bool, String?) -> Void
+    ) -> ((Bool, String?) -> Void)? {
+        let (clientName, sessionID) = sessionIdentity(fromWire: wireClientName)
+        let startedAt = Date()
+        let durableSummary = persistedSummary ?? argumentsSummary
+        let decision = authorize(tool: tool, clientName: clientName, argumentsSummary: argumentsSummary)
+        guard decision == .allow else {
+            logDurable(tool, clientName: clientName, sessionID: sessionID, summary: durableSummary, startedAt: startedAt, outcome: Self.durableOutcome(for: decision))
+            reply(false, denialMessage(decision))
+            return nil
+        }
+        return { [weak self] success, errorMessage in
+            Task { @MainActor in
+                self?.logDurable(
+                    tool,
+                    clientName: clientName,
+                    sessionID: sessionID,
+                    summary: durableSummary,
+                    startedAt: startedAt,
+                    outcome: success ? .succeeded : .errored
+                )
+            }
+            reply(success, errorMessage)
+        }
     }
 
     private func encodeAndReply<T: Encodable>(_ value: T, reply: @escaping (Data?, String?) -> Void) {

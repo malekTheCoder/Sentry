@@ -21,6 +21,16 @@ struct AgentActivityCard: View {
     /// — the orchestration half of this card: who is running *right now*,
     /// how hard, next to what agents have *done* over the selected range.
     var agentProcesses: [ProcessStats] = []
+    /// Per-session rollups from `AgentSessionReport.sessions` via
+    /// `DashboardViewModel.agentSessions` (agent-session attribution pass)
+    /// — one row per MCP connection: who, when, how many calls, and how
+    /// long it held the machine awake. Shown *in addition to* the aggregate
+    /// stat row, which stays as the range-wide headline.
+    var sessions: [AgentSessionSummary] = []
+
+    /// Sessions rendered before the rest collapse into a "+N more" line —
+    /// the card is one tile in a three-across row, not a table view.
+    private static let maxSessionRows = 4
 
     /// CPU at/above this reads as "working"; below it, "idle". Chosen well
     /// above libproc sampling noise but below any real compile/inference load.
@@ -33,6 +43,9 @@ struct AgentActivityCard: View {
                 liveProcessList
             }
             content
+            if !sessions.isEmpty {
+                sessionList
+            }
         }
     }
 
@@ -120,6 +133,64 @@ struct AgentActivityCard: View {
                 )
             }
         }
+    }
+
+    /// One row per session: client, span, call count, and awake time held —
+    /// same quiet row treatment as `liveProcessList` (this is history, not
+    /// a headline; the stat row above stays the headline).
+    private var sessionList: some View {
+        VStack(alignment: .leading, spacing: palette.spacingTight) {
+            Text("Sessions")
+                .font(palette.font(size: 11, weight: .medium))
+                .foregroundStyle(palette.textTertiary)
+            ForEach(sessions.prefix(Self.maxSessionRows)) { session in
+                HStack(spacing: palette.spacingTight) {
+                    Text(session.clientName.isEmpty ? "Unknown client" : session.clientName)
+                        .font(palette.font(size: 12, weight: .medium))
+                        .foregroundStyle(palette.textPrimary)
+                        .lineLimit(1)
+                    Text(Self.durationLabel(session.end.timeIntervalSince(session.start)))
+                        .font(palette.numericFont(size: 11))
+                        .foregroundStyle(palette.textTertiary)
+                    Spacer(minLength: palette.spacingTight)
+                    Text(session.callCount == 1 ? "1 call" : "\(session.callCount) calls")
+                        .font(palette.numericFont(size: 11))
+                        .foregroundStyle(palette.textSecondary)
+                    if session.awakeSecondsHeld >= 1 {
+                        Text("\(Self.durationLabel(session.awakeSecondsHeld)) awake")
+                            .font(palette.numericFont(size: 11))
+                            .foregroundStyle(statTint)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Self.sessionAccessibilityLabel(session))
+            }
+            if sessions.count > Self.maxSessionRows {
+                Text("+\(sessions.count - Self.maxSessionRows) more")
+                    .font(palette.font(size: 11))
+                    .foregroundStyle(palette.textTertiary)
+            }
+        }
+    }
+
+    /// Compact duration for a session row: `<1m`, `Nm`, or `Nh Mm` — a
+    /// per-row spelled-out duration would crowd a card row that also
+    /// carries a name, call count, and awake time.
+    static func durationLabel(_ seconds: TimeInterval) -> String {
+        let totalMinutes = Int(seconds / 60)
+        if totalMinutes < 1 { return "<1m" }
+        if totalMinutes < 60 { return "\(totalMinutes)m" }
+        return "\(totalMinutes / 60)h \(totalMinutes % 60)m"
+    }
+
+    private static func sessionAccessibilityLabel(_ session: AgentSessionSummary) -> String {
+        var label = "\(session.clientName.isEmpty ? "Unknown client" : session.clientName), " +
+            "\(session.callCount) \(session.callCount == 1 ? "call" : "calls") over " +
+            durationLabel(session.end.timeIntervalSince(session.start))
+        if session.awakeSecondsHeld >= 1 {
+            label += ", held awake \(durationLabel(session.awakeSecondsHeld))"
+        }
+        return label
     }
 
     private func stat(value: String, label: String) -> some View {

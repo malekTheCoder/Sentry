@@ -230,6 +230,37 @@ struct WatchTruncateAwakeIntent: AppIntent {
     }
 }
 
+// MARK: - WatchStopAgentsIntent
+
+/// The kill switch as a Siri intent — "stop the agents on my Mac" from the
+/// wrist without opening the app. Sends the same `setAgentAccessPaused`
+/// `ControlCommand` the Agent Activity page's button does (see
+/// `ContentView.sendStopAgents`), so the two paths cannot diverge in what
+/// the Mac receives. Engage-only, for the reason documented there: resuming
+/// belongs where the paused state is visible.
+struct WatchStopAgentsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Stop Agents on Mac"
+    static var description = IntentDescription(
+        "Pauses all AI agent access to your Mac (every MCP tool call is declined and agent keep-awake holds are released), relayed through your iPhone."
+    )
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let command = ControlCommand(
+            deviceID: "unknown",
+            issuedAt: Date(),
+            commandType: "setAgentAccessPaused",
+            parametersJSON: #"{"paused":true}"#,
+            nonce: UUID().uuidString,
+            expiresAt: Date().addingTimeInterval(5 * 60)
+        )
+        let dialog = await WatchControlBridge.sendAndDescribe(
+            command,
+            whenCompleted: String(localized: "Agent access on your Mac is paused. Resume it from Sentry on the Mac.")
+        )
+        return .result(dialog: IntentDialog(stringLiteral: dialog))
+    }
+}
+
 // MARK: - WatchGetBatteryStatusIntent
 
 /// Answered **locally**, no phone round-trip needed — reads
@@ -312,6 +343,15 @@ struct SentryWatchAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Shorten Awake Time",
             systemImageName: "clock.badge.xmark"
+        )
+        AppShortcut(
+            intent: WatchStopAgentsIntent(),
+            phrases: [
+                "Stop the agents on my Mac with \(.applicationName)",
+                "Pause agent access with \(.applicationName)",
+            ],
+            shortTitle: "Stop Agents",
+            systemImageName: "bolt.slash"
         )
         AppShortcut(
             intent: WatchGetBatteryStatusIntent(),

@@ -106,6 +106,19 @@ final class DashboardViewModel: ObservableObject {
     /// as `series`.
     @Published private(set) var agentActivity: AgentActivitySummary?
 
+    /// Per-session grouping of the same activity events `agentActivity`
+    /// summarizes — one entry per MCP connection (agent-session attribution
+    /// pass, see `AgentSessionReport.sessions`), refreshed alongside it.
+    /// Empty until `refresh()` runs, same contract as `anomalies`.
+    @Published private(set) var agentSessions: [AgentSessionSummary] = []
+
+    /// Supplies `PowerControlService.awakeHolds` for per-session awake-time
+    /// attribution without this view model owning (or importing the
+    /// concerns of) the power service itself — `AppDelegate` wires it to the
+    /// real service at construction; the default keeps this type
+    /// constructible in tests with no power dependency.
+    var awakeHoldsProvider: () -> [AgentAwakeHold] = { [] }
+
     /// Plan §17 Phase 8 — see `AnomalyDetector`. Empty (not nil) until
     /// `refresh()` has run, same "absent means not queried yet vs. queried
     /// and genuinely clean" contract `series`/`agentActivity` already use;
@@ -218,7 +231,9 @@ final class DashboardViewModel: ObservableObject {
             next[metric] = Self.downsample(raw, cap: Self.maxPointsPerSeries)
         }
         series = next
-        agentActivity = Self.summarize(historyStore.agentActivityEvents(since: since))
+        let agentEvents = historyStore.agentActivityEvents(since: since)
+        agentActivity = Self.summarize(agentEvents)
+        agentSessions = AgentSessionReport.sessions(from: agentEvents, awakeHolds: awakeHoldsProvider(), now: now)
         anomalies = refreshAnomalies(now: now)
     }
 

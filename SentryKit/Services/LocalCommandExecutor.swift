@@ -107,6 +107,20 @@ public final class LocalCommandExecutor {
                 try powerControl.adjustAssertion(bySeconds: parameters.deltaSeconds ?? 0)
             case "truncateAwake":
                 try powerControl.adjustAssertion(bySeconds: -abs(parameters.deltaSeconds ?? 0))
+            case "setAgentAccessPaused":
+                // The Watch's agent-page kill switch (relayed through the
+                // iPhone — see `WatchControlBridge`,
+                // `SentryWatch/Intents/SentryWatchIntents.swift`). Routed
+                // through an injected handler rather than a settings-store
+                // reference because this executor deliberately owns no
+                // settings dependency; `AppDelegate` wires the handler to
+                // flip `AppSettings.agentGuardrails.killSwitchEngaged`, and
+                // its settings sink is what actually denies calls and
+                // releases agent-held assertions from there.
+                guard let handler = agentAccessPauseHandler else {
+                    return status(for: command, state: "rejected", message: "This Mac's Sentry build doesn't support pausing agent access remotely.")
+                }
+                handler(parameters.paused ?? true)
             default:
                 return status(for: command, state: "rejected", message: "Unknown command type '\(command.commandType)'.")
             }
@@ -132,6 +146,7 @@ public final class LocalCommandExecutor {
         case "releaseAwake": return "Your Mac's sleep assertion was released."
         case "extendAwake": return "Extended."
         case "truncateAwake": return "Shortened."
+        case "setAgentAccessPaused": return "Agent access on your Mac was updated."
         default: return "Done."
         }
     }
@@ -168,6 +183,10 @@ public final class LocalCommandExecutor {
         var durationSeconds: TimeInterval?
         var mode: String?
         var deltaSeconds: TimeInterval?
+        /// `{"paused":true}` for `setAgentAccessPaused` — absent defaults to
+        /// `true` at the call site, since "stop agents" is the only intent a
+        /// legacy sender of this command type could have meant.
+        var paused: Bool?
     }
 
     private static func parseParameters(_ json: String) -> Parameters {
@@ -179,8 +198,19 @@ public final class LocalCommandExecutor {
         return Parameters(
             durationSeconds: (object["durationSeconds"] as? NSNumber)?.doubleValue,
             mode: object["mode"] as? String,
-            deltaSeconds: (object["deltaSeconds"] as? NSNumber)?.doubleValue
+            deltaSeconds: (object["deltaSeconds"] as? NSNumber)?.doubleValue,
+            paused: (object["paused"] as? NSNumber)?.boolValue
         )
     }
+
+    // MARK: - Agent kill switch (additive — see AgentGuardrails)
+
+    /// Wired by `AppDelegate` to flip
+    /// `AppSettings.agentGuardrails.killSwitchEngaged`. Optional because
+    /// this executor is also constructed in tests and previews with no
+    /// settings store at all — an unwired handler rejects the command with
+    /// an honest sentence rather than silently claiming success (see the
+    /// `setAgentAccessPaused` case in `execute(_:now:)`).
+    public var agentAccessPauseHandler: ((_ paused: Bool) -> Void)?
 }
 #endif

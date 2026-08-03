@@ -155,7 +155,8 @@ struct DashboardView: View {
                 HStack(alignment: .top, spacing: palette.spacingPage) {
                     AgentActivityCard(
                         summary: viewModel.agentActivity,
-                        agentProcesses: Array(processMonitor.agentProcesses.prefix(4))
+                        agentProcesses: Array(processMonitor.agentProcesses.prefix(4)),
+                        sessions: viewModel.agentSessions
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     AnomaliesCard(anomalies: viewModel.anomalies)

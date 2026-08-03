@@ -285,12 +285,58 @@ public final class HistoryStore: @unchecked Sendable {
     /// records every decision, including denials, for the live AI Access
     /// pane view) rather than a duplicate of it.
     public func logAgentActivity(clientName: String, tool: String, at date: Date = Date()) {
+        // Backward-compatible overload from before the v5 migration widened
+        // the table (agent-session attribution pass): pre-v5 call sites only
+        // ever logged *executed* calls, so `.succeeded` with an unknown
+        // ("") session and no duration is the honest translation, matching
+        // the migration's own backfill defaults for old rows.
+        logAgentActivity(
+            clientName: clientName,
+            sessionID: "",
+            tool: tool,
+            argsSummary: nil,
+            durationMs: nil,
+            outcome: .succeeded,
+            at: date
+        )
+    }
+
+    /// Full write path for the v5 schema (agent-session attribution pass) —
+    /// records which per-connection session made the call (see
+    /// `AgentSessionIdentity`, `SentryKit/Services/AgentSessionIdentity.swift`),
+    /// how long it took, a short human-readable arguments summary (never raw
+    /// arguments — the caller is responsible for sanitizing/capping, see
+    /// `MCPXPCService`), and whether it actually executed. Unlike the pre-v5
+    /// path, *every* attempted tool call is logged, including denials —
+    /// `outcome` is what distinguishes "an agent did X" from "an agent asked
+    /// for X and was refused," which the session report and the Dashboard's
+    /// activity card both need to render honestly.
+    public func logAgentActivity(
+        clientName: String,
+        sessionID: String,
+        tool: String,
+        argsSummary: String?,
+        durationMs: Int?,
+        outcome: AgentActivityOutcome,
+        at date: Date = Date()
+    ) {
         guard let dbQueue else { return }
         do {
             try dbQueue.write { db in
                 try db.execute(
-                    sql: "INSERT INTO agent_activity_log (ts, client_name, tool) VALUES (?, ?, ?)",
-                    arguments: [date.timeIntervalSince1970, clientName, tool]
+                    sql: """
+                    INSERT INTO agent_activity_log (ts, client_name, tool, session_id, duration_ms, args_summary, outcome)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        date.timeIntervalSince1970,
+                        clientName,
+                        tool,
+                        sessionID,
+                        durationMs,
+                        argsSummary,
+                        outcome.rawValue
+                    ]
                 )
             }
         } catch {
@@ -299,14 +345,18 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     /// Reads back `agent_activity_log` rows at or after `since`, oldest
-    /// first — the data source for the Dashboard's agent-activity panel.
+    /// first — the data source for the Dashboard's agent-activity panel and
+    /// `AgentSessionReport`'s per-session grouping.
     public func agentActivityEvents(since: Date) -> [AgentActivityEvent] {
         guard let dbQueue else { return [] }
         do {
             return try dbQueue.read { db in
                 let rows = try Row.fetchAll(
                     db,
-                    sql: "SELECT ts, client_name, tool FROM agent_activity_log WHERE ts >= ? ORDER BY ts ASC",
+                    sql: """
+                    SELECT ts, client_name, tool, session_id, duration_ms, args_summary, outcome
+                    FROM agent_activity_log WHERE ts >= ? ORDER BY ts ASC
+                    """,
                     arguments: [since.timeIntervalSince1970]
                 )
                 return rows.compactMap { row -> AgentActivityEvent? in
@@ -315,7 +365,21 @@ public final class HistoryStore: @unchecked Sendable {
                         let clientName: String = row["client_name"],
                         let tool: String = row["tool"]
                     else { return nil }
-                    return AgentActivityEvent(timestamp: Date(timeIntervalSince1970: ts), clientName: clientName, tool: tool)
+                    // v5 columns decode leniently: an unknown outcome string
+                    // (from a future migration or a hand-edited database)
+                    // degrades to `.succeeded` — matching the migration's
+                    // backfill default — rather than dropping the row, which
+                    // would make history silently shrink.
+                    let outcomeRaw: String = row["outcome"] ?? AgentActivityOutcome.succeeded.rawValue
+                    return AgentActivityEvent(
+                        timestamp: Date(timeIntervalSince1970: ts),
+                        clientName: clientName,
+                        tool: tool,
+                        sessionID: row["session_id"] ?? "",
+                        durationMs: row["duration_ms"],
+                        argsSummary: row["args_summary"],
+                        outcome: AgentActivityOutcome(rawValue: outcomeRaw) ?? .succeeded
+                    )
                 }
             }
         } catch {
@@ -635,15 +699,59 @@ public struct AlertLogEntry: Equatable, Sendable {
     public let suppressed: Bool
 }
 
+/// How an attempted MCP tool call ended — the `outcome` column of
+/// `agent_activity_log` (v5 migration, agent-session attribution pass).
+/// Raw values are what's persisted, so, like `MCPToolID`'s raw values,
+/// never rename one after shipping.
+public enum AgentActivityOutcome: String, Codable, Sendable, CaseIterable, Equatable {
+    /// The call was authorized and the reply carried a real result.
+    case succeeded
+    /// Refused by `MCPAccessController` (master switch / per-tool toggle
+    /// off) or by the user declining the confirmation dialog.
+    case denied
+    /// Refused by the rate limiter specifically — split out from `denied`
+    /// because "you're calling too fast" and "you're not allowed" are
+    /// different findings for anyone auditing the log.
+    case rateLimited = "rate_limited"
+    /// Authorized and executed, but the reply carried an error instead of a
+    /// result (bad arguments, no data available, encode failure, ...).
+    case errored
+}
+
 /// One row of `agent_activity_log` — see `HistoryStore.logAgentActivity`.
+/// The v5 columns default (`""`/`nil`/`.succeeded`) to what the migration
+/// backfills for pre-v5 rows, so old rows and the old logging overload
+/// produce identical values.
 public struct AgentActivityEvent: Equatable, Sendable {
     public let timestamp: Date
     public let clientName: String
     public let tool: String
+    /// Per-connection session UUID string; `""` means "unknown" (a pre-v5
+    /// row, or a caller that predates the composite wire identity — see
+    /// `AgentSessionIdentity`).
+    public let sessionID: String
+    /// Wall-clock authorize→reply time; `nil` when it wasn't measured.
+    public let durationMs: Int?
+    /// Short human-readable summary — never raw arguments (see
+    /// `HistoryStore.logAgentActivity`'s doc comment).
+    public let argsSummary: String?
+    public let outcome: AgentActivityOutcome
 
-    public init(timestamp: Date, clientName: String, tool: String) {
+    public init(
+        timestamp: Date,
+        clientName: String,
+        tool: String,
+        sessionID: String = "",
+        durationMs: Int? = nil,
+        argsSummary: String? = nil,
+        outcome: AgentActivityOutcome = .succeeded
+    ) {
         self.timestamp = timestamp
         self.clientName = clientName
         self.tool = tool
+        self.sessionID = sessionID
+        self.durationMs = durationMs
+        self.argsSummary = argsSummary
+        self.outcome = outcome
     }
 }

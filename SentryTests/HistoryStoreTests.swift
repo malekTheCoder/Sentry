@@ -183,4 +183,106 @@ final class HistoryStoreTests: XCTestCase {
         let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: 1_699_999_000))
         XCTAssertEqual(events.map(\.clientName), ["Claude Code", "Cursor"])
     }
+
+    // MARK: - agent_activity_log v5 columns (agent-session attribution pass)
+
+    func testLogAgentActivityFullSessionRowRoundTrips() {
+        let store = tempHistoryStore()
+        let at = Date(timeIntervalSince1970: 1_700_000_000)
+        let sessionID = UUID().uuidString
+        store.logAgentActivity(
+            clientName: "Claude Code",
+            sessionID: sessionID,
+            tool: "keep_awake",
+            argsSummary: "mode=system_only, durationSeconds=600",
+            durationMs: 42,
+            outcome: .succeeded,
+            at: at
+        )
+
+        let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: 1_699_999_000))
+        XCTAssertEqual(events, [
+            AgentActivityEvent(
+                timestamp: at,
+                clientName: "Claude Code",
+                tool: "keep_awake",
+                sessionID: sessionID,
+                durationMs: 42,
+                argsSummary: "mode=system_only, durationSeconds=600",
+                outcome: .succeeded
+            )
+        ])
+    }
+
+    func testDeniedAndRateLimitedOutcomesRoundTrip() {
+        // Unlike the pre-v5 log, refused calls are recorded too — `outcome`
+        // is what separates "did X" from "asked for X and was refused."
+        let store = tempHistoryStore()
+        let at = Date(timeIntervalSince1970: 1_700_000_000)
+        store.logAgentActivity(clientName: "Cursor", sessionID: "s1", tool: "keep_awake", argsSummary: nil, durationMs: nil, outcome: .denied, at: at)
+        store.logAgentActivity(clientName: "Cursor", sessionID: "s1", tool: "get_system_snapshot", argsSummary: nil, durationMs: 3, outcome: .rateLimited, at: at.addingTimeInterval(1))
+        store.logAgentActivity(clientName: "Cursor", sessionID: "s1", tool: "get_battery_status", argsSummary: nil, durationMs: 7, outcome: .errored, at: at.addingTimeInterval(2))
+
+        let events = store.agentActivityEvents(since: at.addingTimeInterval(-1))
+        XCTAssertEqual(events.map(\.outcome), [.denied, .rateLimited, .errored])
+        XCTAssertNil(events[0].durationMs)
+        XCTAssertEqual(events[1].durationMs, 3)
+    }
+
+    func testLegacyOverloadWritesMigrationBackfillDefaults() {
+        // The pre-v5 overload must keep compiling AND produce rows
+        // indistinguishable from what the v5 migration backfills for old
+        // rows: unknown ("") session, no duration/summary, succeeded.
+        let store = tempHistoryStore()
+        let at = Date(timeIntervalSince1970: 1_700_000_000)
+        store.logAgentActivity(clientName: "Claude Code", tool: "release_awake", at: at)
+
+        let events = store.agentActivityEvents(since: at.addingTimeInterval(-1))
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].sessionID, "")
+        XCTAssertNil(events[0].durationMs)
+        XCTAssertNil(events[0].argsSummary)
+        XCTAssertEqual(events[0].outcome, .succeeded)
+    }
+
+    func testV5MigrationUpgradesAV3EraDatabaseInPlace() throws {
+        // Round-trip across the actual migration boundary: write a
+        // three-column row the way v3-era code did (raw SQL, no v5 columns),
+        // then confirm the widened read path decodes it with the backfill
+        // defaults rather than dropping it.
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        let at: Double = 1_700_000_000
+
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "INSERT INTO agent_activity_log (ts, client_name, tool) VALUES (?, ?, ?)",
+                arguments: [at, "Old Client", "keep_awake"]
+            )
+        }
+
+        let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: at - 1))
+        XCTAssertEqual(events, [
+            AgentActivityEvent(timestamp: Date(timeIntervalSince1970: at), clientName: "Old Client", tool: "keep_awake")
+        ])
+    }
+
+    func testAgentActivityEventsToleratesUnknownOutcomeString() throws {
+        // A future migration (or hand-edited database) writing an outcome
+        // this build doesn't know must degrade to the backfill default, not
+        // silently shrink history by dropping the row.
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "INSERT INTO agent_activity_log (ts, client_name, tool, session_id, outcome) VALUES (?, ?, ?, ?, ?)",
+                arguments: [1_700_000_000, "Future Client", "keep_awake", "s9", "partially_applied"]
+            )
+        }
+
+        let events = store.agentActivityEvents(since: Date(timeIntervalSince1970: 1_699_999_999))
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].outcome, .succeeded)
+        XCTAssertEqual(events[0].sessionID, "s9")
+    }
 }

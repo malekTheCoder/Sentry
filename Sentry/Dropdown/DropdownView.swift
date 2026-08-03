@@ -43,6 +43,13 @@ struct DropdownView: View {
     /// headless competitor MCP server (thermo-control-mcp, mac-monitor-mcp)
     /// can show since none of them have a menu bar at all.
     @ObservedObject private var activityLog: MCPActivityLog
+    /// Backs the agent-controls section (kill switch): the dropdown reads
+    /// `mcpServerEnabled`/`agentGuardrails` live and writes the kill-switch
+    /// flag straight back, the same "UI writes settings, `AppDelegate`'s
+    /// settings sink enforces" one-way flow every settings pane uses —
+    /// flipping the flag here is what triggers the assertion release and
+    /// notice in `AppDelegate.applySettings`, not this view.
+    @ObservedObject private var settingsStore: SettingsStore
     @Environment(\.colorScheme) private var systemColorScheme
 
     private let theme: Theme
@@ -82,6 +89,7 @@ struct DropdownView: View {
         // assertion on wake. The composition root owns exactly one.
         powerControl: PowerControlService,
         activityLog: MCPActivityLog,
+        settingsStore: SettingsStore,
         theme: Theme = .defaultTheme,
         // The user's own themes, so the quick switcher below offers them
         // alongside the presets. Defaulting to empty rather than making the
@@ -106,6 +114,7 @@ struct DropdownView: View {
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self._powerControl = ObservedObject(wrappedValue: powerControl)
         self._activityLog = ObservedObject(wrappedValue: activityLog)
+        self._settingsStore = ObservedObject(wrappedValue: settingsStore)
         self.theme = theme
         self.customThemes = customThemes
         self.enabledModules = enabledModules
@@ -198,10 +207,69 @@ struct DropdownView: View {
                 hairline
             }
 
+            // Kill switch (see AgentGuardrails): only meaningful while the
+            // MCP server is enabled at all — a control that stops something
+            // that can't be running would be noise. While *engaged* it shows
+            // regardless, for the same reason the keep-awake card overrides
+            // its own setting above: paused agent access is state this
+            // surface must always be able to show and end.
+            if settingsStore.settings.mcpServerEnabled
+                || settingsStore.settings.agentGuardrails.killSwitchEngaged {
+                agentControlSection
+                    .padding(.horizontal, rowInset)
+                    .padding(.vertical, palette.spacingTight)
+
+                hairline
+            }
+
             actionsRow
                 .padding(.horizontal, rowInset)
                 .padding(.vertical, palette.spacingTight)
         }
+    }
+
+    // MARK: - Agent controls (kill switch)
+
+    /// Two states, one section: a prominent "paused" banner with the way
+    /// out while the kill switch is engaged, and a one-row stop action while
+    /// it isn't. Both write only to settings — enforcement and the
+    /// assertion release live behind `AppDelegate`'s settings sink.
+    @ViewBuilder
+    private var agentControlSection: some View {
+        if settingsStore.settings.agentGuardrails.killSwitchEngaged {
+            HStack(spacing: palette.spacingTight) {
+                Image(systemName: "bolt.slash.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.warning)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Agent access paused")
+                        .font(palette.font(size: 12, weight: .semibold))
+                        .foregroundStyle(palette.warning)
+                    Text("Every MCP tool call is being declined.")
+                        .font(palette.font(size: 10))
+                        .foregroundStyle(palette.textSecondary)
+                }
+                Spacer(minLength: palette.spacingTight)
+                Button("Resume") {
+                    setAgentAccessPaused(false)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Resume agent access")
+            }
+            .padding(.horizontal, palette.spacingTight)
+            .accessibilityElement(children: .combine)
+        } else {
+            DropdownTextAction(
+                title: String(localized: "Stop AI agents"),
+                symbol: "bolt.slash",
+                action: { setAgentAccessPaused(true) }
+            )
+        }
+    }
+
+    private func setAgentAccessPaused(_ paused: Bool) {
+        settingsStore.settings.agentGuardrails.killSwitchEngaged = paused
     }
 
     /// Full-bleed rather than inset: at 320pt an inset rule reads as a floating
@@ -542,6 +610,12 @@ struct DropdownIconAction: View {
         // persisted assertion record.
         powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.dropdown")!),
         activityLog: MCPActivityLog(),
+        // Throwaway file for the same reason as the defaults suite above —
+        // a preview must never read or debounce-write the real settings.json.
+        settingsStore: SettingsStore(
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("preview-dropdown-settings.json")
+        ),
         theme: .defaultTheme,
         onOpenSettings: {},
         onOpenHistory: {},
