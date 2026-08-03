@@ -81,6 +81,25 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         let settings = settingsStore.settings
         var decision = accessController.evaluate(tool: tool, settings: settings)
 
+        // Conditional guardrails + termination controls (kill switch,
+        // per-client revocation, battery floor, on-battery restriction,
+        // quiet hours, thermal) — the pure engine in
+        // `SentryKit/Services/AgentGuardrails.swift`, fed the live snapshot
+        // the same way the permission model above is fed live settings.
+        // Checked *before* the confirmation branch below on purpose: a call
+        // a guardrail is going to deny must never put a confirmation dialog
+        // in front of the user first — approving it would mean approving
+        // something that then doesn't run, which is the dialog lying.
+        if !decision.isDenied,
+           case .deny(let reason) = AgentGuardrails.evaluate(
+               tool: tool,
+               clientName: clientName,
+               settings: settings.agentGuardrails,
+               context: .from(snapshot: coordinator.latestSnapshot())
+           ) {
+            decision = .denyGuardrail(reason: reason)
+        }
+
         if decision == .requiresConfirmation {
             let approved = presentConfirmationAlert(tool: tool, clientName: clientName, argumentsSummary: argumentsSummary)
             decision = approved ? .allow : .requiresConfirmation
@@ -158,6 +177,12 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             return String(localized: "MCP rate limit exceeded — configured in Sentry → Settings → AI Access. Try again in a moment.")
         case .requiresConfirmation:
             return String(localized: "The user declined to confirm this action in Sentry.")
+        case .denyGuardrail(let reason):
+            // Already a complete, honest sentence built by
+            // `AgentGuardrails.evaluate` ("Sentry declined this: battery is
+            // at 14% and unplugged…") — passed through verbatim so the
+            // denial the agent reads names the actual condition.
+            return reason
         }
     }
 
@@ -493,10 +518,16 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             let clampedDuration = min(durationSeconds, 24 * 3600)
             let clampedReason = reason.isEmpty ? "Requested via MCP by \(clientName)" : reason
             do {
-                try self.powerControl.startAssertion(
+                // The agent-tagged variant, not plain `startAssertion` —
+                // ownership is what lets the kill switch and guardrail
+                // auto-revocation release an agent's hold without ever
+                // touching one the user started themselves. See
+                // `PowerControlService.startAgentAssertion`.
+                try self.powerControl.startAgentAssertion(
                     mode: awakeMode,
                     duration: clampedDuration > 0 ? clampedDuration : nil,
-                    reason: clampedReason
+                    reason: clampedReason,
+                    clientName: clientName
                 )
                 reply(true, nil)
             } catch {

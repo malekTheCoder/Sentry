@@ -305,6 +305,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `defaultPolicy.mode == .auto`, `controlEnabledOnLaunch == false`.
     public var fanControl: FanControlSettings
 
+    // MARK: - Agent guardrails (conditional guardrails + kill switch)
+
+    /// Conditional guardrails, the global kill switch, and per-agent
+    /// revocations for the MCP surface — one nested object for the same
+    /// reason `fanControl` is (a single readable `"agentGuardrails": { … }`
+    /// block, one additive key for `init(from:)` to defend). Enforced by
+    /// `MCPXPCService.authorize` and `AppDelegate`'s snapshot loop via the
+    /// pure `AgentGuardrails` engine
+    /// (`SentryKit/Services/AgentGuardrails.swift`); see that file for the
+    /// exact policy semantics and defaults, and for the honesty note on
+    /// per-agent identity being a self-reported label.
+    public var agentGuardrails: AgentGuardrailSettings
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -389,6 +402,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         proLicenseBlob: String? = nil,
         proLicenseLastVerifiedAt: Date? = nil,
         fanControl: FanControlSettings = FanControlSettings(),
+        agentGuardrails: AgentGuardrailSettings = AgentGuardrailSettings(),
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -427,6 +441,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.proLicenseBlob = proLicenseBlob
         self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
         self.fanControl = fanControl
+        self.agentGuardrails = agentGuardrails
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -497,6 +512,12 @@ extension AppSettings {
         // block (auto mode, control not enabled on launch) — an upgrading
         // install must not find itself opted into a thermal feature.
         case fanControl
+        // Agent guardrails, additive: absent in any settings.json written
+        // before the guardrail/kill-switch pass existed, and its fallback is
+        // the shipped defaults (kill switch off, battery floor on at 20%,
+        // thermal auto-revoke on) — an upgrading install gets the same
+        // protections a fresh one does, and nothing it never opted into.
+        case agentGuardrails
         case updateCheckDaily
         case schemaVersion
     }
@@ -612,6 +633,11 @@ extension AppSettings {
                 ?? fallback.proLicenseLastVerifiedAt,
             fanControl: try container.decodeIfPresent(FanControlSettings.self, forKey: .fanControl)
                 ?? fallback.fanControl,
+            // `AgentGuardrailSettings` has its own additive-tolerant decoder
+            // (see that type), so a stored block written by an older build
+            // survives a policy field being added later, same as `fanControl`.
+            agentGuardrails: try container.decodeIfPresent(AgentGuardrailSettings.self, forKey: .agentGuardrails)
+                ?? fallback.agentGuardrails,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;

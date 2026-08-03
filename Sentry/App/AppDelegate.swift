@@ -357,6 +357,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var lastAppliedDropdownShowsKeepAwake: Bool?
     private var lastAppliedDropdownShowsAgentActivity: Bool?
 
+    /// Kill-switch state last seen by `applySettings`, so a rising edge
+    /// (false→true) can release the agent-held keep-awake assertion exactly
+    /// once — same transition-detection pattern as `lastEnabledRuleIDs`
+    /// below. `nil` until the first emission; a persisted engaged switch at
+    /// launch counts as a rising edge, which is harmless (nothing agent-held
+    /// exists yet) and self-consistent (paused stays paused, enforced).
+    private var lastKillSwitchEngaged: Bool?
+
+    /// Revoked client names last seen by `applySettings`, so a newly stopped
+    /// agent's keep-awake hold can be released the moment the user hits
+    /// Stop, wherever the setting was written from (AI Access pane, or a
+    /// hand-edited file).
+    private var lastRevokedClientNames: Set<String> = []
+
     /// Which rules were enabled last time settings changed, so a
     /// disabled→enabled transition can be detected and reported to
     /// `AlertEngine.ruleWasEnabled` (its lazy-authorization trigger).
@@ -481,6 +495,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 // release, and no alert rule would ever fire.
                 self.powerControl.evaluate(snapshot)
                 self.alertEngine.evaluate(snapshot)
+                // Guardrail auto-revocation (quiet hours starting, thermal
+                // pressure climbing) — checked per tick, but a release
+                // clears `agentAssertionOwner`, so each hold is revoked and
+                // announced at most once. See `AgentGuardrails`.
+                self.enforceAgentGuardrailRevocation(snapshot)
                 await self.widgetWriter.record(snapshot)
             }
         }
@@ -588,6 +607,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         localSyncServer.commandHandler = { [localCommandExecutor] command in
             await localCommandExecutor.execute(command)
         }
+        // The Watch's agent-page kill switch (`setAgentAccessPaused`,
+        // relayed through the iPhone) lands in `LocalCommandExecutor`, which
+        // deliberately owns no settings reference — this handler is the one
+        // line that connects it to the same `killSwitchEngaged` flag every
+        // other surface writes, so the release/notice logic in
+        // `applySettings` below runs identically no matter who flipped it.
+        localCommandExecutor.agentAccessPauseHandler = { [weak self] paused in
+            self?.settingsStore.settings.agentGuardrails.killSwitchEngaged = paused
+        }
         localSyncServer.start(feedingFrom: coordinator.snapshots())
     }
 
@@ -646,6 +674,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 viewModel: dropdownViewModel,
                 powerControl: powerControl,
                 activityLog: mcpActivityLog,
+                settingsStore: settingsStore,
                 theme: theme,
                 customThemes: settingsStore.settings.customThemes,
                 enabledModules: enabledModules,
@@ -890,6 +919,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             locationService.stop()
         }
 
+        // Agent termination controls (see AgentGuardrails): every surface —
+        // dropdown, AI Access pane, Watch relay — writes only the settings
+        // flags, and this sink is the single place those flags reach
+        // `PowerControlService`. Rising-edge detection (not level) so a
+        // slider drag's per-frame emissions can't re-announce a revocation.
+        let guardrails = settings.agentGuardrails
+        if guardrails.killSwitchEngaged, lastKillSwitchEngaged != true,
+           let owner = powerControl.agentAssertionOwner {
+            powerControl.releaseAgentAssertion()
+            announceAgentRevocation(
+                reason: String(localized: "Agent access was paused — Sentry released the keep-awake hold \"\(owner)\" was holding."),
+                clientName: owner
+            )
+        }
+        lastKillSwitchEngaged = guardrails.killSwitchEngaged
+
+        for name in guardrails.revokedClientNames.subtracting(lastRevokedClientNames)
+        where powerControl.releaseAgentAssertion(ownedBy: name) {
+            announceAgentRevocation(
+                reason: String(localized: "\"\(name)\" was stopped — Sentry released the keep-awake hold it was holding."),
+                clientName: name
+            )
+        }
+        lastRevokedClientNames = guardrails.revokedClientNames
+
         // Then report any disabled→enabled transition, which is what drives
         // §11.3's lazy notification authorization.
         let enabledNow = Set(settings.alertRules.filter(\.isEnabled).map(\.id))
@@ -914,6 +968,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
               !popover.isShown
         else { return }
         configurePopover(theme: theme, enabledModules: settings.enabledModules)
+    }
+
+    // MARK: - Agent guardrail revocation (see AgentGuardrails)
+
+    /// Releases an agent-held keep-awake assertion when a guardrail
+    /// condition arises mid-hold (quiet hours starting, thermal pressure
+    /// reaching serious/critical, or a kill switch that arrived without a
+    /// settings emission). Fed per snapshot tick from the loop in
+    /// `applicationDidFinishLaunching`; the decision itself is the pure
+    /// `AgentGuardrails.autoRevocationReason`, so this method is only glue.
+    private func enforceAgentGuardrailRevocation(_ snapshot: SystemSnapshot) {
+        guard let owner = powerControl.agentAssertionOwner,
+              let reason = AgentGuardrails.autoRevocationReason(
+                  settings: settingsStore.settings.agentGuardrails,
+                  context: .from(snapshot: snapshot)
+              )
+        else { return }
+        powerControl.releaseAgentAssertion()
+        announceAgentRevocation(reason: reason, clientName: owner)
+    }
+
+    /// An auto-revocation must be visible, twice over: a user notification
+    /// through the existing `AlertEngine` delivery pathway (lazy
+    /// authorization, DND respected — see `deliverGuardrailNotice`), and a
+    /// row in the MCP activity feed (AI Access pane + dropdown agent line).
+    /// The activity entry's client is "Sentry Guardrails", not the agent —
+    /// the agent didn't call `release_awake`, Sentry released it, and the
+    /// feed must not attribute an action to a client that never made it;
+    /// whose hold it was is named in the summary text instead.
+    private func announceAgentRevocation(reason: String, clientName: String) {
+        alertEngine.deliverGuardrailNotice(
+            title: String(localized: "Agent keep-awake released"),
+            body: reason
+        )
+        mcpActivityLog.record(
+            MCPActivityLogEntry(
+                clientName: String(localized: "Sentry Guardrails"),
+                tool: .releaseAwake,
+                argumentsSummary: reason,
+                decision: .allow
+            )
+        )
     }
 
     // MARK: - MCP XPC listener (plan §13.2)

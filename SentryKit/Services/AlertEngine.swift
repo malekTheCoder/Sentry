@@ -636,6 +636,29 @@ public final class AlertEngine {
         let cutoff = now.addingTimeInterval(-3600)
         recentDeliveryTimestamps.removeAll { $0 < cutoff }
     }
+
+    // MARK: - Guardrail notices (additive — see AgentGuardrails)
+
+    /// Stable identifier stamped into `deliverNotification`'s error log line
+    /// for guardrail notices, which have no `AlertRule` behind them.
+    private static let guardrailNoticeID = UUID(uuidString: "6B1A0000-0000-0000-0000-A6E17A9D1A15")!
+
+    /// Delivers a one-off user notification for a guardrail auto-revocation
+    /// ("Quiet hours started — Sentry released the keep-awake hold an agent
+    /// was holding"). Routed through this engine rather than a second
+    /// `UNUserNotificationCenter` call site so guardrail notices share the
+    /// lazy-authorization flow (`requestAuthorizationIfNeeded`, plan §11.3)
+    /// instead of duplicating it — an auto-revocation must be visible, and
+    /// this is the existing visible pathway. Deliberately *not* routed
+    /// through the rule pipeline: a revocation is not a rule firing, so it
+    /// must not consume the hourly rate cap or appear in `alert_log` as one.
+    /// The global `doNotDisturb` mute is still honored — a user who silenced
+    /// everything meant it, and the revocation itself is separately visible
+    /// in the MCP activity feed regardless.
+    public func deliverGuardrailNotice(title: String, body: String) {
+        guard !doNotDisturb else { return }
+        deliverNotification(title: title, body: body, sound: false, ruleID: Self.guardrailNoticeID)
+    }
 }
 
 // MARK: - Default rules (plan §11.2)

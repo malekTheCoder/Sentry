@@ -120,6 +120,10 @@ struct AIAccessPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            guardrailsSection
+
+            agentSessionsSection
+
             Section {
                 ForEach(MCPToolID.readTools, id: \.self) { tool in
                     toolToggleRow(tool)
@@ -266,6 +270,193 @@ struct AIAccessPane: View {
             // same reason.
             endpointHolder.publisher?.refresh()
         }
+    }
+
+    // MARK: - Guardrails (see AgentGuardrails)
+
+    /// The conditional-guardrail policies and the kill switch. Every control
+    /// binds straight into `store.settings.agentGuardrails`, and — same as
+    /// every other toggle on this pane — enforcement lives elsewhere
+    /// (`MCPXPCService.authorize` and `AppDelegate`'s snapshot loop, both
+    /// via the pure `AgentGuardrails` engine); this section's job is to make
+    /// the current policy legible.
+    @ViewBuilder
+    private var guardrailsSection: some View {
+        Section {
+            Toggle("Pause all agent access (kill switch)", isOn: $store.settings.agentGuardrails.killSwitchEngaged)
+                .accessibilityLabel("Pause all agent access")
+                .accessibilityValue(store.settings.agentGuardrails.killSwitchEngaged ? "On" : "Off")
+            if store.settings.agentGuardrails.killSwitchEngaged {
+                Label {
+                    Text("Every MCP tool call — read and write, from every client — is being declined, and any agent-held keep-awake was released.")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "bolt.slash.fill")
+                        .foregroundStyle(palette.warning)
+                }
+            }
+
+            Toggle("Battery floor", isOn: $store.settings.agentGuardrails.batteryFloorEnabled)
+                .accessibilityLabel("Battery floor guardrail")
+            Stepper(
+                value: $store.settings.agentGuardrails.batteryFloorPercent,
+                in: 5...95,
+                step: 5
+            ) {
+                LabeledContent("Deny keep-awake below", value: "\(Int(store.settings.agentGuardrails.batteryFloorPercent))% on battery")
+            }
+            .disabled(!store.settings.agentGuardrails.batteryFloorEnabled)
+            .accessibilityLabel("Battery floor percentage")
+            .accessibilityValue("\(Int(store.settings.agentGuardrails.batteryFloorPercent)) percent")
+            Toggle("Apply the floor to all write tools, not just keep-awake", isOn: $store.settings.agentGuardrails.batteryFloorAppliesToAllWriteTools)
+                .font(.caption)
+                .disabled(!store.settings.agentGuardrails.batteryFloorEnabled)
+
+            Toggle("Deny all write tools while on battery", isOn: $store.settings.agentGuardrails.denyWriteToolsOnBattery)
+                .accessibilityLabel("Deny write tools on battery")
+
+            Toggle("Quiet hours — no agent keep-awake", isOn: $store.settings.agentGuardrails.quietHoursEnabled)
+                .accessibilityLabel("Quiet hours guardrail")
+            if store.settings.agentGuardrails.quietHoursEnabled {
+                DatePicker(
+                    "From",
+                    selection: quietHourBinding(\.quietHoursStartMinute),
+                    displayedComponents: .hourAndMinute
+                )
+                DatePicker(
+                    "Until",
+                    selection: quietHourBinding(\.quietHoursEndMinute),
+                    displayedComponents: .hourAndMinute
+                )
+            }
+
+            Toggle("Release keep-awake under serious thermal pressure", isOn: $store.settings.agentGuardrails.thermalAutoRevokeEnabled)
+                .accessibilityLabel("Thermal auto-revoke guardrail")
+        } header: {
+            Text("Guardrails")
+        } footer: {
+            Text("Guardrails are checked on every tool call and against any keep-awake hold an agent already has. A denied call gets an honest, specific reason (\"battery is at 14% and unplugged\"), and an auto-released hold posts a notification and a row in the activity log below. Quiet hours may cross midnight; a window whose start equals its end is never active.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Agent sessions (per-agent stop)
+
+    /// Excluded from `knownAgentClients` because these rows are Sentry's own
+    /// auto-revocation records, not a connected client anyone could "stop" —
+    /// must match the `clientName` `AppDelegate.announceAgentRevocation`
+    /// stamps.
+    private static let guardrailFeedClientName = String(localized: "Sentry Guardrails")
+
+    /// Clients seen this session (from the activity log, newest first) plus
+    /// any revoked names with no recent activity — a stopped client must
+    /// stay listed so it can be re-allowed even after its log entries age
+    /// out of the ring buffer.
+    private var knownAgentClients: [(name: String, lastSeen: Date?)] {
+        var lastSeen: [String: Date] = [:]
+        var order: [String] = []
+        for entry in activityLogHolder.activityLog?.entries ?? []
+        where entry.clientName != Self.guardrailFeedClientName {
+            if lastSeen[entry.clientName] == nil {
+                lastSeen[entry.clientName] = entry.timestamp
+                order.append(entry.clientName)
+            }
+        }
+        for name in store.settings.agentGuardrails.revokedClientNames.sorted()
+        where lastSeen[name] == nil {
+            order.append(name)
+        }
+        return order.map { ($0, lastSeen[$0]) }
+    }
+
+    @ViewBuilder
+    private var agentSessionsSection: some View {
+        Section {
+            let clients = knownAgentClients
+            if clients.isEmpty {
+                Text("No agent has connected this session.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(clients, id: \.name) { client in
+                    agentSessionRow(name: client.name, lastSeen: client.lastSeen)
+                }
+            }
+        } header: {
+            Text("Agents")
+        } footer: {
+            Text("Stopping an agent denies further calls made under that client name and releases any keep-awake hold it started. Client names are self-reported by the connecting process — a label, not a verified identity — so treat per-agent stops as best-effort and use the kill switch above when it matters.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func agentSessionRow(name: String, lastSeen: Date?) -> some View {
+        let isRevoked = store.settings.agentGuardrails.revokedClientNames.contains(name)
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .fontWeight(.medium)
+                if let lastSeen {
+                    Text("Last call at \(lastSeen, style: .time)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Stopped — no calls this session")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if isRevoked {
+                Text("Stopped")
+                    .font(.caption)
+                    .foregroundStyle(palette.warning)
+                Button("Allow") { setClientRevoked(name, revoked: false) }
+                    .accessibilityLabel("Allow \(name) again")
+            } else {
+                Button("Stop") { setClientRevoked(name, revoked: true) }
+                    .accessibilityLabel("Stop \(name)")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func setClientRevoked(_ name: String, revoked: Bool) {
+        var names = store.settings.agentGuardrails.revokedClientNames
+        if revoked {
+            names.insert(name)
+        } else {
+            names.remove(name)
+        }
+        // Only the flag is written here; releasing the client's keep-awake
+        // hold is `AppDelegate.applySettings`' job, so a revocation made by
+        // hand-editing settings.json behaves identically to this button.
+        store.settings.agentGuardrails.revokedClientNames = names
+    }
+
+    /// Minutes-after-midnight ↔ `Date` bridge for the quiet-hours pickers:
+    /// the stored value has no date component (see
+    /// `AgentGuardrailSettings.quietHoursStartMinute`), so the picker is
+    /// anchored to today's local midnight purely for display, and only the
+    /// hour/minute survive the write back.
+    private func quietHourBinding(_ keyPath: WritableKeyPath<AgentGuardrailSettings, Int>) -> Binding<Date> {
+        Binding(
+            get: {
+                let minutes = store.settings.agentGuardrails[keyPath: keyPath]
+                return Calendar.current.startOfDay(for: Date())
+                    .addingTimeInterval(TimeInterval(minutes * 60))
+            },
+            set: { newValue in
+                let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
+                store.settings.agentGuardrails[keyPath: keyPath] =
+                    (components.hour ?? 0) * 60 + (components.minute ?? 0)
+            }
+        )
     }
 
     // MARK: - Command-line access
@@ -494,6 +685,7 @@ struct AIAccessPane: View {
         case .denyToolDisabled: return String(localized: "Denied — tool disabled")
         case .denyRateLimited: return String(localized: "Denied — rate limited")
         case .requiresConfirmation: return String(localized: "Denied — user declined")
+        case .denyGuardrail(let reason): return reason
         }
     }
 
