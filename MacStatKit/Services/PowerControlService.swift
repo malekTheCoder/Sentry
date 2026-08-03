@@ -90,8 +90,8 @@ public enum PowerControlError: Error, LocalizedError, Sendable, Equatable {
 @MainActor
 public final class PowerControlService: ObservableObject {
 
-    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "PowerControlService")
-    private static let defaultsKey = "com.sentry.macstat.powercontrol.state"
+    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "PowerControlService")
+    private static let defaultsKey = "dev.malekswilam.macstat.powercontrol.state"
 
     @Published public private(set) var state: SleepAssertionState = .inactive
 

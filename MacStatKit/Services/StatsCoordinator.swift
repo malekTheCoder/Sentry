@@ -291,7 +291,7 @@ public final class StatsCoordinator: @unchecked Sendable {
 
     // MARK: - Internal state (queue-confined)
 
-    private let queue = DispatchQueue(label: "com.sentry.macstat.statscoordinator", qos: .utility)
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.statscoordinator", qos: .utility)
     private var timers: [Tier: DispatchSourceTimer] = [:]
     private var isPolling = false
     private var continuations: [UUID: AsyncStream<SystemSnapshot>.Continuation] = [:]

@@ -24,7 +24,7 @@ public enum MCPRemoteAccessKey {
     /// Keychain service string. A generic-password item's (service, account)
     /// pair is its identity; account is fixed per call site below (`"default"`
     /// in production, a unique value per test).
-    private static let service = "com.sentry.macstat.mcp.remotekey"
+    private static let service = "dev.malekswilam.macstat.mcp.remotekey"
 
     /// Returns the currently stored key, or `nil` if none has been generated
     /// yet (e.g. Remote Access has never been turned on).

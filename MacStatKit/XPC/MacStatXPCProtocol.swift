@@ -25,7 +25,7 @@ import Foundation
 /// the `SentryMCPBridge` tool target, which links no framework of ours; see
 /// `project.yml`.
 public enum MacStatXPCServiceName {
-    public static let machService = "com.sentry.macstat.xpc"
+    public static let machService = "dev.malekswilam.macstat.xpc"
 }
 
 /// The XPC contract between `MacStat.app` (which implements this protocol,

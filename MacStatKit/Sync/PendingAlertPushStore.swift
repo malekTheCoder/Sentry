@@ -17,7 +17,7 @@ import Foundation
 /// `UserDefaults` rather than a plain in-memory array.
 public final class PendingAlertPushStore {
     private let defaults: UserDefaults
-    private let key = "com.sentry.macstat.pendingAlertPushes"
+    private let key = "dev.malekswilam.macstat.pendingAlertPushes"
     /// Generous enough to survive a long offline stretch without ever
     /// mattering in practice, small enough that a misfiring rule can't grow
     /// this file unbounded.

@@ -7,7 +7,7 @@ import Foundation
 // ## The bug this directory exists to fix
 //
 // `AppDelegate` used to call `NSXPCListener(machServiceName:
-// "com.sentry.macstat.xpc")` and resume it, and nothing in the project
+// "dev.malekswilam.macstat.xpc")` and resume it, and nothing in the project
 // ever told launchd that name existed — no `MachServices` key, no
 // LaunchAgent, nothing. The listener was constructed, `resume()` returned
 // without complaint, and every `macstat` invocation and every stdio-MCP tool
@@ -133,7 +133,7 @@ public enum MCPBridgeNaming {
     /// is compiled into the `SentryMCPBridge` tool target (which links no
     /// framework of ours) while `MacStatXPCProtocol.swift` is not — see
     /// `project.yml`.
-    public static let label = "com.sentry.macstat.xpc"
+    public static let label = "dev.malekswilam.macstat.xpc"
 
     /// `…/Contents/Library/LaunchAgents/<this>`. Passed verbatim to
     /// `SMAppService.agent(plistName:)`.

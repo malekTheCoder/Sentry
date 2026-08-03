@@ -22,7 +22,7 @@ import os
 /// IO happens on a private serial queue.
 public final class SettingsStore: ObservableObject {
 
-    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "SettingsStore")
+    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "SettingsStore")
 
     /// Mutating this schedules a debounced write. Replace the whole value or
     /// poke a single field — both go through `didSet`.
@@ -38,7 +38,7 @@ public final class SettingsStore: ObservableObject {
     public let fileURL: URL
 
     private let debounceInterval: TimeInterval
-    private let ioQueue = DispatchQueue(label: "com.sentry.macstat.settingsstore", qos: .utility)
+    private let ioQueue = DispatchQueue(label: "dev.malekswilam.macstat.settingsstore", qos: .utility)
 
     /// Touched from the main thread (`scheduleSave`) and from `save()`, hence
     /// the lock; the work item itself always runs on `ioQueue`.

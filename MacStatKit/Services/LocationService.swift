@@ -64,7 +64,7 @@ import CoreLocation
 @MainActor
 public final class LocationService: NSObject, ObservableObject {
 
-    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "LocationService")
+    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "LocationService")
 
     /// How often a fresh fix is requested while the feature is enabled.
     /// Deliberately not continuous — see this type's doc comment.

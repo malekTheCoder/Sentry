@@ -37,7 +37,7 @@ public protocol PostureCommandRunning: Sendable {
 public struct SubprocessPostureCommandRunner: PostureCommandRunning, Sendable {
 
     private static let logger = Logger(
-        subsystem: "com.sentry.macstat.systemmetricskit",
+        subsystem: "dev.malekswilam.macstat.systemmetricskit",
         category: "SecurityPosture"
     )
 
@@ -178,7 +178,7 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
     /// background sweep nobody is waiting on.
     public static let defaultCommandTimeout: TimeInterval = 2.0
 
-    private let queue = DispatchQueue(label: "com.sentry.macstat.securityposture", qos: .utility)
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.securityposture", qos: .utility)
     private let runner: PostureCommandRunning
     private let cacheTTL: TimeInterval
     private let commandTimeout: TimeInterval

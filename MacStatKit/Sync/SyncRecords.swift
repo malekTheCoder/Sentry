@@ -11,7 +11,7 @@ import Foundation
 /// Developer Program account for this project. `project.yml` has
 /// `CODE_SIGNING_REQUIRED: NO` and `DEVELOPMENT_TEAM: ""` — there is no
 /// provisioning profile, no push entitlement, and no way to create the
-/// `iCloud.com.sentry.macstat` container plan §7.2 specifies. `CKRecord`,
+/// `iCloud.dev.malekswilam.macstat` container plan §7.2 specifies. `CKRecord`,
 /// `CKRecord.ID`, and `CKRecordZone.ID` are just Foundation-adjacent value
 /// types, though — constructing, populating, and serializing them requires
 /// no entitlement and performs no network I/O, so the model/mapper/encoding
@@ -24,7 +24,7 @@ import Foundation
 ///
 /// **What "done" looks like once enrollment happens:** add the CloudKit
 /// capability + push entitlement in `project.yml`, point a `SyncService` at
-/// `CKContainer(identifier: "iCloud.com.sentry.macstat")`, and wire it
+/// `CKContainer(identifier: "iCloud.dev.malekswilam.macstat")`, and wire it
 /// up to call `CKMapper`'s existing `record(from:zoneID:)` /
 /// `xxx(from:)` functions before `.save()`/after `.fetch()`. Nothing in
 /// *this* file needs to change — the model types and their CloudKit

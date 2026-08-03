@@ -147,7 +147,7 @@ public final class SyncService: @unchecked Sendable {
 
     // MARK: - Queue-confined state
 
-    private let queue = DispatchQueue(label: "com.sentry.macstat.syncservice", qos: .utility)
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.syncservice", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var isRunning = false
 

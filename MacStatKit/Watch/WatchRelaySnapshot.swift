@@ -452,7 +452,7 @@ extension WatchRelaySnapshot {
     /// The one key both sides agree on inside the `[String: Any]`
     /// dictionaries `WCSession`'s `updateApplicationContext`/
     /// `transferCurrentComplicationUserInfo` APIs require.
-    private static let payloadKey = "com.sentry.macstat.watchRelay.v1"
+    private static let payloadKey = "dev.malekswilam.macstat.watchRelay.v1"
 
     /// `WCSession`'s context/user-info APIs require a plain
     /// `[String: Any]` of property-list-compatible values, not an arbitrary

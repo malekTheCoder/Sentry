@@ -17,10 +17,10 @@ import os
 /// and skipped, never allowed to crash the process (P5).
 public final class RollupJob: @unchecked Sendable {
 
-    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "RollupJob")
+    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "RollupJob")
 
     private let dbQueue: DatabaseQueue?
-    private let queue = DispatchQueue(label: "com.sentry.macstat.rollupjob", qos: .utility)
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.rollupjob", qos: .utility)
     private var hourlyTimer: DispatchSourceTimer?
     private let defaults: UserDefaults
 
@@ -48,8 +48,8 @@ public final class RollupJob: @unchecked Sendable {
         hourlyRetentionDaysStorage = max(hourlyDays, 1)
     }
 
-    private static let lastDailyRollupKey = "com.sentry.macstat.rollupjob.lastDailyRollup"
-    private static let lastVacuumKey = "com.sentry.macstat.rollupjob.lastVacuum"
+    private static let lastDailyRollupKey = "dev.malekswilam.macstat.rollupjob.lastDailyRollup"
+    private static let lastVacuumKey = "dev.malekswilam.macstat.rollupjob.lastVacuum"
 
     /// - Parameters:
     ///   - dbQueue: typically `historyStore.databaseQueue` — the same

@@ -26,7 +26,7 @@ final class SharedEnergySampler {
     // that's only ever polled on the medium/slow tier (§8.4).
     private static let cacheTTL: TimeInterval = 2.0
 
-    private let queue = DispatchQueue(label: "com.sentry.macstat.sharedenergysampler")
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.sharedenergysampler")
 
     private var subscription: IOReportSubscription?
 

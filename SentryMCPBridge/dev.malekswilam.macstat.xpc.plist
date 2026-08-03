@@ -8,7 +8,7 @@
   user explicitly asks for it in Settings ▸ AI Access.
 
   THIS FILE IS THE FIX. Before it existed, `AppDelegate` called
-  `NSXPCListener(machServiceName: "com.sentry.macstat.xpc")` and no job
+  `NSXPCListener(machServiceName: "dev.malekswilam.macstat.xpc")` and no job
   anywhere declared that name, so launchd had nothing to check the app in
   against, the listener silently never received a connection, and every
   `macstat` invocation failed while the app was running perfectly.
@@ -59,7 +59,7 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.sentry.macstat.xpc</string>
+	<string>dev.malekswilam.macstat.xpc</string>
 
 	<!-- Relative to Sentry.app. The MacStat target's Copy Files phase puts
 	     the built tool at Contents/MacOS/SentryMCPBridge; see project.yml. -->
@@ -73,7 +73,7 @@
 	     integration config or documented command had to change. -->
 	<key>MachServices</key>
 	<dict>
-		<key>com.sentry.macstat.xpc</key>
+		<key>dev.malekswilam.macstat.xpc</key>
 		<true/>
 	</dict>
 
