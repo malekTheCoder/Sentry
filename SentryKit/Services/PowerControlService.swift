@@ -614,5 +614,64 @@ public final class PowerControlService: ObservableObject {
         let open = awakeHolds[lastIndex]
         awakeHolds[lastIndex] = AgentAwakeHold(owner: open.owner, start: open.start, end: Date())
     }
+
+    // MARK: - Agent-held assertion ownership (additive — see AgentGuardrails)
+
+    /// Which MCP client (self-reported name — a label, not a verified
+    /// identity; see `AgentGuardrailSettings`'s trust note) started the
+    /// current assertion, tagged with the `assertionGeneration` it belongs
+    /// to. The generation tag is what keeps this additive: `releaseAssertion`
+    /// and every user-initiated start path stay untouched, because a stale
+    /// tag is simply *ignored* — `agentAssertionOwner` below only honors it
+    /// while that exact generation's assertion is still the live one.
+    private var agentOwnership: (generation: UInt64, clientName: String)?
+
+    /// The client name holding the current assertion, or `nil` when no
+    /// assertion is active, the active one wasn't started by an agent, or an
+    /// agent's assertion has since been replaced by a user-started one
+    /// (which bumps `assertionGeneration`, invalidating the tag).
+    public var agentAssertionOwner: String? {
+        guard let agentOwnership,
+              agentOwnership.generation == assertionGeneration,
+              state != .inactive else { return nil }
+        return agentOwnership.clientName
+    }
+
+    /// `startAssertion(mode:duration:reason:)` plus ownership tagging — the
+    /// entry point `MCPXPCService.keepAwake` uses so the kill switch and
+    /// guardrail auto-revocation can tell an agent's hold from the user's
+    /// own. Tags only when an assertion actually came up (a zero-length
+    /// request is a documented no-op in `startAssertionInternal`).
+    /// `sessionID` additionally tags the awake-hold ledger entry (see
+    /// `openAwakeHold`), so the same call feeds both consumers of ownership:
+    /// the kill switch / guardrails (by client name, this section) and
+    /// `AgentSessionReport`'s held-time attribution (by session, the ledger
+    /// section above). One entry point, two tags, no way for them to drift.
+    public func startAgentAssertion(
+        mode: AwakeMode,
+        duration: TimeInterval?,
+        reason: String,
+        clientName: String,
+        sessionID: String? = nil
+    ) throws {
+        try startAssertion(mode: mode, duration: duration, reason: reason, owner: sessionID)
+        if state != .inactive {
+            agentOwnership = (assertionGeneration, clientName)
+        }
+    }
+
+    /// Releases the current assertion only if an agent holds it — and, when
+    /// `clientName` is given, only if *that* agent holds it. Returns whether
+    /// anything was released, so callers (kill switch, per-agent stop,
+    /// guardrail auto-revoke) can decide whether there is a revocation to
+    /// announce. A user-started assertion is never touched by this method:
+    /// terminating agents must not cost the user their own hold.
+    @discardableResult
+    public func releaseAgentAssertion(ownedBy clientName: String? = nil) -> Bool {
+        guard let owner = agentAssertionOwner else { return false }
+        if let clientName, owner != clientName { return false }
+        releaseAssertion()
+        return true
+    }
 }
 #endif

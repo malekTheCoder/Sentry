@@ -86,7 +86,10 @@ struct ContentView: View {
         }
         .tabViewStyle(.page)
         .alert(
-            "Keep Awake",
+            // "Sentry", not "Keep Awake": this alert now reports outcomes
+            // for both the keep-awake taps and the agent kill switch, and a
+            // title naming the wrong feature would misattribute the message.
+            "Sentry",
             isPresented: Binding(
                 get: { actionResult != nil },
                 set: { if !$0 { actionResult = nil } }
@@ -157,7 +160,8 @@ struct ContentView: View {
                 recentToolNames: snapshot.agentRecentToolNames ?? [],
                 // Staleness of the *relay*, not of the agent log: if the
                 // whole snapshot is old, so is anything it says about agents.
-                isStale: Self.isStale(snapshot)
+                isStale: Self.isStale(snapshot),
+                onStopAgents: { sendStopAgents() }
             )
         } else {
             UnavailablePage(
@@ -253,6 +257,27 @@ struct ContentView: View {
 
         Task { @MainActor in
             actionResult = await WatchControlBridge.sendAndDescribe(command, whenCompleted: successSentence)
+        }
+    }
+
+    // MARK: Agent kill switch
+
+    /// The Agent Activity page's stop control: a `setAgentAccessPaused`
+    /// `ControlCommand` through the same watch → iPhone → Mac bridge every
+    /// keep-awake tap uses, landing in `LocalCommandExecutor`
+    /// (`SentryKit/Services/LocalCommandExecutor.swift`), which flips the
+    /// Mac's `AgentGuardrailSettings.killSwitchEngaged`. Engage-only from
+    /// the wrist on purpose: resuming is a deliberate decision best made
+    /// where the paused state is actually visible (the Mac's menu bar or
+    /// Settings → AI Access), and this page has no relayed pause state to
+    /// render a truthful resume control against.
+    private func sendStopAgents() {
+        let command = Self.command(type: "setAgentAccessPaused", parametersJSON: #"{"paused":true}"#)
+        Task { @MainActor in
+            actionResult = await WatchControlBridge.sendAndDescribe(
+                command,
+                whenCompleted: String(localized: "Agent access on your Mac is paused. Resume it from Sentry on the Mac.")
+            )
         }
     }
 

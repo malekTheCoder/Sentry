@@ -118,6 +118,16 @@ struct AgentActivityPage: View {
     /// header's note on why deriving it from `lastActivityAt` would be wrong.
     let isStale: Bool
 
+    /// The kill switch: asks the Mac (via the phone relay — the shell owns
+    /// the `ControlCommand`, same split as `KeepAwakePage`'s closures) to
+    /// pause all agent access. Optional with a `nil` default so the existing
+    /// previews stay honest presentational fixtures; `ContentView` always
+    /// wires it. Shown in *every* data state, including "not reported" — the
+    /// relay not carrying agent activity says nothing about whether an agent
+    /// is misbehaving right now, and a stop control that hides exactly when
+    /// the user is worried would be the wrong kind of quiet.
+    var onStopAgents: (() -> Void)? = nil
+
     /// How many tool names to list. Four rows plus the header and count fit a
     /// 40mm face without scrolling at default text size; beyond that the list
     /// stops being glanceable and becomes an audit trail, which is the Mac
@@ -147,6 +157,9 @@ struct AgentActivityPage: View {
                     staleBanner
                 }
                 content
+                if onStopAgents != nil {
+                    stopAgentsButton
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -359,6 +372,28 @@ struct AgentActivityPage: View {
         formatter.unitsStyle = .abbreviated
         formatter.dateTimeStyle = .numeric
         return formatter.localizedString(for: date, relativeTo: now)
+    }
+
+    /// Red like `KeepAwakePage.endButton` and for the same reason — a
+    /// consequence-bearing control kept visually distinct from anything a
+    /// thumb might be reaching for — and worded as what it does on the *Mac*,
+    /// since the effect is on a machine the user isn't looking at. No local
+    /// confirmation sheet: the outcome sentence the relay chain returns is
+    /// surfaced by the shell (`ContentView`'s alert), and un-pausing is one
+    /// switch away in Sentry on the Mac, so the action is cheap to undo.
+    /// This page deliberately does not render a "paused" state of its own:
+    /// the relay payload doesn't carry the kill-switch flag, and drawing a
+    /// state the Mac never reported would be fabricating a reading.
+    private var stopAgentsButton: some View {
+        Button(role: .destructive) {
+            onStopAgents?()
+        } label: {
+            Text("Stop Agents on Mac")
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .tint(.red)
+        .accessibilityHint("Pauses all AI agent access to your Mac")
     }
 
     @ViewBuilder

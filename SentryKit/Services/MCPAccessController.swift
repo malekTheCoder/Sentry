@@ -157,6 +157,18 @@ public final class MCPAccessController {
         /// native confirmation dialog and call `evaluate` again (or act on
         /// the user's choice directly) rather than executing outright.
         case requiresConfirmation
+        /// A conditional guardrail or termination control blocked the call —
+        /// the kill switch, a per-client revocation, the battery floor, the
+        /// on-battery restriction, quiet hours, or thermal pressure.
+        /// `reason` carries the full, honest sentence the agent should see
+        /// verbatim ("Sentry declined this: battery is at 14% and
+        /// unplugged…"). Produced by `MCPXPCService.authorize` from
+        /// `AgentGuardrails.evaluate`
+        /// (`SentryKit/Services/AgentGuardrails.swift`), never by
+        /// `evaluate(tool:settings:)` here — the static permission model and
+        /// the conditional guardrails are separate engines on purpose, so
+        /// each stays exhaustively unit-testable on its own inputs.
+        case denyGuardrail(reason: String)
 
         /// Whether this decision represents a genuine denial — used by
         /// `MCPXPCService` to decide whether to log `"denied"` vs
@@ -165,7 +177,7 @@ public final class MCPAccessController {
         public var isDenied: Bool {
             switch self {
             case .allow, .requiresConfirmation: return false
-            case .denyMasterDisabled, .denyToolDisabled, .denyRateLimited: return true
+            case .denyMasterDisabled, .denyToolDisabled, .denyRateLimited, .denyGuardrail: return true
             }
         }
     }
