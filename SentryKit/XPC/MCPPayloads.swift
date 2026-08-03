@@ -396,6 +396,36 @@ public enum MCPPayloads {
         public var peakMemoryPressurePercent: Double?
         public var alertsFired: Int
 
+        // Agent-session attribution (see `AgentSessionAttribution`,
+        // SentryKit/Services/AgentSessionReport.swift, which computes these).
+        // All optional with nil defaults so the pre-attribution call shape
+        // keeps compiling — appended, never reordered, per this file's
+        // shared-ownership rule.
+
+        /// The calling connection's session ID (see `AgentSessionIdentity`).
+        public var sessionID: String?
+        public var sessionClientName: String?
+        /// First/last logged tool call by this session inside the window;
+        /// nil when it made none.
+        public var sessionStart: Date?
+        public var sessionEnd: Date?
+        /// Attempted tool calls by this session in the window, keyed by tool
+        /// name — includes denied attempts (see `AgentActivityOutcome`).
+        public var toolCallCounts: [String: Int]?
+        /// Seconds a keep-awake assertion requested *by this session* was
+        /// held within the window (current app run only — the ledger is
+        /// in-memory, see `AgentAwakeHold`).
+        public var keepAwakeSecondsHeld: Double?
+        /// Battery percentage points lost machine-wide during the window —
+        /// "during this session," not "caused by it": every other process on
+        /// the Mac drained the same battery. Negative when it charged.
+        public var batteryPercentDrained: Double?
+        /// Whether thermal pressure rose above nominal at any point in the
+        /// window, and for roughly how long — machine-wide, same caveat as
+        /// `batteryPercentDrained`.
+        public var thermalPressureElevated: Bool?
+        public var thermalPressureElevatedSeconds: Double?
+
         public init(
             windowStart: Date,
             windowEnd: Date,
@@ -404,7 +434,16 @@ public enum MCPPayloads {
             peakSoCTemperatureCelsius: Double?,
             secondsThrottling: Double,
             peakMemoryPressurePercent: Double?,
-            alertsFired: Int
+            alertsFired: Int,
+            sessionID: String? = nil,
+            sessionClientName: String? = nil,
+            sessionStart: Date? = nil,
+            sessionEnd: Date? = nil,
+            toolCallCounts: [String: Int]? = nil,
+            keepAwakeSecondsHeld: Double? = nil,
+            batteryPercentDrained: Double? = nil,
+            thermalPressureElevated: Bool? = nil,
+            thermalPressureElevatedSeconds: Double? = nil
         ) {
             self.windowStart = windowStart
             self.windowEnd = windowEnd
@@ -414,6 +453,15 @@ public enum MCPPayloads {
             self.secondsThrottling = secondsThrottling
             self.peakMemoryPressurePercent = peakMemoryPressurePercent
             self.alertsFired = alertsFired
+            self.sessionID = sessionID
+            self.sessionClientName = sessionClientName
+            self.sessionStart = sessionStart
+            self.sessionEnd = sessionEnd
+            self.toolCallCounts = toolCallCounts
+            self.keepAwakeSecondsHeld = keepAwakeSecondsHeld
+            self.batteryPercentDrained = batteryPercentDrained
+            self.thermalPressureElevated = thermalPressureElevated
+            self.thermalPressureElevatedSeconds = thermalPressureElevatedSeconds
         }
     }
 }

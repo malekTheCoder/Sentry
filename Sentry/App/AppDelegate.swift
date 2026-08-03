@@ -189,11 +189,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// whether the Dashboard window has ever been shown, so `ingest(_:)`
     /// keeps its live headlines current the whole time, not just once the
     /// window is opened.
-    private lazy var dashboardViewModel = DashboardViewModel(
-        historyStore: historyStore,
-        enabledModules: settingsStore.settings.enabledModules,
-        theme: settingsStore.resolvedTheme()
-    )
+    private lazy var dashboardViewModel: DashboardViewModel = {
+        let viewModel = DashboardViewModel(
+            historyStore: historyStore,
+            enabledModules: settingsStore.settings.enabledModules,
+            theme: settingsStore.resolvedTheme()
+        )
+        // Per-session awake-time attribution for the Dashboard's agent
+        // activity card — see `DashboardViewModel.awakeHoldsProvider`. A
+        // closure rather than passing `powerControl` itself so the view
+        // model stays constructible in tests without a power service.
+        viewModel.awakeHoldsProvider = { [weak self] in
+            self?.powerControl.awakeHolds ?? []
+        }
+        return viewModel
+    }()
 
     // MARK: - Protection Insights
 
