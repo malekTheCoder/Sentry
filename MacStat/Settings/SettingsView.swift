@@ -88,6 +88,15 @@ struct SettingsView: View {
     /// configuration, same as the two above.
     let mcpActivityLog: MCPActivityLog?
 
+    /// Backs `AIAccessPane`'s Command-Line Access section. Optional for the
+    /// same reason `mcpActivityLog` is — this view is constructible in a
+    /// preview or a future settings surface hosted outside `AppDelegate` —
+    /// and, like that one, `nil` is rendered as an explicit "unavailable"
+    /// state rather than as a section that quietly isn't there. A user who
+    /// went looking for the setup button and found no section at all would
+    /// reasonably conclude the feature had been removed.
+    let endpointPublisher: MCPEndpointPublisher?
+
     /// Backs `FanControlPane`. Not optional, for the same reason
     /// `locationService` isn't: `FanControlService` has a real, meaningful
     /// answer for every hardware situation it can encounter (including "no
@@ -117,6 +126,7 @@ struct SettingsView: View {
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
+        endpointPublisher: MCPEndpointPublisher? = nil,
         locationService: LocationService,
         fanControlService: FanControlService,
         updateController: UpdateController? = nil
@@ -125,6 +135,7 @@ struct SettingsView: View {
         self.historyStore = historyStore
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
+        self.endpointPublisher = endpointPublisher
         self.locationService = locationService
         self.fanControlService = fanControlService
         self.updateController = updateController
@@ -152,25 +163,61 @@ struct SettingsView: View {
 
     // MARK: - Sidebar
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Color.clear.frame(height: 8)
+    /// The pane list, in three visual groups: appearance-and-layout,
+    /// features-that-talk-to-things, and the escape hatch. Grouping is
+    /// spacing-only — no headers, which would be chrome for nine rows —
+    /// and lives in a switch so adding a `SettingsPane` case fails to
+    /// compile until it's placed, rather than silently landing nowhere.
+    private var paneGroups: [[SettingsPane]] {
+        var groups: [[SettingsPane]] = [[], [], []]
+        for pane in SettingsPane.allCases {
+            switch pane {
+            case .general, .modules, .menuBar, .theme:
+                groups[0].append(pane)
+            case .alerts, .fans, .aiAccess, .sync, .location:
+                groups[1].append(pane)
+            case .advanced:
+                groups[2].append(pane)
+            }
+        }
+        return groups
+    }
 
-            ForEach(SettingsPane.allCases) { pane in
-                SettingsSidebarRow(
-                    title: pane.title,
-                    symbol: pane.symbol,
-                    isSelected: pane == selectedPane
-                ) {
-                    selectedPane = pane
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(paneGroups.enumerated()), id: \.offset) { _, group in
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(group) { pane in
+                        SettingsSidebarRow(
+                            title: pane.title,
+                            symbol: pane.symbol,
+                            isSelected: pane == selectedPane
+                        ) {
+                            selectedPane = pane
+                        }
+                    }
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .frame(width: 200, alignment: .top)
+        .padding(.top, 14)
+        .frame(width: 192, alignment: .top)
         .frame(maxHeight: .infinity)
-        .background(palette.surface.opacity(palette.theme.useMaterialBackground ? 0.6 : 1))
+        // Recessed relative to the detail column — the previous fill was
+        // `surface`, which several dark themes render within a hair of
+        // `background`, leaving the sidebar reading as a stranded strip of
+        // the same wall (user feedback: "ugly and out of place"). A
+        // scheme-aware scrim over the theme's own background guarantees
+        // the two columns separate in every theme without inventing a new
+        // theme token; translucent themes keep their material showing
+        // through by thinning the base coat instead of the scrim.
+        .background(
+            ZStack {
+                palette.background.opacity(palette.theme.useMaterialBackground ? 0.45 : 1)
+                Color.black.opacity(systemColorScheme == .dark ? 0.16 : 0.04)
+            }
+        )
     }
 
     // MARK: - Detail
@@ -221,26 +268,35 @@ struct SettingsView: View {
 
         var body: some View {
             Button(action: action) {
-                HStack(spacing: 8) {
+                HStack(spacing: 9) {
                     Image(systemName: symbol)
-                        .font(.system(size: 13))
+                        .font(.system(size: 13.5, weight: isSelected ? .medium : .regular))
                         .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
-                        .frame(width: 20)
+                        .frame(width: 21)
                         .accessibilityHidden(true)
                     Text(title)
-                        .font(palette.font(size: 13))
+                        .font(palette.font(size: 13, weight: isSelected ? .medium : .regular))
                         .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 7)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    // Selection is a state, never accent (unchanged rule) —
+                    // but it has to *read* as a state: the fill alone
+                    // vanished in themes where surfaceElevated sits close
+                    // to the sidebar backdrop, so the selected pill also
+                    // gets a hairline of the theme's separator.
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(isSelected
                             ? palette.surfaceElevated
                             : (isHovered ? palette.surfaceElevated.opacity(0.5) : Color.clear))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(isSelected ? palette.separator : Color.clear, lineWidth: 1)
+                        )
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
             .onHover { hovering in
@@ -268,7 +324,11 @@ struct SettingsView: View {
         case .fans:
             FanControlPane(store: store, service: fanControlService).formStyle(.grouped)
         case .aiAccess:
-            AIAccessPane(store: store, activityLog: mcpActivityLog).formStyle(.grouped)
+            AIAccessPane(
+                store: store,
+                activityLog: mcpActivityLog,
+                endpointPublisher: endpointPublisher
+            ).formStyle(.grouped)
         case .sync:
             SyncPane(store: store).formStyle(.grouped)
         case .location:

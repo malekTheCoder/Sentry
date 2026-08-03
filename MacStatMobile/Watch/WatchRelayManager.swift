@@ -53,29 +53,15 @@ import WatchConnectivity
 /// actively-worn watch, far short of `AppDataSource`'s snapshot cadence.
 /// Relaying every tick would exhaust that budget within minutes and get
 /// silently throttled/dropped by the system, making the complication *less*
-/// current than a deliberately-paced relay, not more — see `shouldRelay
-/// (previous:next:at:)` below for the two independent guards this enforces
-/// before it will call into `WCSession` at all.
+/// current than a deliberately-paced relay, not more — see
+/// `WatchRelayPolicy` (`MacStatKit/Watch/WatchRelayPolicy.swift`) for the
+/// two independent guards this enforces before it will call into
+/// `WCSession` at all, and for why the metrics added to the payload for the
+/// redesigned watch screen were deliberately kept *out* of the
+/// significant-change test.
 @MainActor
 final class WatchRelayManager: NSObject {
     static let shared = WatchRelayManager()
-
-    /// Baseline heartbeat: even with no "significant" change, relay at
-    /// least this often so a Watch that's been asleep/out of range still
-    /// gets caught up promptly once reachable again, and so the
-    /// complication's staleness label keeps advancing against real data
-    /// rather than going quiet indefinitely just because nothing crossed a
-    /// threshold.
-    static let minimumRelayInterval: TimeInterval = 5 * 60
-
-    /// A shorter floor that still applies even when a "significant change"
-    /// (charging toggled, thermal tier changed) would otherwise trigger an
-    /// immediate relay — stops a value oscillating right at a boundary
-    /// (e.g. charge sitting at 100%, thermal pressure flapping between
-    /// tiers under bursty load) from turning into a rapid-fire sequence of
-    /// relays that would burn the budget just as fast as relaying every
-    /// tick would.
-    static let significantChangeCooldown: TimeInterval = 30
 
     private var lastRelayed: WatchRelaySnapshot?
     private var lastRelayedAt: Date?
@@ -129,42 +115,128 @@ final class WatchRelayManager: NSObject {
             batteryPercent: snapshot.battery?.chargePercent ?? 0,
             isCharging: snapshot.battery?.isCharging ?? false,
             isPluggedIn: snapshot.battery?.isPluggedIn ?? false,
-            thermalPressure: Self.summarize(snapshot.thermal?.pressureLevel)
+            thermalPressure: Self.summarize(snapshot.thermal?.pressureLevel),
+            batteryIsReported: snapshot.battery != nil,
+            cpuPercent: snapshot.cpu?.totalPercent,
+            memoryUsedPercent: Self.memoryUsedPercent(snapshot.memory),
+            memoryPressure: Self.summarize(snapshot.memory?.pressureLevel),
+            diskUsedPercent: Self.diskUsedPercent(snapshot.disk),
+            batteryTimeRemainingMinutes: Self.batteryRunwayMinutes(snapshot.battery),
+            isThrottling: snapshot.thermal?.isThrottling,
+            awakeIsActive: Self.awakeIsActive(snapshot.sleepAssertion),
+            awakeExpiresAt: Self.awakeExpiresAt(snapshot.sleepAssertion),
+            awakeModeLabel: Self.awakeModeLabel(snapshot.sleepAssertion)
+            // `agentToolCallCount`/`agentLastActivityAt`/
+            // `agentRecentToolNames` are deliberately not passed: nothing in
+            // a `SystemSnapshot` carries agent activity, so there is nothing
+            // here to read. See those fields' doc comment in
+            // `WatchRelaySnapshot` for what would have to change on the Mac
+            // for that to stop being true — leaving the arguments off is the
+            // honest expression of "this phone has nothing to say about it,"
+            // and it is why the watch shows an empty state there rather than
+            // a zero.
         )
 
         let now = Date()
-        guard Self.shouldRelay(previous: lastRelayed, next: candidate, lastRelayedAt: lastRelayedAt, now: now) else {
+        guard WatchRelayPolicy.shouldRelay(
+            previous: lastRelayed,
+            next: candidate,
+            lastRelayedAt: lastRelayedAt,
+            now: now
+        ) else {
             return
         }
         relay(candidate, at: now)
     }
 
-    /// Pure decision logic, factored out of `consider(_:)` so it's testable
-    /// without a live `WCSession`/`StatsTransport` — see
-    /// `WatchRelayManagerTests` in `MacStatTests` (macOS-hosted, this logic
-    /// has no watchOS/WatchConnectivity dependency of its own).
+    /// The four derivations above, each kept a named `static` function
+    /// rather than inlined into the initialiser call, because each one has a
+    /// nil case worth naming — and because "returns nil when the Mac didn't
+    /// report it" is the entire contract the watch's rendering depends on.
+    /// None of them may substitute a zero: see `WatchRelaySnapshot`'s
+    /// per-field doc comments for what each `nil` means on screen.
+
+    /// `nil` for a Mac that reported no memory module at all, and also for
+    /// the arithmetically impossible `totalBytes == 0` — a divide-by-zero
+    /// would produce `.nan`/`.infinity`, which `JSONEncoder` refuses to
+    /// encode by default and which would therefore silently take the *whole
+    /// relay* down (`wcSessionPayload()` returns nil on an encode failure).
+    /// Guarding here rather than trusting the collector is the difference
+    /// between one absent tile and a watch that stops updating.
+    private static func memoryUsedPercent(_ memory: MemoryStats?) -> Double? {
+        guard let memory, memory.totalBytes > 0 else { return nil }
+        return Double(memory.usedBytes) / Double(memory.totalBytes) * 100
+    }
+
+    /// Used, not free — the same orientation as `MetricID.diskUsedPercent`,
+    /// so the watch's tile fills up as the disk does and reads the same
+    /// direction as the CPU and memory tiles beside it. Same
+    /// `totalBytes == 0` guard and the same reason as above.
+    private static func diskUsedPercent(_ disk: DiskStats?) -> Double? {
+        guard let disk, disk.totalBytes > 0 else { return nil }
+        return (Double(disk.totalBytes) - Double(disk.freeBytes)) / Double(disk.totalBytes) * 100
+    }
+
+    /// Time-to-full while charging, time-to-empty otherwise — the
+    /// disambiguation `WatchRelaySnapshot.batteryTimeRemainingMinutes`
+    /// documents, resolved on this side so the watch never has to guess
+    /// which one it is holding.
     ///
-    /// - A `nil` `lastRelayedAt` (nothing relayed yet this run) always
-    ///   relays immediately — the Watch should get *something* as soon as
-    ///   one exists, not wait a full `minimumRelayInterval`.
-    /// - Otherwise: relay if `minimumRelayInterval` has elapsed regardless
-    ///   of content, OR if a value the complication actually renders
-    ///   changed (whole-point battery percent, charging, thermal tier) and
-    ///   at least `significantChangeCooldown` has elapsed.
-    static func shouldRelay(
-        previous: WatchRelaySnapshot?,
-        next: WatchRelaySnapshot,
-        lastRelayedAt: Date?,
-        now: Date
-    ) -> Bool {
-        guard let lastRelayedAt else { return true }
-        let age = now.timeIntervalSince(lastRelayedAt)
-        if age >= minimumRelayInterval { return true }
-        guard age >= significantChangeCooldown, let previous else { return false }
-        if previous.isCharging != next.isCharging { return true }
-        if previous.thermalPressure != next.thermalPressure { return true }
-        if Int(previous.batteryPercent.rounded()) != Int(next.batteryPercent.rounded()) { return true }
+    /// A non-positive estimate is discarded rather than relayed: macOS
+    /// publishes `0` or a negative sentinel while it is still calibrating
+    /// after a power-state change, and "0m left" is a far worse thing to
+    /// show on a wrist than nothing at all.
+    private static func batteryRunwayMinutes(_ battery: BatteryStats?) -> Int? {
+        guard let battery else { return nil }
+        let raw = battery.isCharging ? battery.timeToFullMinutes : battery.timeToEmptyMinutes
+        guard let raw, raw > 0 else { return nil }
+        return raw
+    }
+
+    /// `SystemSnapshot.sleepAssertion` flattened into the three scalars the
+    /// watch's Keep Awake page needs. Split into three functions rather than
+    /// one returning a tuple purely so each one's `nil` case can be read at
+    /// the call site above without unpacking anything.
+    ///
+    /// `nil` in, `nil` out, in all three: a Mac that reported no
+    /// `sleepAssertion` has said nothing about whether it will sleep, and
+    /// `false` would be a claim it did not make. See
+    /// `WatchRelaySnapshot.awakeIsActive`.
+    private static func awakeIsActive(_ state: SleepAssertionState?) -> Bool? {
+        guard let state else { return nil }
+        if case .active = state { return true }
         return false
+    }
+
+    /// `nil` for both "no assertion" and "an assertion with no expiry" — the
+    /// watch does not need to tell those apart, because `awakeIsActive`
+    /// already does: active-with-nil-expiry is worded "until released,"
+    /// inactive shows no countdown at all.
+    private static func awakeExpiresAt(_ state: SleepAssertionState?) -> Date? {
+        guard case .active(_, let expiresAt, _) = state else { return nil }
+        return expiresAt
+    }
+
+    /// Rendered to a display string here, on the phone, rather than relaying
+    /// the `AwakeMode` enum — see `WatchRelaySnapshot.awakeModeLabel` for why
+    /// (watch framework source list, and forward compatibility with modes a
+    /// future Mac adds).
+    ///
+    /// `SleepAssertionState.active` also carries a `reason` string, which is
+    /// deliberately *not* relayed: it is free-form text set by whatever
+    /// created the assertion, unbounded in length, and on a watch it would
+    /// either be truncated into uselessness or push the actual controls off
+    /// screen. The mode is the part that changes what the assertion does.
+    private static func awakeModeLabel(_ state: SleepAssertionState?) -> String? {
+        guard case .active(let mode, _, _) = state else { return nil }
+        // Localized here on the phone: the watch renders this string
+        // verbatim, so the phone's locale (which the paired watch shares)
+        // is the right place for the words to be chosen.
+        switch mode {
+        case .displayAndSystem: return String(localized: "Display & system")
+        case .systemOnly: return String(localized: "System only")
+        case .systemWhileOnAC: return String(localized: "System while on power")
+        }
     }
 
     private static func summarize(_ level: ThermalStats.PressureLevel?) -> ThermalPressureSummary {
@@ -173,6 +245,20 @@ final class WatchRelayManager: NSObject {
         case .nominal: return .nominal
         case .fair: return .fair
         case .serious: return .serious
+        case .critical: return .critical
+        }
+    }
+
+    /// The memory counterpart. `nil` in, `nil` out — unlike thermal, the
+    /// relay payload distinguishes "the Mac reported no pressure reading"
+    /// (`nil`) from "it reported a tier we can't name" (`.unknown`, produced
+    /// only by the decoder on the watch side), so this must not collapse the
+    /// former into the latter. See `MemoryPressureSummary`'s doc comment.
+    private static func summarize(_ level: MemoryPressureLevel?) -> MemoryPressureSummary? {
+        guard let level else { return nil }
+        switch level {
+        case .normal: return .normal
+        case .warning: return .warning
         case .critical: return .critical
         }
     }

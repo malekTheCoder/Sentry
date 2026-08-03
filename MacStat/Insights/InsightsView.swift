@@ -103,11 +103,17 @@ struct InsightsView: View {
     /// "checked 4m ago" — when the findings were last computed. Honest about
     /// the fact that they don't refresh themselves.
     private func headerCaption(now: Date) -> String {
-        guard let generatedAt = viewModel.report?.generatedAt else { return "working it out…" }
+        guard let generatedAt = viewModel.report?.generatedAt else { return String(localized: "working it out…") }
         let age = max(0, now.timeIntervalSince(generatedAt))
-        if age < 60 { return "checked \(Int(age))s ago" }
-        if age < 3600 { return "checked \(Int(age / 60))m ago" }
-        return "checked \(generatedAt.formatted(date: .omitted, time: .shortened))"
+        if age < 60 {
+            let secondsText = String(Int(age))
+            return String(localized: "checked \(secondsText)s ago")
+        }
+        if age < 3600 {
+            let minutesText = String(Int(age / 60))
+            return String(localized: "checked \(minutesText)m ago")
+        }
+        return String(localized: "checked \(generatedAt.formatted(date: .omitted, time: .shortened))")
     }
 
     // MARK: - Content

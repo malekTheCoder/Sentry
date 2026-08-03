@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.dev.malekswilam.macstat</string>
+		<string>group.com.sentry.macstat</string>
 	</array>
 </dict>
 </plist>

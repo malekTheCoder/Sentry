@@ -84,7 +84,7 @@ import os
 @MainActor
 public final class AlertEngine {
 
-    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "AlertEngine")
+    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "AlertEngine")
 
     // MARK: - Special-cased rule IDs
 

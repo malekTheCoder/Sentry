@@ -29,58 +29,33 @@ import MacStatKit
 /// counterpart both get deleted in favor of the shared one; until then, a
 /// change to either should be mirrored in the other by hand.
 
+extension ColorScheme {
+    /// Mirrors the Mac file's mapping exactly — see its doc comment for why
+    /// this isn't exhaustive.
+    var themeAppearance: ThemeAppearance {
+        self == .dark ? .dark : .light
+    }
+}
+
 extension ThemeColor {
     /// Resolves this token against a color scheme. See the Mac counterpart's
-    /// doc comment for why parsing lives at the rendering layer rather than
-    /// in `Theme.swift` itself.
+    /// doc comment for why the *parsing* now lives in `MacStatKit` while the
+    /// `Color` construction and the malformed-value fallback stay here.
+    ///
+    /// The hex parser this used to carry privately was deleted rather than
+    /// updated: it and the Mac copy were the two halves of the duplication
+    /// this file's header describes, and the theme editor's contrast checker
+    /// needs one parser that model code can call. That is a *partial*
+    /// resolution of the promotion described above — `ThemePalette` below is
+    /// still duplicated, and a change to it still has to be mirrored by hand.
     func color(for scheme: ColorScheme) -> Color {
-        let hex = (scheme == .dark) ? dark : light
-        guard let rgba = Self.components(fromHex: hex) else {
+        guard let rgba = rgba(for: scheme.themeAppearance) else {
             // P5: a malformed theme must not take the UI down or render an
             // invisible view. Neutral gray is obviously "wrong" to the eye
             // without being unreadable.
             return Color(.sRGB, red: 0.5, green: 0.5, blue: 0.5, opacity: clampedOpacity)
         }
-        return Color(
-            .sRGB,
-            red: rgba.r,
-            green: rgba.g,
-            blue: rgba.b,
-            opacity: rgba.a * clampedOpacity
-        )
-    }
-
-    private var clampedOpacity: Double { min(max(opacity, 0), 1) }
-
-    /// Accepts `RGB`, `RRGGBB`, and `RRGGBBAA`, with or without a leading `#`.
-    /// Returns nil (never a force-unwrap or a crash) for anything else.
-    static func components(fromHex raw: String) -> (r: Double, g: Double, b: Double, a: Double)? {
-        var hex = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if hex.hasPrefix("#") { hex.removeFirst() }
-        guard hex.allSatisfy({ $0.isHexDigit }) else { return nil }
-
-        let expanded: String
-        switch hex.count {
-        case 3: expanded = hex.map { "\($0)\($0)" }.joined()
-        case 6, 8: expanded = hex
-        default: return nil
-        }
-
-        guard let value = UInt64(expanded, radix: 16) else { return nil }
-        if expanded.count == 8 {
-            return (
-                Double((value >> 24) & 0xFF) / 255,
-                Double((value >> 16) & 0xFF) / 255,
-                Double((value >> 8) & 0xFF) / 255,
-                Double(value & 0xFF) / 255
-            )
-        }
-        return (
-            Double((value >> 16) & 0xFF) / 255,
-            Double((value >> 8) & 0xFF) / 255,
-            Double(value & 0xFF) / 255,
-            1.0
-        )
+        return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
     }
 }
 

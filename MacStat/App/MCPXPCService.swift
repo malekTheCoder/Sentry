@@ -151,11 +151,11 @@ final class MCPXPCService: NSObject, MacStatXPCServiceProtocol {
         case .allow:
             return ""
         case .denyMasterDisabled:
-            return String(localized: "MCP access is disabled in MacStat → Settings → AI Access.")
+            return String(localized: "MCP access is disabled in Sentry → Settings → AI Access.")
         case .denyToolDisabled:
-            return String(localized: "This tool is disabled in MacStat → Settings → AI Access.")
+            return String(localized: "This tool is disabled in Sentry → Settings → AI Access.")
         case .denyRateLimited:
-            return String(localized: "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment.")
+            return String(localized: "MCP rate limit exceeded — configured in Sentry → Settings → AI Access. Try again in a moment.")
         case .requiresConfirmation:
             return String(localized: "The user declined to confirm this action in MacStat.")
         }

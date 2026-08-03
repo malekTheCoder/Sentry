@@ -1,939 +1,4675 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "— sample values, not live readings" : {
-
-    },
-    "·" : {
-
-    },
-    "· %@" : {
-
-    },
-    "· limited history" : {
-
-    },
-    "“Must hold for” suppresses flapping — a metric bouncing across the threshold resets the timer instead of firing. “Cooldown” is the minimum gap between two firings of this rule once it has fired. They are independent: satisfying one does not substitute for the other." : {
-
-    },
-    "\"Require confirmation\" shows a native dialog in Sentry before the action runs, every time — the agent's call is paused until you allow or deny it." : {
-
-    },
-    "(no fields)" : {
-
-    },
-    "%@" : {
-
-    },
-    "%@ health · %@ cycles" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ health · %2$@ cycles"
+  "sourceLanguage": "en",
+  "strings": {
+    "\"Require confirmation\" shows a native dialog in Sentry before the action runs, every time — the agent's call is paused until you allow or deny it.": {},
+    "%@": {},
+    "%@\n\nDetails: %@\n\nThis was requested over MCP by an AI agent connected to Sentry. Allow it?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@\n\nDetails: %2$@\n\nThis was requested over MCP by an AI agent connected to Sentry. Allow it?"
           }
         }
       }
     },
-    "%@ pt between modules" : {
-
-    },
-    "%@ ran %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ ran %2$@"
+    "%@ RPM": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ RPM"
           }
         }
       }
     },
-    "%@: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@: %2$@"
+    "%@ fans detected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ fans detected"
           }
         }
       }
     },
-    "%@/%@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@/%2$@"
+    "%@ findings are hidden, and are not counted in the score.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ findings are hidden, and are not counted in the score."
           }
         }
       }
     },
-    "≈ %@" : {
-
-    },
-    "0 or 1" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "0 or 1"
+    "%@ further findings on this Mac are withheld, %@ of them at warning level or higher.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ further findings on this Mac are withheld, %2$@ of them at warning level or higher."
           }
         }
       }
     },
-    "0–3" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "0–3"
+    "%@ further findings on this Mac are withheld. None of them are warnings — the important ones are already shown above.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ further findings on this Mac are withheld. None of them are warnings — the important ones are already shown above."
           }
         }
       }
     },
-    "0.5s" : {
-
-    },
-    "1s" : {
-
-    },
-    "2" : {
-
-    },
-    "5s" : {
-
-    },
-    "6mo" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "6mo"
+    "%@ health · %@ cycles": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ health · %2$@ cycles"
           }
         }
       }
     },
-    "7d" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "7d"
+    "%@ hex value": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hex value"
           }
         }
       }
     },
-    "12" : {
-
-    },
-    "24h" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "24h"
+    "%@ hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hours"
           }
         }
       }
     },
-    "30d" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "30d"
+    "%@ min": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ min"
           }
         }
       }
     },
-    "30s" : {
-
-    },
-    "60s" : {
-
-    },
-    "72%" : {
-
-    },
-    "90d" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "90d"
+    "%@ minutes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ minutes"
           }
         }
       }
     },
-    "100 minus the weight of everything Sentry found. Nothing adds points back." : {
-
-    },
-    "120" : {
-
-    },
-    "600" : {
-
-    },
-    "Actions" : {
-
-    },
-    "Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless." : {
-
-    },
-    "Activity Log" : {
-
-    },
-    "Activity log unavailable in this window." : {
-
-    },
-    "Advanced" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Advanced"
+    "%@ needs attention": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ needs attention"
           }
         }
       }
     },
-    "AI Access" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI Access"
+    "%@ of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ of %2$@"
           }
         }
       }
     },
-    "AI Agent Activity" : {
-
-    },
-    "Alerts" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alerts"
+    "%@ opacity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ opacity"
           }
         }
       }
     },
-    "All checked conditions must hold at once. With none checked the rule is always eligible." : {
-
-    },
-    "Allow" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Allow"
+    "%@ out of 100, %@ findings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ out of 100, %2$@ findings"
           }
         }
       }
     },
-    "Anomalies" : {
-
-    },
-    "API Key" : {
-
-    },
-    "At or above" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "At or above"
+    "%@ out of 100, no findings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ out of 100, no findings"
           }
         }
       }
     },
-    "At or below" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "At or below"
+    "%@ per hour": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ per hour"
           }
         }
       }
     },
-    "Automatically slows polling when on battery, in Low Power Mode, while the dropdown is closed, or when the display is asleep. Turn this off to sample at the exact interval above — useful while benchmarking." : {
-
-    },
-    "Battery Health · all-time" : {
-
-    },
-    "bytes" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "bytes"
+    "%@ pressure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ pressure"
           }
         }
       }
     },
-    "bytes/s" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "bytes/s"
+    "%@ procs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ procs"
           }
         }
       }
     },
-    "Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped. Do Not Disturb is a full mute instead of a cap — while it's on, nothing fires and nothing is recorded, the same as a rule's own quiet hours." : {
-
-    },
-    "changed by" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "changed by"
+    "%@ pt between modules": {},
+    "%@ ran %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ ran %2$@"
           }
         }
       }
     },
-    "Changed by" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Changed by"
+    "%@ recent firings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ recent firings"
           }
         }
       }
     },
-    "Charging below half the adapter's rated wattage" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Charging below half the adapter's rated wattage"
+    "%@ recent firings, %@ suppressed by the hourly cap": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ recent firings, %2$@ suppressed by the hourly cap"
           }
         }
       }
     },
-    "Charts" : {
-
-    },
-    "Choose what to monitor" : {
-
-    },
-    "Client Setup" : {
-
-    },
-    "Compared to this Mac's own trailing 14-day average — not a fixed threshold or another Mac's numbers." : {
-
-    },
-    "Condition" : {
-
-    },
-    "CPU 14%" : {
-
-    },
-    "Dashboard charts are simplified by default — no axes or gridlines, with an average/peak summary line instead. Turn this on to read exact values off the plot: gridlines, a value axis, and intermediate time labels." : {
-
-    },
-    "Data will appear here once samples accumulate for this range." : {
-
-    },
-    "Debug Snapshot Dump" : {
-
-    },
-    "Deny" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deny"
+    "%@ rpm": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ rpm"
           }
         }
       }
     },
-    "Disabled modules stop appearing in the dropdown. Metrics already in your menu bar layout keep working — remove them in the Menu Bar pane." : {
-
-    },
-    "Do Not Disturb is a master mute: while it's on, no rule delivers a notification, menu bar highlight, or sleep-assertion release, no matter what its own quiet hours say. Nothing is recorded in History while muted this way, the same as a rule's own quiet hours — see the Alerts pane." : {
-
-    },
-    "Dropdown shows:" : {
-
-    },
-    "Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it." : {
-
-    },
-    "Each category starts at 100 and loses the weight of its own findings." : {
-
-    },
-    "Enabled Modules" : {
-
-    },
-    "Energy" : {
-
-    },
-    "Equals" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Equals"
+    "%@ rules": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ rules"
           }
         }
       }
     },
-    "Estimates assume roughly 40 metrics recorded at your current %@ s refresh interval. Actual size varies with how many modules you enable and how well SQLite packs the rows." : {
-
-    },
-    "Every finding is compared against this Mac's own recorded history — never against another machine or a fixed idea of \"normal\". Security settings are read with the same commands you could run yourself, without administrator rights; anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score." : {
-
-    },
-    "Every rule Sentry could evaluate on this Mac came back clean. That is the expected result on a well-kept machine, not a placeholder — the findings below are the checks that passed." : {
-
-    },
-    "Fires immediately" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fires immediately"
+    "%@ seconds": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ seconds"
           }
         }
       }
     },
-    "Fires when %@ is %@ %@. “Above” and “below” are inclusive (≥ and ≤)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Fires when %1$@ is %2$@ %3$@. “Above” and “below” are inclusive (≥ and ≤)."
+    "%@ wants to %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ wants to %2$@"
           }
         }
       }
     },
-    "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
+    "%@, %@ color": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ color"
           }
         }
       }
     },
-    "Gathering process data…" : {
-
-    },
-    "General" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "General"
+    "%@, %@ color is %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@ color is %3$@"
           }
         }
       }
     },
-    "Global Limits" : {
-
-    },
-    "Health · all-time" : {
-
-    },
-    "Hiding a module only stops it drawing. Sentry keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on." : {
-
-    },
-    "History Retention" : {
-
-    },
-    "iCloud sync isn't available in this build" : {
-
-    },
-    "In this range" : {
-
-    },
-    "Inside the window this rule does not fire at all — and its cooldown is not consumed, so it can fire promptly once the window ends. An end hour earlier than the start wraps past midnight." : {
-
-    },
-    "Keep Awake" : {
-
-    },
-    "Kept forever — %@ per decade" : {
-
-    },
-    "Last 6 months" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 6 months"
+    "%@/%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@/%2$@"
           }
         }
       }
     },
-    "Last 7 days" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 7 days"
+    "%@: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@: %2$@"
           }
         }
       }
     },
-    "Last 24 hours" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 24 hours"
+    "%@: %@. Switch appearance above to edit it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: %2$@. Switch appearance above to edit it."
           }
         }
       }
     },
-    "Last 30 days" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 30 days"
+    "%@–%@ rpm": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@–%2$@ rpm"
           }
         }
       }
     },
-    "Last 90 days" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last 90 days"
+    "(no fields)": {},
+    "(unnamed rule)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(unnamed rule)"
           }
         }
       }
     },
-    "Last Captured" : {
-
-    },
-    "Last updated: %@" : {
-
-    },
-    "Location Log" : {
-
-    },
-    "MacStat Dashboard" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MacStat Dashboard"
+    "0 or 1": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0 or 1"
           }
         }
       }
     },
-    "MacStat Settings" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MacStat Settings"
+    "0.5s": {},
+    "0–3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0–3"
           }
         }
       }
     },
-    "Master Switches" : {
-
-    },
-    "Maximum width" : {
-
-    },
-    "MCP access is disabled in MacStat → Settings → AI Access." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP access is disabled in MacStat → Settings → AI Access."
+    "1 fan detected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 fan detected"
           }
         }
       }
     },
-    "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment."
+    "1 finding is hidden, and is not counted in the score.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 finding is hidden, and is not counted in the score."
           }
         }
       }
     },
-    "Measured in %@." : {
-
-    },
-    "Medium tier interval" : {
-
-    },
-    "Menu Bar" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Menu Bar"
+    "1 hour": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 hour"
           }
         }
       }
     },
-    "Modules" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modules"
+    "1 minute": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 minute"
           }
         }
       }
     },
-    "No activity recorded for this range yet." : {
-
-    },
-    "No AI agent activity in this range. Enable write tools in Settings → AI Access to let Claude Code, Cursor, or another MCP client act on this Mac." : {
-
-    },
-    "No history yet" : {
-
-    },
-    "No location has been captured yet. This can take a few minutes after enabling the toggle above." : {
-
-    },
-    "No MCP actions in this range." : {
-
-    },
-    "No MCP calls yet this session." : {
-
-    },
-    "No modules — add one below" : {
-
-    },
-    "No modules are turned on." : {
-
-    },
-    "No power samples yet — leave Sentry running and this fills in." : {
-
-    },
-    "No snapshot yet" : {
-
-    },
-    "Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more." : {
-
-    },
-    "Nothing to act on" : {
-
-    },
-    "Nothing unusual — every tracked metric is within its normal range for this Mac." : {
-
-    },
-    "Only When" : {
-
-    },
-    "Paste this into Claude Desktop's, Claude Code's, or Cursor's MCP server configuration to connect them to this Mac." : {
-
-    },
-    "Permission" : {
-
-    },
-    "pid %@" : {
-
-    },
-    "Plugged in but not charging, with a reason reported" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plugged in but not charging, with a reason reported"
+    "1 rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 rule"
           }
         }
       }
     },
-    "Preview" : {
-
-    },
-    "Privacy" : {
-
-    },
-    "Process" : {
-
-    },
-    "Protection Score" : {
-
-    },
-    "Quiet Hours" : {
-
-    },
-    "Re-reads this Mac's security settings and recomputes every finding" : {
-
-    },
-    "Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call Sentry's tools; regenerate it if it's ever shared by mistake." : {
-
-    },
-    "Read Tools" : {
-
-    },
-    "Read tools are enabled by default and can only ever fetch data this app already has. Write tools — anything that changes power state, polling cadence, or alert rules — are off by default and gated by both this master switch and their own individual toggle below." : {
-
-    },
-    "Reading this Mac's security settings and its recorded history. This takes a moment the first time." : {
-
-    },
-    "Refresh interval" : {
-
-    },
-    "Remote Access" : {
-
-    },
-    "Report generated %@." : {
-
-    },
-    "Reset All Settings to Defaults" : {
-
-    },
-    "Restores every setting, including your menu bar layout and theme, to the shipped defaults. Recorded history is not deleted." : {
-
-    },
-    "s" : {
-
-    },
-    "Sampling" : {
-
-    },
-    "Select a module on the left to configure how it draws." : {
-
-    },
-    "Select a rule on the left to edit when it fires." : {
-
-    },
-    "Sentry has %@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %@ more before they can say anything defensible, so they are staying quiet rather than guessing." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Sentry has %1$@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %2$@ more before they can say anything defensible, so they are staying quiet rather than guessing."
+    "1 second": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 second"
           }
         }
       }
     },
-    "Sentry isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build." : {
-
-    },
-    "Shown only while %@ reads above %@. A metric with no reading counts as not above it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Shown only while %1$@ reads above %2$@. A metric with no reading counts as not above it."
+    "100 minus the weight of everything Sentry found. Nothing adds points back.": {},
+    "12": {},
+    "120": {},
+    "1s": {},
+    "2": {},
+    "24h": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24h"
           }
         }
       }
     },
-    "Shows calls made since Sentry last launched — this is a live session view, not durable history, and clears on relaunch." : {
-
-    },
-    "Slow tier interval" : {
-
-    },
-    "Spacing" : {
-
-    },
-    "Status" : {
-
-    },
-    "Still gathering history" : {
-
-    },
-    "Sync" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sync"
+    "30d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30d"
           }
         }
       }
     },
-    "System power drawn, integrated from live sampling" : {
-
-    },
-    "The bar always draws in plain white or black so it stays readable on any wallpaper. Near the high threshold a value counts as critical: it gets a “!” beside it and VoiceOver says so. Set low above high to invert — useful for metrics where a small number is the bad one." : {
-
-    },
-    "The protection score and the two highest-priority findings stay free, permanently — including their evidence and what to do about them." : {
-
-    },
-    "The refresh interval above controls the fast tier (CPU, GPU, memory, network, disk). These two sliders control the other two tiers — every module assigned to a tier shares that tier's interval, so this is per-tier control, not independently adjustable per module." : {
-
-    },
-    "The security and privacy findings below are unaffected — they are read directly from this Mac's current settings, not from history." : {
-
-    },
-    "The user declined to confirm this action in MacStat." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The user declined to confirm this action in MacStat."
+    "30s": {},
+    "5s": {},
+    "600": {},
+    "60s": {},
+    "6mo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6mo"
           }
         }
       }
     },
-    "Theme" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Theme"
+    "72%": {},
+    "7d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7d"
           }
         }
       }
     },
-    "This is the cadence Sentry's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above." : {
-
-    },
-    "This rule has no actions and will only be recorded in history." : {
-
-    },
-    "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
+    "90d": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90d"
           }
         }
       }
     },
-    "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
+    "A theme can have at most %@ gradient stops.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A theme can have at most %@ gradient stops."
           }
         }
       }
     },
-    "This tool is disabled in MacStat → Settings → AI Access." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This tool is disabled in MacStat → Settings → AI Access."
+    "AI Access": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Access"
           }
         }
       }
     },
-    "Threshold" : {
-
-    },
-    "Tier Intervals" : {
-
-    },
-    "Timing" : {
-
-    },
-    "Top Processes" : {
-
-    },
-    "Trend appears after a day or two of readings — daily health snapshots accumulate while Sentry runs." : {
-
-    },
-    "Trend appears after a day or two of readings." : {
-
-    },
-    "Truncates at %@ pt instead of pushing other status items off a crowded bar." : {
-
-    },
-    "Unavailable" : {
-
-    },
-    "Upload Schedule" : {
-
-    },
-    "Vitals rows follow Modules" : {
-
-    },
-    "Waiting for the first snapshot…" : {
-
-    },
-    "When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running, and it has no connection to Apple's Find My network." : {
-
-    },
-    "Working it out…" : {
-
-    },
-    "Write Tools" : {
-
-    },
-    "You have no alert rules. Nothing will ever notify you until you add one or restore the defaults below." : {
-
-    },
-    "Your %@ will be replaced by the %@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Your %1$@ will be replaced by the %2$@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted."
+    "AI Agent Activity": {},
+    "API Key": {},
+    "Actions": {},
+    "Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless.": {},
+    "Active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Active"
           }
         }
       }
     },
-    "Your menu bar is empty. Use “Add Module” to start composing." : {
-
+    "Activity Log": {},
+    "Activity log unavailable in this window.": {},
+    "Adapter": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adapter"
+          }
+        }
+      }
     },
-    "Your menu bar layout, theme, enabled modules, and all other preferences will be restored to their defaults. This can't be undone." : {
-
-    }
+    "Add a gradient stop.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a gradient stop."
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced"
+          }
+        }
+      }
+    },
+    "Alerts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alerts"
+          }
+        }
+      }
+    },
+    "All checked conditions must hold at once. With none checked the rule is always eligible.": {},
+    "Allow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow"
+          }
+        }
+      }
+    },
+    "Allow sleep": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow sleep"
+          }
+        }
+      }
+    },
+    "Allowed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowed"
+          }
+        }
+      }
+    },
+    "Almost out of space": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Almost out of space"
+          }
+        }
+      }
+    },
+    "Always": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Always"
+          }
+        }
+      }
+    },
+    "Anomalies": {},
+    "App": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App"
+          }
+        }
+      }
+    },
+    "Applies to the bar item and every readout in the app. The size below is the menu-bar size; the rest of the UI scales from it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies to the bar item and every readout in the app. The size below is the menu-bar size; the rest of the UI scales from it."
+          }
+        }
+      }
+    },
+    "At or above": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At or above"
+          }
+        }
+      }
+    },
+    "At or below": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At or below"
+          }
+        }
+      }
+    },
+    "Automatically slows polling when on battery, in Low Power Mode, while the dropdown is closed, or when the display is asleep. Turn this off to sample at the exact interval above — useful while benchmarking.": {},
+    "Bar font size": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bar font size"
+          }
+        }
+      }
+    },
+    "Battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Battery"
+          }
+        }
+      }
+    },
+    "Battery < %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Battery < %@"
+          }
+        }
+      }
+    },
+    "Battery Health · all-time": {},
+    "Battery floor": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Battery floor"
+          }
+        }
+      }
+    },
+    "Battery is critically low": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Battery is critically low"
+          }
+        }
+      }
+    },
+    "Battery is low": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Battery is low"
+          }
+        }
+      }
+    },
+    "Below 80% — consider battery service": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Below 80% — consider battery service"
+          }
+        }
+      }
+    },
+    "Black": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Black"
+          }
+        }
+      }
+    },
+    "Bold": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bold"
+          }
+        }
+      }
+    },
+    "CPU": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU"
+          }
+        }
+      }
+    },
+    "CPU 14%": {},
+    "CPU > %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU > %@"
+          }
+        }
+      }
+    },
+    "CPU floor": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU floor"
+          }
+        }
+      }
+    },
+    "CPU is very busy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CPU is very busy"
+          }
+        }
+      }
+    },
+    "Cached": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cached"
+          }
+        }
+      }
+    },
+    "Capacity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capacity"
+          }
+        }
+      }
+    },
+    "Change these in the Advanced pane. The cap applies across every rule combined: once it's reached, further firings are still recorded in History and marked Suppressed rather than silently dropped. Do Not Disturb is a full mute instead of a cap — while it's on, nothing fires and nothing is recorded, the same as a rule's own quiet hours.": {},
+    "Changed by": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changed by"
+          }
+        }
+      }
+    },
+    "Charge, charging wattage, adapter profile, health, cycles, and temperature.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charge, charging wattage, adapter profile, health, cycles, and temperature."
+          }
+        }
+      }
+    },
+    "Charging": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charging"
+          }
+        }
+      }
+    },
+    "Charging at": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charging at"
+          }
+        }
+      }
+    },
+    "Charging below half the adapter's rated wattage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charging below half the adapter's rated wattage"
+          }
+        }
+      }
+    },
+    "Chart Gradient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chart Gradient"
+          }
+        }
+      }
+    },
+    "Chart line width": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chart line width"
+          }
+        }
+      }
+    },
+    "Chart style": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chart style"
+          }
+        }
+      }
+    },
+    "Charts": {},
+    "Choose a Sentry theme file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a Sentry theme file."
+          }
+        }
+      }
+    },
+    "Choose what to monitor": {},
+    "Client Setup": {},
+    "Compared to this Mac's own trailing 14-day average — not a fixed threshold or another Mac's numbers.": {},
+    "Compose the bar item and choose what the dropdown shows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compose the bar item and choose what the dropdown shows."
+          }
+        }
+      }
+    },
+    "Compressed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compressed"
+          }
+        }
+      }
+    },
+    "Condition": {},
+    "Connected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected"
+          }
+        }
+      }
+    },
+    "Content": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Content"
+          }
+        }
+      }
+    },
+    "Contrast %@, passes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contrast %@, passes."
+          }
+        }
+      }
+    },
+    "Contrast warning. ": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contrast warning. "
+          }
+        }
+      }
+    },
+    "Corner radius": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Corner radius"
+          }
+        }
+      }
+    },
+    "Couldn't prepare “%@” for export: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't prepare “%1$@” for export: %2$@"
+          }
+        }
+      }
+    },
+    "Couldn't read %@: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't read %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Couldn't write %@: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't write %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Critical": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Critical"
+          }
+        }
+      }
+    },
+    "Critically low": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Critically low"
+          }
+        }
+      }
+    },
+    "Custom alert condition met.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom alert condition met."
+          }
+        }
+      }
+    },
+    "Cycles": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cycles"
+          }
+        }
+      }
+    },
+    "Dashboard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dashboard"
+          }
+        }
+      }
+    },
+    "Dashboard charts are simplified by default — no axes or gridlines, with an average/peak summary line instead. Turn this on to read exact values off the plot: gridlines, a value axis, and intermediate time labels.": {},
+    "Data will appear here once samples accumulate for this range.": {},
+    "Debug Snapshot Dump": {},
+    "Denied — MCP disabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denied — MCP disabled"
+          }
+        }
+      }
+    },
+    "Denied — rate limited": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denied — rate limited"
+          }
+        }
+      }
+    },
+    "Denied — tool disabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denied — tool disabled"
+          }
+        }
+      }
+    },
+    "Denied — user declined": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denied — user declined"
+          }
+        }
+      }
+    },
+    "Density": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Density"
+          }
+        }
+      }
+    },
+    "Density & Charts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Density & Charts"
+          }
+        }
+      }
+    },
+    "Density scales every gap and inset in the app together; the chart controls apply to the dropdown's sparklines and the Dashboard's history charts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Density scales every gap and inset in the app together; the chart controls apply to the dropdown's sparklines and the Dashboard's history charts."
+          }
+        }
+      }
+    },
+    "Deny": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deny"
+          }
+        }
+      }
+    },
+    "Device, renderer, and tiler utilization, frequency, VRAM in use, and GPU power.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Device, renderer, and tiler utilization, frequency, VRAM in use, and GPU power."
+          }
+        }
+      }
+    },
+    "Diagnostics and debugging.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics and debugging."
+          }
+        }
+      }
+    },
+    "Disabled modules stop appearing in the dropdown. Metrics already in your menu bar layout keep working — remove them in the Menu Bar pane.": {},
+    "Discard every change made since the editor opened, without closing it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard every change made since the editor opened, without closing it."
+          }
+        }
+      }
+    },
+    "Disk": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disk"
+          }
+        }
+      }
+    },
+    "Display asleep": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Display asleep"
+          }
+        }
+      }
+    },
+    "Do Not Disturb is a master mute: while it's on, no rule delivers a notification, menu bar highlight, or sleep-assertion release, no matter what its own quiet hours say. Nothing is recorded in History while muted this way, the same as a rule's own quiet hours — see the Alerts pane.": {},
+    "Drawing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drawing"
+          }
+        }
+      }
+    },
+    "Dropdown shows:": {},
+    "Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it.": {},
+    "Duplicated from %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duplicated from %@."
+          }
+        }
+      }
+    },
+    "E-cores": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-cores"
+          }
+        }
+      }
+    },
+    "Each category starts at 100 and loses the weight of its own findings.": {},
+    "Editing appearance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editing appearance"
+          }
+        }
+      }
+    },
+    "Effects": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effects"
+          }
+        }
+      }
+    },
+    "Empty. No modules configured.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empty. No modules configured."
+          }
+        }
+      }
+    },
+    "Enabled Modules": {},
+    "End Now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End Now"
+          }
+        }
+      }
+    },
+    "End keep awake now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End keep awake now"
+          }
+        }
+      }
+    },
+    "Ends": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ends"
+          }
+        }
+      }
+    },
+    "Energy": {},
+    "Enter a process name first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a process name first."
+          }
+        }
+      }
+    },
+    "Equals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Equals"
+          }
+        }
+      }
+    },
+    "Estimates assume roughly 40 metrics recorded at your current %@ s refresh interval. Actual size varies with how many modules you enable and how well SQLite packs the rows.": {},
+    "Every %@ minutes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every %@ minutes"
+          }
+        }
+      }
+    },
+    "Every %@ seconds": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every %@ seconds"
+          }
+        }
+      }
+    },
+    "Every 1 minute": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every 1 minute"
+          }
+        }
+      }
+    },
+    "Every 1 second": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every 1 second"
+          }
+        }
+      }
+    },
+    "Every fan is back under your Mac's own control.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every fan is back under your Mac's own control."
+          }
+        }
+      }
+    },
+    "Every finding is compared against this Mac's own recorded history — never against another machine or a fixed idea of \"normal\". Security settings are read with the same commands you could run yourself, without administrator rights; anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score.": {},
+    "Every rule Sentry could evaluate on this Mac came back clean. That is the expected result on a well-kept machine, not a placeholder — the findings below are the checks that passed.": {},
+    "Everything looks normal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Everything looks normal"
+          }
+        }
+      }
+    },
+    "Export": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
+          }
+        }
+      }
+    },
+    "Extend by %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extend by %@"
+          }
+        }
+      }
+    },
+    "Fair": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fair"
+          }
+        }
+      }
+    },
+    "Fan %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fan %@"
+          }
+        }
+      }
+    },
+    "Fan %@: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fan %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Fan %@: the helper accepted the request.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fan %@: the helper accepted the request."
+          }
+        }
+      }
+    },
+    "Fan hardware couldn't be read": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fan hardware couldn't be read"
+          }
+        }
+      }
+    },
+    "Fans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fans"
+          }
+        }
+      }
+    },
+    "Fifteen built-in themes. Presets can't be edited in place — duplicate one to make it yours.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fifteen built-in themes. Presets can't be edited in place — duplicate one to make it yours."
+          }
+        }
+      }
+    },
+    "Fires immediately": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires immediately"
+          }
+        }
+      }
+    },
+    "Fires when %@ is %@ %@. “Above” and “below” are inclusive (≥ and ≤).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Fires when %1$@ is %2$@ %3$@. “Above” and “below” are inclusive (≥ and ≤)."
+          }
+        }
+      }
+    },
+    "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires when battery health falls by at least this many percentage points below the highest value seen since MacStat last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while MacStat was closed."
+          }
+        }
+      }
+    },
+    "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed."
+          }
+        }
+      }
+    },
+    "For": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For"
+          }
+        }
+      }
+    },
+    "Fork “%@” into an editable copy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fork “%@” into an editable copy."
+          }
+        }
+      }
+    },
+    "Free": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Free"
+          }
+        }
+      }
+    },
+    "Frequency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frequency"
+          }
+        }
+      }
+    },
+    "GPU": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GPU"
+          }
+        }
+      }
+    },
+    "Gathering process data…": {},
+    "General": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
+          }
+        }
+      }
+    },
+    "Give the theme a name first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give the theme a name first."
+          }
+        }
+      }
+    },
+    "Global Limits": {},
+    "Glow": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Glow"
+          }
+        }
+      }
+    },
+    "Glow and scanlines are suppressed automatically when Increase Contrast is on in System Settings — the preview shows the version you'll actually get.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Glow and scanlines are suppressed automatically when Increase Contrast is on in System Settings — the preview shows the version you'll actually get."
+          }
+        }
+      }
+    },
+    "HUD": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HUD"
+          }
+        }
+      }
+    },
+    "Health": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Health"
+          }
+        }
+      }
+    },
+    "Health drops by %@ or more": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Health drops by %@ or more"
+          }
+        }
+      }
+    },
+    "Health · all-time": {},
+    "Heavy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heavy"
+          }
+        }
+      }
+    },
+    "Hex": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hex"
+          }
+        }
+      }
+    },
+    "Hide keep awake options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide keep awake options"
+          }
+        }
+      }
+    },
+    "Hiding a module only stops it drawing. Sentry keeps sampling the metric on its normal schedule, so the reading is already current when the rule turns the module back on.": {},
+    "History": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History"
+          }
+        }
+      }
+    },
+    "History Retention": {},
+    "History only, no notification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History only, no notification"
+          }
+        }
+      }
+    },
+    "History unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History unavailable"
+          }
+        }
+      }
+    },
+    "How Sentry's own surfaces look — dropdown, dashboard, widgets.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How Sentry's own surfaces look — dropdown, dashboard, widgets."
+          }
+        }
+      }
+    },
+    "IP": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IP"
+          }
+        }
+      }
+    },
+    "Immediately": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immediately"
+          }
+        }
+      }
+    },
+    "Import": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import"
+          }
+        }
+      }
+    },
+    "In this range": {},
+    "Indefinitely": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indefinitely"
+          }
+        }
+      }
+    },
+    "Inside the window this rule does not fire at all — and its cooldown is not consumed, so it can fire promptly once the window ends. An end hour earlier than the start wraps past midnight.": {},
+    "Insights": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insights"
+          }
+        }
+      }
+    },
+    "It's the theme currently in use, so Sentry will fall back to %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "It's the theme currently in use, so Sentry will fall back to %@."
+          }
+        }
+      }
+    },
+    "Keep Awake": {},
+    "Keep awake options, currently %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep awake options, currently %@"
+          }
+        }
+      }
+    },
+    "Keep display on": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep display on"
+          }
+        }
+      }
+    },
+    "Kept forever — %@ per decade": {},
+    "Last 24 hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 24 hours"
+          }
+        }
+      }
+    },
+    "Last 30 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 30 days"
+          }
+        }
+      }
+    },
+    "Last 6 months": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 6 months"
+          }
+        }
+      }
+    },
+    "Last 7 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 7 days"
+          }
+        }
+      }
+    },
+    "Last 90 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 90 days"
+          }
+        }
+      }
+    },
+    "Last Captured": {},
+    "Last updated: %@": {},
+    "Light": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Light"
+          }
+        }
+      }
+    },
+    "Link rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link rate"
+          }
+        }
+      }
+    },
+    "Live fan speeds, and what fan control would need to work.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live fan speeds, and what fan control would need to work."
+          }
+        }
+      }
+    },
+    "Load average": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load average"
+          }
+        }
+      }
+    },
+    "Location Log": {},
+    "Low": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Low"
+          }
+        }
+      }
+    },
+    "Lowest contrast across every surface and both appearances: %@. Passes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lowest contrast across every surface and both appearances: %@. Passes."
+          }
+        }
+      }
+    },
+    "MCP access is disabled in Sentry → Settings → AI Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP access is disabled in MacStat → Settings → AI Access."
+          }
+        }
+      }
+    },
+    "MCP rate limit exceeded — configured in Sentry → Settings → AI Access. Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP rate limit exceeded — configured in MacStat → Settings → AI Access. Try again in a moment."
+          }
+        }
+      }
+    },
+    "MCP tools for AI agents, local and remote.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP tools for AI agents, local and remote."
+          }
+        }
+      }
+    },
+    "MacStat Dashboard": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacStat Dashboard"
+          }
+        }
+      }
+    },
+    "MacStat Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MacStat Settings"
+          }
+        }
+      }
+    },
+    "Master Switches": {},
+    "Material": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Material"
+          }
+        }
+      }
+    },
+    "Maximum width": {},
+    "Measured in %@.": {},
+    "Medium": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medium"
+          }
+        }
+      }
+    },
+    "Medium tier interval": {},
+    "Memory": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory"
+          }
+        }
+      }
+    },
+    "Memory is under pressure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory is under pressure"
+          }
+        }
+      }
+    },
+    "Memory pressure is critical": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory pressure is critical"
+          }
+        }
+      }
+    },
+    "Menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu"
+          }
+        }
+      }
+    },
+    "Menu Bar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu Bar"
+          }
+        }
+      }
+    },
+    "Menu bar highlight": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu bar highlight"
+          }
+        }
+      }
+    },
+    "Menu-bar graph width": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu-bar graph width"
+          }
+        }
+      }
+    },
+    "Metric Colors": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Metric Colors"
+          }
+        }
+      }
+    },
+    "Mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mode"
+          }
+        }
+      }
+    },
+    "Modules": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modules"
+          }
+        }
+      }
+    },
+    "Monospaced digits keep a changing number from shifting the layout under your cursor.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monospaced digits keep a changing number from shifting the layout under your cursor."
+          }
+        }
+      }
+    },
+    "Most memory in use": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Most memory in use"
+          }
+        }
+      }
+    },
+    "Nearly all memory in use": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nearly all memory in use"
+          }
+        }
+      }
+    },
+    "Neural Engine power draw. There is no public ANE utilization figure — power is the standard proxy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neural Engine power draw. There is no public ANE utilization figure — power is the standard proxy."
+          }
+        }
+      }
+    },
+    "New Rule": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Rule"
+          }
+        }
+      }
+    },
+    "No": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No"
+          }
+        }
+      }
+    },
+    "No AI agent activity in this range. Enable write tools in Settings → AI Access to let Claude Code, Cursor, or another MCP client act on this Mac.": {},
+    "No MCP actions in this range.": {},
+    "No MCP calls yet this session.": {},
+    "No activity recorded for this range yet.": {},
+    "No decline in sight at the current rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No decline in sight at the current rate"
+          }
+        }
+      }
+    },
+    "No fixed speed set": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No fixed speed set"
+          }
+        }
+      }
+    },
+    "No history yet": {},
+    "No location has been captured yet. This can take a few minutes after enabling the toggle above.": {},
+    "No modules are turned on.": {},
+    "No modules — add one below": {},
+    "No power samples yet — leave Sentry running and this fills in.": {},
+    "No process named “%@” is running right now.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No process named “%@” is running right now."
+          }
+        }
+      }
+    },
+    "No snapshot yet": {},
+    "No source preset — reset-to-preset is unavailable for this theme.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No source preset — reset-to-preset is unavailable for this theme."
+          }
+        }
+      }
+    },
+    "Nominal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nominal"
+          }
+        }
+      }
+    },
+    "Normal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Normal"
+          }
+        }
+      }
+    },
+    "Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more.": {},
+    "Not scored, for lack of data on this Mac: %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not scored, for lack of data on this Mac: %@."
+          }
+        }
+      }
+    },
+    "Nothing has changed since you opened the editor.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing has changed since you opened the editor."
+          }
+        }
+      }
+    },
+    "Nothing to act on": {},
+    "Nothing unusual — every tracked metric is within its normal range for this Mac.": {},
+    "Notification": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification"
+          }
+        }
+      }
+    },
+    "Numerals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numerals"
+          }
+        }
+      }
+    },
+    "Off": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        }
+      }
+    },
+    "On": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On"
+          }
+        }
+      }
+    },
+    "On battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On battery"
+          }
+        }
+      }
+    },
+    "On pace to cross 80%% around %@ (−%@%%/mo)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On pace to cross 80%% around %1$@ (−%2$@%%/mo)"
+          }
+        }
+      }
+    },
+    "Only When": {},
+    "Only applies when “Translucent background” is on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only applies when “Translucent background” is on."
+          }
+        }
+      }
+    },
+    "Only shown when above %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only shown when above %@"
+          }
+        }
+      }
+    },
+    "Only shown when charging": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only shown when charging"
+          }
+        }
+      }
+    },
+    "Only shown when on battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only shown when on battery"
+          }
+        }
+      }
+    },
+    "Only shown while Sentry is keeping the Mac awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only shown while Sentry is keeping the Mac awake"
+          }
+        }
+      }
+    },
+    "Only while plugged in": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only while plugged in"
+          }
+        }
+      }
+    },
+    "Open a .sentrytheme file. It's checked before anything is applied — a malformed file is rejected with the reason, not partly loaded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open a .sentrytheme file. It's checked before anything is applied — a malformed file is rejected with the reason, not partly loaded."
+          }
+        }
+      }
+    },
+    "Opt-in last-known-location log for this Mac — not Find My.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opt-in last-known-location log for this Mac — not Find My."
+          }
+        }
+      }
+    },
+    "Options": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Options"
+          }
+        }
+      }
+    },
+    "P-cores": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "P-cores"
+          }
+        }
+      }
+    },
+    "Package power": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Package power"
+          }
+        }
+      }
+    },
+    "Paints surfaces over a system blur instead of an opaque fill. Contrast findings against a translucent backdrop are approximate.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paints surfaces over a system blur instead of an opaque fill. Contrast findings against a translucent backdrop are approximate."
+          }
+        }
+      }
+    },
+    "Paste this into Claude Desktop's, Claude Code's, or Cursor's MCP server configuration to connect them to this Mac.": {},
+    "Per-metric tints for chart lines, dots and fill bars. These are graphics rather than text, so they're checked against 3:1 — WCAG's non-text threshold — not 4.5:1.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per-metric tints for chart lines, dots and fill bars. These are graphics rather than text, so they're checked against 3:1 — WCAG's non-text threshold — not 4.5:1."
+          }
+        }
+      }
+    },
+    "Permission": {},
+    "Plugged in": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugged in"
+          }
+        }
+      }
+    },
+    "Plugged in but not charging, with a reason reported": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugged in but not charging, with a reason reported"
+          }
+        }
+      }
+    },
+    "Plugged in, not charging": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plugged in, not charging"
+          }
+        }
+      }
+    },
+    "Popover": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Popover"
+          }
+        }
+      }
+    },
+    "PostScript name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PostScript name"
+          }
+        }
+      }
+    },
+    "Power": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Power"
+          }
+        }
+      }
+    },
+    "Power draw proxy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Power draw proxy"
+          }
+        }
+      }
+    },
+    "Presets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Presets"
+          }
+        }
+      }
+    },
+    "Pressure": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pressure"
+          }
+        }
+      }
+    },
+    "Pressure critical": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pressure critical"
+          }
+        }
+      }
+    },
+    "Pressure elevated": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pressure elevated"
+          }
+        }
+      }
+    },
+    "Preview": {},
+    "Privacy": {},
+    "Process": {},
+    "Processes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processes"
+          }
+        }
+      }
+    },
+    "Protection Score": {},
+    "Provisional — the hardware half rests on %@ of history. Longevity findings stay quiet until there are at least %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provisional — the hardware half rests on %1$@ of history. Longevity findings stay quiet until there are at least %2$@."
+          }
+        }
+      }
+    },
+    "Purchasing isn't available yet — Sentry isn't on the App Store, so there is deliberately no Buy button here that couldn't work. In the meantime you can unlock everything locally in Settings ▸ Advanced ▸ Developer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Purchasing isn't available yet — Sentry isn't on the App Store, so there is deliberately no Buy button here that couldn't work. In the meantime you can unlock everything locally in Settings ▸ Advanced ▸ Developer."
+          }
+        }
+      }
+    },
+    "Push to iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Push to iPhone"
+          }
+        }
+      }
+    },
+    "Queued on this Mac — reaches a phone only once device sync ships": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Queued on this Mac — reaches a phone only once device sync ships"
+          }
+        }
+      }
+    },
+    "Quiet Hours": {},
+    "Range unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Range unknown"
+          }
+        }
+      }
+    },
+    "Re-reads this Mac's security settings and recomputes every finding": {},
+    "Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call Sentry's tools; regenerate it if it's ever shared by mistake.": {},
+    "Read": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read"
+          }
+        }
+      }
+    },
+    "Read IOPS": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read IOPS"
+          }
+        }
+      }
+    },
+    "Read Tools": {},
+    "Read throughput": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read throughput"
+          }
+        }
+      }
+    },
+    "Read tools are enabled by default and can only ever fetch data this app already has. Write tools — anything that changes power state, polling cadence, or alert rules — are off by default and gated by both this master switch and their own individual toggle below.": {},
+    "Read/write throughput and IOPS, free space, and percentage used.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read/write throughput and IOPS, free space, and percentage used."
+          }
+        }
+      }
+    },
+    "Reading this Mac's security settings and its recorded history. This takes a moment the first time.": {},
+    "Recalculating…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recalculating…"
+          }
+        }
+      }
+    },
+    "Receive and transmit throughput, session totals, and Wi-Fi signal and link rate.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receive and transmit throughput, session totals, and Wi-Fi signal and link rate."
+          }
+        }
+      }
+    },
+    "Record only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Record only"
+          }
+        }
+      }
+    },
+    "Refresh interval": {},
+    "Regular": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regular"
+          }
+        }
+      }
+    },
+    "Releases the keep-awake assertion": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Releases the keep-awake assertion"
+          }
+        }
+      }
+    },
+    "Remaining": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remaining"
+          }
+        }
+      }
+    },
+    "Remote Access": {},
+    "Remove the last gradient stop. Below two stops, charts fall back to a gradient derived from the accent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove the last gradient stop. Below two stops, charts fall back to a gradient derived from the accent."
+          }
+        }
+      }
+    },
+    "Renderer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renderer"
+          }
+        }
+      }
+    },
+    "Report generated %@.": {},
+    "Reset %@ to %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset %1$@ to %2$@."
+          }
+        }
+      }
+    },
+    "Reset %@ to preset": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset %@ to preset"
+          }
+        }
+      }
+    },
+    "Reset All Settings to Defaults": {},
+    "Restore every color, font and geometry token to %@. Keeps this theme's name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore every color, font and geometry token to %@. Keeps this theme's name."
+          }
+        }
+      }
+    },
+    "Restores every setting, including your menu bar layout and theme, to the shipped defaults. Recorded history is not deleted.": {},
+    "Rules": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules"
+          }
+        }
+      }
+    },
+    "Rules, notifications, and alert history.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rules, notifications, and alert history."
+          }
+        }
+      }
+    },
+    "Run Shortcut": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run Shortcut"
+          }
+        }
+      }
+    },
+    "Running hot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running hot"
+          }
+        }
+      }
+    },
+    "Running low": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running low"
+          }
+        }
+      }
+    },
+    "Running low on space": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running low on space"
+          }
+        }
+      }
+    },
+    "Runs “%@” in Shortcuts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Runs “%@” in Shortcuts"
+          }
+        }
+      }
+    },
+    "Sampling": {},
+    "Save this theme and close the editor.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save this theme and close the editor."
+          }
+        }
+      }
+    },
+    "Scanline overlay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanline overlay"
+          }
+        }
+      }
+    },
+    "Screen and system stay awake. Best for presenting or watching.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screen and system stay awake. Best for presenting or watching."
+          }
+        }
+      }
+    },
+    "Security posture read %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Security posture read %@."
+          }
+        }
+      }
+    },
+    "Select a module on the left to configure how it draws.": {},
+    "Select a rule on the left to edit when it fires.": {},
+    "Semibold": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Semibold"
+          }
+        }
+      }
+    },
+    "Sentry asked the SMC how many fans this Mac has and it answered none — a fanless Mac cools passively, so there's nothing here to monitor or control.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sentry asked the SMC how many fans this Mac has and it answered none — a fanless Mac cools passively, so there's nothing here to monitor or control."
+          }
+        }
+      }
+    },
+    "Sentry can read these fans directly from this Mac's SMC, including their individual speed ranges.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sentry can read these fans directly from this Mac's SMC, including their individual speed ranges."
+          }
+        }
+      }
+    },
+    "Sentry has %@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %@ more before they can say anything defensible, so they are staying quiet rather than guessing.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Sentry has %1$@ of recorded telemetry for this Mac. The longevity findings — battery wear, thermal exposure, disk headroom — need about %2$@ more before they can say anything defensible, so they are staying quiet rather than guessing."
+          }
+        }
+      }
+    },
+    "Sentry isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build.": {},
+    "Serious": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serious"
+          }
+        }
+      }
+    },
+    "Session ↑": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session ↑"
+          }
+        }
+      }
+    },
+    "Session ↓": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session ↓"
+          }
+        }
+      }
+    },
+    "Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "Shorten by %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shorten by %@"
+          }
+        }
+      }
+    },
+    "Show chart gridlines": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show chart gridlines"
+          }
+        }
+      }
+    },
+    "Shown only while %@ reads above %@. A metric with no reading counts as not above it.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Shown only while %1$@ reads above %2$@. A metric with no reading counts as not above it."
+          }
+        }
+      }
+    },
+    "Shows calls made since Sentry last launched — this is a live session view, not durable history, and clears on relaunch.": {},
+    "Sidebar": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidebar"
+          }
+        }
+      }
+    },
+    "Signal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signal"
+          }
+        }
+      }
+    },
+    "Sleep is prevented only on AC power — on battery the Mac sleeps normally.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sleep is prevented only on AC power — on battery the Mac sleeps normally."
+          }
+        }
+      }
+    },
+    "Slow tier interval": {},
+    "SoC is at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SoC is at %@"
+          }
+        }
+      }
+    },
+    "SoC temperature, thermal pressure level, and whether the system is throttling.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SoC temperature, thermal pressure level, and whether the system is throttling."
+          }
+        }
+      }
+    },
+    "Source preset %@ isn't in this version of Sentry, so reset-to-preset is unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Source preset %@ isn't in this version of Sentry, so reset-to-preset is unavailable."
+          }
+        }
+      }
+    },
+    "Spacing": {},
+    "Startup disk is almost full": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Startup disk is almost full"
+          }
+        }
+      }
+    },
+    "Startup disk is filling up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Startup disk is filling up"
+          }
+        }
+      }
+    },
+    "Startup, sampling cadence, and software updates.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Startup, sampling cadence, and software updates."
+          }
+        }
+      }
+    },
+    "State": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "State"
+          }
+        }
+      }
+    },
+    "Status": {},
+    "Still gathering history": {},
+    "Stop %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop %@"
+          }
+        }
+      }
+    },
+    "Stops filled under an area chart, top to bottom. Two is the useful minimum; the last stop is usually fully transparent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stops filled under an area chart, top to bottom. Two is the useful minimum; the last stop is usually fully transparent."
+          }
+        }
+      }
+    },
+    "Sustained high load": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sustained high load"
+          }
+        }
+      }
+    },
+    "Swap": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap"
+          }
+        }
+      }
+    },
+    "Sync": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync"
+          }
+        }
+      }
+    },
+    "System only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System only"
+          }
+        }
+      }
+    },
+    "System only (display may sleep)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System only (display may sleep)"
+          }
+        }
+      }
+    },
+    "System power drawn, integrated from live sampling": {},
+    "System stays awake; the display may sleep. Best for builds and downloads.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System stays awake; the display may sleep. Best for builds and downloads."
+          }
+        }
+      }
+    },
+    "Temperature": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temperature"
+          }
+        }
+      }
+    },
+    "That file isn't a Sentry theme.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That file isn't a Sentry theme."
+          }
+        }
+      }
+    },
+    "The bar always draws in plain white or black so it stays readable on any wallpaper. Near the high threshold a value counts as critical: it gets a “!” beside it and VoiceOver says so. Set low above high to invert — useful for metrics where a small number is the bad one.": {},
+    "The fan helper is removed and every fan is back under your Mac's own control.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The fan helper is removed and every fan is back under your Mac's own control."
+          }
+        }
+      }
+    },
+    "The protection score and the two highest-priority findings stay free, permanently — including their evidence and what to do about them.": {},
+    "The refresh interval above controls the fast tier (CPU, GPU, memory, network, disk). These two sliders control the other two tiers — every module assigned to a tier shares that tier's interval, so this is per-tier control, not independently adjustable per module.": {},
+    "The security and privacy findings below are unaffected — they are read directly from this Mac's current settings, not from history.": {},
+    "The user declined to confirm this action in MacStat.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The user declined to confirm this action in MacStat."
+          }
+        }
+      }
+    },
+    "Theme": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme"
+          }
+        }
+      }
+    },
+    "Theme name": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Theme name"
+          }
+        }
+      }
+    },
+    "Themes you've duplicated or imported. Stored in settings.json, so they travel with the rest of your configuration.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Themes you've duplicated or imported. Stored in settings.json, so they travel with the rest of your configuration."
+          }
+        }
+      }
+    },
+    "There are no stops to remove.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There are no stops to remove."
+          }
+        }
+      }
+    },
+    "Thermal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thermal"
+          }
+        }
+      }
+    },
+    "Thermal pressure is %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thermal pressure is %@"
+          }
+        }
+      }
+    },
+    "Thermal pressure is fair": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thermal pressure is fair"
+          }
+        }
+      }
+    },
+    "Thermal throttling is active": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thermal throttling is active"
+          }
+        }
+      }
+    },
+    "Thin": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thin"
+          }
+        }
+      }
+    },
+    "This Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac"
+          }
+        }
+      }
+    },
+    "This Mac has no fans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Mac has no fans"
+          }
+        }
+      }
+    },
+    "This is the cadence Sentry's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above.": {},
+    "This rule has no actions and will only be recorded in history.": {},
+    "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable."
+          }
+        }
+      }
+    },
+    "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This rule has no editable metric or threshold. It reads the reason macOS gives for pausing the charge (too hot, on-hold by Optimized Charging, and so on) and reports that text verbatim — there is no single number to compare against. Only its timing, quiet hours, and conditions below are editable."
+          }
+        }
+      }
+    },
+    "This tool is disabled in Sentry → Settings → AI Access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This tool is disabled in MacStat → Settings → AI Access."
+          }
+        }
+      }
+    },
+    "Threshold": {},
+    "Throttling": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Throttling"
+          }
+        }
+      }
+    },
+    "Tier Intervals": {},
+    "Tiler": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiler"
+          }
+        }
+      }
+    },
+    "Time remaining": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time remaining"
+          }
+        }
+      }
+    },
+    "Time to full": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time to full"
+          }
+        }
+      }
+    },
+    "Timing": {},
+    "Token “%@”": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token “%@”"
+          }
+        }
+      }
+    },
+    "Top Processes": {},
+    "Total": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total"
+          }
+        }
+      }
+    },
+    "Total and per-core utilization, E/P-core split, frequency, package power, load averages.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total and per-core utilization, E/P-core split, frequency, package power, load averages."
+          }
+        }
+      }
+    },
+    "Translucent background": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translucent background"
+          }
+        }
+      }
+    },
+    "Trend appears after a day or two of readings — daily health snapshots accumulate while Sentry runs.": {},
+    "Trend appears after a day or two of readings.": {},
+    "Truncates at %@ pt instead of pushing other status items off a crowded bar.": {},
+    "Typeface": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Typeface"
+          }
+        }
+      }
+    },
+    "Typography": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Typography"
+          }
+        }
+      }
+    },
+    "Ultra Light": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ultra Light"
+          }
+        }
+      }
+    },
+    "Unavailable": {},
+    "Under Window": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Under Window"
+          }
+        }
+      }
+    },
+    "Unlocked by purchase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlocked by purchase."
+          }
+        }
+      }
+    },
+    "Unlocked by the local developer override in Settings ▸ Advanced. This is not a purchase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlocked by the local developer override in Settings ▸ Advanced. This is not a purchase."
+          }
+        }
+      }
+    },
+    "Unreadable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unreadable"
+          }
+        }
+      }
+    },
+    "Until battery is low": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until battery is low"
+          }
+        }
+      }
+    },
+    "Upload": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload"
+          }
+        }
+      }
+    },
+    "Upload Schedule": {},
+    "Uptime, process count, and whether a sleep assertion is active.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uptime, process count, and whether a sleep assertion is active."
+          }
+        }
+      }
+    },
+    "Used": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used"
+          }
+        }
+      }
+    },
+    "Used, wired, compressed, and cached memory, memory pressure, and swap.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Used, wired, compressed, and cached memory, memory pressure, and swap."
+          }
+        }
+      }
+    },
+    "VRAM": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VRAM"
+          }
+        }
+      }
+    },
+    "Vitals rows follow Modules": {},
+    "Waiting for the first reading": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for the first reading"
+          }
+        }
+      }
+    },
+    "Waiting for the first snapshot…": {},
+    "Warm": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warm"
+          }
+        }
+      }
+    },
+    "Warming up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warming up"
+          }
+        }
+      }
+    },
+    "Warning": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Warning"
+          }
+        }
+      }
+    },
+    "Weight": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weight"
+          }
+        }
+      }
+    },
+    "When above a threshold": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When above a threshold"
+          }
+        }
+      }
+    },
+    "When charging": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When charging"
+          }
+        }
+      }
+    },
+    "When on battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When on battery"
+          }
+        }
+      }
+    },
+    "When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running, and it has no connection to Apple's Find My network.": {},
+    "When you turn it off": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "When you turn it off"
+          }
+        }
+      }
+    },
+    "Which half of each color's light/dark pair the wells edit, and which the preview shows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Which half of each color's light/dark pair the wells edit, and which the preview shows."
+          }
+        }
+      }
+    },
+    "Which metric modules Sentry samples and shows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Which metric modules Sentry samples and shows."
+          }
+        }
+      }
+    },
+    "Which system blur sits behind translucent surfaces.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Which system blur sits behind translucent surfaces."
+          }
+        }
+      }
+    },
+    "While %@ runs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While %@ runs"
+          }
+        }
+      }
+    },
+    "While CPU is busy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While CPU is busy"
+          }
+        }
+      }
+    },
+    "While a process runs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While a process runs"
+          }
+        }
+      }
+    },
+    "While keeping the Mac awake": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While keeping the Mac awake"
+          }
+        }
+      }
+    },
+    "Wired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wired"
+          }
+        }
+      }
+    },
+    "Working it out…": {},
+    "Write": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write"
+          }
+        }
+      }
+    },
+    "Write IOPS": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write IOPS"
+          }
+        }
+      }
+    },
+    "Write Tools": {},
+    "Write this theme to a .sentrytheme file. Exports the draft as it stands, including unsaved changes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Write this theme to a .sentrytheme file. Exports the draft as it stands, including unsaved changes."
+          }
+        }
+      }
+    },
+    "Yes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes"
+          }
+        }
+      }
+    },
+    "You have no alert rules. Nothing will ever notify you until you add one or restore the defaults below.": {},
+    "Your %@ will be replaced by the %@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Your %1$@ will be replaced by the %2$@ rules Sentry ships with, including any you edited or removed. Alert history is not deleted."
+          }
+        }
+      }
+    },
+    "Your Mac is throttling": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac is throttling"
+          }
+        }
+      }
+    },
+    "Your Themes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Themes"
+          }
+        }
+      }
+    },
+    "Your menu bar is empty. Use “Add Module” to start composing.": {},
+    "Your menu bar layout, theme, enabled modules, and all other preferences will be restored to their defaults. This can't be undone.": {},
+    "a count": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a count"
+          }
+        }
+      }
+    },
+    "a plain number": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a plain number"
+          }
+        }
+      }
+    },
+    "a thermal level from 0 to 3": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "a thermal level from 0 to 3"
+          }
+        }
+      }
+    },
+    "act on this": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "act on this"
+          }
+        }
+      }
+    },
+    "at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "at %@"
+          }
+        }
+      }
+    },
+    "avg %@ · peak %@ at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "avg %1$@ · peak %2$@ at %3$@"
+          }
+        }
+      }
+    },
+    "avg CPU %@ · peak %@ at %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "avg CPU %1$@ · peak %2$@ at %3$@"
+          }
+        }
+      }
+    },
+    "bytes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes"
+          }
+        }
+      }
+    },
+    "bytes per second": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes per second"
+          }
+        }
+      }
+    },
+    "bytes/s": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "bytes/s"
+          }
+        }
+      }
+    },
+    "changed by": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "changed by"
+          }
+        }
+      }
+    },
+    "checked %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "checked %@"
+          }
+        }
+      }
+    },
+    "checked %@m ago": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "checked %@m ago"
+          }
+        }
+      }
+    },
+    "checked %@s ago": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "checked %@s ago"
+          }
+        }
+      }
+    },
+    "dBm": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dBm"
+          }
+        }
+      }
+    },
+    "degrees Celsius": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "degrees Celsius"
+          }
+        }
+      }
+    },
+    "delivered": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "delivered"
+          }
+        }
+      }
+    },
+    "iCloud sync isn't available in this build": {},
+    "iPhone companion and device sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone companion and device sync."
+          }
+        }
+      }
+    },
+    "just now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "just now"
+          }
+        }
+      }
+    },
+    "load %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "load %@"
+          }
+        }
+      }
+    },
+    "macOS wouldn't install the fan helper: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS wouldn't install the fan helper: %@"
+          }
+        }
+      }
+    },
+    "macOS wouldn't remove the fan helper: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS wouldn't remove the fan helper: %@"
+          }
+        }
+      }
+    },
+    "megabits per second": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megabits per second"
+          }
+        }
+      }
+    },
+    "megahertz": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "megahertz"
+          }
+        }
+      }
+    },
+    "milliamps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "milliamps"
+          }
+        }
+      }
+    },
+    "millivolts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "millivolts"
+          }
+        }
+      }
+    },
+    "minutes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "minutes"
+          }
+        }
+      }
+    },
+    "needs attention": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "needs attention"
+          }
+        }
+      }
+    },
+    "no data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no data"
+          }
+        }
+      }
+    },
+    "not scored — no data for this category on this Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "not scored — no data for this category on this Mac"
+          }
+        }
+      }
+    },
+    "operations per second": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "operations per second"
+          }
+        }
+      }
+    },
+    "percent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "percent"
+          }
+        }
+      }
+    },
+    "pid %@": {},
+    "process": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "process"
+          }
+        }
+      }
+    },
+    "ranging from %@ to %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ranging from %1$@ to %2$@"
+          }
+        }
+      }
+    },
+    "reason code %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "reason code %@"
+          }
+        }
+      }
+    },
+    "relative activity shapes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "relative activity shapes"
+          }
+        }
+      }
+    },
+    "s": {},
+    "seconds": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "seconds"
+          }
+        }
+      }
+    },
+    "suppressed by the hourly cap": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "suppressed by the hourly cap"
+          }
+        }
+      }
+    },
+    "up %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "up %@"
+          }
+        }
+      }
+    },
+    "watts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "watts"
+          }
+        }
+      }
+    },
+    "well protected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "well protected"
+          }
+        }
+      }
+    },
+    "working it out…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "working it out…"
+          }
+        }
+      }
+    },
+    "·": {},
+    "· %@": {},
+    "· limited history": {},
+    "—": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "—"
+          }
+        }
+      }
+    },
+    "— sample values, not live readings": {},
+    "“%@”": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”"
+          }
+        }
+      }
+    },
+    "“%@” will be removed from settings.json. This can't be undone — export it first if you want to keep a copy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” will be removed from settings.json. This can't be undone — export it first if you want to keep a copy."
+          }
+        }
+      }
+    },
+    "“%@”, with sound": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@”, with sound"
+          }
+        }
+      }
+    },
+    "“Must hold for” suppresses flapping — a metric bouncing across the threshold resets the timer instead of firing. “Cooldown” is the minimum gap between two firings of this rule once it has fired. They are independent: satisfying one does not substitute for the other.": {},
+    "≈ %@": {}
   },
-  "version" : "1.1"
+  "version": "1.1"
 }

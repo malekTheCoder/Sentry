@@ -4,9 +4,18 @@ import Foundation
 ///
 /// One case today. It is an enum rather than a `Bool` on purpose: the
 /// entitlement check at every call site is `isUnlocked(.protectionInsights)`,
-/// so adding a second paid feature later is a new case plus a new product
-/// identifier, not a hunt through the app for `isPro` booleans that all
-/// meant slightly different things.
+/// so adding a second paid feature later is a new case, not a hunt through
+/// the app for `isPro` booleans that all meant slightly different things.
+///
+/// There is deliberately no per-feature product identifier here anymore.
+/// The one that used to exist was vocabulary for the StoreKit
+/// implementation this file once promised, and that implementation is now
+/// known to be impossible (see `ProEntitlementProviding`); the license
+/// system that replaced it sells one product — Sentry Pro — whose payload
+/// (`LicensePayload`) intentionally carries no feature list to drift out
+/// of sync with this enum. Keeping a dead identifier "just in case" is the
+/// same anti-pattern `FanControlBackend.swift`'s header names: vocabulary
+/// for a thing that cannot happen reads as a thing that might.
 public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
     case protectionInsights
 
@@ -22,18 +31,6 @@ public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
             return String(localized: "Personalised, evidence-backed recommendations built from this Mac's own measured history and security posture.")
         }
     }
-
-    /// The App Store product identifier this feature *will* map to.
-    ///
-    /// Declared now, unused now. It exists so the StoreKit implementation
-    /// described on `ProEntitlementProviding` has an obvious place to read
-    /// from, rather than introducing a second, parallel notion of what a
-    /// feature is called.
-    public var productIdentifier: String {
-        switch self {
-        case .protectionInsights: return "dev.malekswilam.macstat.pro.protectioninsights"
-        }
-    }
 }
 
 /// Where an unlock came from. Shown in the UI so an unlocked build is never
@@ -45,34 +42,38 @@ public enum ProUnlockSource: String, Codable, Sendable, Hashable {
     /// The local developer/testing override. Never set by anything except
     /// an explicit toggle in Settings ▸ Advanced.
     case developerOverride
-    /// Reserved for the StoreKit 2 implementation. Nothing produces this
-    /// value today; it is declared so the UI's switch is already total when
-    /// it does.
-    case purchase
+    /// A verified Sentry Pro license (`LicenseProEntitlementStore`).
+    /// Replaces the `.purchase` case that was reserved for a StoreKit 2
+    /// implementation — removed, not kept alongside, because StoreKit
+    /// purchase is impossible for this app (see `ProEntitlementProviding`)
+    /// and a case nothing can ever produce is exactly the inert vocabulary
+    /// this codebase strips elsewhere.
+    case license
 }
 
-/// The seam a real StoreKit implementation drops into.
+/// The seam a real entitlement implementation drops into.
 ///
-/// **There is deliberately no StoreKit in this repo yet.** Apple Developer
-/// Program enrollment is currently blocked (see `PROGRESS.md` and
-/// `StatsTransport.swift`'s doc comment for the same constraint elsewhere),
-/// and a `Product.products(for:)` call that can never succeed would be an
-/// inert control of exactly the kind this codebase has removed before. What
-/// exists instead is the *boundary*: every call site asks this protocol, and
-/// nothing else.
+/// **The StoreKit implementation this comment used to prescribe is dead,
+/// and honestly so.** Earlier revisions promised a
+/// `StoreKitProEntitlementStore` listening to `Transaction.updates` — a
+/// plan written before the distribution decision landed. Sentry ships via
+/// Developer ID, outside the Mac App Store, and StoreKit in-app purchase
+/// simply does not exist for apps distributed that way; keeping the old
+/// plan in this comment would be documentation describing an impossible
+/// implementation, which is worse than no plan. What replaced it is the
+/// license system in this directory: `SignedLicense` (an Ed25519-signed
+/// blob, format documented on that type), `LicenseProEntitlementStore`
+/// (this protocol's real conformer), and `LicenseActivationClient`
+/// (`LicenseActivation.swift` — the deliberately implementation-free
+/// boundary to the not-yet-provisioned checkout service).
 ///
-/// **How the StoreKit 2 version drops in, precisely:**
-/// 1. Add a new type in this directory — `StoreKitProEntitlementStore` —
-///    conforming to this same protocol. It listens to
-///    `Transaction.updates`, checks `Transaction.currentEntitlements` for
-///    `ProFeature.productIdentifier`, and publishes the result.
-/// 2. Change the one line in `AppDelegate` that constructs
-///    `ProEntitlementStore` to construct the StoreKit one instead, and have
-///    it fall back to `ProEntitlementStore`'s developer override when the
-///    App Store is unreachable.
-/// 3. Nothing else changes. `InsightsViewModel` holds `any
-///    ProEntitlementProviding`, `ProGate` is a pure function of a `Bool`,
-///    and no view reads an entitlement directly.
+/// **What stayed true from the original plan:** every call site asks this
+/// protocol and nothing else. `InsightsViewModel` holds `any
+/// ProEntitlementProviding`, `ProGate` is a pure function of a `Bool`, and
+/// no view reads an entitlement directly — which is exactly why swapping
+/// the promised StoreKit store for the license store was a one-line change
+/// in `AppDelegate` and a rewrite of this comment, not a hunt through the
+/// UI.
 ///
 /// `@MainActor` because both implementations are observed by SwiftUI and
 /// mutated from user actions; `AnyObject` because entitlement state is
@@ -100,8 +101,12 @@ public protocol ProEntitlementProviding: AnyObject {
     func applySettings(_ settings: AppSettings)
 }
 
-/// The local, no-StoreKit implementation: unlocked only by an explicit
-/// developer override stored in `AppSettings`.
+/// The minimal, override-only implementation: unlocked by nothing except
+/// an explicit developer override stored in `AppSettings`. Superseded in
+/// the app's composition root by `LicenseProEntitlementStore` (which
+/// honors the same override *and* verifies licenses), but kept: it is the
+/// simplest possible conformer, useful in tests and as the reference for
+/// what the override alone means.
 ///
 /// **Why `SettingsStore` and not `UserDefaults`.** Everything else the user
 /// can configure already round-trips through `settings.json` with

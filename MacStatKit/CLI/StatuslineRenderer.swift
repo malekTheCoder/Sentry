@@ -1,248 +1,340 @@
 import Foundation
 
-// MARK: - StatuslineRenderer: `macstat statusline`'s one-line formatter
-
-/// The segment vocabulary for `macstat statusline --segments=...`. Raw
-/// values are the exact strings users type on the command line, so parsing
-/// is `StatuslineSegment(rawValue:)` and the usage text can be generated
-/// from `allCases` rather than drifting from a hand-maintained list.
+/// Output shapes for `macstat statusline` (plan §21.3).
 ///
-/// Deliberately tiny — cpu, mem, battery — because a status line is the one
-/// surface in this app where *less* is the feature. The dropdown and the
-/// iPhone dashboard exist for everything else; adding disk/network/thermal
-/// segments here is cheap if someone asks, but each one added by default
-/// costs every tmux user horizontal space they didn't opt into.
-public enum StatuslineSegment: String, CaseIterable, Sendable {
-    case cpu
-    case mem
-    case battery
+/// The names are the CLI's `--format` values verbatim, and — like
+/// `MetricID`'s raw values — they are the contract. Someone's `.tmux.conf`
+/// or `starship.toml` will contain the string `compact`; renaming a case
+/// here silently breaks a dotfile that nothing in this repo can see.
+public enum StatuslineFormat: String, CaseIterable, Sendable {
+    /// `🔋78% 45W  ⚙️12%  🌡️62°C` — emoji, for a terminal with a normal font.
+    case compact
+    /// `batt=78% watts=45 charging=1 cpu=12% temp=62` — no glyphs at all, so
+    /// it survives a font without emoji coverage and is trivially parseable
+    /// by `awk -F'[= ]'` if someone wants to reuse it as data.
+    case plain
+    /// `compact`, wrapped in tmux `#[fg=…]` style sequences drawn from the
+    /// user's active MacStat theme.
+    case tmux
+    /// `compact`, using Nerd Font glyphs instead of emoji.
+    case nerdfont
 }
 
-/// Renders a `SystemSnapshot` as one compact plain-text line for embedding
-/// in tmux `status-right`, a Starship custom module, or a Claude Code
-/// status line: `cpu 42% · mem 12.6G · 89%⚡`.
+/// Turns a `SystemSnapshot` into the one short line `macstat statusline`
+/// prints (plan §21.3).
 ///
-/// **Why this is a pure function over `SystemSnapshot` and not part of
-/// `MacStatCLI/main.swift`.** Same reasoning as `BatteryGlyph`'s "all of the
-/// interesting behaviour here is arithmetic" note: everything worth testing
-/// about the status line — which segments render, what an absent reading
-/// looks like, where the color thresholds sit — needs no XPC connection and
-/// no process. Keeping it in MacStatKit means
-/// `MacStatTests/StatuslineRendererTests.swift` exercises the real
-/// formatter against constructed snapshots, and `main.swift` stays a thin
-/// transport shim (fetch, decode, render, print), which is the shape the
-/// whole CLI already has.
+/// **Why this is a pure function in `MacStatKit` rather than code inside the
+/// CLI target.** `MacStatCLI` is a `type: tool` target; nothing links it, so
+/// nothing can test it. Every formatting decision below — which segments
+/// appear, what a missing reading does, how staleness is marked, which
+/// theme token colors a hot CPU — is exactly the kind of thing that rots
+/// silently, so it lives here where `MacStatTests` can pin it down. The CLI
+/// side is left with argument parsing, one XPC call, and a `write(2)`.
 ///
-/// **The honesty rule (P5) applies with full force.** A status line is
-/// glanced at hundreds of times a day; a fabricated `0%` there is *more*
-/// misleading than in the dropdown, not less, because there's no
-/// surrounding context to contradict it. So every absent sub-struct renders
-/// as `MetricFormatter.unavailable` ("—"), never a zero: a Mac mini shows
-/// `—` for battery, a snapshot taken before the first CPU sample shows
-/// `cpu —`. The em-dash is the same glyph every other surface in this app
-/// uses for "no reading", so a user who has seen the dropdown already knows
-/// what it means.
+/// **A missing reading is an absent segment, never a zero.** This is the
+/// same P5 discipline `SystemSnapshot`'s all-optional sub-structs and
+/// `MetricFormatter.unavailable` exist for, and it matters more here than
+/// almost anywhere else in the app: a status line is glanced at, not read.
+/// A `🌡️0°C` on a Mac whose thermal sensors this build can't reach is not a
+/// cosmetic bug — it is a confident, wrong statement about the machine, and
+/// it is the single most likely way this feature could mislead someone.
+/// Dropping the segment leaves a visibly shorter line, which is honest and
+/// which a user notices.
 ///
-/// **Formatting is delegated to `MetricFormatter` wherever it can be.**
-/// Percentages go through `MetricFormatter.compact(_:unit:.percent)` so the
-/// status line and the menu bar can never round the same reading two
-/// different ways. The one deliberate exception is bytes — see
-/// `compactBytes(_:)` below for why `MetricFormatter.compact(_:unit:.bytes)`
-/// (which wraps `ByteCountFormatter`) is not usable on this surface.
-///
-/// **The bolt follows `BatteryGlyph.State.showsBolt`'s rule, not Apple's.**
-/// `⚡` is appended for `isCharging` alone, never for merely-plugged-in:
-/// macOS routinely holds a battery at 80% or pauses charging when the pack
-/// is hot, and a bolt in those states claims the battery is filling when it
-/// is not. Plugged-but-not-charging renders as a plain percentage — true,
-/// if less flashy — exactly as the menu bar glyph draws it.
+/// **Rendering never fails.** There is no `throws` and no optional return:
+/// the worst case is an empty string, which the CLI treats as "I have
+/// nothing to say" rather than printing a broken line into somebody's shell
+/// prompt. See `StatuslineRenderer.render`'s return-value note.
 public enum StatuslineRenderer {
 
-    /// The inter-segment separator. A middle dot (`·`) rather than `|` or
-    /// `,` because it reads as a visual gap without being a shell
-    /// metacharacter, and it matches the compact-line idiom Starship and
-    /// tmux themes already use.
-    public static let separator = " · "
+    /// How alarming a reading is. Only `tmux` renders this (as color); the
+    /// other formats deliberately stay monochrome, because a prompt that
+    /// changes width or gains punctuation under load is a prompt that
+    /// reflows the user's terminal at the worst possible moment.
+    public enum Severity: Sendable, Equatable {
+        case nominal
+        case warning
+        case danger
+    }
 
-    /// Renders the selected segments in the order the caller listed them —
-    /// `--segments=battery,cpu` really does put battery first, because a
-    /// user arranging a status line cares about position, not just
-    /// membership.
+    // MARK: - Thresholds
+    //
+    // Deliberately literal constants rather than anything user-configurable.
+    // A statusline has no settings UI, and `AppSettings` gaining four fields
+    // that exist only to color a tmux segment would be a real maintenance
+    // cost for a cosmetic knob. These match the rough bands the dropdown's
+    // own coloring uses; if they ever need to agree exactly, that is a
+    // shared-constants refactor, not a copy-paste.
+
+    static let cpuWarningPercent: Double = 60
+    static let cpuDangerPercent: Double = 85
+    static let temperatureWarningCelsius: Double = 80
+    static let temperatureDangerCelsius: Double = 95
+    static let batteryWarningPercent: Double = 20
+    static let batteryDangerPercent: Double = 10
+
+    /// Beyond this, a cached snapshot stops being "the last known reading"
+    /// and becomes a number about a machine state that no longer exists.
     ///
-    /// - Parameter colorized: opt-in ANSI color (`--color`). Off by
-    ///   default because the primary consumers (tmux `#()`, Starship
-    ///   `custom` modules, Claude Code status lines) each have their own
-    ///   styling pipeline, and raw escape bytes leak as `^[[33m` garbage in
-    ///   any consumer that doesn't interpret them. When on, color marks
-    ///   only *attention* states (see `Tint`) — a healthy line stays
-    ///   uncolored rather than glowing green, so color present ==
-    ///   something worth a glance.
+    /// `macstat statusline` falls back to a cached snapshot when the app
+    /// can't answer inside its latency budget (§21.5's Starship
+    /// `command_timeout` lesson: a slow prompt is worse than a stale one).
+    /// That trade only holds while "stale" means seconds-to-minutes. A CPU
+    /// percentage from twenty minutes ago is not a degraded reading, it is a
+    /// different question's answer, and the honest output at that point is
+    /// nothing at all. Fifteen minutes is chosen to comfortably outlast a
+    /// laptop lid-close-and-reopen (where the app is alive but was not
+    /// sampling) without outlasting a build.
+    public static let maximumUsableStaleness: TimeInterval = 15 * 60
+
+    // MARK: - Rendering
+
+    /// - Parameters:
+    ///   - snapshot: the reading to render. May be a live one or one
+    ///     recovered from `StatuslineCache`.
+    ///   - theme: only consulted by `.tmux`. Pass `Theme.defaultTheme` for
+    ///     the other formats; resolving the user's real theme costs a file
+    ///     read the other formats have no use for.
+    ///   - format: which of §21.3's four shapes to emit.
+    ///   - staleBy: how old this snapshot is, if it came from the cache
+    ///     rather than from a live call. `nil` means "this is fresh" and
+    ///     suppresses the staleness marker entirely — passing `0` would
+    ///     render a `⏳0s` that is technically true and visually noisy.
+    /// - Returns: one line, without a trailing newline. **Empty** when the
+    ///   snapshot carried none of the four segments — the caller must treat
+    ///   that as no-data (and say so on stderr) rather than printing a blank
+    ///   line and exiting 0, because a blank status line and a working one
+    ///   showing nothing look identical to the user.
     public static func render(
         snapshot: SystemSnapshot,
-        segments: [StatuslineSegment],
-        colorized: Bool = false
+        theme: Theme = .defaultTheme,
+        format: StatuslineFormat,
+        staleBy: TimeInterval? = nil
     ) -> String {
-        segments.map { segment in
-            switch segment {
-            case .cpu: cpuSegment(snapshot.cpu, colorized: colorized)
-            case .mem: memSegment(snapshot.memory, colorized: colorized)
-            case .battery: batterySegment(snapshot.battery, colorized: colorized)
+        let segments = self.segments(from: snapshot, format: format)
+        guard !segments.isEmpty else { return "" }
+
+        var rendered: [String]
+        switch format {
+        case .compact, .nerdfont:
+            rendered = segments.map(\.text)
+        case .plain:
+            rendered = segments.map(\.text)
+        case .tmux:
+            rendered = segments.map { segment in
+                let hex = color(for: segment.severity, metric: segment.metric, theme: theme)
+                return "#[fg=\(hex)]\(segment.text)"
             }
         }
-        .joined(separator: separator)
+
+        if let staleBy, staleBy > 0 {
+            rendered.append(stalenessMarker(staleBy, format: format, theme: theme))
+        }
+
+        let joined = rendered.joined(separator: separator(for: format))
+        // tmux styles are sticky: without an explicit reset the last
+        // segment's foreground bleeds into whatever the user's status line
+        // puts after `#()`. `#[default]` restores the status bar's own
+        // style rather than guessing at a "normal" color.
+        return format == .tmux ? joined + "#[default]" : joined
+    }
+
+    private static func separator(for format: StatuslineFormat) -> String {
+        switch format {
+        // Two spaces between glyph groups, one inside them — matches
+        // §21.3's example spacing, which reads as three groups rather than
+        // six loose tokens.
+        case .compact, .nerdfont, .tmux: return "  "
+        case .plain: return " "
+        }
     }
 
     // MARK: - Segments
 
-    /// `cpu 42%`, or `cpu —` when the snapshot carries no CPU sample. The
-    /// label stays even when the value is absent so a multi-segment line
-    /// keeps its shape — `cpu — · mem 12.6G` is scannable, a bare `— ·
-    /// mem 12.6G` is a puzzle.
-    private static func cpuSegment(_ cpu: CPUStats?, colorized: Bool) -> String {
-        guard let cpu else { return "cpu " + MetricFormatter.unavailable }
-        let value = MetricFormatter.compact(cpu.totalPercent, unit: .percent)
-        return "cpu " + tinted(value, Tint.forCPU(percent: cpu.totalPercent), colorized: colorized)
+    /// One renderable piece of the line, kept as a struct rather than a
+    /// pre-joined string so `.tmux` can color each piece independently
+    /// without re-deriving which metric it came from.
+    struct Segment {
+        var metric: MetricID
+        var text: String
+        var severity: Severity
     }
 
-    /// `mem 12.6G`, or `mem —`. Color keys off `MemoryStats.pressureLevel`
-    /// rather than a used-bytes threshold, because used-vs-total is the
-    /// wrong signal on macOS — the kernel deliberately keeps memory "full"
-    /// of cache, and the OS's own pressure level is the number that actually
-    /// predicts trouble. No pressure reading, no color: an inferred
-    /// threshold would be exactly the kind of fabricated signal P5 forbids.
-    private static func memSegment(_ memory: MemoryStats?, colorized: Bool) -> String {
-        guard let memory else { return "mem " + MetricFormatter.unavailable }
-        let value = compactBytes(memory.usedBytes)
-        return "mem " + tinted(value, Tint.forMemory(pressure: memory.pressureLevel), colorized: colorized)
-    }
+    static func segments(from snapshot: SystemSnapshot, format: StatuslineFormat) -> [Segment] {
+        var result: [Segment] = []
 
-    /// `89%⚡` / `54%` / `—`. Deliberately unlabeled — the `%` plus optional
-    /// bolt is self-identifying, and it's the segment users most want at
-    /// the far edge of a status line where every character counts. The
-    /// unavailable case is a bare `—` (no orphaned label, no glyph): on a
-    /// desktop Mac that's the honest whole answer, and it's still
-    /// distinguishable from a reading because a real battery segment always
-    /// carries `%`.
-    private static func batterySegment(_ battery: BatteryStats?, colorized: Bool) -> String {
-        guard let battery else { return MetricFormatter.unavailable }
-        let percent = MetricFormatter.compact(battery.chargePercent, unit: .percent)
-        // Bolt only while current actually flows in — see the type-level
-        // doc comment and `BatteryGlyph.State.showsBolt`.
-        let value = percent + (battery.isCharging ? "⚡" : "")
-        return tinted(value, Tint.forBattery(percent: battery.chargePercent, isCharging: battery.isCharging), colorized: colorized)
-    }
+        // Battery charge, plus the wattage that goes with it.
+        //
+        // The wattage is deliberately *two different metrics* depending on
+        // which way the energy is flowing: charging input while charging,
+        // system draw otherwise. Showing only one of them would leave the
+        // segment blank for half of every day, and showing both would double
+        // the width of the most-glanced-at part of the line. `plain` names
+        // which one it picked (`charging=1|0`) so a script parsing this
+        // never has to guess; the glyph formats swap 🔋 for 🔌, which is the
+        // same information at a glance.
+        if let battery = snapshot.battery {
+            let charge = battery.chargePercent
+            let glyph = format.batteryGlyph(pluggedIn: battery.isPluggedIn)
+            let severity: Severity = {
+                if charge <= batteryDangerPercent && !battery.isPluggedIn { return .danger }
+                if charge <= batteryWarningPercent && !battery.isPluggedIn { return .warning }
+                return .nominal
+            }()
+            let value = MetricFormatter.compact(charge, unit: .percent)
 
-    // MARK: - Byte formatting
+            switch format {
+            case .plain:
+                result.append(Segment(metric: .batteryChargePercent, text: "batt=\(value)", severity: severity))
+            case .compact, .nerdfont, .tmux:
+                result.append(Segment(metric: .batteryChargePercent, text: "\(glyph)\(value)", severity: severity))
+            }
 
-    /// `13_529_146_982` → `"12.6G"`. Binary (1024-based) scaling with a
-    /// single-letter unit and no space.
-    ///
-    /// **Why not `MetricFormatter.compact(_:unit:.bytes)`.** That path wraps
-    /// `ByteCountFormatter`, which is the right tool for UI — and the wrong
-    /// one here, for two reasons this surface can't tolerate:
-    ///
-    /// 1. **Locale sensitivity.** `ByteCountFormatter` localizes both the
-    ///    decimal separator and the unit ("12,6 Go" on a French system). A
-    ///    status line is quasi-machine-readable — it gets embedded in tmux
-    ///    format strings and parsed by prompt frameworks — so its shape must
-    ///    be byte-identical across machines. This formatter is
-    ///    locale-independent by construction (`String(format:)` with C
-    ///    locale semantics via explicit formatting).
-    /// 2. **Width.** `"12.6 GB"` is seven characters where `"12.6G"` is
-    ///    five; across three segments the spaces and second unit letters add
-    ///    up on a surface whose entire budget is one prompt line.
-    ///
-    /// The 1024 base matches `ByteCountFormatter.CountStyle.memory`, which
-    /// is what the dropdown and menu bar use for these same fields — so
-    /// while the *spelling* differs ("12.6G" vs "12.6 GB"), the *number*
-    /// never does, which is the part of "never render the same reading two
-    /// ways" that actually protects users.
-    ///
-    /// Precision policy mirrors `MetricFormatter.compact`'s watts rule (one
-    /// decimal below the threshold where it stops being informative): one
-    /// decimal for G/T under 100, none at or above, none ever for M/K —
-    /// nobody tunes anything to a tenth of a megabyte.
-    public static func compactBytes(_ bytes: UInt64) -> String {
-        let value = Double(bytes)
-        let kib = 1024.0
-        let mib = kib * 1024
-        let gib = mib * 1024
-        let tib = gib * 1024
-        func scaled(_ divisor: Double, _ suffix: String, decimals: Bool) -> String {
-            let scaled = value / divisor
-            let wantsDecimal = decimals && scaled < 100
-            return String(format: wantsDecimal ? "%.1f%@" : "%.0f%@", scaled, suffix)
-        }
-        switch value {
-        case tib...: return scaled(tib, "T", decimals: true)
-        case gib...: return scaled(gib, "G", decimals: true)
-        case mib...: return scaled(mib, "M", decimals: false)
-        case kib...: return scaled(kib, "K", decimals: false)
-        default: return String(format: "%.0fB", value)
-        }
-    }
-
-    // MARK: - Color
-
-    /// The three-state attention scale `--color` maps onto ANSI. `none` is
-    /// deliberately the healthy state — see `render`'s doc comment: color
-    /// on this surface means "look", so the absence of color is itself
-    /// information and a permanently-green segment would destroy that.
-    enum Tint {
-        case none
-        /// ANSI yellow (33): worth a glance, not an interruption.
-        case caution
-        /// ANSI red (31): the reading itself is the interruption.
-        case alarm
-
-        /// CPU thresholds sit at 60/85 — below 60 a laptop is just
-        /// working; 85+ sustained is where fans, throttling, and "why is
-        /// my build slow" live. These are display thresholds only (what
-        /// deserves color in a prompt), deliberately independent of
-        /// `AlertEngine`'s user-configurable rules: a status line tint is
-        /// not an alert and must not silently re-use alert semantics.
-        static func forCPU(percent: Double) -> Tint {
-            guard percent.isFinite else { return .none }
-            if percent >= 85 { return .alarm }
-            if percent >= 60 { return .caution }
-            return .none
-        }
-
-        /// Memory color comes from the kernel's own pressure verdict — the
-        /// only signal that isn't a guess (see `memSegment`). `nil`
-        /// pressure yields no color, not "assume normal": unknown is
-        /// unknown.
-        static func forMemory(pressure: MemoryPressureLevel?) -> Tint {
-            switch pressure {
-            case .critical: .alarm
-            case .warning: .caution
-            case .normal, nil: .none
+            let watts = battery.isCharging ? battery.chargingWatts : battery.systemPowerInWatts
+            if let watts, watts.isFinite {
+                let metric: MetricID = battery.isCharging ? .batteryChargingWatts : .batterySystemPowerWatts
+                let formatted = MetricFormatter.compact(watts, unit: .watts)
+                switch format {
+                case .plain:
+                    result.append(Segment(
+                        metric: metric,
+                        text: "watts=\(MetricFormatter.compact(watts, unit: .watts, includeUnit: false)) charging=\(battery.isCharging ? 1 : 0)",
+                        severity: .nominal
+                    ))
+                case .compact, .nerdfont, .tmux:
+                    result.append(Segment(metric: metric, text: formatted, severity: .nominal))
+                }
             }
         }
 
-        /// Battery: 10/20 percent, muted while charging — a battery at 8%
-        /// *and filling* is a resolving situation, not an emergency, so it
-        /// downgrades red to yellow rather than crying wolf while the bolt
-        /// is showing.
-        static func forBattery(percent: Double, isCharging: Bool) -> Tint {
-            guard percent.isFinite else { return .none }
-            if percent <= 10 { return isCharging ? .caution : .alarm }
-            if percent <= 20 { return .caution }
-            return .none
+        if let cpu = snapshot.cpu {
+            let percent = cpu.totalPercent
+            let severity: Severity = {
+                if percent >= cpuDangerPercent { return .danger }
+                if percent >= cpuWarningPercent { return .warning }
+                return .nominal
+            }()
+            let value = MetricFormatter.compact(percent, unit: .percent)
+            switch format {
+            case .plain:
+                result.append(Segment(metric: .cpuTotalPercent, text: "cpu=\(value)", severity: severity))
+            case .compact, .nerdfont, .tmux:
+                result.append(Segment(metric: .cpuTotalPercent, text: "\(format.cpuGlyph)\(value)", severity: severity))
+            }
+        }
+
+        // Temperature is the segment most likely to be absent: `socTemperatureCelsius`
+        // is nil on any Mac where the HID sensor bridge didn't resolve, which
+        // is a supported, non-exceptional state (see `ThermalStats`). Note
+        // that `thermal != nil` is *not* enough — `pressureLevel` is always
+        // populated while the temperature may not be.
+        if let celsius = snapshot.thermal?.socTemperatureCelsius, celsius.isFinite {
+            let severity: Severity = {
+                if celsius >= temperatureDangerCelsius { return .danger }
+                if celsius >= temperatureWarningCelsius { return .warning }
+                return .nominal
+            }()
+            switch format {
+            case .plain:
+                result.append(Segment(
+                    metric: .thermalSocTempC,
+                    text: "temp=\(MetricFormatter.compact(celsius, unit: .celsius, includeUnit: false))",
+                    severity: severity
+                ))
+            case .compact, .nerdfont, .tmux:
+                // `MetricFormatter.compact` renders celsius as "62°" — the
+                // trailing "C" is appended here rather than changing the
+                // shared formatter, whose bare-degree form is what the menu
+                // bar wants at 11pt. §21.3's example spells out "62°C".
+                let value = MetricFormatter.compact(celsius, unit: .celsius) + "C"
+                result.append(Segment(metric: .thermalSocTempC, text: "\(format.temperatureGlyph)\(value)", severity: severity))
+            }
+        }
+
+        return result
+    }
+
+    // MARK: - Staleness
+
+    static func stalenessMarker(_ age: TimeInterval, format: StatuslineFormat, theme: Theme) -> String {
+        let seconds = Int(age.rounded())
+        let short = seconds >= 60 ? "\(seconds / 60)m" : "\(seconds)s"
+        switch format {
+        case .plain:
+            return "stale_s=\(seconds)"
+        case .compact:
+            return "⏳\(short)"
+        case .nerdfont:
+            // nf-fa-history — a clock-with-arrow, present in every Nerd Font
+            // patch (Font Awesome 4 range), unlike the Material Design
+            // codepoints which moved in the v3 remap.
+            return "\u{f1da}\(short)"
+        case .tmux:
+            return "#[fg=\(hex(theme.textTertiary))]⏳\(short)"
         }
     }
 
-    /// Wraps `value` in the tint's ANSI SGR pair, or returns it untouched
-    /// when color is off or the tint is `.none` — the escape bytes must not
-    /// exist at all in the default output, not merely render invisibly.
-    private static func tinted(_ value: String, _ tint: Tint, colorized: Bool) -> String {
-        guard colorized else { return value }
-        let code: String
-        switch tint {
-        case .none: return value
-        case .caution: code = "33"
-        case .alarm: code = "31"
+    // MARK: - Colors (tmux only)
+
+    /// Resolves a segment to a tmux-acceptable `#rrggbb` string.
+    ///
+    /// **Severity wins over the per-metric theme color.** A user who set CPU
+    /// to a pleasant cyan still wants to see red when the machine is at
+    /// 95%; the per-metric palette is for identification, the severity
+    /// colors are for alarm. Only `.nominal` falls through to
+    /// `Theme.metricColor(for:)`.
+    ///
+    /// **The dark side of each `ThemeColor` pair is used unconditionally.**
+    /// `ThemeColor` carries a light/dark pair because AppKit can ask
+    /// `NSApp.effectiveAppearance`; a CLI writing bytes into a pipe has no
+    /// appearance to ask, and tmux/Starship do not report the terminal's
+    /// background. Assuming dark is the better bet for a terminal by a wide
+    /// margin, and it is a documented, single-line-to-change decision rather
+    /// than an accident. `opacity` is dropped entirely — there is no alpha
+    /// in a terminal SGR color.
+    static func color(for severity: Severity, metric: MetricID, theme: Theme) -> String {
+        switch severity {
+        case .danger: return hex(theme.danger)
+        case .warning: return hex(theme.warning)
+        case .nominal: return hex(theme.metricColor(for: metric) ?? theme.textPrimary)
         }
-        return "\u{1B}[\(code)m\(value)\u{1B}[0m"
     }
+
+    /// tmux accepts `#rrggbb` directly in a style spec. Theme hex strings
+    /// are authored with the leading `#` (see `ThemeColor.light`), but that
+    /// is a convention rather than something the type validates, so this
+    /// normalizes rather than trusting it — a theme file missing the `#`
+    /// would otherwise emit `#[fg=0a0d0a]`, which tmux rejects by silently
+    /// dropping the whole style and leaving the raw text uncolored.
+    static func hex(_ color: ThemeColor) -> String {
+        let raw = color.dark.trimmingCharacters(in: .whitespaces)
+        return raw.hasPrefix("#") ? raw : "#" + raw
+    }
+}
+
+// MARK: - Glyphs
+
+private extension StatuslineFormat {
+
+    /// Nerd Font codepoints below are all from the Font Awesome 4 block
+    /// (U+F000–U+F2E0), which every Nerd Font patch has carried since the
+    /// project started and which survived the v3 remap that moved the
+    /// Material Design Icons range. Picking glyphs from the stable block
+    /// matters because a missing glyph renders as a tofu box in the user's
+    /// prompt, and there is no way for this process to detect that.
+    var batteryGlyphFull: String { self == .nerdfont ? "\u{f240}" : "🔋" }
+    var batteryGlyphPlugged: String { self == .nerdfont ? "\u{f1e6}" : "🔌" }
+
+    func batteryGlyph(pluggedIn: Bool) -> String {
+        pluggedIn ? batteryGlyphPlugged : batteryGlyphFull
+    }
+
+    /// nf-fa-microchip. §21.3's example uses ⚙️ for CPU; kept verbatim for
+    /// the emoji formats even though a gear is a slightly odd CPU metaphor,
+    /// because the plan's example string is what a reader will compare
+    /// against and a silent substitution is worse than a mediocre glyph.
+    var cpuGlyph: String { self == .nerdfont ? "\u{f2db}" : "⚙️" }
+
+    /// nf-fa-thermometer_full.
+    var temperatureGlyph: String { self == .nerdfont ? "\u{f2c7}" : "🌡️" }
 }

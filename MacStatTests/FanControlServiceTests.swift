@@ -41,8 +41,16 @@ private final class FakeBackend: FanControlBackend {
         throw FanControlWriteError.writesUnavailable(availability)
     }
 
+    /// Phase 3 addition: a backend that can succeed. Everything else in
+    /// this fake still refuses, which keeps the Phase 2 tests meaning what
+    /// they meant — this flag exists only for `revertAllToAuto`'s
+    /// partial-failure behavior, which cannot be exercised by a backend
+    /// that always throws.
+    var revertSucceeds = false
+
     func revertToAuto(fan index: Int) throws {
         revertCallCount += 1
+        if revertSucceeds { return }
         throw FanControlWriteError.writesUnavailable(availability)
     }
 }
@@ -283,20 +291,66 @@ final class FanControlServiceTests: XCTestCase {
         XCTAssertEqual(service.fans.map(\.displayName), ["Fan 1", "Fan 2"])
     }
 
+    // MARK: - Return everything to Auto (plan §8's escape hatch)
+
+    func testRevertAllTriesEveryFanAndReportsEveryFailure() {
+        // The panic button must not stop at the first error. A "return
+        // everything to Auto" that gave up after fan 1 would leave fan 2
+        // held while telling the user it had finished — the worst possible
+        // behavior for the one control that exists to undo everything.
+        let backend = FakeBackend(capability: twoFans)
+        let service = FanControlService(backend: backend)
+        let failures = service.revertAllToAuto()
+
+        XCTAssertEqual(backend.revertCallCount, 2, "both fans must be attempted")
+        XCTAssertEqual(failures.map(\.fanIndex), [0, 1])
+        XCTAssertFalse(failures.allSatisfy { $0.reason.isEmpty })
+    }
+
+    func testRevertAllReportsNothingWhenEveryFanCameBack() {
+        let backend = FakeBackend(capability: twoFans)
+        backend.revertSucceeds = true
+        let service = FanControlService(backend: backend)
+        XCTAssertTrue(service.revertAllToAuto().isEmpty)
+        XCTAssertEqual(backend.revertCallCount, 2)
+    }
+
+    func testRevertAllIsANoOpWithNoFans() {
+        let service = FanControlService(backend: UnsupportedFanControlBackend())
+        XCTAssertTrue(service.revertAllToAuto().isEmpty)
+    }
+
     // MARK: - The real backend, hardware-agnostically
 
-    func testRealBackendNeverClaimsWritesAreAvailable() {
-        // There is no `FanWriteAvailability` case meaning "writes work", so
-        // this cannot fail today — which is the point. When Phase 3 adds
-        // one, this test stops compiling and has to be revisited in the
-        // same change.
+    func testRealReadOnlyBackendNeverClaimsWritesAreAvailable() {
+        // Phase 2's version of this test relied on there being no
+        // `FanWriteAvailability` case meaning "writes work", so it could
+        // not fail. Phase 3 added `.available`, which is exactly the event
+        // that test existed to force a rethink at. The invariant that
+        // survives is narrower and now has teeth: the *read-only* backend
+        // must never report `.available`, whatever else changes around it,
+        // and both of its write methods must throw on any hardware.
         let backend = SMCReadOnlyFanControlBackend()
-        switch backend.writeAvailability {
-        case .needsPrivilegedHelper, .noFans, .hardwareUnreadable:
-            break
-        }
+        XCTAssertFalse(
+            backend.writeAvailability.canWrite,
+            "the read-only backend must never advertise a usable write path"
+        )
+        XCTAssertNotEqual(backend.writeAvailability, .available)
+        XCTAssertFalse(
+            backend.supportsPrivilegedHelper,
+            "the read-only backend has no helper to offer, so the pane must not show an install button for it"
+        )
         XCTAssertThrowsError(try backend.applyTarget(rpm: 3000, toFan: 0))
         XCTAssertThrowsError(try backend.revertToAuto(fan: 0))
+        XCTAssertThrowsError(try backend.installPrivilegedHelper())
+        XCTAssertThrowsError(try backend.removePrivilegedHelper())
+    }
+
+    func testUnsupportedBackendOffersNoHelperEither() {
+        let backend = UnsupportedFanControlBackend()
+        XCTAssertFalse(backend.writeAvailability.canWrite)
+        XCTAssertFalse(backend.supportsPrivilegedHelper)
+        XCTAssertThrowsError(try backend.installPrivilegedHelper())
     }
 
     func testRealBackendCapabilityAgreesWithItsOwnFanReadings() {
@@ -364,16 +418,81 @@ final class FanControlServiceTests: XCTestCase {
         )
     }
 
-    func testEveryWriteUnavailabilityReasonExplainsItselfInPlainLanguage() {
-        // The disabled-control copy lives on the model so the pane can't
-        // drift out of sync with the reason the backend actually reported.
-        for availability: FanWriteAvailability in [.needsPrivilegedHelper, .noFans, .hardwareUnreadable] {
+    func testEveryWriteAvailabilityReasonExplainsItselfInPlainLanguage() {
+        // The control copy lives on the model so the pane can't drift out
+        // of sync with the reason the backend actually reported. Every case
+        // is listed, including `.available` — a screen that says nothing
+        // when writes *are* possible would leave the user with no statement
+        // of what the helper does or when it lets go.
+        let all: [FanWriteAvailability] = [
+            .available,
+            .needsPrivilegedHelper,
+            .helperAwaitingApproval,
+            .helperUnreachable(reason: "The connection dropped."),
+            .noFans,
+            .hardwareUnreadable
+        ]
+        for availability in all {
             XCTAssertFalse(availability.explanation.isEmpty, "\(availability)")
             XCTAssertFalse(availability.shortLabel.isEmpty, "\(availability)")
         }
+
+        // Exactly one case may enable the controls.
+        XCTAssertEqual(all.filter(\.canWrite).count, 1)
+        XCTAssertTrue(FanWriteAvailability.available.canWrite)
+
         XCTAssertTrue(
-            FanWriteAvailability.needsPrivilegedHelper.explanation.contains("privileged helper"),
+            FanWriteAvailability.needsPrivilegedHelper.explanation.contains("root"),
             "the reason a control is disabled must name the actual blocker"
+        )
+        XCTAssertTrue(
+            FanWriteAvailability.helperAwaitingApproval.explanation.contains("System Settings"),
+            "the approval state must tell the user where to go, since nothing in this app can move it forward"
+        )
+        XCTAssertTrue(
+            FanWriteAvailability.helperUnreachable(reason: "The connection dropped.")
+                .explanation.contains("The connection dropped."),
+            "the specific failure must survive into the copy rather than being replaced by a generic sentence"
+        )
+    }
+
+    func testAvailableExplanationNamesTheFailSafeAndTheClamp() {
+        // The one screen where a user agrees to a root background service
+        // has to say what bounds it. Asserted rather than trusted to
+        // survive a copy edit.
+        let copy = FanWriteAvailability.available.explanation
+        XCTAssertTrue(copy.contains("firmware"), "must say the fans go back to the firmware")
+        XCTAssertTrue(copy.contains("clamps"), "must say requests are clamped")
+    }
+
+    func testHelperRefusedIsNotConfusedWithWritesBeingUnavailable() {
+        // The two diagnoses point at opposite fixes: one says "install the
+        // helper", the other says "the helper is installed and said no".
+        let refused = FanControlWriteError.helperRefused(reason: "The SMC refused the write to F0Tg.")
+        let unavailable = FanControlWriteError.writesUnavailable(.needsPrivilegedHelper)
+        XCTAssertNotEqual(refused, unavailable)
+        XCTAssertEqual(refused.errorDescription, "The SMC refused the write to F0Tg.")
+        XCTAssertEqual(
+            unavailable.errorDescription,
+            FanWriteAvailability.needsPrivilegedHelper.explanation
+        )
+    }
+
+    func testPaneNeverPrintsZeroForAFixedSpeedNobodyChose() {
+        // `manualTargetRPM == nil` and `== 0` are different states and have
+        // been since Phase 2; the control label must keep them different.
+        XCTAssertEqual(FanControlPane.targetLabel(FanControlPolicy()), "No fixed speed set")
+        XCTAssertEqual(
+            FanControlPane.targetLabel(FanControlPolicy(mode: .manual, manualTargetRPM: 0)),
+            "0 rpm"
+        )
+        XCTAssertEqual(
+            FanControlPane.targetLabel(FanControlPolicy(mode: .manual, manualTargetRPM: 3200)),
+            "3200 rpm"
+        )
+        XCTAssertEqual(
+            FanControlPane.targetLabel(FanControlPolicy(mode: .manual, manualTargetRPM: .nan)),
+            "No fixed speed set"
         )
     }
 }

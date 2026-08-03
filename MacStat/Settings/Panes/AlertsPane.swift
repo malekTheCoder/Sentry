@@ -60,8 +60,8 @@ struct AlertsPane: View {
 
         var displayName: String {
             switch self {
-            case .rules: return "Rules"
-            case .history: return "History"
+            case .rules: return String(localized: "Rules")
+            case .history: return String(localized: "History")
             }
         }
     }
@@ -127,7 +127,16 @@ struct AlertsPane: View {
             Button("Restore Defaults", role: .destructive) { restoreDefaultRules() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Your \(rules.count == 1 ? "1 rule" : "\(rules.count) rules") will be replaced by the \(AppSettings.defaultAlertRules.count) rules Sentry ships with, including any you edited or removed. Alert history is not deleted.")
+            // The count fragment is localized on its own first: inside a
+            // `Text` interpolation a bare literal ternary is a plain
+            // `String`, so "1 rule"/"N rules" would otherwise stay English
+            // in every locale even though the surrounding sentence is a
+            // proper `LocalizedStringKey`.
+            let ruleCountText = rules.count == 1
+                ? String(localized: "1 rule")
+                : String(localized: "\(String(rules.count)) rules")
+            let defaultCountText = String(AppSettings.defaultAlertRules.count)
+            Text("Your \(ruleCountText) will be replaced by the \(defaultCountText) rules Sentry ships with, including any you edited or removed. Alert history is not deleted.")
         }
     }
 
@@ -267,16 +276,23 @@ struct AlertsPane: View {
         while reservedRuleIDs.contains(id) {
             id = UUID()
         }
+        // Localized at creation time, like a document called "Untitled":
+        // the name and notification copy become the user's data the moment
+        // the rule is saved, so they should be born in the user's language.
         return AlertRule(
             id: id,
-            name: "New Rule",
+            name: String(localized: "New Rule"),
             metric: .cpuTotalPercent,
             comparison: .above,
             threshold: 90,
             sustainedFor: 60,
             cooldown: cooldown,
             actions: [
-                .notification(title: "New Rule", body: "Custom alert condition met.", sound: false)
+                .notification(
+                    title: String(localized: "New Rule"),
+                    body: String(localized: "Custom alert condition met."),
+                    sound: false
+                )
             ]
         )
     }
@@ -632,9 +648,9 @@ struct AlertsPane: View {
     /// unsure which one won.
     private var globalLimitsSection: some View {
         Section {
-            LabeledContent("Do Not Disturb", value: store.settings.doNotDisturb ? "On" : "Off")
-            LabeledContent("Notification cap", value: "\(store.settings.notificationRateCapPerHour) per hour")
-            LabeledContent("Default cooldown for new rules", value: "\(store.settings.alertCooldownMinutes) min")
+            LabeledContent("Do Not Disturb", value: store.settings.doNotDisturb ? String(localized: "On") : String(localized: "Off"))
+            LabeledContent("Notification cap", value: String(localized: "\(String(store.settings.notificationRateCapPerHour)) per hour"))
+            LabeledContent("Default cooldown for new rules", value: String(localized: "\(String(store.settings.alertCooldownMinutes)) min"))
         } header: {
             Text("Global Limits")
         } footer: {
@@ -721,18 +737,23 @@ struct AlertsPane: View {
     }
 
     private var historySummary: String {
-        guard historyStore != nil else { return "History unavailable" }
+        guard historyStore != nil else { return String(localized: "History unavailable") }
         let suppressed = historyEntries.filter(\.suppressed).count
+        // Counts are pre-formatted to `String` so the catalog keys carry
+        // plain `%@` placeholders — the shape every other interpolated key
+        // in this catalog already uses (see `ProUpsellCard`'s `totalText`).
+        let countText = String(historyEntries.count)
         if suppressed == 0 {
-            return "\(historyEntries.count) recent firings"
+            return String(localized: "\(countText) recent firings")
         }
-        return "\(historyEntries.count) recent firings, \(suppressed) suppressed by the hourly cap"
+        let suppressedText = String(suppressed)
+        return String(localized: "\(countText) recent firings, \(suppressedText) suppressed by the hourly cap")
     }
 
     private func historyRow(_ entry: AlertLogEntry) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.ruleName.isEmpty ? "(unnamed rule)" : entry.ruleName)
+                Text(entry.ruleName.isEmpty ? String(localized: "(unnamed rule)") : entry.ruleName)
                 Text(entry.timestamp.formatted(date: .abbreviated, time: .standard))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -762,7 +783,11 @@ struct AlertsPane: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(entry.ruleName), \(entry.timestamp.formatted(date: .abbreviated, time: .standard)), \(Self.historyValueText(entry)), \(entry.suppressed ? "suppressed by the hourly cap" : "delivered")"
+            // The delivery fragment is localized on its own: inside a string
+            // interpolation a bare literal is a plain `String`, so the
+            // ternary would otherwise splice untranslated English into an
+            // otherwise localized VoiceOver sentence.
+            "\(entry.ruleName), \(entry.timestamp.formatted(date: .abbreviated, time: .standard)), \(Self.historyValueText(entry)), \(entry.suppressed ? String(localized: "suppressed by the hourly cap") : String(localized: "delivered"))"
         )
     }
 
@@ -778,7 +803,8 @@ struct AlertsPane: View {
     /// confident, wrong "1%".
     static func historyValueText(_ entry: AlertLogEntry) -> String {
         if entry.ruleID == AlertEngine.chargingPausedRuleID {
-            return "reason code \(Int(entry.value))"
+            let codeText = String(Int(entry.value))
+            return String(localized: "reason code \(codeText)")
         }
         guard let metric = MetricID(rawValue: entry.metric) else {
             // A rule whose metric this build doesn't recognize (older or
@@ -887,7 +913,13 @@ struct AlertsPane: View {
             return String(localized: "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more")
         case .generic:
             let comparison = ComparisonKind(comparison: rule.comparison).phrase
-            return String(localized: "\(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))")
+            // Deliberately NOT `String(localized:)` (l10n audit): every
+            // segment is an interpolation, so the extracted key would be the
+            // meaningless "%@ %@ %@" — nothing for a translator to work
+            // with. The pieces are localized at their sources instead
+            // (`shortLabel`, `phrase`), matching `AlertRuleDisplay
+            // .conditionSummary`'s documented reasoning on the iOS side.
+            return "\(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))"
         }
     }
 
@@ -898,15 +930,29 @@ struct AlertsPane: View {
         // A hand-edited settings file can hold a negative interval; treat it
         // as "immediately" rather than printing "-30 seconds".
         guard seconds > 0 else { return String(localized: "Fires immediately") }
+        // Whole localized sentences per plural branch, not a spliced "s"
+        // suffix — suffix-gluing is untranslatable in languages whose
+        // plurals don't work that way, and explicit branches are the plural
+        // style this codebase already uses (see `InsightsView`'s hidden-
+        // findings caption).
         if seconds < 60 {
-            return "\(Self.trimmed(seconds)) second\(seconds == 1 ? "" : "s")"
+            let valueText = Self.trimmed(seconds)
+            return seconds == 1
+                ? String(localized: "1 second")
+                : String(localized: "\(valueText) seconds")
         }
         let minutes = seconds / 60
         if minutes < 60 {
-            return "\(Self.trimmed(minutes)) minute\(minutes == 1 ? "" : "s")"
+            let valueText = Self.trimmed(minutes)
+            return minutes == 1
+                ? String(localized: "1 minute")
+                : String(localized: "\(valueText) minutes")
         }
         let hours = minutes / 60
-        return "\(Self.trimmed(hours)) hour\(hours == 1 ? "" : "s")"
+        let valueText = Self.trimmed(hours)
+        return hours == 1
+            ? String(localized: "1 hour")
+            : String(localized: "\(valueText) hours")
     }
 
     /// "1.5" but "30", not "30.0".
@@ -993,12 +1039,12 @@ struct AlertsPane: View {
 
     static func actionTitle(_ action: AlertAction) -> String {
         switch action {
-        case .notification: return "Notification"
-        case .menuBarHighlight: return "Menu bar highlight"
-        case .pushToPhone: return "Push to iPhone"
-        case .runShortcut: return "Run Shortcut"
-        case .releaseSleepAssertion: return "Allow sleep"
-        case .logOnly: return "Record only"
+        case .notification: return String(localized: "Notification")
+        case .menuBarHighlight: return String(localized: "Menu bar highlight")
+        case .pushToPhone: return String(localized: "Push to iPhone")
+        case .runShortcut: return String(localized: "Run Shortcut")
+        case .releaseSleepAssertion: return String(localized: "Allow sleep")
+        case .logOnly: return String(localized: "Record only")
         }
     }
 
@@ -1007,17 +1053,19 @@ struct AlertsPane: View {
     static func actionDetail(_ action: AlertAction) -> String {
         switch action {
         case .notification(let title, _, let sound):
-            return sound ? "“\(title)”, with sound" : "“\(title)”"
+            return sound
+                ? String(localized: "“\(title)”, with sound")
+                : String(localized: "“\(title)”")
         case .menuBarHighlight(let token):
-            return "Token “\(token)”"
+            return String(localized: "Token “\(token)”")
         case .pushToPhone:
-            return "Queued on this Mac — reaches a phone only once device sync ships"
+            return String(localized: "Queued on this Mac — reaches a phone only once device sync ships")
         case .runShortcut(let name):
-            return "Runs “\(name)” in Shortcuts"
+            return String(localized: "Runs “\(name)” in Shortcuts")
         case .releaseSleepAssertion:
-            return "Releases the keep-awake assertion"
+            return String(localized: "Releases the keep-awake assertion")
         case .logOnly:
-            return "History only, no notification"
+            return String(localized: "History only, no notification")
         }
     }
 }
@@ -1147,10 +1195,10 @@ private enum PreconditionKind: String, CaseIterable, Hashable {
 
     var displayName: String {
         switch self {
-        case .onBattery: return "On battery"
-        case .charging: return "Charging"
-        case .pluggedIn: return "Plugged in"
-        case .displayAsleep: return "Display asleep"
+        case .onBattery: return String(localized: "On battery")
+        case .charging: return String(localized: "Charging")
+        case .pluggedIn: return String(localized: "Plugged in")
+        case .displayAsleep: return String(localized: "Display asleep")
         }
     }
 }

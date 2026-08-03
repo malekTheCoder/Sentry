@@ -54,18 +54,18 @@ enum MacStatIntents {
         do {
             try await transport.send(command: command)
         } catch {
-            return "Couldn't reach your Mac — \(error.localizedDescription)"
+            return String(localized: "Couldn't reach your Mac — \(error.localizedDescription)")
         }
         guard let status = await transport.awaitStatus(forNonce: command.nonce, timeout: statusTimeout) else {
-            return "Sent the request, but didn't hear back from your Mac — make sure MacStat is open and your iPhone is on the same Wi-Fi network."
+            return String(localized: "Sent the request, but didn't hear back from your Mac — make sure MacStat is open and your iPhone is on the same Wi-Fi network.")
         }
         switch status.state {
         case "completed":
             return successVerb
         case "rejected":
-            return "Your Mac declined that: \(status.message)"
+            return String(localized: "Your Mac declined that: \(status.message)")
         case "expired":
-            return "That request expired before your Mac could act on it."
+            return String(localized: "That request expired before your Mac could act on it.")
         default:
             return status.message
         }
@@ -103,7 +103,7 @@ struct KeepAwakeIntent: AppIntent {
         )
         let dialog = await MacStatIntents.sendAndDescribe(
             command,
-            whenCompleted: "Your Mac will stay awake for \(durationMinutes) minutes."
+            whenCompleted: String(localized: "Your Mac will stay awake for \(String(durationMinutes)) minutes.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -128,7 +128,7 @@ struct ReleaseAwakeIntent: AppIntent {
         )
         let dialog = await MacStatIntents.sendAndDescribe(
             command,
-            whenCompleted: "Your Mac can sleep normally again."
+            whenCompleted: String(localized: "Your Mac can sleep normally again.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -165,7 +165,7 @@ struct ExtendAwakeIntent: AppIntent {
         )
         let dialog = await MacStatIntents.sendAndDescribe(
             command,
-            whenCompleted: "Added \(minutes) minutes to your Mac's keep-awake time."
+            whenCompleted: String(localized: "Added \(String(minutes)) minutes to your Mac's keep-awake time.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -191,7 +191,7 @@ struct TruncateAwakeIntent: AppIntent {
         )
         let dialog = await MacStatIntents.sendAndDescribe(
             command,
-            whenCompleted: "Cut \(minutes) minutes off your Mac's keep-awake time."
+            whenCompleted: String(localized: "Cut \(String(minutes)) minutes off your Mac's keep-awake time.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -225,19 +225,29 @@ struct GetBatteryStatusIntent: AppIntent {
         let freshness = Freshness(lastSeen: snapshot.timestamp)
         let ageLabel = freshness.label(lastSeen: snapshot.timestamp)
 
-        var sentence = "Your Mac's battery is at \(Int(battery.chargePercent.rounded()))%"
+        // Each clause is a whole localized phrase, so a translator can
+        // reword every fragment. The clause *order* is fixed by this
+        // composition — acceptable for an enumeration of facts, where the
+        // alternative (one key per combination) would be 12 near-duplicate
+        // sentences no one would keep in sync.
+        let chargeText = String(Int(battery.chargePercent.rounded()))
+        var sentence: String
         if battery.isCharging, let watts = battery.chargingWatts {
-            sentence += ", charging at \(String(format: "%.0f", watts)) watts"
+            let wattsText = String(format: "%.0f", watts)
+            sentence = String(localized: "Your Mac's battery is at \(chargeText)%, charging at \(wattsText) watts")
         } else if battery.isPluggedIn {
-            sentence += ", plugged in"
+            sentence = String(localized: "Your Mac's battery is at \(chargeText)%, plugged in")
         } else {
-            sentence += ", on battery"
+            sentence = String(localized: "Your Mac's battery is at \(chargeText)%, on battery")
         }
         if let health = battery.healthPercent {
-            sentence += ". Battery health is \(Int(health.rounded()))%"
+            let healthText = String(Int(health.rounded()))
+            sentence += String(localized: ". Battery health is \(healthText)%")
         }
         if case .active(_, let expiresAt, _) = snapshot.sleepAssertion {
-            sentence += expiresAt != nil ? ". Sleep is currently being prevented" : ". Sleep is being prevented indefinitely"
+            sentence += expiresAt != nil
+                ? String(localized: ". Sleep is currently being prevented")
+                : String(localized: ". Sleep is being prevented indefinitely")
         }
         sentence += " (\(ageLabel))."
 
@@ -284,7 +294,7 @@ struct RefreshWidgetIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         WidgetCenter.shared.reloadAllTimelines()
         guard let snapshot = WidgetSnapshotStore.read() else {
-            return .result(dialog: "Widget reload requested, but there's no cached data yet — open MacStat first.")
+            return .result(dialog: "Widget reload requested, but there's no cached data yet — open Sentry first.")
         }
         let freshness = Freshness(lastSeen: snapshot.lastSeen)
         let ageLabel = freshness.label(lastSeen: snapshot.lastSeen)

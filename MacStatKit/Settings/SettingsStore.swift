@@ -22,7 +22,7 @@ import os
 /// IO happens on a private serial queue.
 public final class SettingsStore: ObservableObject {
 
-    private static let logger = Logger(subsystem: "dev.malekswilam.macstat.kit", category: "SettingsStore")
+    private static let logger = Logger(subsystem: "com.sentry.macstat.kit", category: "SettingsStore")
 
     /// Mutating this schedules a debounced write. Replace the whole value or
     /// poke a single field — both go through `didSet`.
@@ -38,7 +38,7 @@ public final class SettingsStore: ObservableObject {
     public let fileURL: URL
 
     private let debounceInterval: TimeInterval
-    private let ioQueue = DispatchQueue(label: "dev.malekswilam.macstat.settingsstore", qos: .utility)
+    private let ioQueue = DispatchQueue(label: "com.sentry.macstat.settingsstore", qos: .utility)
 
     /// Touched from the main thread (`scheduleSave`) and from `save()`, hence
     /// the lock; the work item itself always runs on `ioQueue`.
@@ -96,12 +96,19 @@ public final class SettingsStore: ObservableObject {
 
     // MARK: - Theme resolution
 
-    /// Resolves `settings.themeID` against the built-in presets, falling back to
-    /// Terminal (Appendix B's default) when the id is unknown — e.g. a settings
-    /// file that references a custom theme the user has since deleted, or one
-    /// written by a build that shipped a preset this one doesn't have.
+    /// Resolves `settings.themeID` against the user's custom themes and then
+    /// the built-in presets, falling back to `Theme.defaultTheme` when the id
+    /// is unknown — e.g. a settings file that references a custom theme the
+    /// user has since deleted, or one written by a build that shipped a preset
+    /// this one doesn't have.
+    ///
+    /// Delegates to `Theme.resolve(id:in:)` rather than repeating the lookup,
+    /// because the same question is asked from `AppDelegate` (twice) and the
+    /// dropdown's quick switcher, and three copies of a two-line lookup is
+    /// exactly how a custom theme ends up applying to the Dashboard but not to
+    /// the status item.
     public func resolvedTheme() -> Theme {
-        Theme.builtInPresets.first { $0.id == settings.themeID } ?? .defaultTheme
+        Theme.resolve(id: settings.themeID, in: settings.customThemes)
     }
 
     // MARK: - Persistence

@@ -18,6 +18,31 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// live in their own store later without bloating this file.
     public var themeID: String
 
+    /// The user's own themes (plan §9.3): duplicated from a preset in the
+    /// theme editor, or imported from a `.sentrytheme` file.
+    ///
+    /// **Why the whole theme lives here rather than only an id.** `themeID`
+    /// above deliberately stores a reference because the presets it points at
+    /// are code — but a custom theme isn't code, it's the user's data, and
+    /// there is nothing else to resolve it against. The same reasoning
+    /// `alertRules` and `protectionInsightSuppressions` already carry applies
+    /// verbatim: it's a small plain `Codable` value type, it belongs to the
+    /// user rather than to a machine, and carrying it in the one file
+    /// everything else round-trips through means copying `settings.json` to a
+    /// new Mac brings the themes along.
+    ///
+    /// **Absent and explicitly-empty mean the same thing here**, unlike
+    /// `alertRules`: the shipped default genuinely is "no custom themes," so
+    /// there is no missing-key-versus-emptied-by-the-user distinction to
+    /// preserve — a file from before the theme editor existed and a file
+    /// belonging to someone who deleted their last custom theme are the same
+    /// situation, and both should show the empty state the pane prints.
+    ///
+    /// A `themeID` naming a theme that was later deleted resolves back to the
+    /// default preset (`Theme.resolve(id:in:)`), rather than leaving the app
+    /// pointed at nothing.
+    public var customThemes: [Theme]
+
     /// Which metric modules are surfaced in the UI.
     public var enabledModules: Set<MetricModule>
 
@@ -240,6 +265,25 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Advanced.
     public var proUnlockOverrideEnabled: Bool
 
+    /// The installed Sentry Pro license blob (`SignedLicense` format —
+    /// `sentry-pro-v1.<payload>.<signature>`), or nil when none is
+    /// installed. Unlike `proUnlockOverrideEnabled` above, keeping this in
+    /// a user-editable JSON file *is* appropriate for a purchase, by
+    /// construction: the blob is Ed25519-signed, so hand-editing it doesn't
+    /// grant anything — verification (`LicenseProEntitlementStore`) fails
+    /// closed. Carried in `settings.json` for the same copy-one-file
+    /// portability reason as `alertRules`: a user who moves their settings
+    /// to a new Mac brings their license with them.
+    public var proLicenseBlob: String?
+
+    /// When the installed license last passed an *online* check (install
+    /// counts as one — see `LicenseProEntitlementStore.installLicense`).
+    /// Feeds `LicenseRevalidationPolicy`'s offline grace window; nil means
+    /// never. Plain local state, not secured, deliberately: the doc
+    /// comment on `LicenseProEntitlementStore` explains why pretending a
+    /// local timestamp could be tamper-proof would be theater.
+    public var proLicenseLastVerifiedAt: Date?
+
     // MARK: - Fan control (fan-control plan §5.2)
 
     /// Modes, curves, per-fan overrides, hysteresis, safety ceiling, and
@@ -311,6 +355,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(
         themeID: String = Theme.defaultTheme.id,
+        customThemes: [Theme] = [],
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
         detailedCharts: Bool = false,
@@ -341,11 +386,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
         locationLogEnabled: Bool = false,
         protectionInsightSuppressions: [InsightSuppression] = [],
         proUnlockOverrideEnabled: Bool = false,
+        proLicenseBlob: String? = nil,
+        proLicenseLastVerifiedAt: Date? = nil,
         fanControl: FanControlSettings = FanControlSettings(),
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
         self.themeID = themeID
+        self.customThemes = customThemes
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
         self.detailedCharts = detailedCharts
@@ -376,6 +424,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.locationLogEnabled = locationLogEnabled
         self.protectionInsightSuppressions = protectionInsightSuppressions
         self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
+        self.proLicenseBlob = proLicenseBlob
+        self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
         self.fanControl = fanControl
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
@@ -391,6 +441,11 @@ extension AppSettings {
 
     private enum CodingKeys: String, CodingKey {
         case themeID
+        // Theme editor, additive: absent in any settings.json written before
+        // custom themes existed, and its fallback is `[]` — the same
+        // "missing and explicitly-empty are the same situation" case as
+        // `protectionInsightSuppressions`, not the `alertRules` case.
+        case customThemes
         case enabledModules
         case menuBarLayout
         case detailedCharts
@@ -431,6 +486,12 @@ extension AppSettings {
         // decodeIfPresent ?? fallback pattern as every other field.
         case protectionInsightSuppressions
         case proUnlockOverrideEnabled
+        // Pro license, additive: absent in any settings.json written before
+        // the license system existed. Fallbacks are nil (no license, never
+        // verified) — an upgrading install has not been granted anything,
+        // same principle as proUnlockOverrideEnabled below.
+        case proLicenseBlob
+        case proLicenseLastVerifiedAt
         // Fan control, additive: absent in any settings.json written before
         // the fan-control shell existed, and its fallback is a fully inert
         // block (auto mode, control not enabled on launch) — an upgrading
@@ -458,6 +519,11 @@ extension AppSettings {
         self.init(
             themeID: try container.decodeIfPresent(String.self, forKey: .themeID)
                 ?? fallback.themeID,
+            // `Theme` has its own additive-tolerant decoder (see
+            // `Theme.init(from:)`), so a stored custom theme written by an
+            // older build survives a token being added here as well.
+            customThemes: try container.decodeIfPresent([Theme].self, forKey: .customThemes)
+                ?? fallback.customThemes,
             enabledModules: try container.decodeIfPresent(Set<MetricModule>.self, forKey: .enabledModules)
                 ?? fallback.enabledModules,
             menuBarLayout: try container.decodeIfPresent(MenuBarLayout.self, forKey: .menuBarLayout)
@@ -537,6 +603,13 @@ extension AppSettings {
             // gating existed has not been granted anything.
             proUnlockOverrideEnabled: try container.decodeIfPresent(Bool.self, forKey: .proUnlockOverrideEnabled)
                 ?? fallback.proUnlockOverrideEnabled,
+            // Missing and explicitly-nil collapse to "no license", which is
+            // correct here: unlike `alertRules`, the shipped default and
+            // the deliberate empty state genuinely mean the same thing.
+            proLicenseBlob: try container.decodeIfPresent(String.self, forKey: .proLicenseBlob)
+                ?? fallback.proLicenseBlob,
+            proLicenseLastVerifiedAt: try container.decodeIfPresent(Date.self, forKey: .proLicenseLastVerifiedAt)
+                ?? fallback.proLicenseLastVerifiedAt,
             fanControl: try container.decodeIfPresent(FanControlSettings.self, forKey: .fanControl)
                 ?? fallback.fanControl,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)

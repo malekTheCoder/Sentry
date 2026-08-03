@@ -83,12 +83,55 @@ your typical session runs. `osascript -e 'display notification ...'` is
 macOS's built-in notification poster, so this needs no extra dependency
 beyond `macstat` itself being on `PATH`.
 
+## 3. `statusLine` — keep the Mac's numbers in view during a turn
+
+Claude Code's status line is an external command whose stdout it renders, so
+`macstat statusline --format compact` drops straight in. The wiring, a
+script that merges it with Claude Code's own session JSON (model, directory),
+and the one `|| true` that stops a missing Sentry from blanking the whole
+status line, are in
+[`../../docs/integrations/claude-code.md`](../../docs/integrations/claude-code.md).
+
+The same page's siblings cover tmux (`docs/integrations/tmux.md`), Starship
+(`starship.md`), and the streaming `macstat watch` command (`watch.md`).
+Start at [`docs/integrations/README.md`](../../docs/integrations/README.md).
+
+## Before any of this works: set up command-line access
+
+**Everything on this page needs one piece of setup, and this used to be a
+documented limitation rather than a step.** The XPC Mach service `macstat`
+connects to was not registered with `launchd` in any build of this project,
+so no client could reach `Sentry.app` at all — while `Sentry.app` looked
+perfectly healthy and the error message blamed it for not running.
+
+It is fixed. `Sentry.app` now ships a LaunchAgent that owns that service and
+introduces clients to the running app, and you turn it on here:
+
+**Sentry → Settings → AI Access → Set Up Command-Line Access.**
+
+macOS may park it in *System Settings → General → Login Items & Extensions*
+waiting for your approval; the Settings section says so explicitly when that
+happens, rather than showing a tick.
+
+Two things worth knowing before you wire hooks around it:
+
+* **A running Sentry is not sufficient on its own.** If you skip this step,
+  every hook and the status line fail — with a message that names this step,
+  not with the old "Is MacStat running?".
+* **On a build that wasn't signed with a Developer ID certificate, setup
+  cannot succeed.** macOS only registers a background item whose signature
+  matches the app registering it. Setup will say so verbatim, and the hooks
+  on this page will keep failing. MCP over HTTP (Remote Access) uses a
+  different transport and is unaffected either way.
+
 ## Sanity-check the CLI directly
 
 ```bash
 macstat check
 macstat wait --until=thermal_normal --timeout=60
 macstat session-report --since=1800
+macstat statusline --format plain
+macstat watch --metric cpu.total_percent --interval 2s | head -5
 ```
 
 `macstat check` exits `0` for "go" and `1` for "wait" — usable directly as a

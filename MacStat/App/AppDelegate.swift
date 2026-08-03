@@ -62,24 +62,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// path that ever calls `requestAuthorization()`.
     private let locationService = LocationService()
 
-    /// Backs Settings ▸ Fans. Constructed with the real, read-only SMC
-    /// backend so the pane's RPM readouts and capability state come from
-    /// this Mac's actual hardware — and so its refusal to write comes from
-    /// the layer that actually knows why (root is required; Sentry runs
-    /// unprivileged; no privileged helper ships in this build). See
-    /// `FanControlService` and `docs/fan-control-spike.md`.
+    /// Backs Settings ▸ Fans.
     ///
-    /// Non-lazy and unconditional, like `locationService` above: probing
-    /// capability is a handful of SMC reads at construction and nothing
-    /// else — no timer, no poll loop of its own. Its samples arrive from
-    /// the shared `coordinator.snapshots()` stream below, the same single
-    /// source every other consumer reads (plan §3.2 P3).
-    private let fanControlService = FanControlService(backend: SMCReadOnlyFanControlBackend())
+    /// `PrivilegedFanControlBackend` **wrapping** the read-only SMC one, not
+    /// replacing it: capability detection and every RPM the pane shows come
+    /// from `SMCReadOnlyFanControlBackend` exactly as they did in Phase 2,
+    /// and only *writes* are routed to the root helper. So a helper that is
+    /// missing, unapproved, broken, or removed cannot change a single
+    /// number on that screen.
+    ///
+    /// **Constructing this is inert, and staying inert is the point.** The
+    /// privileged backend's `init` performs one `SMAppService.daemon(…)
+    /// .status` read — a local lookup that prompts nothing, launches
+    /// nothing, and opens no XPC connection — plus the same handful of SMC
+    /// reads the read-only backend has always done. Nothing here registers
+    /// a daemon; the only caller of `register()` is a button in the Fans
+    /// pane. On a machine with no helper installed (every fresh install,
+    /// and every build made without signing certificates, where
+    /// registration cannot succeed at all) the app behaves precisely as it
+    /// did before this change. See `PrivilegedFanControlBackend` and
+    /// `docs/fan-control-spike.md`.
+    private let fanControlBackend = PrivilegedFanControlBackend(
+        reading: SMCReadOnlyFanControlBackend()
+    )
+    private lazy var fanControlService = FanControlService(backend: fanControlBackend)
 
     /// Feeds the desktop widget's App Group cache from the same snapshot
     /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
     private let widgetWriter = MacWidgetSnapshotWriter(
-        deviceName: Host.current().localizedName ?? "This Mac"
+        deviceName: Host.current().localizedName ?? String(localized: "This Mac")
     )
     private lazy var alertEngine = AlertEngine(
         rules: settingsStore.settings.alertRules,
@@ -128,6 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             historyStore: self.historyStore,
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
+                            endpointPublisher: self.mcpEndpointPublisher,
                             locationService: self.locationService,
                             fanControlService: self.fanControlService,
                             updateController: self.updateController
@@ -135,6 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     )
                 )
             )
+        },
+        navSwitcher: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            return AnyView(NavSwitcherPill(state: self.mainWindowState))
         },
         onShow: { [weak self] in
             self?.dashboardViewModel.refresh()
@@ -181,10 +197,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Protection Insights
 
-    /// The local, no-StoreKit entitlement check (see `ProEntitlementStore`'s
-    /// doc comment for how a real StoreKit implementation drops in later
-    /// without touching `InsightsViewModel`).
-    private lazy var proEntitlementStore = ProEntitlementStore(settingsStore: settingsStore)
+    /// The license-backed entitlement check (`LicenseProEntitlementStore`)
+    /// — the "change the one line in `AppDelegate`" step that
+    /// `ProEntitlementProviding`'s doc comment always promised, done.
+    /// `publicKey` is `LicenseKeys.productionPublicKey`, which is nil until
+    /// the owner embeds the real key (see `LicenseKeys` for the go-live
+    /// step), so today this behaves exactly like the override-only
+    /// `ProEntitlementStore` it replaced — while reporting *why* honestly
+    /// (`LicenseDenialReason.verificationUnavailableInThisBuild`) if a
+    /// license ever shows up anyway. `activationClient` stays nil until the
+    /// checkout side exists (`LicenseActivation.swift`), and
+    /// `revalidationPolicy` stays `.never` for exactly as long — see that
+    /// policy's doc comment for why enforcing a grace window with no
+    /// refresher would brick paying users.
+    private lazy var proEntitlementStore = LicenseProEntitlementStore(
+        settingsStore: settingsStore,
+        publicKey: LicenseKeys.productionPublicKey
+    )
 
     /// macOS-only, off-main-thread, TTL-cached — see
     /// `SecurityPostureCollector`'s doc comment. One instance for the app's
@@ -234,7 +263,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         accessController: mcpAccessController,
         activityLog: mcpActivityLog
     )
-    private var mcpListener: NSXPCListener?
+    /// Owns the anonymous `NSXPCListener` that `macstat`/`MacStatMCP`
+    /// eventually connect to, and the `SMAppService` registration of the
+    /// LaunchAgent that introduces them. Replaces the `mcpListener` that used
+    /// to live here — an `NSXPCListener(machServiceName:)` on a name no
+    /// launchd job had ever declared, which is why both tools failed against
+    /// a perfectly healthy app. See
+    /// `MacStatKit/MCPBridge/MCPBridgeContract.swift`.
+    ///
+    /// `lazy` for the same reason `mcpXPCService` is: it closes over it.
+    private lazy var mcpEndpointPublisher = MCPEndpointPublisher(service: mcpXPCService)
 
     /// Off by default, unlike `mcpListener`/`localSyncServer` below (both
     /// started unconditionally, gated internally) — this one actually
@@ -304,6 +342,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// rebuild an `NSHostingController` each time — and can't stomp an open
     /// popover.
     private var lastAppliedTheme: Theme?
+    /// The list the dropdown's quick switcher was last built with. Tracked
+    /// separately from `lastAppliedTheme` because renaming or deleting a
+    /// custom theme the user isn't *currently* using changes the switcher's
+    /// menu without changing the active theme at all — without this, a theme
+    /// created in Settings wouldn't appear in that menu until something else
+    /// happened to force a rebuild.
+    private var lastAppliedCustomThemes: [Theme]?
     private var lastAppliedModules: Set<MetricModule>?
     /// The `cardListMaxHeight` baked into the current hosting controller, so
     /// `togglePopover` can tell a genuine display change from a no-op reopen
@@ -507,22 +552,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // MCP (plan §13.2): register the Mach service unconditionally, not
-        // gated behind `settings.mcpServerEnabled`. The permission model
-        // lives entirely inside `MCPXPCService`/`MCPAccessController` (every
-        // method checks live settings before doing anything real) rather
-        // than in whether the listener exists at all — same reasoning
-        // `AlertEngine`'s lazy-authorization-request pattern uses elsewhere
-        // in this file: a disabled feature should *reject cleanly*, not be
-        // unreachable in a way that makes `MacStatMCP` fail with an opaque
-        // connection error indistinguishable from "MacStat isn't running."
-        startMCPListener()
+        // MCP (plan §13.2): bring up the anonymous listener and, *if the user
+        // has already set up command-line access*, tell the bridge where to
+        // find it. Unconditional with respect to `settings.mcpServerEnabled`,
+        // for the reason that has always applied here: the permission model
+        // lives inside `MCPXPCService`/`MCPAccessController`, which check live
+        // settings on every method, rather than in whether a listener exists
+        // — a disabled feature should *reject cleanly*, not be unreachable in
+        // a way indistinguishable from a broken one. (That distinction used to
+        // be theoretical: the listener was unreachable for everybody, always.
+        // See `MCPBridgeContract`.)
+        //
+        // Conditional with respect to the *registration*, which is a different
+        // thing: constructing the publisher creates a process-local listener
+        // and reads a status, and `publishIfRegistered()` connects to nothing
+        // unless launchd already has the agent. On an install that never set
+        // this up — the default — this line opens no connection at all.
+        mcpEndpointPublisher.publishIfRegistered()
 
         // Local-network sync (plan §7.1 "v4"): another independent consumer
         // of `coordinator.snapshots()`, same shape as `historyStore`/
         // `dropdownViewModel`/etc. above — not a second poll loop. Started
-        // unconditionally, same reasoning `startMCPListener()`'s doc comment
-        // gives for its own unconditional registration: a disabled/unused
+        // unconditionally, same reasoning the MCP listener above uses for its
+        // own unconditional construction: a disabled/unused
         // feature should be an inert, harmless listener (nobody on the LAN
         // is browsing for `_macstat._tcp` if no phone app is installed),
         // not something that has to be reached through a settings gate to
@@ -545,6 +597,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         historyStore.flush()
         settingsStore.save()
         localSyncServer.stop()
+        // Ask the fan helper for every fan back before we go. This is a
+        // *courtesy*, not the guarantee, and the distinction matters enough
+        // to spell out: `applicationWillTerminate` is not called on a crash,
+        // on a force-quit, or on `kill -9`, which are precisely the
+        // circumstances a fan left spinning at a fixed speed would be worst.
+        // The guarantee lives in the daemon — the XPC connection dying fires
+        // its `invalidationHandler`, which hands every held fan back to the
+        // firmware, and its heartbeat expiry catches the case where the app
+        // is alive but wedged. `PowerControlService`'s doc comment makes the
+        // same split for IOPM assertions and names the OS-side mechanism as
+        // the one that still works when this process doesn't. A no-op when
+        // no helper is installed, which is the default.
+        fanControlBackend.returnEveryFanToFirmware()
+        // Retire our endpoint from the bridge's table so the next `macstat`
+        // run is told "Sentry isn't running" — which will be true — instead of
+        // failing to connect to an endpoint that died with this process. Same
+        // courtesy-not-guarantee caveat as the fan revert above: this doesn't
+        // run on a crash or a force-quit, and the bridge's own
+        // `invalidationHandler` is what covers those. A no-op when command-line
+        // access was never set up, which is the default.
+        mcpEndpointPublisher.withdraw()
         // Best-effort: NIO's own graceful shutdown, not something worth
         // blocking app termination on if it's slow. See `MCPRemoteServer
         // .stop()`'s doc comment — idempotent either way.
@@ -564,6 +637,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the run.
         popover.delegate = self
         lastAppliedTheme = theme
+        lastAppliedCustomThemes = settingsStore.settings.customThemes
         lastAppliedModules = enabledModules
         let height = cardListMaxHeight()
         lastAppliedCardListMaxHeight = height
@@ -573,6 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 powerControl: powerControl,
                 activityLog: mcpActivityLog,
                 theme: theme,
+                customThemes: settingsStore.settings.customThemes,
                 enabledModules: enabledModules,
                 cardListMaxHeight: height,
                 showsKeepAwake: settingsStore.settings.dropdownShowsKeepAwake,
@@ -657,7 +732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func selectTheme(id: String) {
         settingsStore.settings.themeID = id
         guard popover.isShown else { return }
-        let theme = Theme.builtInPresets.first { $0.id == id } ?? .defaultTheme
+        let theme = Theme.resolve(id: id, in: settingsStore.settings.customThemes)
         configurePopover(theme: theme, enabledModules: settingsStore.settings.enabledModules)
     }
 
@@ -701,7 +776,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // still the *old* value at emission time. It happens to work today
         // only because the async hop lands after the assignment — not
         // something a theme switch should depend on.
-        let theme = Theme.builtInPresets.first { $0.id == settings.themeID } ?? .defaultTheme
+        let theme = Theme.resolve(id: settings.themeID, in: settings.customThemes)
 
         statusItemController?.apply(layout: settings.menuBarLayout)
         statusItemController?.apply(theme: theme)
@@ -832,48 +907,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             || settings.dropdownShowsAgentActivity != lastAppliedDropdownShowsAgentActivity
         lastAppliedDropdownShowsKeepAwake = settings.dropdownShowsKeepAwake
         lastAppliedDropdownShowsAgentActivity = settings.dropdownShowsAgentActivity
-        guard theme != lastAppliedTheme || settings.enabledModules != lastAppliedModules || dropdownOptionsChanged,
+        guard theme != lastAppliedTheme
+                || settings.customThemes != lastAppliedCustomThemes
+                || settings.enabledModules != lastAppliedModules
+                || dropdownOptionsChanged,
               !popover.isShown
         else { return }
         configurePopover(theme: theme, enabledModules: settings.enabledModules)
     }
 
     // MARK: - MCP XPC listener (plan §13.2)
-
-    /// Registers `NSXPCListener(machServiceName:)` under the well-known
-    /// service name `MacStatMCP` connects to, with `self` as its delegate
-    /// (see the `NSXPCListenerDelegate` conformance below) and starts
-    /// listening. This app ships unsandboxed — `MacStat/MacStat.entitlements`
-    /// says `com.apple.security.app-sandbox = false` outright — so a plain
-    /// Mach-service listener works without any entitlement or provisioning
-    /// profile, in a hardened-runtime Developer ID Release build exactly as in
-    /// the ad-hoc Debug one (hardened runtime constrains what code a process
-    /// may load, not what Mach services it may vend); the
-    /// XPC service's own methods, not code-signing, are what gate access
-    /// (see `MCPXPCService`'s type doc comment).
-    private func startMCPListener() {
-        let listener = NSXPCListener(machServiceName: MacStatXPCServiceName.machService)
-        listener.delegate = self
-        listener.resume()
-        mcpListener = listener
-    }
-}
-
-extension AppDelegate: NSXPCListenerDelegate {
-    /// Called once per incoming connection attempt from a spawned
-    /// `MacStatMCP` process. `exportedObject`/`exportedInterface` are set
-    /// per-connection (the standard `NSXPCListener` pattern) rather than
-    /// once globally — cheap, since `mcpXPCService` is a single shared
-    /// instance reused across every connection, not constructed per-client.
-    /// Returning `true` unconditionally and resuming is deliberate: there is
-    /// no connection-level identity check to perform (see
-    /// `MacStatXPCServiceProtocol`'s doc comment on why `clientName` is
-    /// self-reported, not a security boundary) — every actual authorization
-    /// decision happens per-method-call inside `MCPXPCService`, not here.
-    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
-        newConnection.exportedInterface = NSXPCInterface(with: MacStatXPCServiceProtocol.self)
-        newConnection.exportedObject = mcpXPCService
-        newConnection.resume()
-        return true
-    }
+    //
+    // The listener, its delegate, and the connection gate all moved to
+    // `MCPEndpointPublisher`. What used to be here was
+    // `NSXPCListener(machServiceName:)` plus an `NSXPCListenerDelegate`
+    // conformance that accepted every connection unconditionally, on the
+    // stated grounds that "there is no connection-level identity check to
+    // perform". Two things changed:
+    //
+    //   * The listener is now anonymous, because a Mach-service listener in
+    //     this process could never have received a connection — nothing had
+    //     registered the name with launchd, and only the process launchd
+    //     starts as the job may vend it. `MCPBridgeContract` has the
+    //     measurement.
+    //   * There *is* now a connection-level check, because introducing an
+    //     endpoint broker means something other than a spawned `MacStatMCP`
+    //     could plausibly try. It gates who may connect, and nothing more:
+    //     `MCPAccessController` inside `MCPXPCService` remains the only thing
+    //     deciding what a connected client may do, per call, from live
+    //     settings.
+    //
+    // Still true and still worth recording: this app ships unsandboxed
+    // (`MacStat/MacStat.entitlements` sets `com.apple.security.app-sandbox`
+    // to false), so none of this needs an entitlement or a provisioning
+    // profile, and hardened runtime is irrelevant to it — hardened runtime
+    // constrains what code a process may load, not what XPC it may do.
 }

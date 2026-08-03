@@ -45,7 +45,7 @@ import os
 /// feature's v1 needed; the stdio path is unaffected and keeps that
 /// capability.
 public final class MCPRemoteServer: @unchecked Sendable {
-    private static let logger = Logger(subsystem: "dev.malekswilam.macstat", category: "MCPRemoteServer")
+    private static let logger = Logger(subsystem: "com.sentry.macstat", category: "MCPRemoteServer")
 
     private var group: MultiThreadedEventLoopGroup?
     private var channel: Channel?
@@ -79,7 +79,7 @@ public final class MCPRemoteServer: @unchecked Sendable {
         }
 
         let clientIdentity = MCPClientIdentity()
-        let subscriptionPump = ResourceSubscriptionPump(xpcClient: serviceCaller, clientName: "MacStat (remote HTTP)")
+        let subscriptionPump = ResourceSubscriptionPump(xpcClient: serviceCaller, clientName: "Sentry (remote HTTP)")
         let mcpServer = await MacStatMCPServerFactory.makeServer(
             xpcClient: serviceCaller,
             clientIdentity: clientIdentity,

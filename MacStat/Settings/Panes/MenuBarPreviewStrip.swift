@@ -352,7 +352,7 @@ struct MenuBarPreviewStrip: View {
     }
 
     private var accessibilityDescription: String {
-        guard !layout.modules.isEmpty else { return "Empty. No modules configured." }
+        guard !layout.modules.isEmpty else { return String(localized: "Empty. No modules configured.") }
         return layout.modules
             .map { module in
                 var spoken = "\(module.metric.shortLabel) \(sampleText(for: module))"

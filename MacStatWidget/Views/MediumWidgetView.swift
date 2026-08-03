@@ -16,8 +16,8 @@ struct MediumWidgetView: View {
                         .font(.caption)
                         .fontWeight(.semibold)
                         .lineLimit(1)
-                    metricRow(systemImage: "cpu", label: "CPU", value: "\(Int(snapshot.cpuPercent.rounded()))%")
-                    metricRow(systemImage: "memorychip", label: "RAM", value: "\(Int((snapshot.memoryUsedFraction * 100).rounded()))%")
+                    metricRow(systemImage: "cpu", label: String(localized: "CPU"), value: "\(Int(snapshot.cpuPercent.rounded()))%")
+                    metricRow(systemImage: "memorychip", label: String(localized: "RAM"), value: "\(Int((snapshot.memoryUsedFraction * 100).rounded()))%")
                     sleepRow(snapshot.sleepAssertion)
                 }
                 Spacer(minLength: 0)
@@ -58,12 +58,12 @@ struct MediumWidgetView: View {
         let text: String
         switch assertion {
         case .inactive:
-            text = "Sleep normal"
+            text = String(localized: "Sleep normal")
         case .active(let mode, _, _):
             switch mode {
-            case .displayAndSystem: text = "Awake: display on"
-            case .systemOnly: text = "Awake: system only"
-            case .systemWhileOnAC: text = "Awake: while on AC"
+            case .displayAndSystem: text = String(localized: "Awake: display on")
+            case .systemOnly: text = String(localized: "Awake: system only")
+            case .systemWhileOnAC: text = String(localized: "Awake: while on AC")
             }
         }
         return HStack(spacing: 4) {

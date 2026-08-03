@@ -149,7 +149,7 @@ struct SettingsTabView: View {
             }
             .textFieldStyle(.roundedBorder)
 
-            Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Enable Remote Access on the Mac (Settings ▸ Sync), then enter its address, port, and pairing code here. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only.")
+            Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Fastest way: enable Remote Access on the Mac (Settings ▸ Sync) and scan the QR code it shows with this phone's Camera app — these fields fill themselves. Or enter the Mac's address, port, and pairing code by hand. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
