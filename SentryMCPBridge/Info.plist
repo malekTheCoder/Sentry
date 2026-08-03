@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.sentry.macstat.xpcbridge</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<!--
+	  THE LOOSER OF THE TWO REQUIREMENTS, ON PURPOSE — see
+	  MCPBridgePeerGate.consumerRequirement, which this must match exactly.
+
+	  It is tempting to put the publisher requirement here (it pins Sentry's
+	  bundle identifier as well as the Team ID, and `SentryFanDaemon`'s
+	  Info.plist does exactly that). It would be wrong. This agent's clients
+	  are not just Sentry: they are also `macstat` and `MacStatMCP`, bare
+	  Mach-O tools whose signing identifiers `codesign` derives from the file
+	  name plus a hash of the signing identity — no `identifier` clause can
+	  name them stably. If launchd enforces this key for agents the way it
+	  does for SMJobBless helpers, an identifier-pinned requirement here would
+	  lock out the two binaries the whole feature exists to serve, and it would
+	  do so only on a properly signed build — i.e. nowhere it could be caught
+	  before shipping.
+
+	  Whether launchd enforces SMAuthorizedClients for an SMAppService *agent*
+	  at all is not documented and has not been observed here (registration
+	  needs a Developer ID certificate this machine does not have). So it is
+	  set to the requirement that is correct if enforced and harmless if
+	  ignored, and the publisher/consumer distinction is drawn where it is
+	  certain to be enforced: inside BridgeService, by MCPBridgePeerGate.
+	-->
+	<key>SMAuthorizedClients</key>
+	<array>
+		<string>anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"</string>
+	</array>
+</dict>
+</plist>

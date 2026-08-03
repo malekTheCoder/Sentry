@@ -33,7 +33,7 @@ final class PowerControlServiceTests: XCTestCase {
     /// init doc comment referencing `RollupJob`) so these tests never touch
     /// `.standard` / real app persisted state.
     private func makeTestDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "dev.malekswilam.macstat.tests.PowerControlServiceTests.\(name).\(UUID().uuidString)"
+        let suiteName = "com.sentry.macstat.tests.PowerControlServiceTests.\(name).\(UUID().uuidString)"
         suiteNames.append(suiteName)
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -320,7 +320,7 @@ final class PowerControlServiceTests: XCTestCase {
         let second = PowerControlService(defaults: defaults)
         XCTAssertEqual(second.state, .inactive)
         // The stale record must also be cleared, not left to be re-evaluated.
-        XCTAssertNil(defaults.data(forKey: "dev.malekswilam.macstat.powercontrol.state"))
+        XCTAssertNil(defaults.data(forKey: "com.sentry.macstat.powercontrol.state"))
 
         first.releaseAssertion()
         second.releaseAssertion()
@@ -393,7 +393,7 @@ final class PowerControlServiceTests: XCTestCase {
 
     func testReconciliationDiscardsExpiredRecordInsteadOfRestoring() throws {
         let defaults = makeTestDefaults("reconcileExpired")
-        let key = "dev.malekswilam.macstat.powercontrol.state"
+        let key = "com.sentry.macstat.powercontrol.state"
 
         // Mirrors `PowerControlService`'s private `PersistedRecord` shape
         // exactly (same member names, same public Codable member types), so
@@ -436,7 +436,7 @@ final class PowerControlServiceTests: XCTestCase {
         try? service.startAssertion(mode: .systemOnly, duration: nil, reason: "will be orphaned")
         XCTAssertNotEqual(service.state, .inactive)
 
-        defaults.removeObject(forKey: "dev.malekswilam.macstat.powercontrol.state")
+        defaults.removeObject(forKey: "com.sentry.macstat.powercontrol.state")
 
         // Directly re-invoke the same reconciliation `init` goes through,
         // via a fresh instance sharing the now-empty suite, confirming the

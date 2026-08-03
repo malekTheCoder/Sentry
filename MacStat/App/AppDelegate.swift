@@ -1,19 +1,12 @@
 import Cocoa
 import Combine
 import SwiftUI
-import os
 import MacStatKit
 import SystemMetricsKit
 
 @main
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
-
-    /// For the XPC peer gate's refusals — the one place this class logs.
-    /// A refused connection is invisible by design (the caller just sees a
-    /// dead connection), so the unified log is where "why won't my CLI
-    /// connect" gets its answer.
-    private static let logger = Logger(subsystem: "dev.malekswilam.macstat", category: "XPCListener")
 
     // MARK: - Collection layer
     //
@@ -146,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             historyStore: self.historyStore,
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
-                            mcpAgentRegistrar: self.mcpAgentRegistrar,
+                            endpointPublisher: self.mcpEndpointPublisher,
                             locationService: self.locationService,
                             fanControlService: self.fanControlService,
                             updateController: self.updateController
@@ -154,6 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                     )
                 )
             )
+        },
+        navSwitcher: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            return AnyView(NavSwitcherPill(state: self.mainWindowState))
         },
         onShow: { [weak self] in
             self?.dashboardViewModel.refresh()
@@ -266,7 +263,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         accessController: mcpAccessController,
         activityLog: mcpActivityLog
     )
-    private var mcpListener: NSXPCListener?
+    /// Owns the anonymous `NSXPCListener` that `macstat`/`MacStatMCP`
+    /// eventually connect to, and the `SMAppService` registration of the
+    /// LaunchAgent that introduces them. Replaces the `mcpListener` that used
+    /// to live here — an `NSXPCListener(machServiceName:)` on a name no
+    /// launchd job had ever declared, which is why both tools failed against
+    /// a perfectly healthy app. See
+    /// `MacStatKit/MCPBridge/MCPBridgeContract.swift`.
+    ///
+    /// `lazy` for the same reason `mcpXPCService` is: it closes over it.
+    private lazy var mcpEndpointPublisher = MCPEndpointPublisher(service: mcpXPCService)
 
     /// Off by default, unlike `mcpListener`/`localSyncServer` below (both
     /// started unconditionally, gated internally) — this one actually
@@ -368,41 +374,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Developer/e2e affordance, not a user surface: launching with
-        // `--register-mcp-agent` (or `--unregister-mcp-agent`) performs the
-        // same registration the Settings ▸ AI Access button performs, then
-        // continues launching normally. It exists because the registration
-        // path is otherwise reachable only by clicking — unscriptable from
-        // tests and CI — and it stays within the "explicit and user-visible"
-        // rule: someone typed the flag, and macOS still surfaces the login
-        // item exactly as it does for the button. The Settings button is
-        // the product path; this is the verification path.
-        if CommandLine.arguments.contains("--register-mcp-agent") {
-            if let failure = mcpAgentRegistrar.register() {
-                Self.logger.error("--register-mcp-agent failed: \(failure, privacy: .public)")
-            } else {
-                Self.logger.notice("--register-mcp-agent: status now \(String(describing: self.mcpAgentRegistrar.status), privacy: .public)")
-            }
-        }
-        if CommandLine.arguments.contains("--unregister-mcp-agent") {
-            if let failure = mcpAgentRegistrar.unregister() {
-                Self.logger.error("--unregister-mcp-agent failed: \(failure, privacy: .public)")
-            }
-        }
-
-        // Before anything expensive spins up: if the launchd-managed
-        // instance is (or should be) the one running, hand off to it now —
-        // see `ensureCanonicalXPCInstance`'s doc comment. Also re-checked
-        // whenever registration happens later from Settings.
-        ensureCanonicalXPCInstance()
-        mcpAgentRegistrar.$status
-            .removeDuplicates()
-            .dropFirst()
-            .sink { [weak self] status in
-                if case .registered = status { self?.ensureCanonicalXPCInstance() }
-            }
-            .store(in: &cancellables)
-
         let settings = settingsStore.settings
         let theme = settingsStore.resolvedTheme()
 
@@ -581,22 +552,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // MCP (plan §13.2): register the Mach service unconditionally, not
-        // gated behind `settings.mcpServerEnabled`. The permission model
-        // lives entirely inside `MCPXPCService`/`MCPAccessController` (every
-        // method checks live settings before doing anything real) rather
-        // than in whether the listener exists at all — same reasoning
-        // `AlertEngine`'s lazy-authorization-request pattern uses elsewhere
-        // in this file: a disabled feature should *reject cleanly*, not be
-        // unreachable in a way that makes `MacStatMCP` fail with an opaque
-        // connection error indistinguishable from "MacStat isn't running."
-        startMCPListener()
+        // MCP (plan §13.2): bring up the anonymous listener and, *if the user
+        // has already set up command-line access*, tell the bridge where to
+        // find it. Unconditional with respect to `settings.mcpServerEnabled`,
+        // for the reason that has always applied here: the permission model
+        // lives inside `MCPXPCService`/`MCPAccessController`, which check live
+        // settings on every method, rather than in whether a listener exists
+        // — a disabled feature should *reject cleanly*, not be unreachable in
+        // a way indistinguishable from a broken one. (That distinction used to
+        // be theoretical: the listener was unreachable for everybody, always.
+        // See `MCPBridgeContract`.)
+        //
+        // Conditional with respect to the *registration*, which is a different
+        // thing: constructing the publisher creates a process-local listener
+        // and reads a status, and `publishIfRegistered()` connects to nothing
+        // unless launchd already has the agent. On an install that never set
+        // this up — the default — this line opens no connection at all.
+        mcpEndpointPublisher.publishIfRegistered()
 
         // Local-network sync (plan §7.1 "v4"): another independent consumer
         // of `coordinator.snapshots()`, same shape as `historyStore`/
         // `dropdownViewModel`/etc. above — not a second poll loop. Started
-        // unconditionally, same reasoning `startMCPListener()`'s doc comment
-        // gives for its own unconditional registration: a disabled/unused
+        // unconditionally, same reasoning the MCP listener above uses for its
+        // own unconditional construction: a disabled/unused
         // feature should be an inert, harmless listener (nobody on the LAN
         // is browsing for `_macstat._tcp` if no phone app is installed),
         // not something that has to be reached through a settings gate to
@@ -632,6 +610,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the one that still works when this process doesn't. A no-op when
         // no helper is installed, which is the default.
         fanControlBackend.returnEveryFanToFirmware()
+        // Retire our endpoint from the bridge's table so the next `macstat`
+        // run is told "Sentry isn't running" — which will be true — instead of
+        // failing to connect to an endpoint that died with this process. Same
+        // courtesy-not-guarantee caveat as the fan revert above: this doesn't
+        // run on a crash or a force-quit, and the bridge's own
+        // `invalidationHandler` is what covers those. A no-op when command-line
+        // access was never set up, which is the default.
+        mcpEndpointPublisher.withdraw()
         // Best-effort: NIO's own graceful shutdown, not something worth
         // blocking app termination on if it's slow. See `MCPRemoteServer
         // .stop()`'s doc comment — idempotent either way.
@@ -931,128 +917,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     // MARK: - MCP XPC listener (plan §13.2)
-
-    /// Starts the `NSXPCListener(machServiceName:)` for the well-known
-    /// service name `MacStatMCP` and the `macstat` CLI connect to, with
-    /// `self` as its delegate (see the `NSXPCListenerDelegate` conformance
-    /// below).
-    ///
-    /// AN EARLIER VERSION OF THIS COMMENT WAS WRONG, in a way worth
-    /// recording: it claimed a plain Mach-service listener "works without
-    /// any entitlement", and the listener did indeed resume without
-    /// complaint — but a Mach service name is owned by *launchd*, which
-    /// routes connections only for names some registered job declared in a
-    /// `MachServices` key. Nothing declared this one, so the listener sat
-    /// unreachable and every client got "Couldn't communicate with a helper
-    /// application" while the app was demonstrably running. Resuming the
-    /// listener is necessary, not sufficient; the registration half lives
-    /// in `LaunchAgent/dev.malekswilam.macstat.xpc.plist` +
-    /// `MCPAgentRegistrar` (see that type's doc comment), driven from
-    /// Settings ▸ AI Access. Until the user registers the agent there, this
-    /// listener remains exactly as unreachable as it always was — which is
-    /// the pre-fix behavior, preserved on purpose rather than silently
-    /// registering a login item at first launch.
-    private func startMCPListener() {
-        let listener = NSXPCListener(machServiceName: MacStatXPCServiceName.machService)
-        listener.delegate = self
-        listener.resume()
-        mcpListener = listener
-    }
-
-    /// This process's Team ID, read from its own signature once — the
-    /// value the peer gate pins client requirements to. `nil` on ad-hoc
-    /// builds, which makes the gate refuse everything (and is also the
-    /// build state in which nothing can connect anyway; see
-    /// `MCPPeerFailure.hostUnsigned`).
-    private static let ownTeamID = OwnCodeSignature.teamIdentifier()
-
-    /// Owns LaunchAgent registration for the Mach service above. `lazy`
-    /// like `mcpXPCService`, and constructed here rather than in the
-    /// Settings pane that drives it so its status survives the settings
-    /// window opening and closing.
-    private(set) lazy var mcpAgentRegistrar = MCPAgentRegistrar()
-
-    /// Hands this instance over to launchd when it isn't the one launchd
-    /// would talk to. Called at launch and again whenever registration
-    /// flips to `.registered`.
-    ///
-    /// WHY: once the agent is registered, only the launchd-managed
-    /// instance can check in the Mach service — a Finder-launched instance
-    /// cannot, and worse, the first CLI connection makes launchd spawn the
-    /// managed instance *next to* the Finder-launched one: two menu bar
-    /// icons, two pollers, two widget writers. Observed for real during
-    /// this feature's end-to-end verification, not hypothesized. So a
-    /// non-canonical instance asks launchd to run the canonical one
-    /// (`launchctl kickstart`) and bows out. Finder clicks on Sentry.app
-    /// while the canonical instance runs just activate it (LaunchServices
-    /// single-instance behavior), so the handoff happens at most once per
-    /// cold start — a brief menu-bar flicker, traded for never having two
-    /// of everything.
-    ///
-    /// Fail-open on uncertainty, deliberately: if launchd's answer can't
-    /// be read, or the job is running as some pid we can't parse, this
-    /// does nothing. The failure mode of *not* handing off is a duplicate
-    /// icon; the failure mode of handing off wrongly is an app that kills
-    /// itself in a loop. Only an unambiguous "the job is not running" or
-    /// "the job is running and it isn't me" triggers the handoff.
-    private func ensureCanonicalXPCInstance() {
-        guard case .registered = mcpAgentRegistrar.status else { return }
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        if let jobPID = MCPAgentRegistrar.canonicalJobPID() {
-            guard jobPID != ownPID else { return }   // we ARE the canonical instance
-            handOffToLaunchd()
-        } else {
-            // Job registered but not running: ask launchd to start the
-            // canonical instance, then get out of its way.
-            handOffToLaunchd()
-        }
-    }
-
-    private func handOffToLaunchd() {
-        Self.logger.notice("Handing off to the launchd-managed instance (kickstart + terminate).")
-        let launchctl = Process()
-        launchctl.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        launchctl.arguments = ["kickstart", "gui/\(getuid())/\(MCPAgentNaming.label)"]
-        try? launchctl.run()
-        launchctl.waitUntilExit()
-        NSApp.terminate(nil)
-    }
-}
-
-extension AppDelegate: NSXPCListenerDelegate {
-    /// Called once per incoming connection attempt from a `macstat` CLI or
-    /// spawned `MacStatMCP` process. `exportedObject`/`exportedInterface`
-    /// are set per-connection (the standard `NSXPCListener` pattern) rather
-    /// than once globally — cheap, since `mcpXPCService` is a single shared
-    /// instance reused across every connection, not constructed per-client.
-    ///
-    /// This used to return `true` unconditionally, which was defensible
-    /// only while the Mach service was unregistered and therefore
-    /// unreachable. Now that `MCPAgentRegistrar` can make launchd route
-    /// this name, any process on the Mac can dial it — so `MCPPeerGate`
-    /// verifies the peer is one of Sentry's own bundled binaries, signed by
-    /// this app's own team, before the connection sees the service at all
-    /// (rationale, the pid-reuse caveat, and why the team is self-derived
-    /// rather than pinned: that type's doc comment). Per-method
-    /// authorization stays where it was, in `MCPXPCService` /
-    /// `MCPAccessController` — this gate decides *who*, those decide
-    /// *what*.
-    func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
-        let decision = MCPPeerGate.decide(
-            pid: newConnection.processIdentifier,
-            ownPID: ProcessInfo.processInfo.processIdentifier,
-            teamID: Self.ownTeamID,
-            evaluator: MacStatPeerEvaluator()
-        )
-        guard decision.isAccepted else {
-            if case .reject(let failure) = decision {
-                Self.logger.notice("Refused an XPC connection: \(failure.message, privacy: .public)")
-            }
-            return false
-        }
-        newConnection.exportedInterface = NSXPCInterface(with: MacStatXPCServiceProtocol.self)
-        newConnection.exportedObject = mcpXPCService
-        newConnection.resume()
-        return true
-    }
+    //
+    // The listener, its delegate, and the connection gate all moved to
+    // `MCPEndpointPublisher`. What used to be here was
+    // `NSXPCListener(machServiceName:)` plus an `NSXPCListenerDelegate`
+    // conformance that accepted every connection unconditionally, on the
+    // stated grounds that "there is no connection-level identity check to
+    // perform". Two things changed:
+    //
+    //   * The listener is now anonymous, because a Mach-service listener in
+    //     this process could never have received a connection — nothing had
+    //     registered the name with launchd, and only the process launchd
+    //     starts as the job may vend it. `MCPBridgeContract` has the
+    //     measurement.
+    //   * There *is* now a connection-level check, because introducing an
+    //     endpoint broker means something other than a spawned `MacStatMCP`
+    //     could plausibly try. It gates who may connect, and nothing more:
+    //     `MCPAccessController` inside `MCPXPCService` remains the only thing
+    //     deciding what a connected client may do, per call, from live
+    //     settings.
+    //
+    // Still true and still worth recording: this app ships unsandboxed
+    // (`MacStat/MacStat.entitlements` sets `com.apple.security.app-sandbox`
+    // to false), so none of this needs an entitlement or a provisioning
+    // profile, and hardened runtime is irrelevant to it — hardened runtime
+    // constrains what code a process may load, not what XPC it may do.
 }

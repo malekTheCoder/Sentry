@@ -35,16 +35,29 @@ struct AIAccessPane: View {
     /// that would read as "nothing has ever been called."
     @ObservedObject var activityLogHolder: ActivityLogHolder
 
-    /// `nil` when the host didn't wire a registrar (a preview) — rendered
-    /// as an explicit "unavailable" row, same convention as
-    /// `activityLogHolder` above.
-    private let agentRegistrar: MCPAgentRegistrar?
+    /// Backs the Command-Line Access section. `nil` when this pane was built
+    /// without one (a preview) — rendered as an explicit "unavailable" row,
+    /// same convention as `activityLogHolder`, never as a missing section.
+    @ObservedObject var endpointHolder: EndpointPublisherHolder
 
-    init(store: SettingsStore, activityLog: MCPActivityLog?, agentRegistrar: MCPAgentRegistrar? = nil) {
+    init(
+        store: SettingsStore,
+        activityLog: MCPActivityLog?,
+        endpointPublisher: MCPEndpointPublisher? = nil
+    ) {
         self.store = store
         self._activityLogHolder = ObservedObject(wrappedValue: ActivityLogHolder(activityLog: activityLog))
-        self.agentRegistrar = agentRegistrar
+        self._endpointHolder = ObservedObject(wrappedValue: EndpointPublisherHolder(publisher: endpointPublisher))
     }
+
+    /// The outcome of the most recent explicit setup action, shown verbatim.
+    /// Nil until the user does something — this pane never displays a result
+    /// for an action nobody took. Same rule `FanControlPane` follows for the
+    /// fan helper.
+    @State private var lastSetupMessage: String?
+    @State private var lastSetupWasFailure = false
+
+    @Environment(\.themePalette) private var palette
 
     @State private var copiedConfig = false
     @State private var copiedRemoteConfig = false
@@ -77,6 +90,8 @@ struct AIAccessPane: View {
                 Text("Privacy")
             }
 
+            commandLineSection
+
             Section {
                 Toggle("Allow AI agents to connect", isOn: $store.settings.mcpServerEnabled)
                     .accessibilityLabel("Allow AI agents to connect")
@@ -103,24 +118,6 @@ struct AIAccessPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-
-            // The section that makes `macstat` and stdio MCP *reachable* —
-            // see `MCPAgentRegistrar`'s doc comment for the launchd story.
-            // It lives on this pane because this pane is where the user
-            // already reasons about which external processes may talk to
-            // Sentry; registration is the on/off switch in front of every
-            // toggle above.
-            if let agentRegistrar {
-                CommandLineAccessSection(registrar: agentRegistrar)
-            } else {
-                Section {
-                    Text("Command-line access can't be managed in this context.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("Command-Line Access")
-                }
             }
 
             Section {
@@ -260,6 +257,130 @@ struct AIAccessPane: View {
         .formStyle(.grouped)
         .onAppear {
             remoteAPIKey = MCPRemoteAccessKey.current()
+            // The registration can go from "waiting for approval" to
+            // "registered" entirely outside this app — the user flips a switch
+            // in System Settings, and nothing notifies us. Re-reading on
+            // appearance is the cheap, prompt-free way to avoid showing a
+            // stale "go approve it" message to somebody who just did.
+            // `FanControlPane` refreshes its helper status for exactly the
+            // same reason.
+            endpointHolder.publisher?.refresh()
+        }
+    }
+
+    // MARK: - Command-line access
+
+    /// Where a user finds out that `macstat` and the stdio MCP server need one
+    /// piece of setup, and does it.
+    ///
+    /// **Why this is a button and not something the app does at launch.**
+    /// Registering the bridge adds an entry to the user's Login Items &
+    /// Extensions. Doing that silently, on first run, for a feature most people
+    /// will never use, would mean the first they hear of a background item
+    /// installed on their behalf is finding it in System Settings.
+    /// `FanControlPane`'s helper section sets the standard this follows:
+    /// consequences before the button, one screen, and the result reported
+    /// verbatim — including the failure, especially the failure.
+    ///
+    /// **Two facts, kept separate on purpose.** "Is the bridge registered" and
+    /// "has Sentry connected to it" fail for different reasons and have
+    /// different fixes, and collapsing them into one green tick would send a
+    /// user whose build is unsigned to go looking at Login Items. The second
+    /// row appears only once the first is satisfied, because until then it has
+    /// nothing to add.
+    @ViewBuilder
+    private var commandLineSection: some View {
+        Section {
+            if let publisher = endpointHolder.publisher {
+                Label {
+                    Text(publisher.registration.shortLabel)
+                        .fontWeight(.semibold)
+                } icon: {
+                    Image(systemName: publisher.registration.isUsable ? "checkmark.shield" : "terminal")
+                        .foregroundStyle(publisher.registration.isUsable ? palette.textSecondary : palette.warning)
+                }
+
+                Text(publisher.registration.explanation)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if publisher.registration.isUsable {
+                    // Only meaningful once the bridge exists to be connected
+                    // to. Shown even when it succeeded, because "set up" and
+                    // "working right now" are different claims and this pane
+                    // does not get to make the second one on the strength of
+                    // the first.
+                    Label {
+                        Text(publisher.isPublished
+                             ? "Sentry is connected to the bridge — `macstat` and the stdio MCP server can reach it now."
+                             : (publisher.lastPublishFailure.map { "Sentry couldn't connect to the bridge: \($0)" }
+                                ?? "Sentry hasn't connected to the bridge yet."))
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: publisher.isPublished ? "checkmark.circle" : "exclamationmark.triangle")
+                            .foregroundStyle(publisher.isPublished ? palette.textSecondary : palette.warning)
+                    }
+
+                    Button("Turn off command-line access") { removeBridge(publisher) }
+                } else {
+                    Button("Set Up Command-Line Access…") { setUpBridge(publisher) }
+                }
+
+                if let lastSetupMessage {
+                    Label {
+                        Text(lastSetupMessage)
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: lastSetupWasFailure ? "exclamationmark.triangle" : "checkmark.circle")
+                            .foregroundStyle(lastSetupWasFailure ? palette.warning : palette.textSecondary)
+                    }
+                }
+            } else {
+                // Explicit, not absent. See `SettingsView.endpointPublisher`.
+                Text("This settings window was opened without a connection to Sentry's command-line bridge, so its state can't be shown or changed here.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Command-Line Access")
+        } footer: {
+            Text("This covers the `macstat` command and the stdio MCP server that Claude Desktop, Claude Code and Cursor spawn. Both reach Sentry through a background item macOS starts on demand and stops again when it's idle; it holds no data, makes no network connection, and passes no tool call — it only tells the tools where Sentry is. Everything those tools are then allowed to do is governed by the switches below, unchanged.\n\nmacOS lists it under Login Items & Extensions, where you can switch it off at any time. Remote Access, further down, is a separate transport and doesn't use this.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func setUpBridge(_ publisher: MCPEndpointPublisher) {
+        do {
+            try publisher.register()
+            lastSetupWasFailure = false
+            lastSetupMessage = publisher.registration.isUsable
+                ? "Command-line access is set up."
+                : "macOS accepted the request but hasn't enabled the background item yet. Check System Settings ▸ General ▸ Login Items & Extensions."
+        } catch {
+            // Printed, not swallowed. On a build signed with anything other
+            // than a real Developer ID identity this is where the user finds
+            // out — registration genuinely cannot succeed, and a setup button
+            // that failed silently would leave `macstat` failing for a reason
+            // nothing on screen explains.
+            lastSetupWasFailure = true
+            lastSetupMessage = "macOS wouldn't set up command-line access: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeBridge(_ publisher: MCPEndpointPublisher) {
+        do {
+            try publisher.unregister()
+            lastSetupWasFailure = false
+            lastSetupMessage = "Command-line access is turned off. `macstat` and the stdio MCP server can no longer reach Sentry."
+        } catch {
+            lastSetupWasFailure = true
+            lastSetupMessage = "macOS wouldn't turn off command-line access: \(error.localizedDescription)"
         }
     }
 
@@ -464,6 +585,31 @@ struct AIAccessPane: View {
 /// needs to keep rendering (with an explicit "unavailable" state) rather
 /// than force-unwrap when no activity log was passed in.
 @MainActor
+/// Republishes `MCPEndpointPublisher`'s changes to SwiftUI through an
+/// optional.
+///
+/// The same trick — and the same reason — as `ActivityLogHolder` below:
+/// `@ObservedObject` cannot wrap an optional, and the honest model here really
+/// is "there may be no publisher" (see `SettingsView.endpointPublisher`). The
+/// alternative, a non-optional publisher constructed on demand by the pane,
+/// would mean a preview silently owning a second anonymous XPC listener.
+///
+/// No explicit `@MainActor`: `ObservableObject` already carries it here, and
+/// stating it twice is an error rather than emphasis.
+final class EndpointPublisherHolder: ObservableObject {
+    let publisher: MCPEndpointPublisher?
+    private var cancellable: Any?
+
+    init(publisher: MCPEndpointPublisher?) {
+        self.publisher = publisher
+        if let publisher {
+            cancellable = publisher.objectWillChange.sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+        }
+    }
+}
+
 final class ActivityLogHolder: ObservableObject {
     let activityLog: MCPActivityLog?
     private var cancellable: Any?
@@ -475,94 +621,5 @@ final class ActivityLogHolder: ObservableObject {
                 self?.objectWillChange.send()
             }
         }
-    }
-}
-
-/// The Settings surface for `MCPAgentRegistrar` — the explicit,
-/// user-visible moment the CLI/MCP Mach service gets registered with
-/// launchd, following the fan helper's install section in tone: a plain
-/// status row, one action button whose label says what it does, and a
-/// deep link when the OS is waiting on the user. Every state renders
-/// *something true*; none renders a control that can't work.
-private struct CommandLineAccessSection: View {
-
-    @ObservedObject var registrar: MCPAgentRegistrar
-
-    /// The last register/unregister failure, shown inline until the next
-    /// attempt. `nil` means the last action succeeded (or none happened).
-    @State private var lastError: String?
-
-    var body: some View {
-        Section {
-            switch registrar.status {
-            case .registered:
-                Label {
-                    Text("Registered — `macstat` and MCP clients can reach Sentry")
-                        .fontWeight(.medium)
-                } icon: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                }
-                Button("Turn Off Command-Line Access") {
-                    lastError = registrar.unregister()
-                }
-
-            case .requiresApproval:
-                Label {
-                    Text("Waiting for approval in System Settings")
-                        .fontWeight(.medium)
-                } icon: {
-                    Image(systemName: "hourglass.circle.fill")
-                        .foregroundStyle(.orange)
-                }
-                Text("macOS wants you to confirm this in System Settings ▸ General ▸ Login Items & Extensions before it takes effect.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Open Login Items Settings…") {
-                    registrar.openLoginItemsSettings()
-                }
-
-            case .notRegistered:
-                Label {
-                    Text("Off — command-line tools can't reach Sentry")
-                        .fontWeight(.medium)
-                } icon: {
-                    Image(systemName: "circle.slash")
-                        .foregroundStyle(.secondary)
-                }
-                Button("Turn On Command-Line Access") {
-                    lastError = registrar.register()
-                }
-
-            case .unavailable(let reason):
-                Label {
-                    Text("Unavailable")
-                        .fontWeight(.medium)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                }
-                Text(reason)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let lastError {
-                Text(lastError)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } header: {
-            Text("Command-Line Access")
-        } footer: {
-            Text("Registers a launch agent inside Sentry.app with macOS so the bundled `macstat` command and MCP-over-stdio clients can connect. Nothing is copied outside the app, and macOS lists the item under Login Items, attributed to Sentry, where you can also switch it off. If Sentry isn't running when a command connects, macOS starts it. Turning this on restarts Sentry once, so the copy that stays running is the one macOS manages.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .onAppear { registrar.refresh() }
     }
 }

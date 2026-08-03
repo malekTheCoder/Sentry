@@ -35,14 +35,39 @@ ln -s /Applications/Sentry.app/Contents/MacOS/macstat /usr/local/bin/macstat
 A symlink is fine — dyld resolves `@executable_path` against the *real* path
 behind the link. Every snippet in these pages assumes `macstat` resolves.
 
-### 2. Sentry has to be running, with the read tool enabled
+### 2. Command-line access has to be set up, once
 
-`macstat` reads nothing from the hardware itself. If `Sentry.app` is not
-running you get a non-zero exit and this on stderr:
+`macstat` and the stdio MCP server do not talk to `Sentry.app` directly.
+They go through a small background item — a LaunchAgent macOS starts on
+demand — that tells them where the running app is. It is not registered
+until you ask for it:
+
+**Sentry → Settings → AI Access → Set Up Command-Line Access.**
+
+Until you do, every snippet on these pages fails with a message that says so:
 
 ```
-macstat: Couldn't reach MacStat.app: Couldn’t communicate with a helper
-application.. Is MacStat running?
+macstat: Couldn't reach Sentry: its command-line bridge isn't available
+(Couldn’t communicate with a helper application.).
+...
+  1. In Sentry, open Settings ▸ AI Access and choose "Set Up Command-Line Access".
+  2. If you've already done that, open System Settings ▸ General ▸ Login Items &
+     Extensions and make sure Sentry's background item is switched on.
+```
+
+Sentry running is not enough on its own, which is the one genuinely
+surprising thing about this and the reason the message spells it out.
+
+### 3. Sentry has to be running, with the read tool enabled
+
+`macstat` reads nothing from the hardware itself. With the bridge set up but
+`Sentry.app` not running, you get a non-zero exit and a message that says
+*that* specifically — the bridge answered, so the tool knows the app is the
+missing piece:
+
+```
+macstat: Couldn't reach Sentry: Sentry's command-line bridge is running, but
+Sentry hasn't connected to it. Sentry is probably not running.
 ```
 
 If it *is* running but MCP access is off, you get the reason from
@@ -50,39 +75,48 @@ If it *is* running but MCP access is off, you get the reason from
 is enabled by default, but the master switch (`mcpServerEnabled`) is off
 until you turn it on — a deliberate default, not an oversight.
 
-Neither case ever produces a fabricated reading. This is worth stating
-plainly because a status line is the easiest place in a system to get away
-with one.
+None of these cases ever produces a fabricated reading. This is worth
+stating plainly because a status line is the easiest place in a system to
+get away with one.
 
-## Enabling command-line access (one-time)
+## The XPC registration bug, and what is still unverified
 
-The Mach service every snippet on these pages depends on is published by a
-launch agent bundled inside Sentry.app, and it is **off until you turn it
-on**: Sentry > Settings > AI Access > Command-Line Access > "Turn On
-Command-Line Access". macOS may ask you to approve the item under System
-Settings > General > Login Items & Extensions; the Settings pane links
-straight there and reports which of the three states you are in
-(registered / waiting for approval / off). Once registered, a connecting
-`macstat` even starts Sentry on demand if it isn't running.
+**This used to say that none of the snippets on these pages could return
+data on a stock build. That was true, and it has been fixed.** The history is
+worth keeping because the failure mode was so misleading.
 
-Two honest caveats:
+`AppDelegate.startMCPListener()` created an `NSXPCListener(machServiceName:
+"dev.malekswilam.macstat.xpc")`, and nothing in the project had ever
+registered that name with `launchd` — no `MachServices` declaration, no
+registered helper carrying one. `NSXPCListener` reports a failed check-in
+nowhere at all, so the app looked completely healthy while every client of
+that service failed, and the error message they printed blamed the app for
+not running.
 
-* **Signed builds only.** `SMAppService` refuses to register an agent for
-  an ad-hoc-signed build (any local Debug build without a
-  `DEVELOPMENT_TEAM`). The Settings pane says so instead of failing
-  silently, and the CLI's error text names the real cause rather than
-  asking "is MacStat running?".
-* **Only Sentry's own binaries can connect.** The app verifies each peer's
-  code signature (same team as the app, and one of the two bundled client
-  binaries) before the connection reaches the service; refusals are logged
-  under the `XPCListener` category in Console. Copying `macstat` out of
-  Sentry.app already didn't work (rpath), and re-signing it differently
-  won't either — both are by design.
+The fix is a bundled LaunchAgent (`SentryMCPBridge`) registered through
+`SMAppService`, which owns the Mach service and hands clients a direct
+connection to the running app. The obvious repair — declare the name and
+keep the app's own listener — does not work, and was measured rather than
+assumed: only the process `launchd` itself started as the job may vend that
+job's Mach service, and Sentry is started by you, not by launchd. See
+`MacStatKit/MCPBridge/MCPBridgeContract.swift` for the experiment.
 
-This section replaces an earlier "Known limitation" that documented the
-service as unreachable: `AppDelegate` started an
-`NSXPCListener(machServiceName:)` but nothing ever declared the name in a
-launchd `MachServices` key, so launchd never routed a connection to it.
-The fix is `LaunchAgent/dev.malekswilam.macstat.xpc.plist` +
-`MCPAgentRegistrar` (SMAppService), i.e. the standard registered-agent
-shape — the same one the fan helper uses one privilege level up.
+### What is still unverified, stated plainly
+
+`SMAppService` will only register a helper signed with the same real Team ID
+as the app registering it. On a build made without a Developer ID
+certificate, registration **cannot** succeed. So on such a build:
+
+* **Set Up Command-Line Access reports the refusal verbatim** and the
+  section stays in its "not set up" state. It does not pretend.
+* `macstat` and the stdio MCP server fail with the message above, which
+  names that as the likely cause.
+* Everything else in Sentry is unaffected, **including MCP over HTTP**
+  (Settings → AI Access → Remote Access), which uses a different transport
+  and never went through this path.
+
+What that means for these pages: the command surface, exit codes, formats
+and failure behavior below are all real and exercised. A *successful* round
+trip to a live `Sentry.app` requires a signed build, and on an unsigned one
+these snippets will still fail — honestly, and for a reason they now name
+correctly.

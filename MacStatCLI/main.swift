@@ -510,8 +510,12 @@ func runStatusline(format: StatuslineFormat, budgetMillis: Double) async -> Neve
         let reason = message ?? "MacStat didn't answer."
         // `MacStatXPCClient` prefixes every connection-level failure with
         // this phrase; anything else came back from `MCPXPCService`'s
-        // permission gate.
-        if reason.contains("Couldn't reach MacStat.app") {
+        // permission gate. The phrase is a constant rather than the string
+        // literal it used to be here — it was matched in two files and
+        // nothing would have failed if the wording drifted, which for a
+        // branch that decides whether to show possibly-stale telemetry is
+        // not a good property.
+        if reason.hasPrefix(MacStatXPCClient.unreachablePrefix) {
             renderFromCacheOrExit(cache: cache, format: format, theme: theme, reason: reason, code: 1)
         }
         // A permission denial is *not* eligible for the cache fallback. If
