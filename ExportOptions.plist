@@ -10,7 +10,7 @@
       that do not exist inside the App Sandbox, and the App Store requires the
       sandbox — so `app-store` is not a method we are declining to use, it is a
       method that cannot produce a working build of this app. See
-      MacStat/MacStat.entitlements and plan §14.1.
+      Sentry/Sentry.entitlements and plan §14.1.
 
   destination = export
       Write the exported .app to disk and stop. The alternative, `upload`, hands
@@ -28,7 +28,7 @@
       A Developer ID export only needs a profile when the app claims an
       entitlement that must be authorized by one — App Groups, iCloud
       containers, push. This app claims none of those (again: see
-      MacStat.entitlements, which is one key long and explains every absence).
+      Sentry.entitlements, which is one key long and explains every absence).
       Adding an empty or speculative profile mapping here would introduce a
       moving part that expires annually in exchange for nothing.
 -->

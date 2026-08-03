@@ -3,8 +3,8 @@
 In `~/.config/starship.toml`:
 
 ```toml
-[custom.macstat]
-command = "macstat statusline --format compact"
+[custom.sentry]
+command = "sentryctl statusline --format compact"
 when = true
 shell = ["sh", "-c"]
 format = "[$output]($style) "
@@ -24,10 +24,10 @@ top of `starship.toml`:
 command_timeout = 1000
 ```
 
-This is belt-and-braces, not a workaround. `macstat statusline` already
+This is belt-and-braces, not a workaround. `sentryctl statusline` already
 enforces its own 50ms budget against the XPC connection, which is the part
 that can plausibly be slow. What that budget cannot cover is process startup
-— dyld resolving `MacStatKit.framework` and spinning up the Swift runtime
+— dyld resolving `SentryKit.framework` and spinning up the Swift runtime
 happens before any of this command's code runs, and on a cold page cache
 that alone can approach Starship's default. Raising the outer timeout costs
 nothing on a warm machine and avoids a spurious warning on a cold one.
@@ -40,9 +40,9 @@ they will investigate why it does.
 ## Only show it when there's a battery
 
 ```toml
-[custom.macstat]
-command = "macstat statusline --format compact"
-when = "macstat statusline --format plain | grep -q batt="
+[custom.sentry]
+command = "sentryctl statusline --format compact"
+when = "sentryctl statusline --format plain | grep -q batt="
 ```
 
 `when` runs a command and shows the module only on exit 0. This particular

@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 
 /// Pure parsing of the command output behind `SecurityPostureCollector`.
 ///

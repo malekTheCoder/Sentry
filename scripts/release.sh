@@ -4,7 +4,7 @@
 # Sentry ships Developer ID + notarization, outside the Mac App Store. That is
 # not a preference: the app reads `libIOReport.dylib` and the private
 # `IOHIDEventSystemClient` API through dlopen, and neither exists inside the App
-# Sandbox, which the App Store requires. See MacStat/MacStat.entitlements and
+# Sandbox, which the App Store requires. See Sentry/Sentry.entitlements and
 # plan §14.1.
 #
 # ─── HONESTY NOTE, READ THIS FIRST ───────────────────────────────────────────
@@ -143,7 +143,7 @@ preflight() {
 
 # ── 1. Archive ───────────────────────────────────────────────────────────────
 #
-# The MacStat scheme builds MacStat, MacStatMCP and MacStatCLI; the two tools
+# The Sentry scheme builds Sentry, SentryMCP and SentryCLI; the two tools
 # are copied into Sentry.app/Contents/MacOS by the app target's "Embed
 # Dependencies" phase (see project.yml), so the archive contains one bundle with
 # all of it inside. `-configuration Release` is what selects the
@@ -155,8 +155,8 @@ archive() {
   /opt/homebrew/bin/xcodegen generate
   rm -rf "$ARCHIVE"
   mkdir -p "$BUILD_DIR"
-  xcodebuild -project MacStat.xcodeproj \
-             -scheme MacStat \
+  xcodebuild -project Sentry.xcodeproj \
+             -scheme Sentry \
              -configuration Release \
              -destination 'generic/platform=macOS' \
              -archivePath "$ARCHIVE" \
@@ -204,7 +204,7 @@ sign_inner_out() {
     codesign "${flags[@]}" "$fw"
   done
 
-  # Then the loose nested executables (macstat, MacStatMCP) — everything in
+  # Then the loose nested executables (sentry, SentryMCP) — everything in
   # Contents/MacOS that is a Mach-O and is not the app's own main binary, which
   # is sealed last as part of the bundle.
   local exe
@@ -225,7 +225,7 @@ sign_inner_out() {
   # Finally the app itself, with its entitlements. This is the only signature
   # that carries com.apple.security.app-sandbox = false.
   print -r -- "  app: ${APP:t}"
-  codesign "${flags[@]}" --entitlements "$REPO_ROOT/MacStat/MacStat.entitlements" "$APP"
+  codesign "${flags[@]}" --entitlements "$REPO_ROOT/Sentry/Sentry.entitlements" "$APP"
 }
 
 # ── 4. Verify before submitting ──────────────────────────────────────────────

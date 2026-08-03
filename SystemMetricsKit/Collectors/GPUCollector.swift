@@ -1,6 +1,6 @@
 import Foundation
 import IOKit
-import MacStatKit
+import SentryKit
 
 /// Reads GPU utilization/memory from the first "IOAccelerator" service that
 /// exposes a "PerformanceStatistics" dict (plan §5.3). Not every matched

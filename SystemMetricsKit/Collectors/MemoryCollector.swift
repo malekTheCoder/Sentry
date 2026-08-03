@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 
 public final class MemoryCollector: Collector {
     public init() {}

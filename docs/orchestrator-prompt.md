@@ -1,24 +1,24 @@
 # Orchestrator prompt — finish Sentry's Tier 3 backlog
 
 Paste everything below the line into a fresh Claude Code session at
-`/Users/malekswilam/Developer/MacStatsProject`.
+`/Users/malekswilam/Developer/SentrysProject`.
 
 ---
 
 You are the **orchestrator** for the remaining feature backlog of Sentry
-(codebase name: MacStat), a macOS menu-bar system monitor with iPhone and Apple
+(codebase name: Sentry), a macOS menu-bar system monitor with iPhone and Apple
 Watch companions. You will not write most of the code yourself — you will
 dispatch subagents, review what they produce, integrate it, and keep `main`
 green. Your job is judgement and integration, not typing.
 
 ## Repository
 
-- Repo: `/Users/malekswilam/Developer/MacStatsProject/MacStat` (git; remote is
+- Repo: `/Users/malekswilam/Developer/SentrysProject/Sentry` (git; remote is
   `github.com/malekTheCoder/Sentry`)
-- Planning docs live one level up in `/Users/malekswilam/Developer/MacStatsProject/`:
-  `MacStat-Implementation-Plan.md` (the 21-section master plan),
-  `MacStat-Fan-Control-Implementation-Plan.md`, `MacStat-Market-Research.md`,
-  `MacStat-AI-Features-Research.md`, `MacStat-Launch-Readiness-Master-Prompt.md`
+- Planning docs live one level up in `/Users/malekswilam/Developer/SentrysProject/`:
+  `Sentry-Implementation-Plan.md` (the 21-section master plan),
+  `Sentry-Fan-Control-Implementation-Plan.md`, `Sentry-Market-Research.md`,
+  `Sentry-AI-Features-Research.md`, `Sentry-Launch-Readiness-Master-Prompt.md`
 - The `.xcodeproj` is **generated** from `project.yml` by XcodeGen and is not
   committed. Run `/opt/homebrew/bin/xcodegen generate` after any `project.yml`
   edit, and before any build in a fresh worktree.
@@ -28,17 +28,17 @@ green. Your job is judgement and integration, not typing.
 Do not trust this document's numbers. Establish ground truth yourself:
 
 ```sh
-cd /Users/malekswilam/Developer/MacStatsProject/MacStat
+cd /Users/malekswilam/Developer/SentrysProject/Sentry
 git fetch --all --prune && git status -sb && git log --oneline -15
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 /opt/homebrew/bin/xcodegen generate
-xcodebuild -project MacStat.xcodeproj -scheme MacStat -configuration Debug \
-  -destination 'platform=macOS' -derivedDataPath "$HOME/Library/Developer/MacStat-DerivedData" test
+xcodebuild -project Sentry.xcodeproj -scheme Sentry -configuration Debug \
+  -destination 'platform=macOS' -derivedDataPath "$HOME/Library/Developer/Sentry-DerivedData" test
 ```
 
 Record the actual test count as your baseline. At the time of writing it was
-**632 tests, 0 failures**, with `MacStatMobile` (iOS Simulator) and
-`MacStatWatch` (watchOS Simulator) both building clean — but work was still
+**632 tests, 0 failures**, with `SentryMobile` (iOS Simulator) and
+`SentryWatch` (watchOS Simulator) both building clean — but work was still
 landing, so verify rather than assume. There may also be unmerged branches
 (`git branch -a`); check for `prep/signing`, `fix/battery-glyph`,
 `fix/ios-metric-picker` and land them first if they exist and are green.
@@ -48,7 +48,7 @@ landing, so verify rather than assume. There may also be unmerged branches
 Ordered by value. **Not all of it should be built** — read the notes.
 
 ### 1. Pro tier — highest value, ship-blocking for revenue
-`MacStatKit/Pro/ProGate.swift` and `ProEntitlement.swift` already implement the
+`SentryKit/Pro/ProGate.swift` and `ProEntitlement.swift` already implement the
 free/paid cut correctly and are well tested. The gap is the concrete store: the
 existing doc comment prescribes a StoreKit implementation, which is
 **impossible** — the Mac app ships via Developer ID outside the Mac App Store,
@@ -63,12 +63,12 @@ testable with a locally generated key pair, and stop at the integration seam.
 Do not invent API credentials or sign up for anything.
 
 ### 2. CLI stretch items — self-contained, genuinely parallel
-`macstat watch` (streaming newline-JSON), `macstat statusline` (compact
+`sentryctl watch` (streaming newline-JSON), `sentryctl statusline` (compact
 one-liner for tmux/Starship/Claude Code status lines), and optionally a
 loopback-only Prometheus `/metrics` endpoint. See the master plan §21 —
 it specifies these in detail, including exit-code conventions (124 on timeout,
 matching `timeout(1)`) and the "stdout is data, stderr is diagnostics" rule.
-`MacStatCLI/` and the XPC service it talks to already exist.
+`SentryCLI/` and the XPC service it talks to already exist.
 
 The Prometheus endpoint opens a network listener; it must be loopback-only,
 off by default, and gated in Settings the way `mcpRemoteAccessEnabled` already
@@ -84,7 +84,7 @@ inline in the editor, so a user cannot unknowingly build an unreadable theme.
 Phase 2 (the read-only shell) is merged. Phase 3 is actual SMC writes, which
 require a **root LaunchDaemon** via `SMAppService`. The SMC protocol itself is
 roughly a day's work; the daemon lifecycle, XPC peer verification, and failure
-modes are not. Known hazards, already researched in `MacStat/docs/fan-control-spike.md`
+modes are not. Known hazards, already researched in `Sentry/docs/fan-control-spike.md`
 and the Phase 2 agent's report:
 
 - Requires a real enrolled Team ID; ad-hoc-signed daemons will not register.
@@ -128,8 +128,8 @@ sequencing anything that touches shared build configuration.
 The worktree pattern that has been working:
 
 ```sh
-cd /Users/malekswilam/Developer/MacStatsProject/MacStat
-git worktree add -b <branch> /Users/malekswilam/Developer/MacStatsProject/wt-<name> main
+cd /Users/malekswilam/Developer/SentrysProject/Sentry
+git worktree add -b <branch> /Users/malekswilam/Developer/SentrysProject/wt-<name> main
 ```
 
 Each agent gets: its own worktree path, its own branch, its own
@@ -151,10 +151,10 @@ In every agent prompt, include:
 ## Codebase conventions — quote these to every agent
 
 This codebase has an unusually strict honesty discipline. Read the doc comments
-in `MacStatMobile/Data/MockDataSource.swift`,
-`MacStat/Settings/Panes/SyncPane.swift`,
-`MacStatKit/LocalSync/LocalSyncClient.swift`, and
-`MacStatKit/Services/FanControlBackend.swift` before writing anything.
+in `SentryMobile/Data/MockDataSource.swift`,
+`Sentry/Settings/Panes/SyncPane.swift`,
+`SentryKit/LocalSync/LocalSyncClient.swift`, and
+`SentryKit/Services/FanControlBackend.swift` before writing anything.
 
 - **Never ship a control that silently does nothing.** A control that cannot
   work must say why, in plain language, in the UI. If it cannot say why, it is
@@ -179,7 +179,7 @@ in `MacStatMobile/Data/MockDataSource.swift`,
 2. Test count must be **≥ baseline**, failures must be **0**. A drop means
    tests were deleted or a target stopped compiling — investigate, do not push.
 3. For anything touching iOS or watchOS, build those schemes too. The macOS
-   suite will not catch a broken `MacStatMobile`.
+   suite will not catch a broken `SentryMobile`.
 4. Resolve conflicts by understanding both sides, not by picking one. The
    conflicts so far have been cases where **both** changes were correct
    (e.g. one branch fixed a stale product name in the same string another

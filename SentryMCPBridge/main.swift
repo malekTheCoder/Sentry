@@ -5,10 +5,10 @@ import os
 //
 // This process runs as **the logged-in user** (not root — contrast
 // `SentryFanDaemon`), launched on demand by launchd from
-// `Sentry.app/Contents/Library/LaunchAgents/dev.malekswilam.macstat.xpc.plist`
+// `Sentry.app/Contents/Library/LaunchAgents/dev.malekswilam.sentry.xpc.plist`
 // after the user explicitly sets it up in Settings ▸ AI Access.
 //
-// **Read `MacStatKit/MCPBridge/MCPBridgeContract.swift` first.** It carries
+// **Read `SentryKit/MCPBridge/MCPBridgeContract.swift` first.** It carries
 // the experiment that forced this design, why this is a broker rather than a
 // relay, and the full list of what has never been observed on a machine with
 // no signing identities.

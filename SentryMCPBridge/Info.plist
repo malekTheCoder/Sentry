@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.malekswilam.macstat.xpcbridge</string>
+	<string>dev.malekswilam.sentry.xpcbridge</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -23,7 +23,7 @@
 	  It is tempting to put the publisher requirement here (it pins Sentry's
 	  bundle identifier as well as the Team ID, and `SentryFanDaemon`'s
 	  Info.plist does exactly that). It would be wrong. This agent's clients
-	  are not just Sentry: they are also `macstat` and `MacStatMCP`, bare
+	  are not just Sentry: they are also `sentry` and `SentryMCP`, bare
 	  Mach-O tools whose signing identifiers `codesign` derives from the file
 	  name plus a hash of the signing identity — no `identifier` clause can
 	  name them stably. If launchd enforces this key for agents the way it

@@ -1,7 +1,7 @@
-# `macstat watch` — streaming NDJSON
+# `sentryctl watch` — streaming NDJSON
 
 ```bash
-macstat watch --metric cpu.total_percent --interval 2s
+sentryctl watch --metric cpu.total_percent --interval 2s
 ```
 
 One JSON object per line, forever, until you kill it:
@@ -18,7 +18,7 @@ alone.
 ## Finding a metric ID
 
 ```bash
-macstat watch --list-metrics
+sentryctl watch --list-metrics
 ```
 
 52 lines of `id<TAB>unit`, on stdout so it pipes into `fzf`, `grep`, or
@@ -49,14 +49,14 @@ is the main reason to keep one.
 ## Piping
 
 ```bash
-macstat watch --metric thermal.soc_temp_c | head -20 > /tmp/thermal.ndjson
-macstat watch --metric cpu.total_percent | jq --unbuffered 'select(.value > 80)'
-macstat watch --metric battery.charging_watts >> ~/charging.log &
+sentryctl watch --metric thermal.soc_temp_c | head -20 > /tmp/thermal.ndjson
+sentryctl watch --metric cpu.total_percent | jq --unbuffered 'select(.value > 80)'
+sentryctl watch --metric battery.charging_watts >> ~/charging.log &
 ```
 
 `| head` works properly: the process ignores `SIGPIPE`, notices `EPIPE` on
 the first write nobody is reading, and exits **0**. It does not die on
-signal 13, so `macstat watch ... | head -5 && echo done` prints `done`.
+signal 13, so `sentryctl watch ... | head -5 && echo done` prints `done`.
 
 Output is unbuffered — a raw `write(2)` per line, not stdio — so a consumer
 sees each sample as it happens rather than when a 4KB buffer fills. Add
@@ -73,12 +73,12 @@ samples — `watch` widens its own interval each time it is refused, and says
 so:
 
 ```
-$ macstat watch --metric cpu.total_percent --interval 1s
+$ sentryctl watch --metric cpu.total_percent --interval 1s
 {"available":true,"metric":"cpu.total_percent", ... }
 ...
-macstat: rate-limited by MacStat; widening --interval to 2s. Raise the limit
+sentry: rate-limited by Sentry; widening --interval to 2s. Raise the limit
 in Settings → AI Access to stream faster.
-macstat: rate-limited by MacStat; widening --interval to 4s. Raise the limit
+sentry: rate-limited by Sentry; widening --interval to 4s. Raise the limit
 in Settings → AI Access to stream faster.
 ```
 

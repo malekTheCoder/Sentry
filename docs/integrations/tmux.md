@@ -3,7 +3,7 @@
 One line in `~/.tmux.conf`:
 
 ```tmux
-set -g status-right '#(macstat statusline --format tmux)'
+set -g status-right '#(sentryctl statusline --format tmux)'
 set -g status-interval 5
 ```
 
@@ -18,7 +18,7 @@ Reload with `tmux source-file ~/.tmux.conf`.
 tmux interprets the `#[fg=…]` sequences in `#()` output, so those become
 real colors. They come from the theme you picked in Sentry's own settings —
 `--format tmux` reads `themeID` out of
-`~/Library/Application Support/MacStat/settings.json` and resolves it
+`~/Library/Application Support/Sentry/settings.json` and resolves it
 against the same `Theme.builtInPresets` the menu bar draws from, so the
 terminal and the menu bar agree without you configuring anything twice.
 
@@ -45,14 +45,14 @@ own before any other tool asks for anything. Five seconds costs 12/minute
 and leaves room.
 
 If you do exceed it, the status bar goes blank rather than showing a wrong
-number — `macstat statusline` treats a rate-limit denial as a denial, not as
+number — `sentryctl statusline` treats a rate-limit denial as a denial, not as
 a hint to guess.
 
 ## Why it will not hang your status bar
 
 tmux runs `#()` commands asynchronously and caches the last output, so a
 slow command degrades the *freshness* of the bar rather than the bar itself.
-`macstat statusline` does not lean on that: it gives `Sentry.app` a hard
+`sentryctl statusline` does not lean on that: it gives `Sentry.app` a hard
 50ms to answer and then falls back to the last reading it saw, labeled with
 its age:
 
@@ -69,5 +69,5 @@ rendering of "I don't know."
 
 `#` is special to tmux. The snippet above is safe as written because the
 `#(...)` is the *whole* value and everything inside it is a command, not a
-format string. If you concatenate `macstat` with literal text containing a
+format string. If you concatenate `sentryctl` with literal text containing a
 `#`, double it (`##`) per tmux's own rules.

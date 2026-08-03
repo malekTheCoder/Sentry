@@ -34,27 +34,27 @@ it validated is `SystemMetricsKit/Bridges/SMCFanBridge.swift`.
    Revert-to-auto is `F{i}Md = 0`. Clamps come from the SMC's own
    `F{i}Mn`/`F{i}Mx`, not hardcoded numbers.
 5. Path corrections to the plan's §11: paths are repo-relative
-   (`SystemMetricsKit/…`, `MacStat/…`, `MacStatKit/…`), not nested under a
-   `MacStat/` prefix.
+   (`SystemMetricsKit/…`, `Sentry/…`, `SentryKit/…`), not nested under a
+   `Sentry/` prefix.
 
 ## Status
 
 - [x] Phase 1: research spike (this document)
 - [x] Fan RPM readout via `SMCFanBridge` (read-only), surfaced in the
       existing Dashboard thermal card ("Fan 1 / Fan 2" rows)
-- [x] Phase 2: read-only control shell — model types (`MacStatKit/Models/
+- [x] Phase 2: read-only control shell — model types (`SentryKit/Models/
       FanControl.swift`), persisted policy block (`AppSettings.fanControl`),
-      the write seam (`MacStatKit/Services/FanControlBackend.swift`), the
+      the write seam (`SentryKit/Services/FanControlBackend.swift`), the
       read-only real backend (`SystemMetricsKit/Bridges/
       SMCReadOnlyFanControlBackend.swift`), and Settings ▸ Fans
-      (`MacStat/Settings/Panes/FanControlPane.swift`). Live RPM is real;
+      (`Sentry/Settings/Panes/FanControlPane.swift`). Live RPM is real;
       **every control that would require a write is disabled and says why on
       screen.** No curve editor, no "Return to Auto" button, no dropdown
       surface — all three would be dead controls today, and the rationale
       for each omission is recorded in `FanControlPane`'s doc comment.
 - [x] Phase 3: the write path — a privileged helper. Built. `SentryFanDaemon`
       (a `tool` target, four files of its own plus the four pure files in
-      `MacStatKit/FanDaemon/`), registered by `SMAppService.daemon(plistName:)`
+      `SentryKit/FanDaemon/`), registered by `SMAppService.daemon(plistName:)`
       from `PrivilegedFanControlBackend` **only when the user presses Install
       in Settings ▸ Fans**. `FanWriteAvailability` gained the `.available`
       case the Phase 2 note promised would break every `switch` over it; each
@@ -107,7 +107,7 @@ then happens, precisely:
   This branch does not remove it and does not claim to. The user can switch
   it off there, or run:
 
-      sudo launchctl bootout system/dev.malekswilam.macstat.fandaemon
+      sudo launchctl bootout system/dev.malekswilam.sentry.fandaemon
 
 The Fans pane says all of this on screen, before the Install button, in the
 section footer — not only here.
@@ -155,10 +155,10 @@ Do these **in order**, on a machine you are willing to reboot:
 4. Press Install. Expect an authorization prompt and, most likely,
    `.requiresApproval` — approve in System Settings ▸ General ▸ Login Items &
    Extensions, then return to the pane (it re-reads on appearance).
-5. `sudo launchctl print system/dev.malekswilam.macstat.fandaemon` — confirm
+5. `sudo launchctl print system/dev.malekswilam.sentry.fandaemon` — confirm
    the job exists and the Mach service is registered.
 6. **Watch the fans and the log while applying a fixed speed.** `log stream
-   --predicate 'subsystem == "dev.malekswilam.macstat.fandaemon"'`. Verify
+   --predicate 'subsystem == "dev.malekswilam.sentry.fandaemon"'`. Verify
    the applied RPM matches what the daemon reports, and that a deliberately
    out-of-range request (e.g. 12000) comes back clamped and *says* it was.
 7. **Verify the fail-safe before trusting it.** With a fan held: `kill` the

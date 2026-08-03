@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 
 /// Utilization from `host_processor_info` tick deltas, plus E-core/P-core
 /// split, load average, and process count.

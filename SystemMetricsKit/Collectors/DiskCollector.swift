@@ -1,7 +1,7 @@
 import Foundation
 import IOKit
 import IOKit.storage
-import MacStatKit
+import SentryKit
 
 /// Volume capacity comes from `URL.resourceValues`; throughput and IOPS come
 /// from summing `IOBlockStorageDriver` "Statistics" across every matched

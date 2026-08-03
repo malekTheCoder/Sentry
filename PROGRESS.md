@@ -25,7 +25,7 @@ manually).
   build green, watchOS Simulator build green.
 
 ### Launch Readiness Master Prompt — Section 1 findings (reported to user)
-- iOS (`MacStatMobile`): no private-API exposure — `SystemMetricsKit` is
+- iOS (`SentryMobile`): no private-API exposure — `SystemMetricsKit` is
   macOS-only and not in any iOS target's graph. Clean for real TestFlight.
 - macOS (`Sentry.app`): two private-API surfaces, both dlopen/dlsym-gated:
   `IOReportBridge` (libIOReport — GPU/ANE/CPU power) and `ThermalCollector`
@@ -103,12 +103,12 @@ commit message):
   are free main-thread pressure.
 - `ModuleCardStack`/`MetricCard`/`SparklineChart` are dead views hosting
   two live helpers — needs a relocation-then-delete pass.
-- Watch/iOS `.xcstrings` catalogs still contain stale "MacStat" *keys*
+- Watch/iOS `.xcstrings` catalogs still contain stale "Sentry" *keys*
   (harmless — unused after the rename; regenerate via Xcode export).
 
 ### Environment notes for future agents on this machine
 - Repo sits in iCloud-synced `~/Documents` — DerivedData must live outside
-  the repo (`~/Library/Developer/MacStat-DerivedData*`), and iCloud sync
+  the repo (`~/Library/Developer/Sentry-DerivedData*`), and iCloud sync
   spawns `file 2.swift` duplicates that break builds; delete them.
 - `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` is
   required for all xcodebuild/simctl invocations (`xcode-select` points at
@@ -121,7 +121,7 @@ New Pro-gated feature: a third main-window tab ("Insights") that turns this
 Mac's own measured history and security posture into evidence-backed
 recommendations, plus an explainable 0–100 Protection Score.
 
-- **`MacStatKit/Insights/`** (pure, cross-platform, no I/O): `ProtectionInsight`
+- **`SentryKit/Insights/`** (pure, cross-platform, no I/O): `ProtectionInsight`
   model, `InsightCategory`/`InsightSeverity`/`InsightDomain`, `InsightContext`
   (everything a rule may read, all-value), `ProtectionInsightRule` protocol,
   `ProtectionInsightsEngine` running 44 rules across battery longevity,
@@ -141,7 +141,7 @@ recommendations, plus an explainable 0–100 Protection Score.
   `netstat`). Every probe that fails, times out, or prints something
   unrecognized degrades to `.unknown` — never guessed as off.
   `SecurityPostureParser` (pure parsing, no subprocess) is the tested half.
-- **UI (`MacStat/Insights/`)**: `InsightsView`/`InsightsViewModel` (same
+- **UI (`Sentry/Insights/`)**: `InsightsView`/`InsightsViewModel` (same
   two-path shape as `DashboardViewModel` — cheap `ingest(_:)` every snapshot
   tick, expensive `refresh()` only on window-appear/explicit Refresh, no
   timer), `ProtectionScoreCard`, `CategoryBreakdownCard`, `InsightRowView`
@@ -155,7 +155,7 @@ recommendations, plus an explainable 0–100 Protection Score.
   settings propagation in `applySettings`, `cancelRefresh()` on the window's
   `onHide` so a refresh in flight for a closed window isn't wasted work), and
   passes its `AnyView` into `MainWindowView`'s `insights:` parameter.
-- **Tests**: `MacStatTests/ProtectionInsightsEngineTests.swift` — rule
+- **Tests**: `SentryTests/ProtectionInsightsEngineTests.swift` — rule
   fire/don't-fire boundaries (FileVault on/off/unknown, firewall severity
   following actual exposure, screen-lock-delay threshold, deep-discharge
   advisory/warning tiers, hardened-baseline requiring all four, posture-
@@ -176,7 +176,7 @@ field names, `ProEntitlementProviding`/`SecurityPostureProviding` shapes,
 UI-to-view-model bindings) was verified by hand against the defining files,
 but hand-verification is not a compiler. A human must confirm on a real
 Xcode build before this merges: the project actually compiles across all
-three targets (`MacStat`, `MacStatKit_macOS`, `SystemMetricsKit`), the new
+three targets (`Sentry`, `SentryKit_macOS`, `SystemMetricsKit`), the new
 test file runs and passes, the Insights tab renders correctly at runtime
 (theme, layout, the ring/score card, locked-row paywall visuals), and that
 `SecurityPostureCollector`'s subprocess calls behave as expected on a real

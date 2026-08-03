@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "macstat hook pretooluse"
+            "command": "sentry hook pretooluse"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/sh -c 'SUMMARY=$(macstat session-report --since=1800); osascript -e \"display notification \\\"$SUMMARY\\\" with title \\\"Claude Code finished\\\"\"'"
+            "command": "/bin/sh -c 'SUMMARY=$(sentryctl session-report --since=1800); osascript -e \"display notification \\\"$SUMMARY\\\" with title \\\"Claude Code finished\\\"\"'"
           }
         ]
       }

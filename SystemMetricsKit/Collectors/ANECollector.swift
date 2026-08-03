@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 
 /// There is no public or private ANE *utilization* percentage — power draw
 /// above the idle floor is the industry-standard activity proxy (it's what

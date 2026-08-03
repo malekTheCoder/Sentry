@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>dev.malekswilam.macstat.fandaemon</string>
+	<string>dev.malekswilam.sentry.fandaemon</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -18,7 +18,7 @@
 	<string>1</string>
 	<key>SMAuthorizedClients</key>
 	<array>
-		<string>identifier "dev.malekswilam.macstat" and anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"</string>
+		<string>identifier "dev.malekswilam.sentry" and anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"</string>
 	</array>
 </dict>
 </plist>
