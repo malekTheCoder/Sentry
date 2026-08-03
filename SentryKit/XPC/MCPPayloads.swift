@@ -464,4 +464,63 @@ public enum MCPPayloads {
             self.thermalPressureElevatedSeconds = thermalPressureElevatedSeconds
         }
     }
+
+    /// One row of `get_agent_capacity`'s session list — a wire mirror of
+    /// `AgentSessionRegistry.Session` with `MCPToolID`s flattened to raw
+    /// strings (the same names an agent sees in `tools/list`).
+    /// `clientName` is self-reported, not authenticated — see
+    /// `AgentSessionRegistry`'s doc comment; `AgentCapacityReport` restates
+    /// this on the wire so the caveat travels with the data.
+    public struct AgentSessionInfo: Codable, Sendable {
+        public var clientName: String
+        public var connectedAt: Date
+        public var lastCallAt: Date
+        public var recentTools: [String]
+        public var holdsKeepAwake: Bool
+
+        public init(clientName: String, connectedAt: Date, lastCallAt: Date, recentTools: [String], holdsKeepAwake: Bool) {
+            self.clientName = clientName
+            self.connectedAt = connectedAt
+            self.lastCallAt = lastCallAt
+            self.recentTools = recentTools
+            self.holdsKeepAwake = holdsKeepAwake
+        }
+    }
+
+    /// `get_agent_capacity`'s full result: the original numeric headroom
+    /// heuristic (`AgentCapacity`, nested unchanged so its shape stays one
+    /// definition) plus the multi-agent coordination picture — who else is
+    /// active, whether an agent holds keep-awake, and a one-sentence
+    /// judgment. All of it advisory: Sentry informs, it does not lock.
+    public struct AgentCapacityReport: Codable, Sendable {
+        public var headroom: AgentCapacity
+        /// Other currently-active MCP sessions (the caller's own session is
+        /// excluded — capacity for *you* shouldn't warn about *you*).
+        public var activeSessions: [AgentSessionInfo]
+        /// Whether any agent session currently holds a keep-awake
+        /// assertion, cross-checked against the live assertion state.
+        public var agentHeldKeepAwake: Bool
+        /// Combines headroom and session activity into the sentence an
+        /// agent should actually weigh, e.g. "one agent already running a
+        /// heavy workload — cpu 85%; starting another build now will
+        /// contend."
+        public var judgment: String
+        /// Fixed caveat, restated per response so it survives copy/paste
+        /// into an agent's context: session labels are self-reported.
+        public var sessionIdentityNote: String
+
+        public init(
+            headroom: AgentCapacity,
+            activeSessions: [AgentSessionInfo],
+            agentHeldKeepAwake: Bool,
+            judgment: String,
+            sessionIdentityNote: String
+        ) {
+            self.headroom = headroom
+            self.activeSessions = activeSessions
+            self.agentHeldKeepAwake = agentHeldKeepAwake
+            self.judgment = judgment
+            self.sessionIdentityNote = sessionIdentityNote
+        }
+    }
 }

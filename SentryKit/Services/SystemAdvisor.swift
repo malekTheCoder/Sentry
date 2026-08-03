@@ -178,10 +178,20 @@ public enum WaitCondition: Sendable, Equatable {
     case cpuBelow(Double)
     case batteryAbove(Double)
     case memoryBelow(Double)
+    /// `"ready"`: `AgentPreflight`'s full snapshot-only verdict — satisfied
+    /// when `preflight_check` would say `proceed` or `caution` (never blocks
+    /// on caution-level reasons; see `AgentPreflight.isReady`). This is the
+    /// condition that makes `wait_until_ready` and `preflight_check` two
+    /// views of one policy rather than two policies.
+    case ready
 
     public init?(_ raw: String) {
         if raw == "thermal_normal" {
             self = .thermalNormal
+            return
+        }
+        if raw == "ready" {
+            self = .ready
             return
         }
         let parts = raw.split(separator: ":", maxSplits: 1)
@@ -212,6 +222,11 @@ public enum WaitCondition: Sendable, Equatable {
             guard let memory = snapshot.memory, memory.totalBytes > 0 else { return true }
             let percentUsed = Double(memory.usedBytes) / Double(memory.totalBytes) * 100
             return percentUsed < threshold
+        case .ready:
+            // Delegates to the shared preflight policy — the "absent data is
+            // satisfied" posture holds automatically, since a snapshot with
+            // no thermal/CPU/battery/memory data produces no reasons.
+            return AgentPreflight.isReady(snapshot)
         }
     }
 }

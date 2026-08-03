@@ -20,15 +20,17 @@ func printUsage() {
 
     USAGE:
         sentryctl check [--json]
-            One-shot go/wait recommendation (thermal, CPU, battery). Exit
-            code 0 if "go", 1 if "wait" — usable directly as a shell guard:
+            One-shot preflight verdict (thermal, CPU, battery, memory,
+            other agent sessions): proceed, caution, wait, or do_not_start.
+            Exit code 0 for proceed/caution, 1 otherwise — usable directly
+            as a shell guard:
                 sentryctl check || echo "not a great time to build"
 
         sentry wait --until=<condition> [--timeout=<seconds>]
             Blocks until <condition> holds or the timeout elapses.
-            <condition> is one of: thermal_normal, cpu_below:N,
-            battery_above:N, memory_below:N. Exit code 0 if satisfied before
-            the timeout, 1 if it timed out.
+            <condition> is one of: ready (check's own policy),
+            thermal_normal, cpu_below:N, battery_above:N, memory_below:N.
+            Exit code 0 if satisfied before the timeout, 1 if it timed out.
 
         sentry hook pretooluse
             Claude Code `PreToolUse` hook entry point: reads nothing from
@@ -117,22 +119,35 @@ func printJSON<T: Encodable>(_ value: T) {
 let xpcClient = SentryXPCClient()
 let clientName = "sentryctl"
 
-func runCheck(json: Bool) async -> SystemAdvisor.Recommendation {
+/// Decodes `preflight_check`'s `AgentPreflight.Assessment` — the tool moved
+/// from `SystemAdvisor.Recommendation`'s binary go/wait to the four-level
+/// verdict contract, and this CLI (per plan §21.2.1's standing rule) decodes
+/// the *same* Codable model the MCP tool serves rather than a private copy.
+func runCheck(json: Bool) async -> AgentPreflight.Assessment {
     let (data, message) = await xpcClient.readCall { $0.preflightCheck(clientName: clientName, reply: $1) }
     guard let data else {
         fail(message ?? "Sentry denied this request. Is Sentry running, and is the preflight_check MCP tool enabled in Settings → AI Access?")
     }
-    guard let recommendation = try? JSONDecoder().decode(SystemAdvisor.Recommendation.self, from: data) else {
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    guard let assessment = try? decoder.decode(AgentPreflight.Assessment.self, from: data) else {
         fail("couldn't decode Sentry's response")
     }
     if json {
-        printJSON(recommendation)
-    } else if recommendation.recommendation == "go" {
-        print("go — no reason to wait right now.")
+        printJSON(assessment)
+    } else if assessment.reasons.isEmpty {
+        print("proceed — no reason to wait right now.")
     } else {
-        print("wait — " + recommendation.reasons.joined(separator: " "))
+        print(assessment.verdict.rawValue + " — " + assessment.reasons.map(\.message).joined(separator: " "))
     }
-    return recommendation
+    return assessment
+}
+
+/// `proceed` and `caution` both exit 0: caution means "start, but expect
+/// contention/slowness", which for a go/no-go exit code is a go — the
+/// distinction is in the printed reasons/JSON for callers who care.
+func isGo(_ assessment: AgentPreflight.Assessment) -> Bool {
+    assessment.verdict == .proceed || assessment.verdict == .caution
 }
 
 func runWait(condition: String, timeoutSeconds: Double) async -> MCPPayloads.WaitResult {
@@ -555,12 +570,12 @@ guard let command = arguments.first else {
 switch command {
 case "check":
     let json = arguments.contains("--json")
-    let recommendation = await runCheck(json: json)
-    exit(recommendation.recommendation == "go" ? 0 : 1)
+    let assessment = await runCheck(json: json)
+    exit(isGo(assessment) ? 0 : 1)
 
 case "wait":
     guard let condition = flagValue("until", in: arguments) else {
-        fail("missing --until=<condition> (thermal_normal, cpu_below:N, battery_above:N, memory_below:N)")
+        fail("missing --until=<condition> (ready, thermal_normal, cpu_below:N, battery_above:N, memory_below:N)")
     }
     let timeoutSeconds = flagValue("timeout", in: arguments).flatMap(Double.init) ?? 120
     let result = await runWait(condition: condition, timeoutSeconds: timeoutSeconds)
@@ -631,8 +646,8 @@ case "hook":
         printUsage()
         exit(64)
     }
-    let recommendation = await runCheck(json: false)
-    if recommendation.recommendation == "go" {
+    let assessment = await runCheck(json: false)
+    if isGo(assessment) {
         exit(0)
     } else {
         // Claude Code's documented `PreToolUse` contract: exit code 2 denies
@@ -640,7 +655,7 @@ case "hook":
         // context, which is exactly what should happen here — "Mac is at
         // 101°C, thermal pressure critical" is more useful to the model
         // than a bare non-zero exit.
-        FileHandle.standardError.write((recommendation.reasons.joined(separator: " ") + "\n").data(using: .utf8) ?? Data())
+        FileHandle.standardError.write((assessment.reasons.map(\.message).joined(separator: " ") + "\n").data(using: .utf8) ?? Data())
         exit(2)
     }
 

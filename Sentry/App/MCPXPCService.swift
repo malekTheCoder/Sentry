@@ -44,6 +44,13 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     private let settingsStore: SettingsStore
     private let accessController: MCPAccessController
     private let activityLog: MCPActivityLog
+    /// Multi-agent coordination state (`get_agent_capacity`'s session list,
+    /// `preflight_check`'s `another_agent_active` reason). Owned here rather
+    /// than injected: this service's `authorize` path is the only place MCP
+    /// calls flow through, so it is both the sole writer and (via the two
+    /// tools above) the sole reader — see `AgentSessionRegistry`'s doc
+    /// comment for the advisory/self-reported caveats.
+    private let sessionRegistry = AgentSessionRegistry()
 
     init(
         coordinator: StatsCoordinator,
@@ -104,6 +111,11 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 decision: decision
             )
         )
+
+        // Session presence, regardless of decision — a denied client is
+        // still *present*, which is what the registry measures (see its
+        // `recordCall` doc comment).
+        sessionRegistry.recordCall(clientName: clientName, tool: tool)
 
         return decision
     }
@@ -292,27 +304,37 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         Task { @MainActor in
             guard let reply = self.authorizeInstrumented(.preflightCheck, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             let snapshot = self.coordinator.latestSnapshot()
-            var recommendation = SystemAdvisor.recommend(snapshot, lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled)
-            // Attach the cool-down ETA only when the "wait" is thermal —
-            // history lives here, not in the pure advisor, hence this seam.
-            // An agent that gets a number can schedule; one that doesn't
-            // falls back to wait_until_ready's polling, so nil costs nothing.
-            if recommendation.recommendation == "wait",
-               recommendation.isThrottling
-                || recommendation.thermalPressure == "serious"
-                || recommendation.thermalPressure == "critical"
-                || (recommendation.socTemperatureCelsius ?? 0) > SystemAdvisor.highSoCTempCelsius {
+
+            // Recent temperature trend, fetched only when a thermal wait is
+            // even possible — history lives here, not in the pure policy,
+            // hence this seam. An agent that gets a `suggestedWaitSeconds`
+            // can schedule; one that doesn't falls back to
+            // wait_until_ready's polling, so skipping the query costs
+            // nothing on the (common) all-clear path.
+            var tempSamples: [(timestamp: Date, celsius: Double)] = []
+            if let thermal = snapshot.thermal,
+               thermal.isThrottling
+                || thermal.pressureLevel == .serious
+                || thermal.pressureLevel == .critical
+                || (thermal.socTemperatureCelsius ?? 0) > SystemAdvisor.highSoCTempCelsius {
                 let since = Date().addingTimeInterval(-15 * 60)
-                let temps = self.historyStore
+                tempSamples = self.historyStore
                     .samples(metric: MetricID.thermalSocTempC.rawValue, since: since)
                     .map { (timestamp: $0.timestamp, celsius: $0.value) }
-                if let eta = SystemAdvisor.cooldownETASeconds(tempSamples: temps) {
-                    recommendation.cooldownETASeconds = eta
-                    let minutes = max(1, Int((eta / 60).rounded()))
-                    recommendation.reasons.append("Cooling — estimated thermal nominal in ~\(minutes) min.")
-                }
             }
-            self.encodeAndReply(recommendation, reply: reply)
+
+            // The caller's own session is excluded — its presence in the
+            // registry (recorded by `authorize` above) must not make the
+            // preflight warn about itself.
+            let others = self.sessionRegistry.otherActiveSessions(excluding: clientName)
+            let assessment = AgentPreflight.assess(
+                snapshot,
+                lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+                otherActiveAgentSessionCount: others.count,
+                otherActiveAgentLabels: others.map(\.clientName),
+                recentSoCTemperatureSamples: tempSamples
+            )
+            self.encodeAndReply(assessment, reply: reply)
         }
     }
 
@@ -395,13 +417,60 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 reasoning = "CPU headroom (\(Int(cpuHeadroom))%) is likely too tight for \(clampedAgents) more agent(s)."
             }
 
-            let payload = MCPPayloads.AgentCapacity(
+            let headroom = MCPPayloads.AgentCapacity(
                 requestedAgents: clampedAgents,
                 hasCapacity: hasCapacity,
                 freeMemoryBytes: freeBytes,
                 estimatedBytesPerAgent: estimatedBytesPerAgent,
                 cpuHeadroomPercent: cpuHeadroom,
                 reasoning: reasoning
+            )
+
+            // Coordination picture: who else is active (caller excluded —
+            // capacity for *you* shouldn't warn about *you*), and whether an
+            // agent holds keep-awake. The registry's flag is cross-checked
+            // against the live assertion: a timed hold can expire without
+            // another MCP call arriving to tell the registry.
+            let others = self.sessionRegistry.otherActiveSessions(excluding: clientName)
+            let assertionActive: Bool
+            if case .active = self.powerControl.state {
+                assertionActive = true
+            } else {
+                assertionActive = false
+            }
+            let agentHeldKeepAwake = assertionActive
+                && self.sessionRegistry.activeSessions().contains(where: \.holdsKeepAwake)
+
+            let sessions = others.map { session in
+                MCPPayloads.AgentSessionInfo(
+                    clientName: session.clientName,
+                    connectedAt: session.connectedAt,
+                    lastCallAt: session.lastCallAt,
+                    recentTools: session.recentTools.map(\.rawValue),
+                    holdsKeepAwake: session.holdsKeepAwake && assertionActive
+                )
+            }
+
+            // One sentence weighing both halves — worded so a model reads
+            // "contend", not "forbidden": this whole tool is advisory.
+            var judgmentParts: [String] = []
+            if !others.isEmpty {
+                let names = others.map(\.clientName).joined(separator: ", ")
+                if cpuHeadroom <= 100 - SystemAdvisor.highCPUPercent {
+                    judgmentParts.append("\(others.count) other agent session(s) active (\(names)) and CPU is already at \(Int(100 - cpuHeadroom))% — starting another heavy workload now will contend; prefer waiting or coordinating.")
+                } else {
+                    judgmentParts.append("\(others.count) other agent session(s) recently active (\(names)) — currently light, but re-check before starting sustained heavy work.")
+                }
+            }
+            judgmentParts.append(reasoning)
+            let judgment = judgmentParts.joined(separator: " ")
+
+            let payload = MCPPayloads.AgentCapacityReport(
+                headroom: headroom,
+                activeSessions: sessions,
+                agentHeldKeepAwake: agentHeldKeepAwake,
+                judgment: judgment,
+                sessionIdentityNote: "Session client names are self-reported by each MCP client and are not authenticated — treat them as labels, not identities."
             )
             self.encodeAndReply(payload, reply: reply)
         }
@@ -533,6 +602,10 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                     reason: clampedReason,
                     owner: self.sessionIdentity(fromWire: clientName).sessionID
                 )
+                // Attribute the (single) live assertion to this session for
+                // get_agent_capacity's coordination picture — only after
+                // the assertion actually exists.
+                self.sessionRegistry.recordKeepAwake(clientName: clientName)
                 reply(true, nil)
             } catch {
                 reply(false, error.localizedDescription)
@@ -544,6 +617,9 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         Task { @MainActor in
             guard let reply = self.authorizeInstrumented(.releaseAwake, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
             self.powerControl.releaseAssertion()
+            // One assertion app-wide, so a release clears every session's
+            // keep-awake attribution — see `AgentSessionRegistry.clearKeepAwake`.
+            self.sessionRegistry.clearKeepAwake()
             reply(true, nil)
         }
     }
@@ -621,7 +697,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             guard let reply = self.authorizeInstrumented(.waitUntilReady, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
 
             guard let parsedCondition = WaitCondition(condition) else {
-                reply(nil, "Unrecognized condition '\(condition)'. Expected thermal_normal, cpu_below:N, battery_above:N, or memory_below:N.")
+                reply(nil, "Unrecognized condition '\(condition)'. Expected ready, thermal_normal, cpu_below:N, battery_above:N, or memory_below:N.")
                 return
             }
 

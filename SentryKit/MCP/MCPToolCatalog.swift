@@ -24,7 +24,7 @@ public enum MCPToolCatalog {
     public static let tools: [Tool] = MCPToolID.allCases.map { id in
         Tool(
             name: id.rawValue,
-            description: id.toolDescription,
+            description: agentFacingDescription(for: id),
             inputSchema: inputSchema(for: id),
             annotations: .init(
                 title: id.displayName,
@@ -34,6 +34,57 @@ public enum MCPToolCatalog {
                 openWorldHint: false
             )
         )
+    }
+
+    /// The description an MCP client's *model* reads when deciding whether
+    /// and how to call a tool — prompt engineering, not documentation, so
+    /// the agent-coordination tools get purpose-written copy here rather
+    /// than `MCPToolID.toolDescription`'s one-liners (which stay as the
+    /// short human-facing text in Settings → AI Access). Everything else
+    /// falls through to the shared one-liner.
+    private static func agentFacingDescription(for id: MCPToolID) -> String {
+        switch id {
+        case .preflightCheck:
+            return """
+            Ask this Mac whether now is a good time to start a heavy workload (build, test suite, \
+            batch job, spawning subagents). Call it BEFORE starting sustained work. Returns a JSON \
+            verdict you should act on: "proceed" (start now), "caution" (start, but expect reduced \
+            performance or contention — reasons say why), "wait" (conditions will improve; if \
+            suggestedWaitSeconds is a number, schedule a retry after that many seconds, otherwise \
+            call wait_until_ready with condition "ready"), or "do_not_start" (waiting will NOT fix \
+            it — e.g. battery critically low, thermal/memory pressure critical; tell the user \
+            instead of retrying). Each reason has a stable code (thermal_critical, \
+            thermal_elevated, cpu_saturated, on_battery_critical, on_battery_low, \
+            memory_pressure_critical, memory_pressure, low_power_mode, another_agent_active) plus a \
+            human sentence, and the snapshot object carries the raw numbers behind the verdict. \
+            another_agent_active means other MCP sessions (self-reported names) are using this Mac \
+            — advisory, not a lock; check get_agent_capacity before starting anyway.
+            """
+        case .getAgentCapacity:
+            return """
+            Whether this Mac has memory/CPU headroom for N more local agent processes, plus who \
+            else is using it right now. Returns headroom (free memory, CPU headroom, a hasCapacity \
+            heuristic with its arithmetic in reasoning), activeSessions (other MCP sessions: \
+            client name, connected/last-call times, recently used tools, whether one holds a \
+            keep-awake assertion), agentHeldKeepAwake, and a one-sentence judgment. Check this \
+            before spawning subagents or starting a heavy workload, and prefer waiting when \
+            another session is mid-heavy-workload — coordination here is advisory (Sentry informs, \
+            it never locks), so being a good neighbor is on you. Session names are self-reported \
+            labels, not authenticated identities.
+            """
+        case .waitUntilReady:
+            return """
+            Block (up to timeoutSeconds, capped at 600) until this Mac is ready for work, then \
+            return what changed. Use condition "ready" to wait on the same policy preflight_check \
+            uses — it returns exactly when preflight_check would stop saying "wait", so the two \
+            can never disagree; narrower conditions (thermal_normal, cpu_below:N, battery_above:N, \
+            memory_below:N) wait on a single metric instead. Prefer this over polling \
+            preflight_check in a loop. Note it cannot help a "do_not_start" verdict (e.g. \
+            critically low battery) — waiting doesn't fix those, so check preflight_check first.
+            """
+        default:
+            return id.toolDescription
+        }
     }
 
     private static func inputSchema(for id: MCPToolID) -> Value {
@@ -133,7 +184,7 @@ public enum MCPToolCatalog {
         case .waitUntilReady:
             return schema(
                 properties: [
-                    "condition": property("string", "One of: thermal_normal, cpu_below:N, battery_above:N, memory_below:N (N is a percent)."),
+                    "condition": property("string", "One of: ready (preflight_check's own policy — use this unless you need a single metric), thermal_normal, cpu_below:N, battery_above:N, memory_below:N (N is a percent)."),
                     "timeoutSeconds": property("number", "Maximum seconds to block for, capped at 600.")
                 ],
                 required: ["condition"]
