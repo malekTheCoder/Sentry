@@ -344,7 +344,7 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         XCTAssertLessThanOrEqual(withBoth.overall, withFinding.overall)
     }
 
-    func testScoreClampsAtZeroRatherThanGoingNegative() {
+    func testSubscoreClampsAtZeroRatherThanGoingNegative() {
         let insights = (0..<10).map { i in
             ProtectionInsight(
                 id: "critical-\(i)", title: "t", summary: "", detail: "", recommendation: "",
@@ -353,7 +353,67 @@ final class ProtectionInsightsEngineTests: XCTestCase {
             )
         }
         let score = ProtectionScore.compute(insights: insights, context: InsightContext(now: now))
-        XCTAssertEqual(score.overall, 0)
+        // 250 points of deductions against a 100-point half: the half floors
+        // at 0 rather than going negative.
+        XCTAssertEqual(score.securitySubscore, 0)
+        XCTAssertEqual(score.weakerSubscore, 0)
+        XCTAssertEqual(score.weakerDomain, .security)
+        // The overall is the average of the halves, so a hardware side with
+        // nothing wrong holds it at 50 — the *verdict* is what carries the
+        // severity here, and it reads off the weaker half, which is 0.
+        XCTAssertEqual(score.overall, 50)
+    }
+
+    /// The bug this model replaced: `overall` was `100 - every finding`,
+    /// which could land below both halves it was printed above.
+    func testOverallNeverFallsBelowEitherHalf() {
+        let insights = [
+            ProtectionInsight(
+                id: "storage", title: "t", summary: "", detail: "", recommendation: "",
+                category: .storage, severity: .warning, evidence: ["e"],
+                scoreImpact: InsightWeight.majorHardware
+            ),
+            ProtectionInsight(
+                id: "memory", title: "t", summary: "", detail: "", recommendation: "",
+                category: .memory, severity: .advice, evidence: ["e"],
+                scoreImpact: InsightWeight.minorHardware
+            ),
+            ProtectionInsight(
+                id: "firewall", title: "t", summary: "", detail: "", recommendation: "",
+                category: .security, severity: .warning, evidence: ["e"],
+                scoreImpact: InsightWeight.majorSecurity
+            )
+        ]
+        let score = ProtectionScore.compute(insights: insights, context: InsightContext(now: now))
+        XCTAssertEqual(score.hardwareSubscore, 85)   // 100 - 12 - 3
+        XCTAssertEqual(score.securitySubscore, 85)   // 100 - 15
+        XCTAssertEqual(score.overall, 85)
+        XCTAssertGreaterThanOrEqual(score.overall, min(score.hardwareSubscore, score.securitySubscore))
+        XCTAssertLessThanOrEqual(score.overall, max(score.hardwareSubscore, score.securitySubscore))
+    }
+
+    /// A clean hardware half must not be able to average a critical security
+    /// finding into a reassuring verdict.
+    func testWeakerHalfDrivesTheVerdictNotTheAverage() {
+        let fileVaultOff = ProtectionInsight(
+            id: "filevault", title: "t", summary: "", detail: "", recommendation: "",
+            category: .security, severity: .critical, evidence: ["e"],
+            scoreImpact: InsightWeight.criticalSecurity
+        )
+        let score = ProtectionScore.compute(insights: [fileVaultOff], context: InsightContext(now: now))
+        XCTAssertEqual(score.hardwareSubscore, 100)
+        XCTAssertEqual(score.securitySubscore, 75)
+        // The average alone would read 88 and band as "well protected".
+        XCTAssertEqual(score.overall, 88)
+        // The verdict reads off 75, which bands as "needs attention".
+        XCTAssertEqual(score.weakerSubscore, 75)
+        XCTAssertEqual(score.weakerDomain, .security)
+    }
+
+    func testWeakerDomainBreaksTiesTowardSecurity() {
+        let score = ProtectionScore.compute(insights: [], context: InsightContext(now: now))
+        XCTAssertEqual(score.hardwareSubscore, score.securitySubscore)
+        XCTAssertEqual(score.weakerDomain, .security)
     }
 
     func testGoodFindingsNeverRaiseTheScoreAboveMaximum() {

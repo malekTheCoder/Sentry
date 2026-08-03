@@ -17,10 +17,19 @@ struct ProtectionScoreFigure: View {
 
     let score: Int
     let caption: String
+    /// The weaker half's score, which bands the caption and its colour. The
+    /// numeral and the verdict deliberately come from different numbers —
+    /// see `ProtectionScore`'s type doc.
+    let bandScore: Int
+    /// The half the verdict came from ("Security & Privacy"), or `nil` when
+    /// nothing needs attention and naming a half would invent a problem.
+    var qualifier: String?
 
+    /// Banded on `bandScore` — the weaker half — not on the averaged numeral
+    /// beside it, so the colour agrees with the word it tints.
     private var tint: Color {
-        if score >= 85 { return palette.success }
-        if score >= 60 { return palette.warning }
+        if bandScore >= 85 { return palette.success }
+        if bandScore >= 60 { return palette.warning }
         return palette.danger
     }
 
@@ -31,13 +40,23 @@ struct ProtectionScoreFigure: View {
                 .monospacedDigit()
                 .tracking(-1.5)
                 .foregroundStyle(palette.textPrimary)
-            Text(caption)
-                .font(palette.font(size: 13, weight: .medium))
-                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(caption)
+                    .font(palette.font(size: 13, weight: .medium))
+                    .foregroundStyle(tint)
+                if let qualifier {
+                    Text(qualifier)
+                        .font(palette.font(size: 11))
+                        .foregroundStyle(palette.textTertiary)
+                }
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Protection score")
-        .accessibilityValue("\(score) out of 100, \(caption)")
+        .accessibilityValue(
+            qualifier.map { "\(score) out of 100, \(caption) — \($0)" }
+                ?? "\(score) out of 100, \(caption)"
+        )
     }
 }
 
@@ -64,7 +83,12 @@ struct ProtectionScoreCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacingRow) {
-            ProtectionScoreFigure(score: score.overall, caption: bandCaption)
+            ProtectionScoreFigure(
+                score: score.overall,
+                caption: bandCaption,
+                bandScore: score.weakerSubscore,
+                qualifier: weakerDomainCaption
+            )
             title
             VStack(alignment: .leading, spacing: palette.spacingRow) {
                 subscoreRow(
@@ -89,17 +113,29 @@ struct ProtectionScoreCard: View {
             Text("Protection Score")
                 .font(palette.font(size: 13, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
-            Text("100 minus the weight of everything Sentry found. Nothing adds points back.")
+            Text("The average of the two halves below. Each starts at 100 and loses the weight of its own findings; the verdict follows whichever half is weaker.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    /// Banded on the **weaker half**, not on `score.overall`. A score of 88
+    /// made of 100 hardware and 75 security is not "well protected" — it has
+    /// an unencrypted disk in it. See `ProtectionScore`'s type doc.
     private var bandCaption: String {
-        if score.overall >= 85 { return String(localized: "well protected") }
-        if score.overall >= 60 { return String(localized: "needs attention") }
+        if score.weakerSubscore >= 85 { return String(localized: "well protected") }
+        if score.weakerSubscore >= 60 { return String(localized: "needs attention") }
         return String(localized: "act on this")
+    }
+
+    /// Names the half the verdict came from, so the number and the word
+    /// beside it don't have to be reconciled by the reader. Suppressed when
+    /// both halves are already clean — "well protected · Security & Privacy"
+    /// would imply a problem where there is none.
+    private var weakerDomainCaption: String? {
+        guard score.weakerSubscore < 85 else { return nil }
+        return score.weakerDomain.displayName
     }
 
     /// Label, a thin horizontal bar, value — the handoff's subscore idiom.

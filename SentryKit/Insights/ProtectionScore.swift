@@ -45,8 +45,30 @@ public enum InsightWeight {
 /// A deterministic, explainable 0–100 rating of how well this Mac is
 /// protected, plus the same rating per category.
 ///
-/// **The whole model in one sentence:** start at 100, subtract every firing
-/// insight's `scoreImpact`, clamp at 0.
+/// **The whole model in two sentences:** each half — hardware and security —
+/// starts at 100 and subtracts every firing insight in its own domain. The
+/// overall score is the average of those two halves, and the *verdict* beside
+/// it comes from whichever half is weaker.
+///
+/// **Why the overall is not itself a subtraction.** It used to be: `100 minus
+/// every finding, globally`. That is arithmetically consistent but produces a
+/// headline number *below both of its own halves* — a Mac scoring 72 hardware
+/// and 85 security showed an overall of 57, which no aggregation a reader can
+/// imagine (average, minimum, weighted) could yield. The same deductions were
+/// being applied three times over: once per category, again per domain, and
+/// again globally, with every level restarting at 100. Averaging the halves
+/// keeps subtraction where it belongs — *within* a domain, where one critical
+/// finding still guts that half — while guaranteeing the headline always sits
+/// between the two numbers printed directly beneath it.
+///
+/// **Why the verdict follows the weaker half instead of the average.**
+/// Protection does not average: a pristine battery does not compensate for an
+/// unencrypted disk, because they are not the same currency. Left to the
+/// average alone, FileVault off (−25) on an otherwise clean Mac reads 88 and
+/// would print "well protected" — the app reassuring someone at the exact
+/// moment it should not. Deriving the band from `weakerSubscore` means the
+/// score can never claim to be in better shape than its worst side. The
+/// number keeps all the information; the words carry the severity.
 ///
 /// Consequences of that choice, all deliberate:
 /// - **Monotonic.** Adding a finding can never raise the score. A user who
@@ -143,6 +165,20 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
         categories.filter { !$0.hasData }.map(\.category)
     }
 
+    /// The half in worse shape — the one the UI names and takes its verdict
+    /// from. Ties resolve to `.security`: when both halves are equal there is
+    /// no "worse" one to point at, and of the two, security is the side whose
+    /// findings a user should look at first.
+    public var weakerDomain: InsightDomain {
+        securitySubscore <= hardwareSubscore ? .security : .hardware
+    }
+
+    /// The weaker half's score. The UI bands *this*, not `overall` — see the
+    /// type doc on why the verdict does not follow the average.
+    public var weakerSubscore: Int {
+        Swift.min(hardwareSubscore, securitySubscore)
+    }
+
     public init(
         overall: Int,
         categories: [CategoryScore],
@@ -206,14 +242,20 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
             return clamp(maximum - lost)
         }
 
-        let totalLost = insights.reduce(0) { $0 + $1.scoreImpact }
+        let hardware = subscore(for: .hardware)
+        let security = subscore(for: .security)
+
+        // The average of the two halves, rounded half-up so a 72/85 split
+        // reads 79 rather than silently truncating to 78. Never below either
+        // half, never above either half — see the type doc.
+        let overall = clamp((hardware + security + 1) / 2)
 
         return ProtectionScore(
-            overall: clamp(maximum - totalLost),
+            overall: overall,
             categories: categories,
             deductions: deductions,
-            hardwareSubscore: subscore(for: .hardware),
-            securitySubscore: subscore(for: .security),
+            hardwareSubscore: hardware,
+            securitySubscore: security,
             isProvisional: !context.hasEnoughHistory,
             historyCoverageDays: context.historyCoverageDays
         )

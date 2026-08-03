@@ -39,6 +39,25 @@ final class InsightsViewModel: ObservableObject {
 
     @Published private(set) var isRefreshing = false
 
+    /// How old a report may be before simply opening the tab recomputes it.
+    ///
+    /// Fifteen minutes is chosen against what the findings actually measure,
+    /// not as a round number: the security half reads settings a user changes
+    /// deliberately (and would then re-open Insights to check), while the
+    /// hardware half moves over days. Anything shorter re-runs the posture
+    /// probes for no new information; anything much longer and a user who
+    /// just switched the firewall on comes back to a report that still says
+    /// it's off.
+    static let stalenessThreshold: TimeInterval = 15 * 60
+
+    /// `true` when there is no report yet, or the one we have is older than
+    /// `stalenessThreshold`. Drives the view's `.task`; the Refresh button
+    /// stays for a deliberate re-check that ignores this entirely.
+    var reportIsStale: Bool {
+        guard let generatedAt = report?.generatedAt else { return true }
+        return Date().timeIntervalSince(generatedAt) >= Self.stalenessThreshold
+    }
+
     @Published private(set) var isProUnlocked: Bool
     @Published private(set) var unlockSource: ProUnlockSource
 

@@ -51,11 +51,13 @@ struct InsightsView: View {
         }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
-        // The one automatic evaluation. Everything after this is
-        // user-initiated — see `InsightsViewModel`'s note on why there is
-        // deliberately no timer here.
+        // Staleness-driven, not timer-driven — see `InsightsViewModel`'s note
+        // on why there is deliberately no timer. Recomputing when someone
+        // actually opens the tab costs nothing while the window is closed,
+        // and stops the tab from sitting on a report that says "checked 3h
+        // ago" for as long as the app happens to stay running.
         .task {
-            if viewModel.report == nil {
+            if viewModel.reportIsStale {
                 viewModel.refresh()
             }
         }
