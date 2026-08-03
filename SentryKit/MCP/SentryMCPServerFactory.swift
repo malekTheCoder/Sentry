@@ -11,8 +11,28 @@ import MCP
 /// model.
 public actor MCPClientIdentity {
     public private(set) var name: String = "Unknown MCP Client"
+
+    /// Stable per-connection session ID (agent-session attribution pass):
+    /// one `MCPClientIdentity` exists per server instance — one per spawned
+    /// `SentryMCP` process for the stdio transport, one per
+    /// `MCPRemoteServer` start for the remote transport — so a UUID minted
+    /// at construction is exactly "stable for the lifetime of the
+    /// connection/process," which is what `agent_activity_log.session_id`
+    /// wants. Reused rather than re-derived anywhere else; every tool call
+    /// carries it via `wireName`.
+    public let sessionID = UUID().uuidString
+
     public init() {}
     public func set(_ name: String) { self.name = name }
+
+    /// The composite `clientName` string every XPC call should send —
+    /// carries `sessionID` alongside the display name without widening
+    /// `SentryXPCServiceProtocol`'s 20 method signatures. See
+    /// `AgentSessionIdentity` (SentryKit/Services/AgentSessionIdentity.swift)
+    /// for the format and the trust model.
+    public var wireName: String {
+        AgentSessionIdentity.encode(clientName: name, sessionID: sessionID)
+    }
 }
 
 /// Builds one fully-wired `Server` (tools, resources, subscriptions) — the
@@ -45,7 +65,10 @@ public enum SentryMCPServerFactory {
         }
 
         await server.withMethodHandler(ReadResource.self) { params in
-            let clientName = await clientIdentity.name
+            // `wireName`, not `name`: the composite string carries the
+            // per-connection session ID to `MCPXPCService`'s durable
+            // activity log — see `MCPClientIdentity.wireName`.
+            let clientName = await clientIdentity.wireName
             return try await ResourceCatalog.read(uri: params.uri, clientName: clientName, xpcClient: xpcClient)
         }
 
@@ -72,7 +95,8 @@ public enum SentryMCPServerFactory {
         }
 
         await server.withMethodHandler(CallTool.self) { params in
-            let clientName = await clientIdentity.name
+            // Same `wireName` reasoning as the ReadResource handler above.
+            let clientName = await clientIdentity.wireName
             return await MCPToolCatalog.call(
                 name: params.name,
                 arguments: params.arguments ?? [:],

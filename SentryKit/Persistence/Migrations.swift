@@ -114,6 +114,36 @@ public enum Migrations {
             try db.create(index: "idx_daily_metric_day", on: "sample_daily", columns: ["metric", "day_start"])
         }
 
+        // Agent-session attribution pass: v3's three-column log can say *that*
+        // a tool ran but not which connection ran it, how long it took, or
+        // whether it actually executed — which is exactly what
+        // `AgentSessionReport` (SentryKit/Services/AgentSessionReport.swift)
+        // needs to correlate a session against battery/thermal history.
+        //   - `session_id`: per-connection UUID (see `MCPClientIdentity` /
+        //     `AgentSessionIdentity`). NOT NULL with '' default so v3-era rows
+        //     read back as "unknown session" rather than tripping decode.
+        //   - `duration_ms`: wall-clock authorize→reply time; NULL for rows
+        //     written by the pre-v5 overload, which never measured it.
+        //   - `args_summary`: a SHORT human-readable summary (same string the
+        //     confirmation dialog shows, sanitized/capped) — never raw
+        //     arguments; NULL for pre-v5 rows.
+        //   - `outcome`: one of succeeded/denied/rate_limited/errored (see
+        //     `AgentActivityOutcome`). Pre-v5 rows were only written for
+        //     executed calls, so 'succeeded' is the honest backfill default.
+        // `ALTER TABLE ADD COLUMN`, never editing v3, per this file's rule.
+        // The `(session_id, ts)` index serves `AgentSessionReport`'s
+        // per-session queries the same way v4's indexes serve the rollup
+        // tiers: leading column matches the WHERE shape.
+        migrator.registerMigration("v5AgentActivitySessionColumns") { db in
+            try db.alter(table: "agent_activity_log") { t in
+                t.add(column: "session_id", .text).notNull().defaults(to: "")
+                t.add(column: "duration_ms", .integer)
+                t.add(column: "args_summary", .text)
+                t.add(column: "outcome", .text).notNull().defaults(to: "succeeded")
+            }
+            try db.create(index: "idx_agent_activity_session", on: "agent_activity_log", columns: ["session_id", "ts"])
+        }
+
         return migrator
     }
 }
