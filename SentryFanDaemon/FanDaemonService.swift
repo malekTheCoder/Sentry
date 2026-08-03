@@ -7,7 +7,7 @@ import os
 /// **Everything this type does that could be dangerous is decided
 /// elsewhere.** The clamp is `FanDaemonClamp.resolve`; the accept/reject
 /// verdict is `FanDaemonPeerGate.decide`; when and what to revert is
-/// `FanDaemonFailSafe`. All three are pure, live in `MacStatKit/FanDaemon/`,
+/// `FanDaemonFailSafe`. All three are pure, live in `SentryKit/FanDaemon/`,
 /// and are unit-tested exhaustively. What is left here is the wiring: hold
 /// the state, call the pure function, do what it said, log it. That is
 /// deliberate — the wiring is the part that cannot be tested on a machine

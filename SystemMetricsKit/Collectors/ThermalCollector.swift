@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 #if canImport(Darwin)
 import Darwin
 #endif

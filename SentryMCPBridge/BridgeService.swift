@@ -3,7 +3,7 @@ import os
 
 /// The bridge's whole implementation: one endpoint, two gates, an idle timer.
 ///
-/// **Read `MacStatKit/MCPBridge/MCPBridgeContract.swift` first.** It carries
+/// **Read `SentryKit/MCPBridge/MCPBridgeContract.swift` first.** It carries
 /// the measurement that forced this design (only the process launchd started
 /// as the job may vend the job's Mach service), the reason this is a
 /// rendezvous broker rather than a relay, and the list of what has never been
@@ -132,7 +132,7 @@ final class BridgeService: NSObject, MCPBridgeProtocol, NSXPCListenerDelegate {
             // Invalidation, not interruption, is what clears the table. An
             // interruption is recoverable and Sentry re-publishes on its own
             // (see `MCPEndpointPublisher`); dropping the endpoint on one would
-            // create a window where a `macstat` call is told Sentry isn't
+            // create a window where a `sentryctl` call is told Sentry isn't
             // running while Sentry is very much running and reconnecting.
             connection?.invalidationHandler = { [weak self] in
                 self?.clearPublishedEndpoint(reason: "Sentry's connection to the bridge was invalidated")

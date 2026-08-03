@@ -7,13 +7,13 @@ them fail *silently*. Read the whole page once before the first release.
 
 Related code:
 
-- `MacStat/App/UpdateController.swift` — the updater, and its refusal to
+- `Sentry/App/UpdateController.swift` — the updater, and its refusal to
   exist when the configuration can't work.
-- `MacStatKit/Updates/UpdateFeedConfiguration.swift` — the validation, as
-  pure logic (tested in `MacStatTests/UpdateFeedConfigurationTests.swift`).
-- `project.yml`, `MacStat` target → `info.properties` — where `SUFeedURL`
+- `SentryKit/Updates/UpdateFeedConfiguration.swift` — the validation, as
+  pure logic (tested in `SentryTests/UpdateFeedConfigurationTests.swift`).
+- `project.yml`, `Sentry` target → `info.properties` — where `SUFeedURL`
   and `SUPublicEDKey` actually live. The checked-in
-  `MacStat/Resources/Info.plist` is *generated* by `xcodegen generate`;
+  `Sentry/Resources/Info.plist` is *generated* by `xcodegen generate`;
   editing it directly does not survive.
 
 ---
@@ -72,7 +72,7 @@ export DD="$HOME/Library/Developer/Sentry-Sparkle-DD"
 It prints the **public** key and stores the **private** key in your login
 keychain as `Private key for signing Sparkle updates`.
 
-1. Paste the printed public key into `project.yml` → `MacStat` →
+1. Paste the printed public key into `project.yml` → `Sentry` →
    `info.properties` → `SUPublicEDKey`, replacing
    `REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY`.
 2. Update `UpdateFeedConfiguration.placeholderPublicKey` **only** if you
@@ -117,7 +117,7 @@ Correct order:
 ```sh
 # 0. Bump the version. This is the ONLY place versions are set — Info.plist
 #    substitutes $(MARKETING_VERSION)/$(CURRENT_PROJECT_VERSION) from here.
-#    project.yml → MacStat → settings → MARKETING_VERSION / CURRENT_PROJECT_VERSION
+#    project.yml → Sentry → settings → MARKETING_VERSION / CURRENT_PROJECT_VERSION
 /opt/homebrew/bin/xcodegen generate
 
 # 1. Build and sign the app with Developer ID, hardened runtime on.

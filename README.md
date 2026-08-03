@@ -27,9 +27,9 @@ was designed for has no CloudKit conformer, and the local/TLS-PSK pair
 already covers the actual need without an Apple-hosted copy of the data.
 
 **For agents and scripts** — an MCP server in two transports (stdio via
-`MacStatMCP` for Claude Desktop/Code/Cursor; optional LAN HTTP gated by an
+`SentryMCP` for Claude Desktop/Code/Cursor; optional LAN HTTP gated by an
 API key), with per-tool toggles, a rate limit, and confirmation gates on
-write tools, all in Settings ▸ AI Access; and a `macstat` CLI (`check`,
+write tools, all in Settings ▸ AI Access; and a `sentryctl` CLI (`check`,
 `wait`, `status`, `session-report`, streaming `watch`, `statusline` for
 tmux/Starship prompts). Copy-pasteable configs live in
 [`docs/integrations/`](docs/integrations/README.md).
@@ -43,13 +43,13 @@ deliberately not built — it needs accounts only the owner can create.
 ## Building
 
 The Xcode project is generated from [`project.yml`](project.yml) via
-[XcodeGen](https://github.com/yonaskolb/XcodeGen) — `MacStat.xcodeproj` itself
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) — `Sentry.xcodeproj` itself
 is not committed, so text diffs stay reviewable.
 
 ```sh
 brew install xcodegen   # once
 xcodegen generate       # after cloning, or after editing project.yml
-open MacStat.xcodeproj
+open Sentry.xcodeproj
 ```
 
 Or build, install to /Applications, and (re)launch in one step:
@@ -65,23 +65,23 @@ Derived data should also live outside the repo; `run.sh` handles this and
 resolves `DEVELOPER_DIR` itself (preferring Xcode-beta if installed).
 
 The app's product/display name is **Sentry**; the code, targets, and
-bundle identifiers keep the MacStat name.
+bundle identifiers keep the Sentry name.
 
-Targets: `MacStat` (menu bar app, builds `Sentry.app`), `MacStatKit` (shared
+Targets: `Sentry` (menu bar app, builds `Sentry.app`), `SentryKit` (shared
 models/services; separate macOS, iOS, and watchOS variants), `SystemMetricsKit`
-(macOS collectors), `MacStatMobile` (iOS companion), `MacStatWatch` (watchOS
-app) and `MacStatWatchWidgetExtension` (complication),
-`MacStatWidgetExtension` (iOS home/lock-screen widget),
-`MacStatWidgetExtension_macOS` (desktop widget, fed live by the menu bar
-app), `MacStatMCP` (MCP stdio server), `MacStatCLI` (builds `macstat`),
-`SentryFanDaemon` (root fan helper), `MacStatTests`.
+(macOS collectors), `SentryMobile` (iOS companion), `SentryWatch` (watchOS
+app) and `SentryWatchWidgetExtension` (complication),
+`SentryWidgetExtension` (iOS home/lock-screen widget),
+`SentryWidgetExtension_macOS` (desktop widget, fed live by the menu bar
+app), `SentryMCP` (MCP stdio server), `SentryCLI` (builds `sentryctl`),
+`SentryFanDaemon` (root fan helper), `SentryTests`.
 
 ## Using the CLI and MCP
 
-`MacStatMCP` and `macstat` are copied into `Sentry.app/Contents/MacOS/` —
-they link `MacStatKit.framework` and can only resolve it from inside the
+`SentryMCP` and `sentryctl` are copied into `Sentry.app/Contents/MacOS/` —
+they link `SentryKit.framework` and can only resolve it from inside the
 bundle, so that is where to invoke them from:
-`/Applications/Sentry.app/Contents/MacOS/macstat check`.
+`/Applications/Sentry.app/Contents/MacOS/sentryctl check`.
 
 Both reach the app over an XPC Mach service. On current `main` that service
 is not yet registered with launchd — the CLI fails with an error saying so —
@@ -131,7 +131,7 @@ a quality decision for a human, not a build step).
 Sentry is distributed outside the Mac App Store, as a notarized Developer ID
 build. That is forced, not chosen: the app reads `libIOReport.dylib` and the
 private `IOHIDEventSystemClient` API, neither of which exists inside the App
-Sandbox that the App Store requires. `MacStat/MacStat.entitlements` says so in
+Sandbox that the App Store requires. `Sentry/Sentry.entitlements` says so in
 its header, and is one key long — the reasoning for everything it *doesn't*
 claim is written there too.
 

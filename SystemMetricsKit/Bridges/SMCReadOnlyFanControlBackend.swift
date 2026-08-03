@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 
 /// The real-hardware `FanControlBackend` for macOS: capability detection
 /// and live RPM over the already-shipped, read-only `SMCFanBridge` — and a

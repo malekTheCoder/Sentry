@@ -1,5 +1,5 @@
 import Foundation
-import MacStatKit
+import SentryKit
 import os
 
 // MARK: - Command runner
@@ -22,7 +22,7 @@ public protocol PostureCommandRunning: Sendable {
 /// Real subprocess execution.
 ///
 /// **This app is unsandboxed by design** (`APP_SANDBOX: NO` in
-/// `project.yml`, the same posture that lets `MacStatMCP` and the XPC
+/// `project.yml`, the same posture that lets `SentryMCP` and the XPC
 /// service work), so spawning `/usr/bin/fdesetup` is a legitimate,
 /// entitlement-free operation here. Nothing below asks for elevated
 /// privileges, prompts for a password, or touches the network.
@@ -37,7 +37,7 @@ public protocol PostureCommandRunning: Sendable {
 public struct SubprocessPostureCommandRunner: PostureCommandRunning, Sendable {
 
     private static let logger = Logger(
-        subsystem: "dev.malekswilam.macstat.systemmetricskit",
+        subsystem: "dev.malekswilam.sentry.systemmetricskit",
         category: "SecurityPosture"
     )
 
@@ -178,7 +178,7 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
     /// background sweep nobody is waiting on.
     public static let defaultCommandTimeout: TimeInterval = 2.0
 
-    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.securityposture", qos: .utility)
+    private let queue = DispatchQueue(label: "dev.malekswilam.sentry.securityposture", qos: .utility)
     private let runner: PostureCommandRunning
     private let cacheTTL: TimeInterval
     private let commandTimeout: TimeInterval

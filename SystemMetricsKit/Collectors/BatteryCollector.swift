@@ -1,6 +1,6 @@
 import Foundation
 import IOKit.ps
-import MacStatKit
+import SentryKit
 
 /// Reads battery state from IOPowerSources (basics) plus the AppleSmartBattery
 /// IORegistry entry (wattage, adapter, health, charging diagnostics).

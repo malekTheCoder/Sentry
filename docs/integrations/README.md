@@ -1,7 +1,7 @@
-# Integrating `macstat` into things you already run
+# Integrating `sentryctl` into things you already run
 
-`macstat` is the shell-facing half of Sentry. It talks to the running
-`Sentry.app` over the same local XPC connection `MacStatMCP` uses, so it
+`sentryctl` is the shell-facing half of Sentry. It talks to the running
+`Sentry.app` over the same local XPC connection `SentryMCP` uses, so it
 adds no new data path, no new permission model, and no second sampling loop
 — just a different transport with ergonomics aimed at a script instead of
 an LLM tool call (plan §21.2).
@@ -21,23 +21,23 @@ tool it is being embedded in.
 ### 1. The binary lives inside the app bundle
 
 ```bash
-/Applications/Sentry.app/Contents/MacOS/macstat --help
+/Applications/Sentry.app/Contents/MacOS/sentryctl --help
 ```
 
 It is not on `$PATH` by default and it cannot simply be copied elsewhere:
-it links `MacStatKit.framework` through `@executable_path/../Frameworks`, so
+it links `SentryKit.framework` through `@executable_path/../Frameworks`, so
 a loose copy dies in dyld before `main` runs. Symlink it instead:
 
 ```bash
-ln -s /Applications/Sentry.app/Contents/MacOS/macstat /usr/local/bin/macstat
+ln -s /Applications/Sentry.app/Contents/MacOS/sentryctl /usr/local/bin/sentryctl
 ```
 
 A symlink is fine — dyld resolves `@executable_path` against the *real* path
-behind the link. Every snippet in these pages assumes `macstat` resolves.
+behind the link. Every snippet in these pages assumes `sentryctl` resolves.
 
 ### 2. Command-line access has to be set up, once
 
-`macstat` and the stdio MCP server do not talk to `Sentry.app` directly.
+`sentryctl` and the stdio MCP server do not talk to `Sentry.app` directly.
 They go through a small background item — a LaunchAgent macOS starts on
 demand — that tells them where the running app is. It is not registered
 until you ask for it:
@@ -47,7 +47,7 @@ until you ask for it:
 Until you do, every snippet on these pages fails with a message that says so:
 
 ```
-macstat: Couldn't reach Sentry: its command-line bridge isn't available
+sentry: Couldn't reach Sentry: its command-line bridge isn't available
 (Couldn’t communicate with a helper application.).
 ...
   1. In Sentry, open Settings ▸ AI Access and choose "Set Up Command-Line Access".
@@ -60,13 +60,13 @@ surprising thing about this and the reason the message spells it out.
 
 ### 3. Sentry has to be running, with the read tool enabled
 
-`macstat` reads nothing from the hardware itself. With the bridge set up but
+`sentryctl` reads nothing from the hardware itself. With the bridge set up but
 `Sentry.app` not running, you get a non-zero exit and a message that says
 *that* specifically — the bridge answered, so the tool knows the app is the
 missing piece:
 
 ```
-macstat: Couldn't reach Sentry: Sentry's command-line bridge is running, but
+sentry: Couldn't reach Sentry: Sentry's command-line bridge is running, but
 Sentry hasn't connected to it. Sentry is probably not running.
 ```
 
@@ -86,7 +86,7 @@ data on a stock build. That was true, and it has been fixed.** The history is
 worth keeping because the failure mode was so misleading.
 
 `AppDelegate.startMCPListener()` created an `NSXPCListener(machServiceName:
-"dev.malekswilam.macstat.xpc")`, and nothing in the project had ever
+"dev.malekswilam.sentry.xpc")`, and nothing in the project had ever
 registered that name with `launchd` — no `MachServices` declaration, no
 registered helper carrying one. `NSXPCListener` reports a failed check-in
 nowhere at all, so the app looked completely healthy while every client of
@@ -99,7 +99,7 @@ connection to the running app. The obvious repair — declare the name and
 keep the app's own listener — does not work, and was measured rather than
 assumed: only the process `launchd` itself started as the job may vend that
 job's Mach service, and Sentry is started by you, not by launchd. See
-`MacStatKit/MCPBridge/MCPBridgeContract.swift` for the experiment.
+`SentryKit/MCPBridge/MCPBridgeContract.swift` for the experiment.
 
 ### What is still unverified, stated plainly
 
@@ -109,7 +109,7 @@ certificate, registration **cannot** succeed. So on such a build:
 
 * **Set Up Command-Line Access reports the refusal verbatim** and the
   section stays in its "not set up" state. It does not pretend.
-* `macstat` and the stdio MCP server fail with the message above, which
+* `sentryctl` and the stdio MCP server fail with the message above, which
   names that as the likely cause.
 * Everything else in Sentry is unaffected, **including MCP over HTTP**
   (Settings → AI Access → Remote Access), which uses a different transport

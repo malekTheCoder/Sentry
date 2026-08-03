@@ -4,13 +4,13 @@ import os
 // MARK: - SentryFanDaemon — the privileged half of fan control
 //
 // This process runs as **root**, launched by launchd from
-// `Sentry.app/Contents/Library/LaunchDaemons/dev.malekswilam.macstat
+// `Sentry.app/Contents/Library/LaunchDaemons/dev.malekswilam.sentry
 // .fandaemon.plist` after the user explicitly installs it from
 // Settings ▸ Fans. It exists because writing an SMC fan key requires uid 0
 // on Apple Silicon and Sentry itself runs unprivileged
 // (`docs/fan-control-spike.md`).
 //
-// **Read `MacStatKit/FanDaemon/FanDaemonContract.swift` first.** It carries
+// **Read `SentryKit/FanDaemon/FanDaemonContract.swift` first.** It carries
 // the threat model, the "what is unverified" list, and the reasoning behind
 // the deliberately tiny command vocabulary.
 //

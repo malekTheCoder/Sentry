@@ -1,7 +1,7 @@
 import CoreWLAN
 import Darwin
 import Foundation
-import MacStatKit
+import SentryKit
 import SystemConfiguration
 
 /// Reads per-interface byte counters via `getifaddrs`, converts them to
@@ -154,7 +154,7 @@ public final class NetworkCollector: Collector {
     }
 
     private static func primaryInterfaceName() -> String? {
-        guard let store = SCDynamicStoreCreate(nil, "MacStat" as CFString, nil, nil) else { return nil }
+        guard let store = SCDynamicStoreCreate(nil, "Sentry" as CFString, nil, nil) else { return nil }
         guard let global = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
         else { return nil }
         return global["PrimaryInterface"] as? String

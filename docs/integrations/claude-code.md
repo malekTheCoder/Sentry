@@ -2,7 +2,7 @@
 
 Claude Code's status line is an external command, not a field list: it
 launches whatever `statusLine.command` names, pipes the session JSON to it
-on stdin, and renders that command's stdout. That makes `macstat statusline`
+on stdin, and renders that command's stdout. That makes `sentryctl statusline`
 a drop-in ingredient — it needs to know nothing about Claude Code, and
 Claude Code needs to know nothing about Sentry.
 
@@ -19,12 +19,12 @@ This page is only about the status line.
 {
   "statusLine": {
     "type": "command",
-    "command": "macstat statusline --format compact"
+    "command": "sentryctl statusline --format compact"
   }
 }
 ```
 
-That ignores the session JSON on stdin entirely, which is fine — `macstat`
+That ignores the session JSON on stdin entirely, which is fine — `sentryctl`
 reads nothing from stdin and exits promptly whether anything is piped in or
 not.
 
@@ -44,9 +44,9 @@ model=$(printf '%s' "$session" | /usr/bin/python3 -c \
 dir=$(printf '%s' "$session" | /usr/bin/python3 -c \
   'import json,sys; print(json.load(sys.stdin).get("workspace",{}).get("current_dir",""))' 2>/dev/null)
 
-# `|| true` matters: macstat exits non-zero when Sentry is unreachable, and
+# `|| true` matters: sentry exits non-zero when Sentry is unreachable, and
 # a status line script that fails takes the whole status line down with it.
-mac=$(macstat statusline --format compact 2>/dev/null) || true
+mac=$(sentryctl statusline --format compact 2>/dev/null) || true
 
 printf '%s  %s  %s' "$model" "$(basename "$dir")" "$mac"
 ```
@@ -60,11 +60,11 @@ printf '%s  %s  %s' "$model" "$(basename "$dir")" "$mac"
 }
 ```
 
-The `|| true` is the load-bearing line. `macstat statusline` deliberately
+The `|| true` is the load-bearing line. `sentryctl statusline` deliberately
 exits non-zero when it has nothing to show — `1` when Sentry is not running,
 `124` when it timed out with no cached reading — because that is how a tmux
 or Starship config distinguishes "briefly busy" from "gone." A shell script
-under `set -e`, or one whose last command is `macstat`, propagates that and
+under `set -e`, or one whose last command is `sentryctl`, propagates that and
 Claude Code renders an empty status line. Swallow it deliberately, and
 prefer the swallow to be visible in the script rather than implied.
 
