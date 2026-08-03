@@ -11,7 +11,7 @@ import MacStatKit
 /// **Why this exists.** Same constraint as `MacStat/Settings/Panes/SyncPane.swift`
 /// on the Mac side and `StatsTransport.swift`'s own doc comment: there is no
 /// enrolled Apple Developer Program account for this project, so there is no
-/// `iCloud.com.sentry.macstat` container, no `CKContainer`, and no real
+/// `iCloud.dev.malekswilam.macstat` container, no `CKContainer`, and no real
 /// `CloudKitTransport` conformer anywhere in the tree. The iPhone app still
 /// needs *something* behind `StatsTransport` to build its screens against —
 /// Dashboard/History/Alerts all need a Mac's worth of `SystemSnapshot` data

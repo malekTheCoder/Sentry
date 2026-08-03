@@ -14,7 +14,7 @@ import Foundation
 /// Developer Program account for this project (`project.yml`:
 /// `CODE_SIGNING_REQUIRED: NO`, `DEVELOPMENT_TEAM: ""`), so there is no
 /// provisioning profile, no push entitlement, and no way to stand up the
-/// `iCloud.com.sentry.macstat` container. A `CloudKitTransport` conforming
+/// `iCloud.dev.malekswilam.macstat` container. A `CloudKitTransport` conforming
 /// to this protocol is separate, later work gated on enrollment. What lives
 /// here is the seam itself plus `SyncService` (see `SyncService.swift`), which
 /// is written and fully tested today against a fake conformer.

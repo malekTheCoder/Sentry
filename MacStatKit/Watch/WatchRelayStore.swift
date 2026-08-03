@@ -27,9 +27,9 @@ public enum WatchRelayStore {
     /// same string names on the iPhone (App Group containers are scoped
     /// per-device), so there is no cross-device leakage risk in sharing the
     /// literal.
-    public static let appGroupIdentifier = "group.com.sentry.macstat"
+    public static let appGroupIdentifier = "group.dev.malekswilam.macstat"
 
-    private static let storageKey = "com.sentry.macstat.watchRelaySnapshot.v1"
+    private static let storageKey = "dev.malekswilam.macstat.watchRelaySnapshot.v1"
 
     /// `nil` when the suite isn't reachable (App Group entitlement missing
     /// or misprovisioned for this build/signing configuration). Every other

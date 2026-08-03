@@ -89,8 +89,8 @@ public final class LocalSyncServer: @unchecked Sendable {
     /// iPads, reconnect churn) and far below anything that hurts.
     private static let maxConcurrentConnections = 16
 
-    private let queue = DispatchQueue(label: "com.sentry.macstat.localsyncserver")
-    private let log = Logger(subsystem: "com.sentry.macstat", category: "LocalSyncServer")
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.localsyncserver")
+    private let log = Logger(subsystem: "dev.malekswilam.macstat", category: "LocalSyncServer")
 
     private var listener: NWListener?
 

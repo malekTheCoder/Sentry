@@ -59,8 +59,8 @@ public actor LocalSyncClient: StatsTransport {
     /// Must match `LocalSyncServer.serviceType` exactly.
     public static let serviceType = "_macstat._tcp"
 
-    private let log = Logger(subsystem: "com.sentry.macstat.mobile", category: "LocalSyncClient")
-    private let queue = DispatchQueue(label: "com.sentry.macstat.localsyncclient")
+    private let log = Logger(subsystem: "dev.malekswilam.macstat.mobile", category: "LocalSyncClient")
+    private let queue = DispatchQueue(label: "dev.malekswilam.macstat.localsyncclient")
 
     private var browser: NWBrowser?
     private var connection: NWConnection?
