@@ -127,7 +127,10 @@ public enum MetricFormatter {
         case .percent:
             return String(format: "%.1f%%", value)
         case .watts:
-            return String(format: "%.2f W", value)
+            // One decimal, not two: charge wattage wanders by whole watts
+            // sample to sample, so "25.50 W" is false precision — and it
+            // read that way on the dashboard hero ("Charging at 25.50 W").
+            return String(format: "%.1f W", value)
         case .celsius:
             return String(format: "%.1f °C", value)
         default:

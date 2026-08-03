@@ -278,16 +278,20 @@ struct GeneralPane: View {
         }
     }
 
+    // No space before the unit: the sliders' own endpoint labels write
+    // "0.5s"/"30s", and every freshness caption in the app writes "5s ago" -
+    // a value reading "3.0 s" two points below "0.5s" is the kind of
+    // one-surface drift the captions already agreed to avoid.
     private var formattedInterval: String {
-        String(format: "%.1f s", store.settings.globalRefreshInterval)
+        String(format: "%.1fs", store.settings.globalRefreshInterval)
     }
 
     private var formattedMediumInterval: String {
-        String(format: "%.0f s", store.settings.mediumTierRefreshInterval)
+        String(format: "%.0fs", store.settings.mediumTierRefreshInterval)
     }
 
     private var formattedSlowInterval: String {
-        String(format: "%.0f s", store.settings.slowTierRefreshInterval)
+        String(format: "%.0fs", store.settings.slowTierRefreshInterval)
     }
 
     /// Writes through to `SMAppService` first and only records the new value in

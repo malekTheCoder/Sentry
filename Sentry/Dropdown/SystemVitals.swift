@@ -606,20 +606,27 @@ enum SystemVitals {
         guard let worstLevel = findings.map(\.level).max() else {
             return SystemStatus(level: .normal, headline: String(localized: "Everything looks normal"), reasons: [])
         }
-        // `first(where:)`, not `max(by:)`: with two findings at the same level
-        // `max(by:)` returns the *last*, so a throttling Mac that was also low
-        // on disk would headline the disk. Appending in priority order (thermal
-        // first, then the vitals in list order) and taking the first match makes
-        // that tie-break explicit instead of an artifact of the algorithm.
-        let headline = findings.first { $0.level == worstLevel }?.headline ?? String(localized: "Everything looks normal")
+        // `firstIndex(where:)`, not `max(by:)`: with two findings at the same
+        // level `max(by:)` returns the *last*, so a throttling Mac that was
+        // also low on disk would headline the disk. Appending in priority
+        // order (thermal first, then the vitals in list order) and taking the
+        // first match makes that tie-break explicit instead of an artifact of
+        // the algorithm.
+        let headlineIndex = findings.firstIndex { $0.level == worstLevel }
+        let headline = headlineIndex.map { findings[$0].headline } ?? String(localized: "Everything looks normal")
 
         // Sorted by severity but *stably* — `sorted(by:)` is not guaranteed
         // stable, and reasons that reshuffle between two identical snapshots
         // would flicker under the 1 Hz-ish refresh. Deduplicated because two
         // thermal rules ("serious pressure" and "SoC above 95°C") routinely
-        // fire together and would otherwise say the same thing twice.
+        // fire together and would otherwise say the same thing twice. The
+        // headline finding's own reason is dropped for the same "same thing
+        // twice" rule — with a single finding the dropdown used to stack
+        // "Memory is under pressure" over "Memory: pressure elevated";
+        // reasons exist to name the *other* problems the headline can't.
         var seen = Set<String>()
         let reasons = findings.enumerated()
+            .filter { $0.offset != headlineIndex }
             .sorted { lhs, rhs in
                 lhs.element.level == rhs.element.level
                     ? lhs.offset < rhs.offset

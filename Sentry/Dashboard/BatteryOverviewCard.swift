@@ -54,17 +54,13 @@ struct BatteryOverviewCard: View {
     /// meter fill.
     private func hero(for battery: BatteryStats) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: palette.spacingRow) {
-            HStack(alignment: .center, spacing: 4) {
-                Text(MetricFormatting.percent(battery.chargePercent, decimals: 0))
-                    .font(palette.numericFont(size: 24, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                if battery.isCharging {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.success)
-                        .accessibilityHidden(true)
-                }
-            }
+            // No bolt beside the numeral: it only ever appeared while
+            // charging, which is exactly when `statusLine` already leads
+            // with bolt.fill — the hero read "90% ⚡ ⚡ Charging at 25 W".
+            // One state, one glyph; the sentence carries it.
+            Text(MetricFormatting.percent(battery.chargePercent, decimals: 0))
+                .font(palette.numericFont(size: 24, weight: .semibold))
+                .foregroundStyle(palette.textPrimary)
             statusLine(for: battery)
             Spacer(minLength: 0)
         }
