@@ -1,37 +1,45 @@
 import SwiftUI
 import SentryKit
 
+extension ThemePalette {
+    /// The one place a band becomes a colour. Every meter and every verdict
+    /// in Insights goes through here, so a green bar can never sit under a red
+    /// word.
+    func tint(for band: ProtectionBand) -> Color {
+        switch band {
+        case .wellProtected: return success
+        case .needsAttention: return warning
+        case .actOnThis: return danger
+        }
+    }
+}
+
 /// The bare score numeral, per the redesign handoff: a 64pt figure with
 /// the status word beside it in the status color — no ring, no gauge. The
 /// number *is* the hero; drawing a circle around it added chrome without
 /// adding information.
 ///
-/// Bands, and why these boundaries: 85 is "nothing here needs your
-/// attention today" (at most one minor finding), 60 is "there is at least
-/// one warning-level problem", below that means something critical or
-/// several serious things. They line up with `InsightWeight` — one
-/// `majorSecurity` finding (15 points) lands you at 85, and one
-/// `criticalSecurity` (25) lands you below it.
+/// The verdict beside the numeral is a `ProtectionBand` handed in whole. This
+/// view holds no thresholds of its own on purpose: banding lives in
+/// `ProtectionScore` so the rule (points from the weaker half, floored by
+/// finding severity) is testable and shared, and so a second surface can't
+/// quietly disagree with this one.
 struct ProtectionScoreFigure: View {
     @Environment(\.themePalette) private var palette
 
     let score: Int
-    let caption: String
-    /// The weaker half's score, which bands the caption and its colour. The
-    /// numeral and the verdict deliberately come from different numbers —
-    /// see `ProtectionScore`'s type doc.
-    let bandScore: Int
+    /// The verdict. Comes from `ProtectionScore.band`, which is deliberately
+    /// derived from something other than the numeral beside it — see that
+    /// type's doc.
+    let band: ProtectionBand
     /// The half the verdict came from ("Security & Privacy"), or `nil` when
     /// nothing needs attention and naming a half would invent a problem.
     var qualifier: String?
 
-    /// Banded on `bandScore` — the weaker half — not on the averaged numeral
-    /// beside it, so the colour agrees with the word it tints.
-    private var tint: Color {
-        if bandScore >= 85 { return palette.success }
-        if bandScore >= 60 { return palette.warning }
-        return palette.danger
-    }
+    private var caption: String { band.caption }
+
+    /// Tinted by the band so the colour and the word can never disagree.
+    private var tint: Color { palette.tint(for: band) }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: palette.spacingRow) {
@@ -85,8 +93,7 @@ struct ProtectionScoreCard: View {
         VStack(alignment: .leading, spacing: palette.spacingRow) {
             ProtectionScoreFigure(
                 score: score.overall,
-                caption: bandCaption,
-                bandScore: score.weakerSubscore,
+                band: score.band,
                 qualifier: weakerDomainCaption
             )
             title
@@ -113,37 +120,35 @@ struct ProtectionScoreCard: View {
             Text("Protection Score")
                 .font(palette.font(size: 13, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
-            Text("The average of the two halves below. Each starts at 100 and loses the weight of its own findings; the verdict follows whichever half is weaker.")
+            Text("The average of the two halves below. Each starts at 100 and loses the weight of its own findings. The verdict beside the number follows the weaker half, and never reads \"well protected\" while a warning or critical finding is open — however high the average.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// Banded on the **weaker half**, not on `score.overall`. A score of 88
-    /// made of 100 hardware and 75 security is not "well protected" — it has
-    /// an unencrypted disk in it. See `ProtectionScore`'s type doc.
-    private var bandCaption: String {
-        if score.weakerSubscore >= 85 { return String(localized: "well protected") }
-        if score.weakerSubscore >= 60 { return String(localized: "needs attention") }
-        return String(localized: "act on this")
-    }
-
     /// Names the half the verdict came from, so the number and the word
     /// beside it don't have to be reconciled by the reader. Suppressed when
-    /// both halves are already clean — "well protected · Security & Privacy"
-    /// would imply a problem where there is none.
+    /// the verdict is "well protected" — naming a half there would imply a
+    /// problem where there is none. Keyed off the band rather than off a
+    /// point threshold so the qualifier appears exactly when the verdict is
+    /// something other than clean, including the severity-driven cases where
+    /// the points look fine.
     private var weakerDomainCaption: String? {
-        guard score.weakerSubscore < 85 else { return nil }
+        guard score.band != .wellProtected else { return nil }
         return score.weakerDomain.displayName
     }
 
     /// Label, a thin horizontal bar, value — the handoff's subscore idiom.
     /// The bar is colored only by the score's own band (data, not accent),
     /// on a `surfaceElevated` track.
+    ///
+    /// Tinted by `pointsBand` rather than by the verdict: this bar *is* the
+    /// number, so it should say what the number says. The severity floor
+    /// belongs to the words above, where the claim is made.
     private func subscoreRow(label: String, value: Int, symbol: String) -> some View {
         let fraction = min(max(Double(value) / 100, 0), 1)
-        let tint: Color = value >= 85 ? palette.success : (value >= 60 ? palette.warning : palette.danger)
+        let tint = palette.tint(for: ProtectionScore.pointsBand(for: value))
         return HStack(spacing: palette.spacingTight) {
             Image(systemName: symbol)
                 .font(.system(size: 11))

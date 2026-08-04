@@ -292,6 +292,188 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         XCTAssertTrue(dismissal.isActive(at: now.addingTimeInterval(1_000_000_000)))
     }
 
+    // MARK: - Banding (severity floor + points)
+
+    /// Builds a finding with the exact shape the band rule cares about.
+    private func finding(
+        _ id: String,
+        category: InsightCategory,
+        severity: InsightSeverity,
+        impact: Int
+    ) -> ProtectionInsight {
+        ProtectionInsight(
+            id: id, title: "t", summary: "", detail: "", recommendation: "",
+            category: category, severity: severity, evidence: ["e"], scoreImpact: impact
+        )
+    }
+
+    /// **The bug this rule exists for, reproduced exactly.** A Mac whose only
+    /// problem is its firewall being off fires one `majorSecurity` warning,
+    /// costing 15, which lands the security half on precisely 85 — the
+    /// points-only "well protected" boundary. Verified on a real machine: it
+    /// read "93 · well protected" while listing "The firewall is off".
+    func testFirewallOffIsNeverWellProtected() {
+        let score = ProtectionScore.compute(
+            insights: [finding("security.firewall-off", category: .security, severity: .warning, impact: InsightWeight.majorSecurity)],
+            context: InsightContext(now: now)
+        )
+
+        // The arithmetic is unchanged — the numeral still reports the average.
+        XCTAssertEqual(score.securitySubscore, 85)
+        XCTAssertEqual(score.hardwareSubscore, 100)
+        XCTAssertEqual(score.overall, 93)
+        XCTAssertEqual(score.weakerSubscore, 85)
+        // Points alone would still say "well protected"; the verdict must not.
+        XCTAssertEqual(ProtectionScore.pointsBand(for: score.weakerSubscore), .wellProtected)
+        XCTAssertEqual(score.band, .needsAttention)
+    }
+
+    func testCriticalFindingForcesTheWorstBandRegardlessOfPoints() {
+        // One point of deduction, but the finding is critical: a defeated
+        // protection is not a "needs attention" situation.
+        let score = ProtectionScore.compute(
+            insights: [finding("crit", category: .security, severity: .critical, impact: 1)],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(score.weakerSubscore, 99)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: score.weakerSubscore), .wellProtected)
+        XCTAssertEqual(score.band, .actOnThis)
+    }
+
+    /// A `critical` finding that costs nothing still forces the band —
+    /// severity is read from the insights, not reconstructed from
+    /// `deductions` (which only carries findings with points).
+    func testZeroPointCriticalStillForcesTheWorstBand() {
+        let score = ProtectionScore.compute(
+            insights: [finding("crit", category: .security, severity: .critical, impact: InsightWeight.none)],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(score.overall, 100)
+        XCTAssertTrue(score.deductions.isEmpty)
+        XCTAssertEqual(score.band, .actOnThis)
+    }
+
+    /// `.warning` is a *cap*, not an override: it can only make the band
+    /// worse than points, never better.
+    func testWarningCapsTheBandButDoesNotSoftenAWorseOne() {
+        let score = ProtectionScore.compute(
+            insights: [
+                finding("a", category: .security, severity: .warning, impact: InsightWeight.majorSecurity),
+                finding("b", category: .security, severity: .warning, impact: InsightWeight.majorSecurity),
+                finding("c", category: .security, severity: .warning, impact: InsightWeight.majorSecurity)
+            ],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(score.securitySubscore, 55)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 55), .actOnThis)
+        XCTAssertEqual(score.band, .actOnThis)
+    }
+
+    /// With nothing above `advice`, points are still the whole story — so a
+    /// pile of small findings can degrade the verdict on its own.
+    func testAdviceOnlyFindingsAreStillBandedOnPoints() {
+        let clean = ProtectionScore.compute(
+            insights: [finding("a", category: .security, severity: .advice, impact: InsightWeight.minorSecurity)],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(clean.weakerSubscore, 94)
+        XCTAssertEqual(clean.band, .wellProtected)
+
+        let many = ProtectionScore.compute(
+            insights: (0..<4).map {
+                finding("a\($0)", category: .security, severity: .advice, impact: InsightWeight.minorSecurity)
+            },
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(many.weakerSubscore, 76)
+        XCTAssertEqual(many.highestSeverity, .advice)
+        XCTAssertEqual(many.band, .needsAttention)
+    }
+
+    func testNoFindingsBandsWellProtected() {
+        let score = ProtectionScore.compute(insights: [], context: InsightContext(now: now))
+        XCTAssertEqual(score.highestSeverity, .good)
+        XCTAssertEqual(score.band, .wellProtected)
+    }
+
+    /// `good` findings are still findings; they must not float the band.
+    func testGoodFindingsDoNotAffectTheBand() {
+        let score = ProtectionScore.compute(
+            insights: [finding("ok", category: .security, severity: .good, impact: InsightWeight.none)],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(score.highestSeverity, .good)
+        XCTAssertEqual(score.band, .wellProtected)
+    }
+
+    /// A hardware-side warning gates the verdict too — the rule is about
+    /// severity, not about which half the finding landed in.
+    func testHardwareWarningAlsoGatesTheBand() {
+        let score = ProtectionScore.compute(
+            insights: [finding("storage", category: .storage, severity: .warning, impact: InsightWeight.minorHardware)],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(score.hardwareSubscore, 97)
+        XCTAssertEqual(score.band, .needsAttention)
+    }
+
+    func testPointsBandBoundariesAreExact() {
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 100), .wellProtected)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 85), .wellProtected)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 84), .needsAttention)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 60), .needsAttention)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 59), .actOnThis)
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 0), .actOnThis)
+    }
+
+    func testBandOrdersBySeriousness() {
+        XCTAssertTrue(ProtectionBand.wellProtected < .needsAttention)
+        XCTAssertTrue(ProtectionBand.needsAttention < .actOnThis)
+        XCTAssertEqual(ProtectionBand.allCases.count, 3)
+    }
+
+    // MARK: - Banding × suppression
+
+    /// A dismissed finding is off the screen, so it must be off the verdict
+    /// too — the band reads the same insight set the points do.
+    func testDismissedCriticalDoesNotDriveTheBand() {
+        let rule = FileVaultOffRule()
+        let engine = ProtectionInsightsEngine(rules: [rule])
+        let context = InsightContext(now: now, posture: SecurityPosture(fileVault: .off))
+
+        let live = engine.evaluate(context)
+        XCTAssertEqual(live.score.highestSeverity, .critical)
+        XCTAssertEqual(live.score.band, .actOnThis)
+
+        let dismissal = InsightSuppression(insightID: rule.id, kind: .dismissed, createdAt: now)
+        let hidden = engine.evaluate(context, suppressions: [dismissal])
+        XCTAssertTrue(hidden.insights.isEmpty)
+        XCTAssertEqual(hidden.suppressed.map(\.id), [rule.id])
+        XCTAssertEqual(hidden.score.highestSeverity, .good)
+        XCTAssertEqual(hidden.score.band, .wellProtected)
+    }
+
+    /// The mirror of the above: a snooze that has expired brings the finding
+    /// — and the verdict — back.
+    func testExpiredSnoozeRestoresTheBand() {
+        let rule = FirewallOffRule()
+        let engine = ProtectionInsightsEngine(rules: [rule])
+        let context = InsightContext(now: now, posture: SecurityPosture(firewall: .off))
+
+        let active = InsightSuppression.snooze(insightID: rule.id, for: .week, from: now)
+        XCTAssertEqual(engine.evaluate(context, suppressions: [active]).score.band, .wellProtected)
+
+        let expired = InsightSuppression(
+            insightID: rule.id,
+            kind: .snoozed,
+            createdAt: now.addingTimeInterval(-1_000_000),
+            until: now.addingTimeInterval(-1)
+        )
+        let restored = engine.evaluate(context, suppressions: [expired])
+        XCTAssertEqual(restored.score.highestSeverity, .warning)
+        XCTAssertEqual(restored.score.band, .needsAttention)
+    }
+
     // MARK: - Score determinism / monotonicity
 
     func testScoreIsDeterministicForTheSameInputs() {

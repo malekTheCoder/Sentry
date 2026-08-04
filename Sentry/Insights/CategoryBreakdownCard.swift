@@ -87,10 +87,11 @@ struct CategoryBreakdownCard: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Point boundaries come from `ProtectionScore`, not from literals here:
+    /// two views with their own copies of 85/60 is precisely how the score
+    /// and the words beside it drifted apart before.
     private func tint(for value: Int) -> Color {
-        if value >= 85 { return palette.success }
-        if value >= 60 { return palette.warning }
-        return palette.danger
+        palette.tint(for: ProtectionScore.pointsBand(for: value))
     }
 
     private func valueText(for row: ProtectionScore.CategoryScore) -> String {
