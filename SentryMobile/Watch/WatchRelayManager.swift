@@ -125,7 +125,8 @@ final class WatchRelayManager: NSObject {
             isThrottling: snapshot.thermal?.isThrottling,
             awakeIsActive: Self.awakeIsActive(snapshot.sleepAssertion),
             awakeExpiresAt: Self.awakeExpiresAt(snapshot.sleepAssertion),
-            awakeModeLabel: Self.awakeModeLabel(snapshot.sleepAssertion)
+            awakeModeLabel: Self.awakeModeLabel(snapshot.sleepAssertion),
+            agentAccessPaused: snapshot.agentAccessPaused
             // `agentToolCallCount`/`agentLastActivityAt`/
             // `agentRecentToolNames` are deliberately not passed: nothing in
             // a `SystemSnapshot` carries agent activity, so there is nothing

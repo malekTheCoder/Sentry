@@ -279,6 +279,150 @@ struct GetBatteryStatusIntent: AppIntent {
     }
 }
 
+// MARK: - GetThermalStatusIntent
+
+/// A read-only counterpart to `GetBatteryStatusIntent`, same shape exactly:
+/// races the transport's snapshot stream against `SentryIntents.statusTimeout`
+/// via `GetBatteryStatusIntent.firstSnapshot(from:timeout:)` (reused rather
+/// than duplicated — both intents want the identical "first snapshot or
+/// timeout" race, and a second copy of that `withTaskGroup` would be a second
+/// place to get the timeout race subtly wrong).
+struct GetThermalStatusIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Mac Thermal Status"
+    static var description = IntentDescription(
+        "Reports your Mac's thermal pressure and SoC temperature."
+    )
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let transport = await AppDataSource.shared.transport
+        guard let snapshot = await GetBatteryStatusIntent.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
+            return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
+        }
+        guard let thermal = snapshot.thermal else {
+            return .result(dialog: "Your Mac reported in, but didn't include thermal data.")
+        }
+
+        let freshness = Freshness(lastSeen: snapshot.timestamp)
+        let ageLabel = freshness.label(lastSeen: snapshot.timestamp)
+
+        let pressureText: String
+        switch thermal.pressureLevel {
+        case .nominal: pressureText = String(localized: "normal")
+        case .fair: pressureText = String(localized: "elevated")
+        case .serious: pressureText = String(localized: "serious")
+        case .critical: pressureText = String(localized: "critical")
+        }
+
+        var sentence = String(localized: "Your Mac's thermal pressure is \(pressureText)")
+        if let socTemperature = thermal.socTemperatureCelsius {
+            let temperatureText = String(Int(socTemperature.rounded()))
+            sentence += String(localized: ", at \(temperatureText) degrees Celsius")
+        }
+        if thermal.isThrottling {
+            sentence += String(localized: ". Your Mac is currently throttling to cool down")
+        }
+        sentence += " (\(ageLabel))."
+
+        return .result(dialog: IntentDialog(stringLiteral: sentence))
+    }
+}
+
+// MARK: - GetProtectionScoreIntent
+
+/// A read-only intent for "what's my Mac's protection score" — but a
+/// deliberately scoped-down one, and the scoping is worth spelling out
+/// rather than hiding.
+///
+/// **What a full implementation would need, and why it isn't this.** A
+/// protection score comes out of `ProtectionInsightsEngine.evaluate(_:)`
+/// (`SentryKit/Insights/ProtectionInsightsEngine.swift`), which
+/// `InsightsViewModel`'s own doc comment
+/// (`Sentry/Insights/InsightsViewModel.swift`) describes as "a
+/// security-posture sweep plus fifteen `HistoryStore` reads plus forty-odd
+/// rule evaluations" — expensive by design, run only when the Mac's
+/// Insights tab is opened or explicitly refreshed, and explicitly never on
+/// a timer ("a protection report that silently re-computed every minute
+/// would spend real CPU on a screen nobody is looking at"). Building a live,
+/// on-demand version of that computation reachable from an iPhone Siri
+/// intent would mean either running that whole sweep on every Siri
+/// invocation (defeats the entire reason it's throttled) or building a new
+/// push/cache path from the Mac's Insights tab through to the transport —
+/// real work, on the far side of a boundary this branch was not asked to
+/// build (`SentryKit/Insights/` is explicitly off-limits here).
+///
+/// **What this intent actually does.** It reads
+/// `SystemSnapshot.protectionScore` — the same field
+/// `StatsCoordinator.protectionScore`'s doc comment describes as wired
+/// end-to-end but not yet assigned by the Mac composition root (the same
+/// one-line-hook gap `agentAccessPaused` has, for the identical "AppDelegate
+/// is off-limits" reason). Until that hook lands, every real Mac reports
+/// `nil` here, and this intent says so honestly — "hasn't reported a score"
+/// is a true sentence today, not a fabricated one, and it is the same
+/// honesty rule `GetBatteryStatusIntent` already applies to a Mac with no
+/// battery. Once the hook lands, this intent needs no further changes: the
+/// wire format and the read path are both already real.
+struct GetProtectionScoreIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Mac Protection Score"
+    static var description = IntentDescription(
+        "Reports your Mac's protection score from Sentry's Insights tab, if one has been computed."
+    )
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let transport = await AppDataSource.shared.transport
+        guard let snapshot = await GetBatteryStatusIntent.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
+            return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
+        }
+        guard let score = snapshot.protectionScore else {
+            return .result(dialog: "Your Mac hasn't reported a protection score yet — open the Insights tab in Sentry on your Mac to compute one.")
+        }
+
+        let freshness = Freshness(lastSeen: snapshot.timestamp)
+        let ageLabel = freshness.label(lastSeen: snapshot.timestamp)
+        let scoreText = String(score)
+        return .result(dialog: IntentDialog(stringLiteral: String(localized: "Your Mac's protection score is \(scoreText) out of 100 (\(ageLabel)).")))
+    }
+}
+
+// MARK: - GetAgentGuardrailsStatusIntent
+
+/// "Is AI agent access paused right now" — reads
+/// `SystemSnapshot.agentAccessPaused`, the same field
+/// `WatchRelaySnapshot.agentAccessPaused` relays on to the watch (see that
+/// type's doc comment for the tri-state convention this mirrors: `true`
+/// paused, `false` active, `nil` unreported). This intent is a straight
+/// read of a `SystemSnapshot` field, so — unlike `GetProtectionScoreIntent`
+/// above — it needs no further plumbing beyond the same one-line
+/// composition-root hook `StatsCoordinator.agentAccessPaused`'s doc comment
+/// already documents; the wire format and this read path are both real
+/// today.
+struct GetAgentGuardrailsStatusIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Agent Guardrails Status"
+    static var description = IntentDescription(
+        "Reports whether AI agent access to your Mac is currently paused."
+    )
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let transport = await AppDataSource.shared.transport
+        guard let snapshot = await GetBatteryStatusIntent.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
+            return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
+        }
+
+        let freshness = Freshness(lastSeen: snapshot.timestamp)
+        let ageLabel = freshness.label(lastSeen: snapshot.timestamp)
+
+        switch snapshot.agentAccessPaused {
+        case true:
+            return .result(dialog: IntentDialog(stringLiteral: String(localized: "Yes — AI agent access to your Mac is paused (\(ageLabel))."))
+            )
+        case false:
+            return .result(dialog: IntentDialog(stringLiteral: String(localized: "No — AI agent access to your Mac is active (\(ageLabel))."))
+            )
+        case nil:
+            return .result(dialog: "Your Mac hasn't reported whether agent access is paused.")
+        }
+    }
+}
+
 // MARK: - RefreshWidgetIntent
 
 /// Re-reads the widget's already-real, already-local `WidgetSnapshotStore`
@@ -354,6 +498,33 @@ struct SentryAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Mac Battery Status",
             systemImageName: "battery.100"
+        )
+        AppShortcut(
+            intent: GetThermalStatusIntent(),
+            phrases: [
+                "What's my Mac's temperature with \(.applicationName)",
+                "Check my Mac's thermal status with \(.applicationName)",
+            ],
+            shortTitle: "Mac Thermal Status",
+            systemImageName: "thermometer.medium"
+        )
+        AppShortcut(
+            intent: GetProtectionScoreIntent(),
+            phrases: [
+                "What's my Mac's protection score with \(.applicationName)",
+                "Check my Mac's protection score with \(.applicationName)",
+            ],
+            shortTitle: "Mac Protection Score",
+            systemImageName: "checkmark.shield"
+        )
+        AppShortcut(
+            intent: GetAgentGuardrailsStatusIntent(),
+            phrases: [
+                "Is AI agent access paused with \(.applicationName)",
+                "Check agent guardrails with \(.applicationName)",
+            ],
+            shortTitle: "Agent Guardrails Status",
+            systemImageName: "shield.lefthalf.filled"
         )
         AppShortcut(
             intent: RefreshWidgetIntent(),

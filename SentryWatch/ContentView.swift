@@ -161,7 +161,9 @@ struct ContentView: View {
                 // Staleness of the *relay*, not of the agent log: if the
                 // whole snapshot is old, so is anything it says about agents.
                 isStale: Self.isStale(snapshot),
-                onStopAgents: { sendStopAgents() }
+                onStopAgents: { sendStopAgents() },
+                agentAccessPaused: snapshot.agentAccessPaused,
+                onResumeAgents: { sendResumeAgents() }
             )
         } else {
             UnavailablePage(
@@ -266,17 +268,29 @@ struct ContentView: View {
     /// `ControlCommand` through the same watch → iPhone → Mac bridge every
     /// keep-awake tap uses, landing in `LocalCommandExecutor`
     /// (`SentryKit/Services/LocalCommandExecutor.swift`), which flips the
-    /// Mac's `AgentGuardrailSettings.killSwitchEngaged`. Engage-only from
-    /// the wrist on purpose: resuming is a deliberate decision best made
-    /// where the paused state is actually visible (the Mac's menu bar or
-    /// Settings → AI Access), and this page has no relayed pause state to
-    /// render a truthful resume control against.
+    /// Mac's `AgentGuardrailSettings.killSwitchEngaged`.
     private func sendStopAgents() {
         let command = Self.command(type: "setAgentAccessPaused", parametersJSON: #"{"paused":true}"#)
         Task { @MainActor in
             actionResult = await WatchControlBridge.sendAndDescribe(
                 command,
                 whenCompleted: String(localized: "Agent access on your Mac is paused. Resume it from Sentry on the Mac.")
+            )
+        }
+    }
+
+    /// The un-pause counterpart, wired to `AgentActivityPage`'s "Resume
+    /// Agents" button — shown only while `snapshot.agentAccessPaused ==
+    /// true`, i.e. only once the watch has a truthful pause state to show a
+    /// resume control against (see `AgentActivityPage.agentAccessPaused`'s
+    /// doc comment). Same command type as `sendStopAgents()`, `paused:false`
+    /// instead of `true` — `LocalCommandExecutor` already accepts either.
+    private func sendResumeAgents() {
+        let command = Self.command(type: "setAgentAccessPaused", parametersJSON: #"{"paused":false}"#)
+        Task { @MainActor in
+            actionResult = await WatchControlBridge.sendAndDescribe(
+                command,
+                whenCompleted: String(localized: "Agent access on your Mac has been resumed.")
             )
         }
     }

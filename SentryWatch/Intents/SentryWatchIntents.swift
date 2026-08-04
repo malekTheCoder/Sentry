@@ -236,8 +236,16 @@ struct WatchTruncateAwakeIntent: AppIntent {
 /// wrist without opening the app. Sends the same `setAgentAccessPaused`
 /// `ControlCommand` the Agent Activity page's button does (see
 /// `ContentView.sendStopAgents`), so the two paths cannot diverge in what
-/// the Mac receives. Engage-only, for the reason documented there: resuming
-/// belongs where the paused state is visible.
+/// the Mac receives.
+///
+/// **No longer engage-only.** This intent used to be paired with a doc
+/// comment arguing resume belonged only where the paused state was visible
+/// — true when the watch had no way to know whether agent access was
+/// paused at all. Now that `WatchRelaySnapshot.agentAccessPaused` carries
+/// that state (once the Mac-side hook documented on
+/// `StatsCoordinator.agentAccessPaused` lands), the watch can render a
+/// truthful resume control, and does: see `WatchResumeAgentsIntent` below
+/// and `AgentActivityPage`'s "Resume Agents" button.
 struct WatchStopAgentsIntent: AppIntent {
     static var title: LocalizedStringResource = "Stop Agents on Mac"
     static var description = IntentDescription(
@@ -256,6 +264,39 @@ struct WatchStopAgentsIntent: AppIntent {
         let dialog = await WatchControlBridge.sendAndDescribe(
             command,
             whenCompleted: String(localized: "Agent access on your Mac is paused. Resume it from Sentry on the Mac.")
+        )
+        return .result(dialog: IntentDialog(stringLiteral: dialog))
+    }
+}
+
+// MARK: - WatchResumeAgentsIntent
+
+/// The un-pause half of the kill switch — "resume agent access on my Mac"
+/// from the wrist. Sends the identical `setAgentAccessPaused` command type
+/// `WatchStopAgentsIntent` does, with `paused:false` instead of `true` —
+/// `LocalCommandExecutor`'s handler for that command type already accepts
+/// either value (`SentryKit/Services/LocalCommandExecutor.swift`,
+/// `parameters.paused ?? true`), so no new `ControlCommand` type or Mac-side
+/// handling was needed for this, only the second value of the one that
+/// already existed.
+struct WatchResumeAgentsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Resume Agents on Mac"
+    static var description = IntentDescription(
+        "Resumes AI agent access to your Mac after it was paused, relayed through your iPhone."
+    )
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let command = ControlCommand(
+            deviceID: "unknown",
+            issuedAt: Date(),
+            commandType: "setAgentAccessPaused",
+            parametersJSON: #"{"paused":false}"#,
+            nonce: UUID().uuidString,
+            expiresAt: Date().addingTimeInterval(5 * 60)
+        )
+        let dialog = await WatchControlBridge.sendAndDescribe(
+            command,
+            whenCompleted: String(localized: "Agent access on your Mac has been resumed.")
         )
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
@@ -352,6 +393,15 @@ struct SentryWatchAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Stop Agents",
             systemImageName: "bolt.slash"
+        )
+        AppShortcut(
+            intent: WatchResumeAgentsIntent(),
+            phrases: [
+                "Resume the agents on my Mac with \(.applicationName)",
+                "Resume agent access with \(.applicationName)",
+            ],
+            shortTitle: "Resume Agents",
+            systemImageName: "bolt"
         )
         AppShortcut(
             intent: WatchGetBatteryStatusIntent(),
