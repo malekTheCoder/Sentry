@@ -78,6 +78,77 @@ public enum DriveSMARTState: String, Codable, Sendable, CaseIterable, Hashable {
     public var isDefinitelyVerified: Bool { self == .verified }
 }
 
+// MARK: - TCC (privacy permission) visibility
+
+/// How many distinct apps currently hold a *granted* (not merely requested)
+/// TCC permission for five sensitive services, read from
+/// `~/Library/Application Support/com.apple.TCC/TCC.db`.
+///
+/// **A single optional on `SecurityPosture`, not five.** All five counts
+/// come from one query against one database in one subprocess call, so they
+/// succeed or fail together — there is no scenario where Accessibility's
+/// count is known but Camera's isn't. Bundling them means a rule either has
+/// the whole picture or (honestly) none of it, with one `guard let` instead
+/// of five.
+///
+/// **Why this can be read at all, and why it usually can't.** Reading
+/// *another* app's TCC grants needs Full Disk Access — verified empirically
+/// against this Mac's own TCC.db: a read-only `sqlite3` open, run as the
+/// owning user, fails with "authorization denied" despite ordinary POSIX
+/// permissions on the file permitting it. macOS enforces this at a layer
+/// POSIX permissions don't reach. Sentry does not request Full Disk Access
+/// by default, so on almost every installation this is `nil` and
+/// `TCCAccessUnknownRule` is the one that fires, not this type's rule.
+public struct TCCPermissionCounts: Codable, Sendable, Equatable {
+    /// `kTCCServiceAccessibility`.
+    public var accessibility: Int
+    /// `kTCCServiceScreenCapture`.
+    public var screenRecording: Int
+    /// `kTCCServiceSystemPolicyAllFiles`.
+    public var fullDiskAccess: Int
+    /// `kTCCServiceCamera`.
+    public var camera: Int
+    /// `kTCCServiceMicrophone`.
+    public var microphone: Int
+
+    public init(accessibility: Int, screenRecording: Int, fullDiskAccess: Int, camera: Int, microphone: Int) {
+        self.accessibility = accessibility
+        self.screenRecording = screenRecording
+        self.fullDiskAccess = fullDiskAccess
+        self.camera = camera
+        self.microphone = microphone
+    }
+}
+
+// MARK: - Login items / persistent background processes
+
+/// `.plist` counts in the three standard locations background processes
+/// register themselves for automatic launch.
+///
+/// **Names, not privileges, are what's missing here — and only sometimes.**
+/// Listing a directory's own filenames needs no elevated privilege, even for
+/// `/Library/LaunchDaemons`; only *reading the contents* of a daemon plist
+/// owned by root would. This type never does that — it counts files, and
+/// nothing here inspects what any one of them launches. See
+/// `LoginItemsBloatRule`'s doc comment for why no item is ever named or
+/// judged individually.
+public struct LoginItemCounts: Codable, Sendable, Equatable {
+    /// `.plist` files in `~/Library/LaunchAgents`.
+    public var userAgents: Int
+    /// `.plist` files in `/Library/LaunchAgents`.
+    public var systemAgents: Int
+    /// `.plist` files in `/Library/LaunchDaemons`.
+    public var systemDaemons: Int
+
+    public var total: Int { userAgents + systemAgents + systemDaemons }
+
+    public init(userAgents: Int, systemAgents: Int, systemDaemons: Int) {
+        self.userAgents = userAgents
+        self.systemAgents = systemAgents
+        self.systemDaemons = systemDaemons
+    }
+}
+
 // MARK: - SecurityPosture
 
 /// A point-in-time reading of this Mac's security and privacy posture.
@@ -193,6 +264,20 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
     /// a real answer, not an absence of one.
     public var recentKernelPanicCount: Int?
 
+    // MARK: Privacy (TCC) and login items
+    //
+    // Same "same unprivileged collector, one sweep" reasoning as backup and
+    // drive health above.
+
+    /// `nil` when TCC.db could not be read — the expected case; see
+    /// `TCCPermissionCounts`'s doc comment.
+    public var tccPermissionCounts: TCCPermissionCounts?
+
+    /// `nil` only if one of the three directory listings genuinely failed —
+    /// not expected, since none of them need elevated privilege. See
+    /// `LoginItemCounts`'s doc comment.
+    public var loginItemCounts: LoginItemCounts?
+
     /// Human-readable notes about *how* this posture was determined and what
     /// couldn't be. Surfaced verbatim in the UI's methodology disclosure —
     /// the user paying for this is entitled to know which findings are
@@ -250,6 +335,8 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
             timeMachineLastBackupAt: nil,
             driveSMARTStatus: .unknown,
             recentKernelPanicCount: nil,
+            tccPermissionCounts: nil,
+            loginItemCounts: nil,
             notes: notes
         )
     }
@@ -275,6 +362,8 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
         timeMachineLastBackupAt: Date? = nil,
         driveSMARTStatus: DriveSMARTState = .unknown,
         recentKernelPanicCount: Int? = nil,
+        tccPermissionCounts: TCCPermissionCounts? = nil,
+        loginItemCounts: LoginItemCounts? = nil,
         notes: [String] = []
     ) {
         self.collectedAt = collectedAt
@@ -297,6 +386,8 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
         self.timeMachineLastBackupAt = timeMachineLastBackupAt
         self.driveSMARTStatus = driveSMARTStatus
         self.recentKernelPanicCount = recentKernelPanicCount
+        self.tccPermissionCounts = tccPermissionCounts
+        self.loginItemCounts = loginItemCounts
         self.notes = notes
     }
 }

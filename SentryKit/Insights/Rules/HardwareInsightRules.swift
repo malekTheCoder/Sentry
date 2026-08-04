@@ -1228,6 +1228,81 @@ public struct UnderpoweredAdapterRule: ProtectionInsightRule, Sendable {
     }
 }
 
+// MARK: - Login items / persistent background processes
+
+/// A very large number of user- and system-level LaunchAgents/LaunchDaemons
+/// — a count-based, no-names signal that a lot has accumulated and is worth
+/// a look.
+///
+/// **No specific item is ever named or judged.** Every LaunchAgent or
+/// LaunchDaemon on this Mac can be entirely legitimate — this app ships one
+/// itself, for its helper. Deciding any single one is "bad" by name would
+/// need a maintained allowlist or blocklist, which is precisely the
+/// unstable guessing this codebase avoids elsewhere (`SecurityPostureParser`
+/// treats unrecognised output as unknown rather than inferring a meaning
+/// for it, for the same underlying reason). What *is* measurable without
+/// guessing is the raw count, and by the time it is large, that is a real
+/// — if soft — signal on its own: it usually means installers, trial
+/// software, and abandoned menu-bar utilities have accumulated alongside
+/// whatever is actually still in use, not that dozens of intentional tools
+/// are all still wanted.
+///
+/// **Filed as `.maintenance` (hardware domain) and scored lightly.** This is
+/// housekeeping, not an attack surface or a wear mechanism — closer in
+/// spirit to `RisingThermalBaselineRule`'s "this Mac against its own past"
+/// than to anything in `.security`. It is real enough to mention and mild
+/// enough that `minorHardware` is the right weight: worth knowing, not worth
+/// worrying about.
+public struct LoginItemsBloatRule: ProtectionInsightRule, Sendable {
+    public let id = "maintenance.login-items-bloat"
+    public let category: InsightCategory = .maintenance
+    public init() {}
+
+    /// A freshly set up Mac with a handful of everyday apps typically sits
+    /// in the low teens once Apple's own agents/daemons are counted in. By
+    /// the time the combined total crosses into the 40s, it is very rarely
+    /// because forty distinct tools are all still wanted — it is almost
+    /// always leftovers from software that was uninstalled without removing
+    /// what it registered. Not a hard line: this rule stays at a single
+    /// `.advice` tier rather than escalating, because unlike a defeated
+    /// security control, "a lot of background items" degrades gracefully
+    /// and doesn't have a "critical" version.
+    public static let advisoryThreshold = 40
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard let counts = context.posture.loginItemCounts,
+              counts.total >= Self.advisoryThreshold
+        else { return nil }
+
+        let totalText = "\(counts.total)"
+        let userAgentText = "\(counts.userAgents)"
+        let systemAgentText = "\(counts.systemAgents)"
+        let systemDaemonText = "\(counts.systemDaemons)"
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "A lot of background items are set to run persistently"),
+            summary: String(localized: "\(totalText) LaunchAgents and LaunchDaemons are registered on this Mac."),
+            detail: String(localized: "Each of these is something that can launch a process automatically — at login, on a schedule, or whenever a condition it's watching for occurs — and each one is carried by this Mac regardless of whether it's still needed. Sentry counts them by listing the standard LaunchAgents and LaunchDaemons folders; it does not open or judge any single one; many of the most ordinary ones on any Mac (including one of Sentry's own) are entirely expected here. A count this high is usually a mix of tools genuinely still in use and leftovers from software that was removed without cleaning up after itself."),
+            recommendation: String(localized: "A one-time pass through System Settings ▸ General ▸ Login Items & Extensions — and, for the more thorough version, the LaunchAgents and LaunchDaemons folders directly — is the only reliable way to tell which of these are still wanted. Sentry doesn't have enough information to make that call for you."),
+            category: category,
+            severity: .advice,
+            evidence: [
+                String(localized: "\(userAgentText) items in ~/Library/LaunchAgents (this user only)."),
+                String(localized: "\(systemAgentText) items in /Library/LaunchAgents (all users)."),
+                String(localized: "\(systemDaemonText) items in /Library/LaunchDaemons (system-wide, run as root).")
+            ],
+            action: InsightAction(
+                label: String(localized: "Open Login Items settings"),
+                target: .manual,
+                fallbackDescription: String(localized: "System Settings ▸ General ▸ Login Items & Extensions")
+            ),
+            confidence: 1.0,
+            scoreImpact: InsightWeight.minorHardware
+        )
+    }
+}
+
 // MARK: - Backup
 
 /// No Time Machine destination configured at all.

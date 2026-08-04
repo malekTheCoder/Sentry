@@ -268,6 +268,61 @@ public enum SecurityPostureParser {
         }.count
     }
 
+    // MARK: - Privacy (TCC)
+
+    /// The single query used against TCC.db for all five sensitive services
+    /// at once — one subprocess launch rather than five, and the one place
+    /// all five service identifiers are spelled out so a typo can't
+    /// silently drop one of them from every report from here on.
+    ///
+    /// `auth_value = 2` is TCC's "allowed" state (0 is denied, 1 has meant
+    /// different things across macOS versions, 2 has been stable as
+    /// "allowed" since this schema was reverse-engineered). Counting
+    /// `DISTINCT client` rather than rows matters because a single app can
+    /// have more than one row per service across TCC's internal history.
+    public static let tccPermissionQuery = """
+    SELECT service, COUNT(DISTINCT client) FROM access WHERE auth_value = 2 AND service IN (\
+    'kTCCServiceAccessibility', 'kTCCServiceScreenCapture', \
+    'kTCCServiceSystemPolicyAllFiles', 'kTCCServiceCamera', 'kTCCServiceMicrophone'\
+    ) GROUP BY service;
+    """
+
+    /// `sqlite3 -readonly TCC.db "<tccPermissionQuery>"` → per-service
+    /// granted-app counts, or `nil` when the query never actually ran.
+    ///
+    /// **Deliberately does not go through `normalise`.** That helper treats
+    /// blank output the same as `nil`, which is correct everywhere else in
+    /// this file but wrong here: `PostureCommandRunning.run` returns `nil`
+    /// only when the process failed to launch, timed out, or exited
+    /// non-zero (exactly what happens when `sqlite3` can't open TCC.db
+    /// without Full Disk Access — verified empirically to exit non-zero
+    /// with "authorization denied"), but it returns an **empty string** for
+    /// a process that ran, exited zero, and printed nothing — which for this
+    /// query means "opened the database fine, and zero apps hold any of the
+    /// five permissions". Collapsing that real, readable all-zero result
+    /// into "unknown" would be exactly the fabricated-unknown failure this
+    /// file's other parsers are careful to avoid in the opposite direction.
+    public static func tccPermissionCounts(_ output: String?) -> TCCPermissionCounts? {
+        guard let output else { return nil }
+
+        var counts: [String: Int] = [:]
+        for rawLine in output.lowercased().split(separator: "\n") {
+            let columns = rawLine.split(separator: "|")
+            guard columns.count == 2,
+                  let count = Int(String(columns[1]).trimmingCharacters(in: .whitespaces))
+            else { continue }
+            counts[String(columns[0]).trimmingCharacters(in: .whitespaces)] = count
+        }
+
+        return TCCPermissionCounts(
+            accessibility: counts["ktccserviceaccessibility"] ?? 0,
+            screenRecording: counts["ktccservicescreencapture"] ?? 0,
+            fullDiskAccess: counts["ktccservicesystempolicyallfiles"] ?? 0,
+            camera: counts["ktccservicecamera"] ?? 0,
+            microphone: counts["ktccservicemicrophone"] ?? 0
+        )
+    }
+
     // MARK: - Helpers
 
     /// Loopback binds aren't reachable from the network. IPv6 loopback in
