@@ -49,6 +49,7 @@ struct LedgerSparkline: View {
 struct VitalsLedgerRow: View {
     @Environment(\.themePalette) private var palette
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let label: String
     /// Pre-formatted headline; "—" when the module is unavailable.
@@ -70,31 +71,12 @@ struct VitalsLedgerRow: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: palette.spacingRow) {
+                AdaptiveRow(spacing: palette.spacingRow, verticalAlignment: .center) {
                     Text(label)
-                        .font(palette.font(size: 14))
+                        .scaledFont(palette, size: 14)
                         .foregroundStyle(palette.textSecondary)
-                    Spacer(minLength: palette.spacingRow)
-                    if let context {
-                        Text(context)
-                            .font(palette.font(size: 11))
-                            .foregroundStyle(palette.textTertiary)
-                            .lineLimit(1)
-                    }
-                    Text(headline)
-                        .font(palette.font(size: 20, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(headline == MetricFormatting.placeholder ? palette.textTertiary : palette.textPrimary)
-                    if !sparkline.isEmpty {
-                        LedgerSparkline(values: sparkline, tint: tint)
-                            .frame(width: 70, height: 22)
-                    }
-                    if !details.isEmpty {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(palette.textTertiary)
-                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                    }
+                } trailing: {
+                    readout
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -114,6 +96,52 @@ struct VitalsLedgerRow: View {
             }
         }
         .ledgerDivider(palette)
+    }
+
+    /// The row's right-hand side: context word, headline numeral, sparkline,
+    /// chevron.
+    ///
+    /// **What breaks at accessibility sizes, and what this does about it.**
+    /// At default sizes this is four things sharing whatever width the label
+    /// leaves — comfortable. At an accessibility size the label alone can
+    /// claim most of the row, and the pieces here compete: the context word
+    /// (`.lineLimit(1)`) truncates to an ellipsis, and the headline — the
+    /// actual number the whole row exists to show — starts eliding. Two
+    /// changes fix that:
+    ///
+    ///   - The sparkline is dropped entirely once text is at an accessibility
+    ///     size. It is already `.accessibilityHidden(true)` decoration that
+    ///     conveys nothing the headline doesn't, and at 70pt wide it is the
+    ///     single largest thing crowding the number out.
+    ///   - The context word drops its `.lineLimit(1)` and is allowed to wrap,
+    ///     since `AdaptiveRow` has by then given this side its own full-width
+    ///     line to wrap into.
+    ///
+    /// The chevron stays: it is the only affordance saying the row expands.
+    @ViewBuilder
+    private var readout: some View {
+        let isAccessibility = dynamicTypeSize.isAccessibilitySize
+        HStack(spacing: palette.spacingRow) {
+            if let context {
+                Text(context)
+                    .scaledFont(palette, size: 11)
+                    .foregroundStyle(palette.textTertiary)
+                    .lineLimit(isAccessibility ? nil : 1)
+            }
+            Text(headline)
+                .scaledFont(palette, size: 20, weight: .semibold, monospacedDigit: true)
+                .foregroundStyle(headline == MetricFormatting.placeholder ? palette.textTertiary : palette.textPrimary)
+            if !sparkline.isEmpty && !isAccessibility {
+                LedgerSparkline(values: sparkline, tint: tint)
+                    .frame(width: 70, height: 22)
+            }
+            if !details.isEmpty {
+                Image(systemName: "chevron.down")
+                    .scaledSystemFont(size: 10, weight: .semibold)
+                    .foregroundStyle(palette.textTertiary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+        }
     }
 }
 
@@ -253,6 +281,7 @@ struct VitalsLedger: View {
 /// Same honesty contract as the Mac's `ActivityOverlayChart`.
 struct MobileActivityChart: View {
     @Environment(\.themePalette) private var palette
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let series: [MetricID: [Double]]
 
@@ -272,27 +301,12 @@ struct MobileActivityChart: View {
     var body: some View {
         if drawable.isEmpty {
             Text("Activity appears after a few seconds of readings.")
-                .font(palette.font(size: 12))
+                .scaledFont(palette, size: 12)
                 .foregroundStyle(palette.textTertiary)
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
         } else {
             VStack(alignment: .leading, spacing: palette.spacingTight) {
-                HStack(spacing: palette.spacingRow) {
-                    ForEach(drawable, id: \.metric) { entry in
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(palette.metricColor(entry.metric))
-                                .frame(width: 6, height: 6)
-                            Text(entry.title)
-                                .font(palette.font(size: 11))
-                                .foregroundStyle(palette.textSecondary)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    Text("last 60 s")
-                        .font(palette.font(size: 11))
-                        .foregroundStyle(palette.textTertiary)
-                }
+                legend
                 Canvas { context, size in
                     for entry in drawable {
                         let peak = max(entry.values.max() ?? 1, .leastNonzeroMagnitude)
@@ -322,10 +336,46 @@ struct MobileActivityChart: View {
                 .accessibilityValue(cpuSentence ?? String(localized: "relative activity shapes"))
                 if let sentence = cpuSentence {
                     Text(sentence)
-                        .font(palette.font(size: 11))
-                        .monospacedDigit()
+                        .scaledFont(palette, size: 11, monospacedDigit: true)
                         .foregroundStyle(palette.textTertiary)
                 }
+            }
+        }
+    }
+
+    /// Three swatch+name pairs and a "last 60 s" caption. On one line at
+    /// normal sizes; at accessibility sizes those four items need roughly
+    /// three times the width the phone has, and SwiftUI would resolve the
+    /// overflow by truncating the metric names to "C…", "M…", "G…" — a legend
+    /// that no longer identifies anything. Stacking the pairs vertically and
+    /// moving the caption to its own line costs three lines of height in a
+    /// `ScrollView` and keeps every name whole.
+    @ViewBuilder
+    private var legend: some View {
+        let entries = ForEach(drawable, id: \.metric) { entry in
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(palette.metricColor(entry.metric))
+                    .frame(width: 6, height: 6)
+                Text(entry.title)
+                    .scaledFont(palette, size: 11)
+                    .foregroundStyle(palette.textSecondary)
+            }
+        }
+        let caption = Text("last 60 s")
+            .scaledFont(palette, size: 11)
+            .foregroundStyle(palette.textTertiary)
+
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: palette.spacingTight) {
+                entries
+                caption
+            }
+        } else {
+            HStack(spacing: palette.spacingRow) {
+                entries
+                Spacer(minLength: 0)
+                caption
             }
         }
     }

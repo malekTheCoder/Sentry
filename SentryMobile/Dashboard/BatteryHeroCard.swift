@@ -48,10 +48,10 @@ struct BatteryHeroCard: View {
     private var unavailable: some View {
         VStack(alignment: .leading, spacing: 4) {
             Label("Battery Unavailable", systemImage: "battery.slash")
-                .font(palette.font(size: 13, weight: .semibold))
+                .scaledFont(palette, size: 13, weight: .semibold)
                 .foregroundStyle(palette.textSecondary)
             Text("This Mac reported no battery data.")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
         }
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
@@ -59,32 +59,37 @@ struct BatteryHeroCard: View {
 
     // MARK: Hero
 
+    /// The 32pt percentage sits beside a two-line status block. At an
+    /// accessibility text size the numeral alone can be ~45pt wide per digit,
+    /// so the two halves stop fitting on one line and the status sentence
+    /// would be squeezed into a one-word-per-line column. Stacking them keeps
+    /// both readable — `AdaptiveRow`'s doc comment
+    /// (`SentryMobile/Theme/ScaledTypography.swift`) has the full reasoning.
     private func hero(for battery: BatteryStats) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: palette.spacingRow) {
+        AdaptiveRow(spacing: palette.spacingRow, verticalAlignment: .firstTextBaseline) {
             HStack(alignment: .center, spacing: 4) {
                 Text(MetricFormatting.percent(battery.chargePercent))
-                    .font(palette.font(size: 32, weight: .semibold))
-                    .monospacedDigit()
+                    .scaledFont(palette, size: 32, weight: .semibold, monospacedDigit: true)
                     .tracking(-0.5)
                     .foregroundStyle(palette.textPrimary)
                 if battery.isCharging {
                     // Paired icon so charge state isn't color-only.
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 13))
+                        .scaledSystemFont(size: 13)
                         .foregroundStyle(statusColor(for: battery))
                         .accessibilityHidden(true)
                 }
             }
+        } trailing: {
             VStack(alignment: .leading, spacing: 1) {
                 Text(stateLabel(for: battery))
-                    .font(palette.font(size: 14))
+                    .scaledFont(palette, size: 14)
                     .foregroundStyle(palette.textSecondary)
                 Text(wattageHeadline(for: battery))
-                    .font(palette.font(size: 12))
-                    .monospacedDigit()
+                    .scaledFont(palette, size: 12, monospacedDigit: true)
                     .foregroundStyle(palette.textTertiary)
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Battery \(MetricFormatting.percent(battery.chargePercent)), \(stateLabel(for: battery))")
@@ -154,14 +159,13 @@ struct DashboardDetailRow: View {
     let value: String
 
     var body: some View {
-        HStack {
+        AdaptiveRow(spacing: palette.spacing) {
             Text(label)
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
-            Spacer(minLength: palette.spacing)
+        } trailing: {
             Text(value)
-                .font(palette.font(size: 11))
-                .monospacedDigit()
+                .scaledFont(palette, size: 11, monospacedDigit: true)
                 .foregroundStyle(palette.textSecondary)
         }
     }

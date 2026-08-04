@@ -29,7 +29,12 @@ struct BatteryHealthTrendChart: View {
                 chart
             }
         }
-        .frame(height: 180)
+        // `minHeight`, not `height`. The chart itself is fine at a fixed 180pt
+        // — its axis labels are system-styled and scale within it — but the
+        // empty state is a line of text in the same box, and at an
+        // accessibility size that text needs more than 180pt. A minimum lets
+        // the empty state grow while leaving the chart's proportions alone.
+        .frame(minHeight: 180)
     }
 
     private var chart: some View {
@@ -73,7 +78,7 @@ struct BatteryHealthTrendChart: View {
     private var emptyState: some View {
         VStack(spacing: 4) {
             Text("No battery health history yet")
-                .font(palette.font(size: 12, weight: .medium))
+                .scaledFont(palette, size: 12, weight: .medium)
                 .foregroundStyle(palette.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

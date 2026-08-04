@@ -71,16 +71,16 @@ struct SleepStatusCard: View {
                 activeDetail(mode: mode, expiresAt: expiresAt, reason: reason)
             case .inactive:
                 Text("Sleep behaves normally on this Mac.")
-                    .font(palette.font(size: 11))
+                    .scaledFont(palette, size: 11)
                     .foregroundStyle(palette.textTertiary)
             case nil:
                 Text("Unavailable")
-                    .font(palette.font(size: 11))
+                    .scaledFont(palette, size: 11)
                     .foregroundStyle(palette.textTertiary)
             }
             if let feedback {
                 Text(feedback)
-                    .font(palette.font(size: 10, weight: .medium))
+                    .scaledFont(palette, size: 10, weight: .medium)
                     .foregroundStyle(palette.warning)
                     .transition(.opacity)
             } else {
@@ -107,21 +107,27 @@ struct SleepStatusCard: View {
     /// used to always say "Sleep Prevention" regardless of state, with the
     /// active/inactive distinction buried in a 10px subtitle underneath.
     private var header: some View {
-        HStack(spacing: palette.spacing) {
-            Image(systemName: isActive ? "moon.zzz.fill" : "moon.zzz")
-                .foregroundStyle(isActive ? palette.accent : palette.textSecondary)
-                .frame(width: 16)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(isActive ? "Keeping Mac awake" : "Keep Mac awake")
-                    .font(palette.font(size: 13, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-                if !isActive {
-                    Text("Reporting from your Mac")
-                        .font(palette.font(size: 10))
-                        .foregroundStyle(palette.textTertiary)
+        AdaptiveRow(spacing: palette.spacing, verticalAlignment: .center) {
+            HStack(spacing: palette.spacing) {
+                Image(systemName: isActive ? "moon.zzz.fill" : "moon.zzz")
+                    .foregroundStyle(isActive ? palette.accent : palette.textSecondary)
+                    // `minWidth`, not `width`: the 16pt column keeps the two
+                    // header variants' text aligned at normal sizes, but a
+                    // hard width would clip the glyph once it scales.
+                    .frame(minWidth: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(isActive ? "Keeping Mac awake" : "Keep Mac awake")
+                        .scaledFont(palette, size: 13, weight: .semibold)
+                        .foregroundStyle(palette.textPrimary)
+                    if !isActive {
+                        Text("Reporting from your Mac")
+                            .scaledFont(palette, size: 10)
+                            .foregroundStyle(palette.textTertiary)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: palette.spacing)
+        } trailing: {
             if isActive {
                 activeStatusPill
             }
@@ -131,9 +137,9 @@ struct SleepStatusCard: View {
     private var activeStatusPill: some View {
         HStack(spacing: 4) {
             Text("●")
-                .font(.system(size: 8))
+                .scaledSystemFont(size: 8)
             Text("Active")
-                .font(palette.font(size: 11, weight: .semibold))
+                .scaledFont(palette, size: 11, weight: .semibold)
         }
         .foregroundStyle(palette.accent)
     }
@@ -150,20 +156,33 @@ struct SleepStatusCard: View {
                 // per the redesign spec's "SF Mono tabular for every
                 // numeric readout" — this is the one big/hero numeric value
                 // on this card, so it gets the 24px treatment.
+                //
+                // `monospacedDigit: true` on top of `design: .monospaced` is
+                // not redundant here: SF Mono is uniform-width for *all*
+                // glyphs, but a `.timer` text redraws every second and the
+                // tabular-figures feature is what guarantees the seconds
+                // column doesn't shift as digits change. Scaling preserves
+                // both — the modifier scales the point size and rebuilds the
+                // same monospaced font at the new size.
                 Text(expiresAt, style: .timer)
-                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                    .scaledSystemFont(size: 24, weight: .semibold, design: .monospaced, monospacedDigit: true)
                     .foregroundStyle(palette.textPrimary)
                 adjustRow
             } else {
                 Text("No countdown — ends when turned off on the Mac")
-                    .font(palette.font(size: 11))
+                    .scaledFont(palette, size: 11)
                     .foregroundStyle(palette.textTertiary)
             }
             DashboardDetailRow(label: String(localized: "Mode"), value: mode.mobileShortLabel)
             Text(reason)
-                .font(palette.font(size: 10))
+                .scaledFont(palette, size: 10)
                 .foregroundStyle(palette.textTertiary)
-                .lineLimit(2)
+                // No `.lineLimit(2)` any more. The reason string is the Mac's
+                // own explanation of why it's staying awake; two lines held it
+                // at the design size, but at an accessibility size the same
+                // string needs five or six and the limit would silently eat
+                // the end of the sentence. Vertical space is free in this
+                // ScrollView.
                 .fixedSize(horizontal: false, vertical: true)
             endNowButton
         }
@@ -173,8 +192,15 @@ struct SleepStatusCard: View {
     /// same scoping `PowerControlService.adjustAssertion(bySeconds:)` enforces
     /// on the Mac side, so a tap here would ask for exactly what that method
     /// would accept once a real command reaches it.
+    ///
+    /// Three side-by-side pills fit comfortably at design sizes; at an
+    /// accessibility size their labels plus padding exceed the card's width
+    /// and the last one would be pushed off the edge (a `Button` label
+    /// doesn't wrap or shrink to make room). Stacking them keeps all three
+    /// reachable, which matters more here than on a read-only row: these are
+    /// the card's only controls.
     private var adjustRow: some View {
-        HStack(spacing: palette.spacing * 0.6) {
+        AdaptiveStack(spacing: palette.spacing * 0.6) {
             adjustButton("-15m", commandType: "truncateAwake", seconds: -15 * 60)
             adjustButton("+15m", commandType: "extendAwake", seconds: 15 * 60)
             adjustButton("+1h", commandType: "extendAwake", seconds: 60 * 60)
@@ -195,7 +221,7 @@ struct SleepStatusCard: View {
             )
         }
         .buttonStyle(.plain)
-        .font(palette.font(size: 10, weight: .medium))
+        .scaledFont(palette, size: 10, weight: .medium)
         .foregroundStyle(palette.textSecondary)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -217,7 +243,7 @@ struct SleepStatusCard: View {
             )
         }
         .buttonStyle(.plain)
-        .font(palette.font(size: 10, weight: .medium))
+        .scaledFont(palette, size: 10, weight: .medium)
         .foregroundStyle(palette.danger)
     }
 
@@ -266,9 +292,9 @@ struct SleepStatusCard: View {
     private var remoteControlNote: some View {
         HStack(alignment: .top, spacing: 5) {
             Image(systemName: "info.circle")
-                .font(.system(size: 10))
+                .scaledSystemFont(size: 10)
             Text("Reaches your Mac over local Wi-Fi, or from anywhere if you've set up Remote Access. Sentry must be open on your Mac.")
-                .font(palette.font(size: 10))
+                .scaledFont(palette, size: 10)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }

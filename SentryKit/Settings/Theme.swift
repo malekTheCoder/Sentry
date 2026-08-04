@@ -34,6 +34,97 @@ public enum NumericStyle: String, Codable, Equatable, Sendable {
     case monospacedDigit
 }
 
+/// Mirrors SwiftUI's `Font.TextStyle` cases as a plain token, for the same
+/// reason `FontWeightToken` above mirrors `Font.Weight`: this file is the
+/// model layer, and the model layer here is deliberately Foundation-only
+/// (see `ThemeAppearance`'s doc comment for the full rationale — `SentryKit`
+/// is linked by `SentryCLI`, `SentryMCP` and the fan daemon, none of which
+/// should drag SwiftUI in). The app targets map this token to the real
+/// `Font.TextStyle` at the rendering boundary.
+///
+/// `.headline` is deliberately absent. It shares `.body`'s 17pt default
+/// size and differs only in weight, and weight is already carried
+/// separately by every typography call site in this codebase — including it
+/// would make `TypeScale.textStyle(forSize:)` below ambiguous at 17pt
+/// without expressing anything the `weight:` argument doesn't already say.
+public enum TextStyleToken: String, Codable, Equatable, Sendable, CaseIterable {
+    case caption2
+    case caption
+    case footnote
+    case subheadline
+    case callout
+    case body
+    case title3
+    case title2
+    case title
+    case largeTitle
+}
+
+/// Maps a hand-tuned point size onto the Dynamic Type text style that scales
+/// most like it.
+///
+/// **Why this exists.** Every typography call site in the Mac and iPhone
+/// apps is a literal point size (`palette.font(size: 11)`), because both
+/// designs were drawn against menu-bar and card metrics where a fixed size
+/// is the correct answer. On iPhone it is not: text that ignores the user's
+/// Dynamic Type setting is an accessibility failure. The iPhone app
+/// therefore scales those same literals relative to a text style, and this
+/// type is how a literal picks its style without every call site having to
+/// pass one by hand (and get it subtly wrong 58 different ways).
+///
+/// **Why nearest-anchor and not a fixed multiplier.** Each `Font.TextStyle`
+/// has its own scaling curve — at the largest accessibility size `.caption2`
+/// roughly quadruples while `.largeTitle` grows about 30%. That is the
+/// point: a 64pt hero numeral must *not* quadruple, and an 11pt caption must
+/// grow a lot to be readable at all. Choosing the anchor whose default size
+/// is nearest the requested size inherits Apple's intended curve for text of
+/// that visual weight, which is exactly what a hand-written multiplier would
+/// spend a long time approximating badly.
+///
+/// **Ties go to the smaller style.** 14pt sits exactly between `.footnote`
+/// (13) and `.subheadline` (15). Picking the smaller anchor makes the text
+/// grow slightly *more*, which is the safe direction to be wrong in for an
+/// accessibility feature: worst case something is a little larger than
+/// ideal, rather than a little too small for the person who asked for large
+/// text.
+public enum TypeScale {
+    /// Each style's default point size at the system's default content size
+    /// category (`.large`) on iOS, in ascending order. These are Apple's
+    /// published values, not measurements — they are the anchors that define
+    /// what "relative to `.body`" means, so hardcoding them is reading the
+    /// spec, not caching a runtime result.
+    public static let anchors: [(style: TextStyleToken, size: CGFloat)] = [
+        (.caption2, 11),
+        (.caption, 12),
+        (.footnote, 13),
+        (.subheadline, 15),
+        (.callout, 16),
+        (.body, 17),
+        (.title3, 20),
+        (.title2, 22),
+        (.title, 28),
+        (.largeTitle, 34),
+    ]
+
+    /// The text style whose default size is nearest `size`, ties resolving to
+    /// the smaller style. Sizes below 11pt clamp to `.caption2` and sizes
+    /// above 34pt clamp to `.largeTitle` — both ends are saturating on
+    /// purpose: there is no smaller or larger anchor to interpolate toward,
+    /// and a 64pt hero numeral genuinely does want `.largeTitle`'s gentle
+    /// curve rather than an extrapolated one nobody has design-reviewed.
+    public static func textStyle(forSize size: CGFloat) -> TextStyleToken {
+        var best = anchors[0]
+        for anchor in anchors.dropFirst() {
+            // Strict `<` keeps the earlier (smaller) anchor on an exact tie,
+            // since `anchors` is ascending.
+            if abs(anchor.size - size) < abs(best.size - size) {
+                best = anchor
+            }
+        }
+        return best.style
+    }
+}
+
 /// Overall spacing/sizing scale for dropdown rows and bar-item padding.
 public enum Density: String, Codable, Equatable, Sendable {
     case compact

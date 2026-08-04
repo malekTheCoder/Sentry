@@ -68,7 +68,7 @@ struct AlertsTabView: View {
 
     private var title: some View {
         Text("Alerts")
-            .font(palette.font(size: 20, weight: .semibold))
+            .scaledFont(palette, size: 20, weight: .semibold)
             .foregroundStyle(palette.textPrimary)
     }
 
@@ -85,7 +85,7 @@ struct AlertsTabView: View {
     private func categorySection(_ category: AlertCategory, indices: [Int]) -> some View {
         VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
             Text(category.displayName.uppercased())
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
             VStack(spacing: 0) {
                 ForEach(Array(indices.enumerated()), id: \.element) { position, index in
@@ -115,16 +115,24 @@ struct AlertsTabView: View {
     /// once at the top of the screen, because a toggle a user just flipped
     /// is the moment they're most likely to assume it did something.
     private func ruleRow(_ rule: Binding<AlertRule>) -> some View {
-        HStack(alignment: .center, spacing: palette.spacing) {
+        // A `Toggle` has a fixed ~51pt intrinsic width that never shrinks, so
+        // at accessibility sizes the rule name and its condition summary get
+        // whatever is left and start wrapping to one word a line. Stacking
+        // gives the text the full row width and puts the switch on its own
+        // line underneath, still inside the same combined accessibility
+        // element.
+        AdaptiveRow(spacing: palette.spacing, verticalAlignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(rule.wrappedValue.name)
-                    .font(palette.font(size: 12.5, weight: .medium))
+                    .scaledFont(palette, size: 12.5, weight: .medium)
                     .foregroundStyle(palette.textPrimary)
                 Text(AlertRuleDisplay.conditionSummary(for: rule.wrappedValue))
-                    .font(palette.font(size: 10.5))
+                    .scaledFont(palette, size: 10.5)
                     .foregroundStyle(palette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: palette.spacing)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } trailing: {
             Toggle("", isOn: rule.isEnabled)
                 .labelsHidden()
                 .tint(palette.accent)
@@ -147,11 +155,11 @@ struct AlertsTabView: View {
                 Image(systemName: "bell.slash")
                     .foregroundStyle(palette.textTertiary)
                 Text("Alert history isn't synced to this iPhone yet")
-                    .font(palette.font(size: 12, weight: .semibold))
+                    .scaledFont(palette, size: 12, weight: .semibold)
                     .foregroundStyle(palette.textSecondary)
             }
             Text("Sentry logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone.")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }

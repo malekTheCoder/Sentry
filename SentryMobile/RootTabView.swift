@@ -114,7 +114,7 @@ struct StubTabContent: View {
         NavigationStack {
             VStack(spacing: 12) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 40))
+                    .scaledSystemFont(size: 40)
                     .foregroundStyle(.secondary)
                 Text(message)
                     .font(.callout)

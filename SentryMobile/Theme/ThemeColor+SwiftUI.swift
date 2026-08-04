@@ -102,6 +102,20 @@ struct ThemePalette: Equatable {
 
     // MARK: Typography
 
+    /// Builds a **fixed-size** font in the theme's family.
+    ///
+    /// **This is not the API iPhone views should call.** A fixed size ignores
+    /// Dynamic Type, so text built with it never grows for a user who has
+    /// turned the system text size up. Use `View.scaledFont(_:size:weight:)`
+    /// (`SentryMobile/Theme/ScaledTypography.swift`) instead — it takes the
+    /// same point size and scales it, and that file's header documents which
+    /// platforms keep the fixed API and why (menu-bar glyph metrics on macOS,
+    /// per-page hand-tuned layouts on watchOS, fixed rectangles in widgets).
+    ///
+    /// It stays `internal` and stays here because `scaledFont` is built on top
+    /// of it: the scaled modifier resolves the *scaled* point size and then
+    /// asks this method for the theme's family and weight at that size. Nothing
+    /// else in `SentryMobile` should call it directly.
     func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         switch theme.fontFamily {
         case .system:

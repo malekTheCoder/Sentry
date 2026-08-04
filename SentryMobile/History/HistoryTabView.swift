@@ -88,7 +88,7 @@ struct HistoryTabView: View {
 
     private var title: some View {
         Text("History")
-            .font(palette.font(size: 20, weight: .semibold))
+            .scaledFont(palette, size: 20, weight: .semibold)
             .foregroundStyle(palette.textPrimary)
     }
 
@@ -120,7 +120,7 @@ struct HistoryTabView: View {
     private var batteryHealthCard: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             Text(batteryHealthHeadline)
-                .font(palette.font(size: 13, weight: .semibold))
+                .scaledFont(palette, size: 13, weight: .semibold)
                 .foregroundStyle(palette.textPrimary)
             BatteryHealthTrendChart(series: viewModel.dailyHealth)
             CycleCountSection(series: viewModel.dailyHealth)
@@ -148,10 +148,10 @@ struct HistoryTabView: View {
     private var chargeSessionGapNotice: some View {
         HStack(spacing: 6) {
             Image(systemName: "circle")
-                .font(.system(size: 9))
+                .scaledSystemFont(size: 9)
                 .foregroundStyle(palette.textTertiary)
             Text("Charge sessions — not available yet on this build")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)

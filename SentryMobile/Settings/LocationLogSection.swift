@@ -43,7 +43,7 @@ struct LocationLogSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
             Text("LOCATION LOG")
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
 
             if let location = viewModel.lastLocation {
@@ -53,7 +53,7 @@ struct LocationLogSection: View {
             }
 
             Text("Not Find My — Sentry has no connection to Apple's Find My network. This is a periodic location log: while Sentry is running on your Mac and location access is granted, it occasionally reports its approximate location to this phone over your local Wi-Fi network. It cannot be located while off, asleep, or offline.")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }
         .task {
@@ -85,17 +85,17 @@ struct LocationLogSection: View {
             )
             .allowsHitTesting(false) // a settings card, not an interactive map screen
 
-            HStack(spacing: 6) {
+            AdaptiveRow(spacing: 6) {
                 Text("As of \(location.timestamp.formatted(date: .omitted, time: .shortened))")
-                    .font(palette.font(size: 11))
+                    .scaledFont(palette, size: 11)
                     .foregroundStyle(palette.textSecondary)
-                Spacer(minLength: 0)
+            } trailing: {
                 FreshnessBadge(lastSeen: location.timestamp)
             }
 
             if let accuracy = location.horizontalAccuracyMeters {
                 Text("Approximate — accurate to roughly ±\(Int(accuracy)) meters, not precise GPS.")
-                    .font(palette.font(size: 10))
+                    .scaledFont(palette, size: 10)
                     .foregroundStyle(palette.textTertiary)
             }
         }
@@ -108,10 +108,10 @@ struct LocationLogSection: View {
     private var emptyState: some View {
         HStack(spacing: 6) {
             Image(systemName: "location.slash")
-                .font(.system(size: 11))
+                .scaledSystemFont(size: 11)
                 .foregroundStyle(palette.textTertiary)
             Text("No location received yet.")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)

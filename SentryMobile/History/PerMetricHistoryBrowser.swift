@@ -29,16 +29,6 @@ struct PerMetricHistoryBrowser: View {
 
     @State private var selectedModule: MetricModule = .battery
 
-    /// Chip label size. `palette.font(size:)` builds a fixed-size
-    /// `Font.system(size:)` (see `SentryMobile/Theme/ThemeColor+SwiftUI.swift`),
-    /// which does *not* respond to Dynamic Type — fine for the menu-bar-derived
-    /// designs it was written for, wrong for a touch control that a user with
-    /// large text needs to read. `@ScaledMetric` scales the number instead, so
-    /// the chips keep the theme's font family and still grow with the system
-    /// text size. Growth is safe here precisely because the row scrolls: wider
-    /// chips push the row longer rather than squeezing the labels.
-    @ScaledMetric(relativeTo: .body) private var chipFontSize: CGFloat = 13
-
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             header
@@ -60,7 +50,7 @@ struct PerMetricHistoryBrowser: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text("Per-Metric Browser")
-                .font(palette.font(size: 13, weight: .semibold))
+                .scaledFont(palette, size: 13, weight: .semibold)
                 .foregroundStyle(palette.textPrimary)
             Text("Current values only — no per-metric history query exists yet")
                 .font(.caption2)
@@ -159,7 +149,9 @@ struct PerMetricHistoryBrowser: View {
                 Text(item.title)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            .font(palette.font(size: chipFontSize, weight: item.isSelected ? .semibold : .regular))
+            // Growth is safe here precisely because the row scrolls: wider
+            // chips push the row longer rather than squeezing the labels.
+            .scaledFont(palette, size: 13, weight: item.isSelected ? .semibold : .regular)
             .foregroundStyle(item.isSelected ? palette.background : palette.textSecondary)
             .padding(.horizontal, palette.spacingBlock)
             .padding(.vertical, palette.spacingTight)
@@ -181,12 +173,15 @@ struct PerMetricHistoryBrowser: View {
         let metrics = MetricID.allCases.filter { $0.module == selectedModule }
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(metrics.enumerated()), id: \.element) { index, metric in
-                HStack {
+                AdaptiveRow(spacing: palette.spacing) {
                     Text(metric.shortLabel)
                         .font(.callout)
                         .foregroundStyle(palette.textSecondary)
-                    Spacer(minLength: palette.spacing)
+                } trailing: {
                     Text(MetricFormatting.value(snapshot.value(for: metric), metric: metric))
+                        // `.monospacedDigit()` on the `Font`, not as a trailing
+                        // view modifier, so the tabular figures survive
+                        // whatever size `.callout` resolves to.
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(palette.textPrimary)
                 }
