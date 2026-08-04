@@ -187,7 +187,14 @@ struct SettingsTabView: View {
                 }
                 .padding(.vertical, 2)
             }
-            Text("The same presets as the Mac app (SentryKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.")
+            // Deliberately says neither "SentryKit/Settings/Theme.swift" (a
+            // source path has no meaning to the person reading this) nor
+            // "iCloud" (Sentry has no cloud account and no CloudKit
+            // container — promising a channel that doesn't exist, in the one
+            // app whose pitch is that nothing leaves your machine, is worse
+            // than saying nothing). Says only what is true and useful: this
+            // choice is per-device.
+            Text("The same presets as the Mac app, applied to all four tabs. Your theme is stored on this device, so choosing one here doesn't change the Mac app, and vice versa.")
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }
@@ -315,7 +322,10 @@ struct SettingsTabView: View {
                         .foregroundStyle(palette.textSecondary)
                 }
             }
-            Text("These mirror the Mac app's alert rules (AlertRule/AlertAction, SentryKit/Services/AlertRule.swift) — shown for reference, not as working preferences. Notifications require a live sync connection this build doesn't have, so there's nothing here to turn on or off yet.")
+            // Type and file names removed for the same reason as the theme
+            // caption above: this is read by someone deciding whether to
+            // trust the app, not by someone browsing the source.
+            Text("These mirror the Mac app's alert rules — shown for reference, not as working preferences. Notifications need a live connection to your Mac, so there's nothing here to turn on or off yet.")
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }
@@ -366,11 +376,11 @@ extension SettingsTabView {
         } label: {
             HStack(spacing: palette.spacingTight) {
                 Text("About Sentry")
-                    .font(palette.font(size: 12.5))
+                    .scaledFont(palette, size: 12.5)
                     .foregroundStyle(palette.textPrimary)
                 Spacer(minLength: 0)
                 Text(AppCredits.versionSummary())
-                    .font(palette.font(size: 11))
+                    .scaledFont(palette, size: 11)
                     .foregroundStyle(palette.textTertiary)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))

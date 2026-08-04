@@ -17,10 +17,12 @@ import SentryKit
 /// insets) to add a single screen. A sheet reaches the same content without
 /// touching any existing view's layout.
 ///
-/// **Typography deliberately uses `palette.font(size:)`**, the API every
-/// surrounding iPhone view uses today, rather than a Dynamic Type text
-/// style — matching the code around it is the point; a lone view using a
-/// different font API would be the thing that looks wrong.
+/// **Typography uses `scaledFont(_:size:weight:)`**, like every surrounding
+/// iPhone view. This screen was written on a branch that predated the
+/// Dynamic Type migration and deliberately used the fixed `palette.font`
+/// API to match its contemporaries; the two landed together, which briefly
+/// made About the one iPhone screen whose text did not scale. Reconciled at
+/// the merge — the rule is simply that iPhone views scale.
 struct AboutView: View {
 
     @Environment(\.themePalette) private var palette
@@ -49,11 +51,11 @@ struct AboutView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("About")
-                .font(palette.font(size: 20, weight: .semibold))
+                .scaledFont(palette, size: 20, weight: .semibold)
                 .foregroundStyle(palette.textPrimary)
             Spacer(minLength: 0)
             Button("Done") { dismiss() }
-                .font(palette.font(size: 13, weight: .medium))
+                .scaledFont(palette, size: 13, weight: .medium)
                 .foregroundStyle(palette.textSecondary)
         }
     }
@@ -63,15 +65,15 @@ struct AboutView: View {
     private var identityCard: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Sentry")
-                .font(palette.font(size: 16, weight: .semibold))
+                .scaledFont(palette, size: 16, weight: .semibold)
                 .foregroundStyle(palette.textPrimary)
             // Read from this bundle, never hardcoded — see
             // `AppCredits.versionSummary(bundle:)`.
             Text(AppCredits.versionSummary())
-                .font(palette.font(size: 11.5))
+                .scaledFont(palette, size: 11.5)
                 .foregroundStyle(palette.textSecondary)
             Text("The iPhone companion to Sentry for Mac.")
-                .font(palette.font(size: 11.5))
+                .scaledFont(palette, size: 11.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -86,16 +88,16 @@ struct AboutView: View {
     private var contributorsCard: some View {
         VStack(alignment: .leading, spacing: palette.spacingTight) {
             Text("MADE BY")
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
                 .accessibilityAddTraits(.isHeader)
             ForEach(AppCredits.contributors, id: \.self) { name in
                 Text(name)
-                    .font(palette.font(size: 12.5))
+                    .scaledFont(palette, size: 12.5)
                     .foregroundStyle(palette.textPrimary)
             }
             Text(AppCredits.copyright)
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -106,16 +108,16 @@ struct AboutView: View {
     private var privacyCard: some View {
         VStack(alignment: .leading, spacing: palette.spacingTight) {
             Text("PRIVACY")
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
                 .accessibilityAddTraits(.isHeader)
             if let url = AppCredits.privacyPolicyURL {
                 Link("Privacy Policy", destination: url)
-                    .font(palette.font(size: 12.5))
+                    .scaledFont(palette, size: 12.5)
                     .foregroundStyle(palette.accent)
             }
             Text("Sentry keeps its data on your own devices. The full policy is docs/privacy-policy.md in the source repository; the published address above isn't live yet.")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -130,7 +132,7 @@ struct AboutView: View {
     private var thirdPartyCard: some View {
         VStack(alignment: .leading, spacing: palette.spacingTight) {
             Text("ACKNOWLEDGEMENTS")
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
                 .accessibilityAddTraits(.isHeader)
 
@@ -143,13 +145,13 @@ struct AboutView: View {
                 .padding(.top, palette.spacingTight)
             } label: {
                 Text("Third-Party Licenses")
-                    .font(palette.font(size: 12.5))
+                    .scaledFont(palette, size: 12.5)
                     .foregroundStyle(palette.textPrimary)
             }
             .tint(palette.textSecondary)
 
             Text("docs/third-party-licenses.md in the source repository carries the full list, including the packages that ship only in the Mac app.")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -168,10 +170,10 @@ struct AboutView: View {
                 Text(component.version)
                     .foregroundStyle(palette.textTertiary)
             }
-            .font(palette.font(size: 12))
+            .scaledFont(palette, size: 12)
 
             Text("\(component.license) · \(component.copyright)")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
