@@ -123,6 +123,18 @@ public struct ProtectionInsightsEngine: Sendable {
         UnderpoweredAdapterRule(),
         RisingThermalBaselineRule(),
 
+        // Backup
+        TimeMachineNoBackupDestinationRule(),
+        TimeMachineBackupStaleRule(),
+        TimeMachineBackupHealthyRule(),
+
+        // Drive health
+        DriveSMARTFailingRule(),
+        DriveSMARTHealthyRule(),
+
+        // Kernel panics
+        KernelPanicHistoryRule(),
+
         // Security posture
         FileVaultOffRule(),
         FileVaultOnRule(),
@@ -140,6 +152,7 @@ public struct ProtectionInsightsEngine: Sendable {
         FileSharingListeningRule(),
         RemoteManagementListeningRule(),
         GuestAccountEnabledRule(),
+        OutdatedMacOSVersionRule(),
         PostureUnknownRule(),
         HardenedBaselineRule(),
 

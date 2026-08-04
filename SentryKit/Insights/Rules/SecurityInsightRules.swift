@@ -431,6 +431,76 @@ public struct AutomaticMacOSUpdatesOffRule: ProtectionInsightRule, Sendable {
     }
 }
 
+/// Running a macOS major version that has definitively stopped receiving
+/// security updates.
+///
+/// **A lower bound, not an up-to-date check.** This does *not* try to know
+/// what the newest macOS is — that list goes stale the day after every WWDC
+/// and would need this app to ship an update just to keep a threshold
+/// current. What it checks instead is a one-way fact that doesn't expire:
+/// once Apple has stopped signing security updates for a major version, that
+/// version stays unsupported forever. The constant below only ever needs to
+/// move in one direction, and only when a *new* version's predecessor falls
+/// off Apple's support window — it is not a "latest OS" tracker.
+///
+/// **The current cutoff, and why.** Apple's practice for the last several
+/// years has been to patch the current release plus the two before it, and
+/// macOS Monterey (12) received its last security update in December 2024
+/// when Sonoma (14) and Sequoia (15) were the two being patched alongside
+/// it. Anything below major version 13 (Ventura) is therefore definitively
+/// past its support window as of this cutoff.
+///
+/// **This needs manual upkeep.** Every time Apple ships a new annual
+/// release, the machine two majors back typically ages out a few months
+/// later. This constant has to be bumped by hand when that happens — there
+/// is no API that answers "is this macOS version still patched," so a
+/// human has to notice and update the one number below.
+public struct OutdatedMacOSVersionRule: ProtectionInsightRule, Sendable {
+    public let id = "security.macos-version-unsupported"
+    public let category: InsightCategory = .security
+    public init() {}
+
+    /// See the type doc comment for how this number was chosen and what
+    /// "revisit this" looks like going forward.
+    public static let minimumSupportedMajorVersion = 13
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard let versionString = context.device.macOSVersion,
+              let majorComponent = versionString.split(separator: ".").first,
+              let major = Int(majorComponent)
+        else { return nil }
+        guard major < Self.minimumSupportedMajorVersion else { return nil }
+
+        let majorText = "\(major)"
+        let minimumText = "\(Self.minimumSupportedMajorVersion)"
+
+        var evidence = [
+            String(localized: "This Mac is running macOS \(versionString) — major version \(majorText), which no longer receives security updates from Apple.")
+        ]
+        if context.posture.automaticMacOSUpdates.isDefinitelyOn || context.posture.automaticUpdateChecks.isDefinitelyOn {
+            evidence.append(String(localized: "Automatic update settings are on, but there is nothing left for them to install — this machine is past the last version Apple will patch."))
+        }
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "This macOS version no longer gets security updates"),
+            summary: String(localized: "Running macOS \(majorText), which is past Apple's support window."),
+            detail: String(localized: "Apple typically patches the current macOS release and the two before it; anything older stops receiving fixes entirely, including for vulnerabilities discovered and actively exploited after that point. Every other finding in this list assumes the operating system underneath it is at least getting patched — on an unsupported version, a perfect security posture everywhere else still runs on a foundation with known, permanently open holes."),
+            recommendation: String(localized: "Update to macOS \(minimumText) or later in System Settings ▸ General ▸ Software Update if this Mac supports it. If it doesn't — Apple drops hardware support for older Macs over time — the honest options are to retire this Mac from tasks that touch sensitive data, or to replace it; there is no setting that fixes an unsupported OS."),
+            category: category,
+            severity: .critical,
+            evidence: evidence,
+            action: InsightAction(
+                label: String(localized: "Open Software Update"),
+                target: .systemSettings(urlString: SystemSettingsLink.softwareUpdate),
+                fallbackDescription: String(localized: "System Settings ▸ General ▸ Software Update")
+            ),
+            confidence: 1.0,
+            scoreImpact: InsightWeight.criticalSecurity
+        )
+    }
+}
+
 // MARK: - Screen lock
 
 public struct ScreenLockOffRule: ProtectionInsightRule, Sendable {

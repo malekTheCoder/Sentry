@@ -164,6 +164,110 @@ public enum SecurityPostureParser {
         return ports.contains(port) ? .on : .off
     }
 
+    // MARK: - Backup & drive health
+
+    /// `tmutil destinationinfo`
+    ///
+    /// Known forms:
+    /// - `tmutil: No destinations configured.` — nothing set up.
+    /// - One or more `Name`/`Kind`/`URL`/… blocks, one per configured
+    ///   destination, when at least one exists.
+    ///
+    /// Unlike most of the probes in this file, a configured-but-empty
+    /// answer is a *plain-text sentence* rather than a missing key, so this
+    /// checks for that sentence rather than trying to parse the structured
+    /// form nobody needs here — the rule this feeds only needs on/off/unknown.
+    public static func timeMachineDestinationConfigured(_ output: String?) -> PostureState {
+        guard let text = normalise(output) else { return .unknown }
+        if text.contains("no destinations configured") { return .off }
+        // Any other non-empty output from a clean exit is the structured
+        // destination listing, which only prints when at least one exists.
+        return .on
+    }
+
+    /// `tmutil latestbackup -t`
+    ///
+    /// On success this prints exactly the backup's timestamp in Time
+    /// Machine's own folder-naming format, `yyyy-MM-dd-HHmmss` (the same
+    /// stamp macOS puts on the `Backups.backupdb` snapshot directory name).
+    /// When there is no completed backup to report, `tmutil` prints nothing
+    /// to stdout and exits 0 — a genuinely different situation from a
+    /// timed-out or missing binary, but the runner collapses both to `nil`
+    /// or empty text upstream, so both read as "no timestamp available"
+    /// here. `TimeMachineBackupStaleRule` combines this with
+    /// `timeMachineDestinationConfigured` to tell the two apart as far as
+    /// they can be told apart.
+    ///
+    /// The timestamp is parsed in the local time zone: it is the time zone
+    /// the backup completed in, and `tmutil` doesn't print an offset.
+    public static func timeMachineLastBackupDate(_ output: String?) -> Date? {
+        guard let text = normalise(output) else { return nil }
+        // Extracted with a scan rather than assumed to be the whole string:
+        // some macOS versions have been seen to prefix informational text
+        // ahead of the timestamp on -t output, and scanning is free
+        // insurance against that without weakening the format check.
+        guard let range = text.range(of: #"\d{4}-\d{2}-\d{2}-\d{6}"#, options: .regularExpression) else {
+            return nil
+        }
+        return timeMachineTimestampFormatter.date(from: String(text[range]))
+    }
+
+    private static let timeMachineTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        return formatter
+    }()
+
+    /// `diskutil info -plist <volume>` → `SMARTStatus`, read from the XML
+    /// property list `diskutil` prints to stdout.
+    ///
+    /// A plist parse rather than a string search — unlike the other probes
+    /// in this file, the SMART key sits inside dozens of unrelated keys
+    /// (`FreeSpace`, `Encryption`, `VolumeUUID`, …), some of which could
+    /// coincidentally contain the word "verified" or "failing" in a future
+    /// macOS. Parsing the structure and reading exactly one key by name
+    /// avoids that entirely.
+    public static func driveSMARTStatus(_ output: String?) -> DriveSMARTState {
+        guard let text = output, let data = text.data(using: .utf8) else { return .unknown }
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let dict = plist as? [String: Any],
+              let status = dict["SMARTStatus"] as? String
+        else {
+            // Absent key means the device genuinely doesn't report SMART —
+            // common for external, virtual, and some Apple Fabric volumes —
+            // which is the same honest "can't tell" as a parse failure.
+            return .unknown
+        }
+        let normalised = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalised == "verified" || normalised == "ok" { return .verified }
+        if normalised.contains("fail") { return .failing }
+        return .unknown
+    }
+
+    /// Kernel panic reports within a trailing window, given each report's
+    /// filename and modification date.
+    ///
+    /// Pure so the counting logic — the part with an actual boundary worth
+    /// getting right — is tested without touching the real filesystem.
+    /// `SecurityPostureCollector` does the one impure step (listing
+    /// `/Library/Logs/DiagnosticReports`) and hands the results here.
+    ///
+    /// Matches on the `.panic` extension case-insensitively; macOS names
+    /// these reports like `Kernel-2024-06-01-142233.panic`, but the exact
+    /// naming scheme is unversioned the same way every other output this
+    /// file parses is, so the extension is the only part trusted to be
+    /// stable.
+    public static func kernelPanicCount(
+        entries: [(filename: String, modifiedAt: Date)],
+        windowStart: Date
+    ) -> Int {
+        entries.filter { entry in
+            entry.filename.lowercased().hasSuffix(".panic") && entry.modifiedAt >= windowStart
+        }.count
+    }
+
     // MARK: - Helpers
 
     /// Loopback binds aren't reachable from the network. IPv6 loopback in

@@ -1227,3 +1227,308 @@ public struct UnderpoweredAdapterRule: ProtectionInsightRule, Sendable {
         )
     }
 }
+
+// MARK: - Backup
+
+/// No Time Machine destination configured at all.
+///
+/// **Filed as `.maintenance` (hardware domain), scored like a security
+/// finding.** A backup is not an attack-surface concern the way FileVault or
+/// the firewall are, so it does not belong in the `.security` category. But
+/// the *harm* it guards against — every file on this Mac gone at once, with
+/// no way back — is exactly the class of harm `InsightWeight.criticalSecurity`
+/// exists to describe ("loses the user everything in one bad event"), and
+/// the existing hardware tiers top out at `majorHardware` (12), sized for
+/// gradual wear that costs money to fix, not total loss that cannot be
+/// fixed at any price. Reusing the security-tier *magnitude* here — while
+/// keeping the category, and therefore the domain, honestly hardware — says
+/// "this is as bad as an unencrypted disk" without miscategorising what
+/// kind of bad it is.
+public struct TimeMachineNoBackupDestinationRule: ProtectionInsightRule, Sendable {
+    public let id = "maintenance.time-machine-no-destination"
+    public let category: InsightCategory = .maintenance
+    public init() {}
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard context.posture.timeMachineDestinationConfigured.isDefinitelyOff else { return nil }
+
+        var evidence = [
+            String(localized: "macOS's own “tmutil destinationinfo” reports no Time Machine destination is configured.")
+        ]
+        if context.posture.fileVault.isDefinitelyOn {
+            evidence.append(String(localized: "FileVault is on, which protects this data from theft — but does nothing if the drive itself fails, or the Mac is lost, or a file is deleted by mistake."))
+        }
+        if let uptime = context.powerHabits?.uptimeDays {
+            let uptimeText = InsightPhrasing.days(uptime)
+            evidence.append(String(localized: "This Mac has been running for \(uptimeText) accumulating data with nothing backing it up."))
+        }
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "Nothing is backing up this Mac"),
+            summary: String(localized: "No Time Machine destination is set up at all."),
+            detail: String(localized: "This is the gap every other finding in this list assumes doesn't exist: encryption, a firewall, and a locked screen all protect data that is still recoverable if something goes wrong with the machine itself. Without a backup, a failed drive, a lost or stolen Mac, a bad update, or a single wrong delete is not an inconvenience — it is everything on this Mac, gone, with no second copy anywhere.\n\nTime Machine to an external drive costs nothing beyond the drive itself and runs automatically once set up. It does not have to be the only backup, but it is the one macOS already knows how to do."),
+            recommendation: String(localized: "Connect an external drive and turn on Time Machine in System Settings ▸ General ▸ Time Machine — or, if local storage isn't practical, configure a network or cloud backup destination instead."),
+            category: category,
+            severity: .critical,
+            evidence: evidence,
+            action: InsightAction(
+                label: String(localized: "Open Time Machine settings"),
+                target: .systemSettings(urlString: SystemSettingsLink.generalStorage),
+                fallbackDescription: String(localized: "System Settings ▸ General ▸ Time Machine")
+            ),
+            confidence: 1.0,
+            // See the type doc comment: this borrows `criticalSecurity`'s
+            // magnitude deliberately, not by category mistake.
+            scoreImpact: InsightWeight.criticalSecurity
+        )
+    }
+}
+
+/// A destination is configured, but the most recent completed backup is
+/// missing entirely or old enough that it no longer represents "this Mac is
+/// backed up" in any meaningful sense.
+///
+/// **Two sub-cases, one finding, because they're the same underlying
+/// problem at different stages.** No completed backup at all (an unreadable
+/// `timeMachineLastBackupAt`, despite a destination existing) is treated as
+/// critical — the destination is configured but is not actually protecting
+/// anything yet, which is functionally the same as
+/// `TimeMachineNoBackupDestinationRule` and scored the same way for the
+/// same reason. A stale-but-real backup is a milder version of the same
+/// problem: there is a safety net, it's just old enough that a restore
+/// today would lose real, recent work.
+public struct TimeMachineBackupStaleRule: ProtectionInsightRule, Sendable {
+    public let id = "maintenance.time-machine-backup-stale"
+    public let category: InsightCategory = .maintenance
+    public init() {}
+
+    /// 30 days: long enough that a single skipped week (Mac off, drive
+    /// unplugged for a trip) doesn't fire this, short enough that "backed
+    /// up" still means something — a month of unsaved work is a real loss
+    /// for almost anyone.
+    public static let staleWarningDays = 30
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard context.posture.timeMachineDestinationConfigured.isDefinitelyOn else { return nil }
+
+        let daysSinceLastBackup = context.posture.timeMachineLastBackupAt.map {
+            context.now.timeIntervalSince($0) / 86_400
+        }
+
+        guard daysSinceLastBackup == nil || daysSinceLastBackup! >= Double(Self.staleWarningDays) else {
+            // Recent backup — TimeMachineBackupHealthyRule covers this case.
+            return nil
+        }
+
+        // `nil` means a destination exists but no completed backup could be
+        // found for it — never protected, not just stale. That is the worse
+        // of the two and reads as critical; an old-but-real backup is a
+        // warning instead.
+        let neverCompleted = daysSinceLastBackup == nil
+        let severity: InsightSeverity = neverCompleted ? .critical : .warning
+
+        var evidence: [String]
+        if let days = daysSinceLastBackup {
+            let dayText = InsightPhrasing.days(days)
+            evidence = [
+                String(localized: "The most recent completed local backup Time Machine reports is \(dayText) old.")
+            ]
+        } else {
+            evidence = [
+                String(localized: "A Time Machine destination is configured, but “tmutil latestbackup” could not find any completed backup for it.")
+            ]
+        }
+        if context.posture.fileVault.isDefinitelyOn {
+            evidence.append(String(localized: "FileVault protects this data from theft, but not from drive failure or accidental deletion — only a current backup does."))
+        }
+
+        return ProtectionInsight(
+            id: id,
+            title: neverCompleted
+                ? String(localized: "Time Machine is set up but has never completed a backup")
+                : String(localized: "The backup is out of date"),
+            summary: neverCompleted
+                ? String(localized: "A destination exists, but no backup has actually completed.")
+                : String(localized: "The last successful backup is over a month old."),
+            detail: String(localized: "A destination being configured is not the same as data being protected — Time Machine still has to actually run, complete, and keep running on a schedule. The most common cause of a stale backup is an external drive that's disconnected more often than it's connected, or a backup that failed silently and was never noticed because nothing prompts you to check."),
+            recommendation: String(localized: "Connect the backup drive (or check the destination is reachable, for a network backup) and confirm in System Settings ▸ General ▸ Time Machine that a backup completes. \"Back Up Now\" from the Time Machine menu forces one immediately."),
+            category: category,
+            severity: severity,
+            evidence: evidence,
+            action: InsightAction(
+                label: String(localized: "Open Time Machine settings"),
+                target: .systemSettings(urlString: SystemSettingsLink.generalStorage),
+                fallbackDescription: String(localized: "System Settings ▸ General ▸ Time Machine")
+            ),
+            confidence: 1.0,
+            // Same borrowed-magnitude reasoning as the no-destination rule;
+            // the milder (warning) sub-case borrows `majorSecurity` instead
+            // of `criticalSecurity` for the same reason `majorSecurity`
+            // itself is a rung below — a month-old backup is a real gap,
+            // not yet a total one.
+            scoreImpact: neverCompleted ? InsightWeight.criticalSecurity : InsightWeight.majorSecurity
+        )
+    }
+}
+
+/// The positive counterpart: a destination is configured and the most
+/// recent backup is recent.
+public struct TimeMachineBackupHealthyRule: ProtectionInsightRule, Sendable {
+    public let id = "maintenance.time-machine-backup-healthy"
+    public let category: InsightCategory = .maintenance
+    public init() {}
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard context.posture.timeMachineDestinationConfigured.isDefinitelyOn,
+              let lastBackup = context.posture.timeMachineLastBackupAt
+        else { return nil }
+
+        let daysSince = context.now.timeIntervalSince(lastBackup) / 86_400
+        guard daysSince < Double(TimeMachineBackupStaleRule.staleWarningDays) else { return nil }
+
+        let dayText = InsightPhrasing.days(daysSince)
+        let whenText = lastBackup.formatted(date: .abbreviated, time: .omitted)
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "This Mac has a current backup"),
+            summary: String(localized: "The most recent backup completed \(dayText) ago."),
+            detail: String(localized: "Time Machine is configured and actually completing backups — the difference that matters, since a configured-but-failing backup looks identical from the settings screen. If a drive fails or a file is deleted by mistake, there is a recent copy to recover from."),
+            recommendation: String(localized: "Nothing to do. Keep the backup drive connected on a regular basis (or confirm the network destination stays reachable) so this keeps being true."),
+            category: category,
+            severity: .good,
+            evidence: [
+                String(localized: "Last completed backup: \(whenText), \(dayText) ago.")
+            ],
+            action: nil,
+            confidence: 1.0,
+            scoreImpact: InsightWeight.none
+        )
+    }
+}
+
+// MARK: - Drive health
+
+/// SMART reports the startup volume as failing or pre-fail.
+public struct DriveSMARTFailingRule: ProtectionInsightRule, Sendable {
+    public let id = "storage.smart-failing"
+    public let category: InsightCategory = .storage
+    public init() {}
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard context.posture.driveSMARTStatus.isDefinitelyFailing else { return nil }
+
+        var evidence = [
+            String(localized: "macOS's own “diskutil info” reports a failing SMART status for the startup volume.")
+        ]
+        if let backup = context.posture.timeMachineLastBackupAt {
+            let whenText = backup.formatted(date: .abbreviated, time: .omitted)
+            evidence.append(String(localized: "The most recent backup on file is from \(whenText) — check it's current before this drive gets worse."))
+        } else {
+            evidence.append(String(localized: "No completed backup was found for this Mac, which makes this considerably more urgent."))
+        }
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "The startup drive is reporting failure warnings"),
+            summary: String(localized: "SMART self-monitoring flags the startup volume as failing."),
+            detail: String(localized: "SMART is the drive's own hardware self-test, and a failing status means the drive's controller has detected conditions — reallocated sectors, a rising error rate, degraded reserve capacity — that reliably precede real failure. It is not a false-alarm-prone metric: drives essentially never report this and then run fine for years. This is as close to a direct warning from the hardware itself as this app can surface."),
+            recommendation: String(localized: "Back up everything on this Mac immediately if the backup isn't current, then plan to replace the drive. Don't wait for it to get worse — SMART failures escalate from \"warning\" to \"the drive won't mount\" with no further notice."),
+            category: category,
+            severity: .critical,
+            evidence: evidence,
+            action: nil,
+            confidence: 1.0,
+            // A dying drive is exactly the "lose everything" class of harm
+            // `criticalSecurity` describes; see
+            // `TimeMachineNoBackupDestinationRule`'s doc comment for the
+            // same reasoning applied here.
+            scoreImpact: InsightWeight.criticalSecurity
+        )
+    }
+}
+
+/// The positive counterpart.
+public struct DriveSMARTHealthyRule: ProtectionInsightRule, Sendable {
+    public let id = "storage.smart-healthy"
+    public let category: InsightCategory = .storage
+    public init() {}
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard context.posture.driveSMARTStatus.isDefinitelyVerified else { return nil }
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "The startup drive reports healthy"),
+            summary: String(localized: "SMART self-monitoring finds nothing wrong with the startup volume."),
+            detail: String(localized: "This is the drive's own hardware self-test reporting normal, not an inference from usage patterns. It doesn't rule out sudden failure — nothing does — but it's a genuine, direct answer from the hardware rather than an absence of bad news."),
+            recommendation: String(localized: "Nothing to do."),
+            category: category,
+            severity: .good,
+            evidence: [
+                String(localized: "SMART status for the startup volume: verified.")
+            ],
+            action: nil,
+            confidence: 1.0,
+            scoreImpact: InsightWeight.none
+        )
+    }
+}
+
+// MARK: - Kernel panics
+
+/// Repeated kernel panics in a recent window — the clearest reliability
+/// signal macOS logs entirely on its own.
+public struct KernelPanicHistoryRule: ProtectionInsightRule, Sendable {
+    public let id = "maintenance.kernel-panic-history"
+    public let category: InsightCategory = .maintenance
+    public init() {}
+
+    /// The trailing window `SecurityPostureCollector` counts within. Defined
+    /// here rather than in the collector so both sides of the SentryKit /
+    /// SystemMetricsKit boundary read the same number — SentryKit cannot
+    /// import SystemMetricsKit (it has to stay iOS-compilable), so this is
+    /// the one direction the constant can live in without a copy drifting.
+    public static let windowDays = 30
+
+    /// A single panic is common enough to mean very little on its own — a
+    /// bad kernel extension, a beta build, a one-off. Two or more within the
+    /// window is where "it happened once" becomes "it happens", which is
+    /// the point a pattern is worth a user's attention.
+    public static let minimumPanicsToFlag = 2
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard let count = context.posture.recentKernelPanicCount,
+              count >= Self.minimumPanicsToFlag
+        else { return nil }
+
+        let countText = "\(count)"
+        let windowText = InsightPhrasing.days(Self.windowDays)
+        var evidence = [
+            String(localized: "\(countText) kernel panic reports were logged in the last \(windowText).")
+        ]
+        if let uptime = context.powerHabits?.uptimeDays {
+            let uptimeText = InsightPhrasing.days(uptime)
+            evidence.append(String(localized: "Current uptime is \(uptimeText) since the last restart."))
+        }
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "This Mac has crashed and restarted itself repeatedly"),
+            summary: String(localized: "\(countText) kernel panics in the last \(windowText)."),
+            detail: String(localized: "A kernel panic is macOS forcing a restart because something at the lowest level — a driver, a kernel extension, or in rarer cases the hardware itself — hit a state it could not recover from. One is worth noting; \(countText) in \(windowText) is a pattern, and patterns at this level are usually either a specific piece of third-party software (a kernel extension, a VPN client, a security tool) or failing memory or storage."),
+            recommendation: String(localized: "Check Console.app's Crash Reports for what these panics have in common — the same kernel extension name appearing repeatedly points at the fix directly. If nothing obvious repeats, running Apple Diagnostics (restart holding D) is the next step to rule out a hardware cause."),
+            category: category,
+            severity: .warning,
+            evidence: evidence,
+            action: nil,
+            confidence: 1.0,
+            // Comparable in weight to sustained thermal saturation — real,
+            // ongoing evidence of a machine not behaving the way it should,
+            // but not (yet) the certain, total loss `criticalSecurity`-tier
+            // findings describe.
+            scoreImpact: InsightWeight.majorHardware
+        )
+    }
+}
