@@ -38,7 +38,10 @@ final class StatusItemController {
             // Right-click should open the same dropdown rather than doing
             // nothing — there is no separate context menu.
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.setAccessibilityLabel(contentView.accessibilitySummary)
+            // Name and value as two distinct pieces of AX state — see
+            // `StatusItemView.accessibilityValue`'s doc comment.
+            button.setAccessibilityLabel("Sentry")
+            button.setAccessibilityValue(contentView.accessibilityValue)
         }
         resize()
     }
@@ -85,7 +88,14 @@ final class StatusItemController {
         if abs(item.length - width) > 0.5 {
             item.length = width
         }
-        item.button?.setAccessibilityLabel(contentView.accessibilitySummary)
+        item.button?.setAccessibilityLabel("Sentry")
+        item.button?.setAccessibilityValue(contentView.accessibilityValue)
+        // Hovering the bar item is the first thing every user tries, and
+        // used to show nothing. Reuses `accessibilitySummary` — the same
+        // "Sentry: CPU 42%, Memory 68%…" sentence VoiceOver used to read as
+        // one run — rather than building a second description that could
+        // drift from it.
+        item.button?.toolTip = contentView.accessibilitySummary
     }
 
     @objc private func buttonClicked() {

@@ -131,6 +131,30 @@ final class StatusItemViewTruncationTests: XCTestCase {
         XCTAssertEqual(view.accessibilitySummary, "Sentry")
     }
 
+    // MARK: - accessibilityValue: name/value split for VoiceOver (review bug #6)
+
+    /// `accessibilitySummary` used to be the *only* thing set as the AX
+    /// label, so VoiceOver read the item's name and its live reading as one
+    /// undifferentiated sentence. `accessibilityValue` now carries the live
+    /// reading alone (no "Sentry: " prefix), separately from the label,
+    /// which stays the constant "Sentry" — see `StatusItemView
+    /// .accessibilityValue`'s doc comment for the full AX-split reasoning.
+    func testAccessibilityValueHoldsTheReadingsWithoutTheNamePrefix() {
+        let view = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .slate)
+        view.update(makeSnapshot())
+
+        XCTAssertTrue(view.accessibilityValue.contains("CPU"))
+        XCTAssertFalse(view.accessibilityValue.hasPrefix("Sentry"), "the value must not repeat the name")
+        XCTAssertEqual(view.accessibilitySummary, "Sentry: " + view.accessibilityValue, "summary stays the glued sentence tooltip/tests already depend on")
+    }
+
+    func testAccessibilityValueIsEmptyWhenNoModulesAreShown() {
+        let view = StatusItemView(layout: MenuBarLayout(modules: [], maxWidth: nil), theme: .slate)
+        view.update(makeSnapshot())
+
+        XCTAssertEqual(view.accessibilityValue, "")
+    }
+
     // MARK: - A single module always fits regardless of a tiny budget
 
     func testSingleModuleLayoutIsNeverEmptyEvenWithTinyBudget() {

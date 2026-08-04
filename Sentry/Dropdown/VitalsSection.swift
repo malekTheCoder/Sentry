@@ -372,6 +372,37 @@ private struct VitalMeter: View {
     }
 }
 
+// MARK: - Shared
+
+/// Label/value pair used by detail sections. Values are pre-formatted so the
+/// nil handling stays in `MetricFormatting`.
+///
+/// Moved here from the now-deleted `Sentry/Dropdown/ModuleCards/
+/// MetricCard.swift` (see that commit's dead-code cleanup, and
+/// `DropdownViewModel`'s doc comment for why the module cards it belonged to
+/// were dead) rather than deleted along with it: `Sentry/Dashboard/
+/// DashboardGrid.swift` is still a live caller, and this row happened to be
+/// the one reusable piece of that file worth keeping.
+struct MetricDetailRow: View {
+    @Environment(\.themePalette) private var palette
+
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(palette.font(size: 10))
+                .foregroundStyle(palette.textTertiary)
+            Spacer(minLength: palette.spacing)
+            Text(value)
+                .font(palette.font(size: 10))
+                .monospacedDigit()
+                .foregroundStyle(palette.textSecondary)
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
