@@ -831,6 +831,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         dashboardViewModel.theme = theme
         dashboardViewModel.enabledModules = settings.enabledModules
         dashboardViewModel.detailedCharts = settings.detailedCharts
+        // The `.raw` tier's row cadence, which is what the Dashboard's charts
+        // derive their gap threshold from — see
+        // `DashboardViewModel.samplingInterval`.
+        dashboardViewModel.samplingInterval = settings.globalRefreshInterval
         insightsViewModel.theme = theme
         // The window chrome (nav bar, its hairline, the base fill behind
         // the titlebar) themes itself off this — see `MainWindowState`.
