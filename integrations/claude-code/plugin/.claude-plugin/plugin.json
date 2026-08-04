@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "sentry-mac-stats",
+  "displayName": "Sentry Mac Stats",
+  "version": "0.1.0",
+  "description": "Wire Claude Code to a running Sentry.app: refuse to start heavy commands while the Mac is thermally cooked, and show real CPU/thermal/battery cost in the status line and completion notifications.",
+  "author": {
+    "name": "Sentry"
+  },
+  "homepage": "https://github.com/malekTheCoder/Sentry",
+  "repository": "https://github.com/malekTheCoder/Sentry",
+  "license": "SEE LICENSE IN ../../../LICENSE"
+}
