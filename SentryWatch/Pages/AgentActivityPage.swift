@@ -128,6 +128,26 @@ struct AgentActivityPage: View {
     /// the user is worried would be the wrong kind of quiet.
     var onStopAgents: (() -> Void)? = nil
 
+    /// Whether the Mac's agent kill switch is currently engaged —
+    /// `WatchRelaySnapshot.agentAccessPaused` passed straight through. `nil`
+    /// (the state essentially every user is in today — see that field's doc
+    /// comment for the composition-root hook still outstanding) renders
+    /// exactly like `false`: neither the paused banner nor the resume
+    /// button, because both would be asserting a pause this page cannot
+    /// confirm. That asymmetry (unlike `toolCallCount`, where `nil` gets its
+    /// own dedicated state) is deliberate — the only two controls this value
+    /// governs are "show a resume button" and "show a paused banner," and
+    /// both are opt-in UI a `nil` reading has no business turning on. The
+    /// existing "Stop Agents" button already covers "we don't know," the
+    /// same way it always has.
+    var agentAccessPaused: Bool? = nil
+
+    /// Un-pauses agent access — `WatchResumeAgentsIntent`'s button
+    /// counterpart, shown only while `agentAccessPaused == true`. Optional
+    /// with a `nil` default for the same preview-fixture reason
+    /// `onStopAgents` is.
+    var onResumeAgents: (() -> Void)? = nil
+
     /// How many tool names to list. Four rows plus the header and count fit a
     /// 40mm face without scrolling at default text size; beyond that the list
     /// stops being glanceable and becomes an audit trail, which is the Mac
@@ -156,8 +176,18 @@ struct AgentActivityPage: View {
                 if isStale {
                     staleBanner
                 }
+                if agentAccessPaused == true {
+                    pausedBanner
+                }
                 content
-                if onStopAgents != nil {
+                // While paused, the resume button replaces the stop button
+                // rather than sitting beside it — "Stop Agents" while agent
+                // access is already stopped is a control offering to do
+                // something that is already true, and a wrist-sized screen
+                // has no room for a disabled duplicate.
+                if agentAccessPaused == true, onResumeAgents != nil {
+                    resumeAgentsButton
+                } else if onStopAgents != nil {
                     stopAgentsButton
                 }
             }
@@ -176,6 +206,22 @@ struct AgentActivityPage: View {
                 .font(.headline)
                 .minimumScaleFactor(0.8)
         }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// States plainly, above everything else on the page, that the kill
+    /// switch is currently engaged — the fact a user checking this page is
+    /// most likely here to confirm. Distinct styling from `staleBanner`
+    /// (a filled icon, not orange) since the two can be true at once and
+    /// must read as two different facts, not variations on one.
+    private var pausedBanner: some View {
+        HStack(alignment: .top, spacing: 4) {
+            Image(systemName: "bolt.slash.fill")
+            Text("Agent access is paused on your Mac.")
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.caption2)
+        .foregroundStyle(.red)
         .accessibilityElement(children: .combine)
     }
 
@@ -396,6 +442,22 @@ struct AgentActivityPage: View {
         .accessibilityHint("Pauses all AI agent access to your Mac")
     }
 
+    /// The un-pause counterpart, shown in place of `stopAgentsButton` while
+    /// `agentAccessPaused == true`. Green rather than red — this button
+    /// takes an action that *relieves* the alarming state `pausedBanner`
+    /// just named, so it should not read as another warning.
+    private var resumeAgentsButton: some View {
+        Button {
+            onResumeAgents?()
+        } label: {
+            Text("Resume Agents on Mac")
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .tint(.green)
+        .accessibilityHint("Resumes AI agent access to your Mac")
+    }
+
     @ViewBuilder
     private var toolList: some View {
         if !recentToolNames.isEmpty {
@@ -457,6 +519,17 @@ struct AgentActivityPage: View {
         lastActivityAt: Date().addingTimeInterval(-9000),
         recentToolNames: ["get_stats", "keep_awake"],
         isStale: true
+    )
+}
+
+#Preview("Paused — resume control shown") {
+    AgentActivityPage(
+        toolCallCount: 4,
+        lastActivityAt: Date().addingTimeInterval(-600),
+        recentToolNames: ["get_stats"],
+        isStale: false,
+        agentAccessPaused: true,
+        onResumeAgents: {}
     )
 }
 

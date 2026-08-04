@@ -278,6 +278,69 @@ public final class StatsCoordinator: @unchecked Sendable {
     }
     private var locationStorage: MacLocation?
 
+    /// Whether all AI agent access is currently paused, pushed down by the
+    /// composition root — same "pushed from the main actor, not a provider
+    /// closure" shape as `sleepAssertionState` above, and for an identical
+    /// reason: `SettingsStore.settings` is read from the main actor (it's
+    /// an `ObservableObject` driving SwiftUI), and every provider closure
+    /// here runs off a background queue in `tick(tier:)`.
+    ///
+    /// Feeds `SystemSnapshot.agentAccessPaused`, which is what lets the
+    /// Watch (`WatchRelaySnapshot.agentAccessPaused`) finally render a
+    /// truthful resume control for the kill switch — see that field's doc
+    /// comment.
+    ///
+    /// **This property is wired end-to-end and, as of this branch, never
+    /// actually assigned — the same honest, deliberately-incomplete state
+    /// `sleepAssertionState` was in before `AppDelegate` was taught to push
+    /// it (`Sentry/App/AppDelegate.swift:591-595`,
+    /// `powerControl.$state.sink { ... self?.coordinator.sleepAssertionState
+    /// = state }`).** The composition root that would do the equivalent for
+    /// this property — `SettingsStore`'s `$settings.sink { ...
+    /// self?.coordinator.agentAccessPaused = $0.agentGuardrails
+    /// .killSwitchEngaged }`, wired next to `applySettings(_:)` — lives in
+    /// `Sentry/App/AppDelegate.swift`, which is owned by other agents
+    /// working in parallel on this codebase and is explicitly off-limits to
+    /// this branch. Until that one-line hook lands, `SystemSnapshot
+    /// .agentAccessPaused` stays `nil` for every real Mac, and every
+    /// consumer down the chain (the phone's relay, the watch's button,
+    /// `GetAgentGuardrailsStatusIntent`) already renders that `nil` as "not
+    /// reported" rather than guessing — so nothing downstream lies while
+    /// this one line is outstanding.
+    public var agentAccessPaused: Bool? {
+        get { queue.sync { agentAccessPausedStorage } }
+        set { queue.async { [weak self] in self?.agentAccessPausedStorage = newValue } }
+    }
+    private var agentAccessPausedStorage: Bool?
+
+    /// The most recently computed `ProtectionScore.overall`, pushed down by
+    /// the composition root whenever `InsightsViewModel` finishes a
+    /// `refresh()` — same shape as `agentAccessPaused` immediately above,
+    /// for the same "assign, don't poll" reason `sleepAssertionState`
+    /// documents, plus a second one specific to this value: recomputing a
+    /// protection score is expensive (`InsightsViewModel`'s own doc comment
+    /// — "a security-posture sweep plus fifteen `HistoryStore` reads plus
+    /// forty-odd rule evaluations") and deliberately never runs on a timer,
+    /// so there is no "current" score to poll for even if this were a
+    /// provider closure like the collectors above.
+    ///
+    /// Feeds `SystemSnapshot.protectionScore`. See that field's doc comment
+    /// for why a stale score riding along on the ordinary snapshot cadence
+    /// is the correct trade here, not a shortcut.
+    ///
+    /// **Also wired end-to-end and, as of this branch, never assigned —
+    /// same reason as `agentAccessPaused` above.** The composition-root
+    /// hook this needs is one line in `InsightsViewModel.apply(_:)`
+    /// (`Sentry/Insights/InsightsViewModel.swift`, where `report` is
+    /// published) or in whatever observes it from `AppDelegate` —
+    /// `coordinator.protectionScore = report.score.overall` — and `AppDelegate`
+    /// is off-limits to this branch for the same reason described above.
+    public var protectionScore: Int? {
+        get { queue.sync { protectionScoreStorage } }
+        set { queue.async { [weak self] in self?.protectionScoreStorage = newValue } }
+    }
+    private var protectionScoreStorage: Int?
+
     /// Derived from the most recent `BatteryStats.isPluggedIn`, per the
     /// task's guidance to read our own last-known snapshot rather than
     /// re-deriving power-source state elsewhere (that would violate P1 —
@@ -576,7 +639,9 @@ public final class StatsCoordinator: @unchecked Sendable {
             network: latest.network,
             thermal: latest.thermal,
             sleepAssertion: sleepAssertionStateStorage,
-            location: locationStorage
+            location: locationStorage,
+            agentAccessPaused: agentAccessPausedStorage,
+            protectionScore: protectionScoreStorage
         )
     }
 }

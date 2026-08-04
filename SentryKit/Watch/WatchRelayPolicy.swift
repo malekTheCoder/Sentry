@@ -132,6 +132,15 @@ public enum WatchRelayPolicy {
     /// members if they are ever populated: tool calls arrive in bursts of
     /// dozens per minute from a chatty MCP client, which is the single
     /// chattiest thing that could possibly be wired into this test.
+    ///
+    /// **`agentAccessPaused` is a member, for the same reason
+    /// `awakeIsActive` is.** It is a discrete, user-initiated transition —
+    /// someone hit the kill switch, on the Mac, the phone, or the watch
+    /// itself — a handful of times a day at most, and it now gates a real
+    /// control (`AgentActivityPage`'s "Resume Agents" button). A user who
+    /// just paused agent access from their wrist should not be looking at a
+    /// page that still offers a "Stop" button for the next five minutes
+    /// because nothing forced an early relay.
     public static func isSignificantChange(
         from previous: WatchRelaySnapshot,
         to next: WatchRelaySnapshot
@@ -142,6 +151,7 @@ public enum WatchRelayPolicy {
         if previous.isThrottling != next.isThrottling { return true }
         if previous.memoryPressure != next.memoryPressure { return true }
         if previous.awakeIsActive != next.awakeIsActive { return true }
+        if previous.agentAccessPaused != next.agentAccessPaused { return true }
         if Int(previous.batteryPercent.rounded()) != Int(next.batteryPercent.rounded()) { return true }
         return false
     }

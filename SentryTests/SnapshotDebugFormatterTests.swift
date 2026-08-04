@@ -144,7 +144,7 @@ final class SnapshotDebugFormatterTests: XCTestCase {
         let sections = SnapshotDebugFormatter.sections(for: snapshot)
         let meta = sections.first { $0.name == "Snapshot" }!
         let names = Set(meta.fields.map(\.name))
-        XCTAssertEqual(names, ["id", "timestamp", "deviceID", "schemaVersion"])
+        XCTAssertEqual(names, ["id", "timestamp", "deviceID", "schemaVersion", "agentAccessPaused", "protectionScore"])
         XCTAssertEqual(meta.fields.first { $0.name == "deviceID" }?.value, "test-device")
     }
 

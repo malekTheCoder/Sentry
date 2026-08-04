@@ -58,10 +58,15 @@ public enum SnapshotDebugFormatter {
     ]
 
     /// One `Section` per `SystemSnapshot` sub-struct, plus a leading
-    /// "Snapshot" section for the top-level identity fields (`id`,
-    /// `timestamp`, `deviceID`, `schemaVersion`) that aren't part of any
-    /// sub-struct but are still raw values worth cross-checking (e.g. is the
-    /// coordinator actually ticking at the configured interval).
+    /// "Snapshot" section for the top-level fields (`id`, `timestamp`,
+    /// `deviceID`, `schemaVersion`, `agentAccessPaused`, `protectionScore`)
+    /// that aren't part of any sub-struct but are still raw values worth
+    /// cross-checking (e.g. is the coordinator actually ticking at the
+    /// configured interval, or did the agent-guardrails/protection-score
+    /// composition-root hooks documented on `StatsCoordinator` ever get
+    /// wired up). `agentAccessPaused`/`protectionScore` land here rather
+    /// than in `subStructKeys` because neither is a sub-struct — they're
+    /// scalars straight off `SystemSnapshot`, same shape as `deviceID`.
     public static func sections(for snapshot: SystemSnapshot) -> [Section] {
         let topMirror = Mirror(reflecting: snapshot)
         var metaFields: [Field] = []

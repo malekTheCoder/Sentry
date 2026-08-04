@@ -306,6 +306,38 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
     /// message into a rejected one.
     public var agentRecentToolNames: [String]?
 
+    // MARK: Agent guardrails kill switch — the resume path this page needs
+
+    /// Mirrors the Mac's `AppSettings.agentGuardrails.killSwitchEngaged`
+    /// (`SentryKit/Services/AgentGuardrails.swift`,
+    /// `SentryKit/Settings/AppSettings.swift`) — whether all AI agent access
+    /// is currently paused.
+    ///
+    /// Follows the exact three-state convention `batteryIsReported`'s doc
+    /// comment establishes, because the same ambiguity applies here with
+    /// more weight (this field gates a *button*, not a display value):
+    /// - `true` — agent access is paused right now. `AgentActivityPage`
+    ///   shows a "Resume Agents" control (`WatchResumeAgentsIntent`,
+    ///   `SentryWatch/Intents/SentryWatchIntents.swift`).
+    /// - `false` — agent access is active. No resume control; the existing
+    ///   "Stop Agents on Mac" button is what applies.
+    /// - `nil` — either a phone predating this field, or (today, always) a
+    ///   Mac that predates the field reaching `SystemSnapshot` at all — see
+    ///   `SystemSnapshot.agentAccessPaused`'s doc comment for the one-line
+    ///   hook still needed at the composition root before a live value ever
+    ///   flows through this. `nil` must never be read as "not paused": a
+    ///   resume button that silently failed to appear because the read
+    ///   side defaulted an unknown state to `false` would be exactly the
+    ///   kind of silently-misleading control this codebase forbids (see
+    ///   `awakeIsActive`'s doc comment for the same argument applied to
+    ///   sleep state).
+    ///
+    /// This is what closes the gap `WatchStopAgentsIntent`'s doc comment
+    /// used to describe as permanent — "resuming belongs where the paused
+    /// state is visible" no longer excludes the watch once the watch can
+    /// actually see the state.
+    public var agentAccessPaused: Bool?
+
     /// New parameters are defaulted so every existing call site — previews,
     /// tests, and `WatchRelayManager`'s own construction before it was
     /// taught the new fields — keeps compiling and keeps meaning exactly
@@ -331,7 +363,8 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         awakeModeLabel: String? = nil,
         agentToolCallCount: Int? = nil,
         agentLastActivityAt: Date? = nil,
-        agentRecentToolNames: [String]? = nil
+        agentRecentToolNames: [String]? = nil,
+        agentAccessPaused: Bool? = nil
     ) {
         self.deviceName = deviceName
         self.lastSeen = lastSeen
@@ -354,6 +387,7 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         self.agentToolCallCount = agentToolCallCount
         self.agentLastActivityAt = agentLastActivityAt
         self.agentRecentToolNames = agentRecentToolNames
+        self.agentAccessPaused = agentAccessPaused
     }
 }
 
@@ -443,6 +477,7 @@ extension WatchRelaySnapshot {
         agentToolCallCount = try container.decodeIfPresent(Int.self, forKey: .agentToolCallCount)
         agentLastActivityAt = try container.decodeIfPresent(Date.self, forKey: .agentLastActivityAt)
         agentRecentToolNames = try container.decodeIfPresent([String].self, forKey: .agentRecentToolNames)
+        agentAccessPaused = try container.decodeIfPresent(Bool.self, forKey: .agentAccessPaused)
     }
 }
 

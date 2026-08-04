@@ -41,7 +41,8 @@ final class WatchRelaySnapshotTests: XCTestCase {
             awakeModeLabel: "System only",
             agentToolCallCount: 12,
             agentLastActivityAt: reference.addingTimeInterval(-300),
-            agentRecentToolNames: ["get_snapshot", "keep_awake"]
+            agentRecentToolNames: ["get_snapshot", "keep_awake"],
+            agentAccessPaused: true
         )
     }
 
@@ -110,6 +111,20 @@ final class WatchRelaySnapshotTests: XCTestCase {
         XCTAssertNil(decoded.agentToolCallCount)
         XCTAssertNil(decoded.agentLastActivityAt)
         XCTAssertNil(decoded.agentRecentToolNames)
+        XCTAssertNil(decoded.agentAccessPaused)
+    }
+
+    /// The same "silence, not a claim" rule `testAbsentBatteryIsReportedStaysNilRatherThanBecomingFalse`
+    /// asserts for `batteryIsReported` applies with more force here: this
+    /// field gates whether `AgentActivityPage` draws a resume *button*, and
+    /// a `nil` misread as `false` would just be inert (no button), but a
+    /// `nil` misread as `true` would draw a control claiming the Mac is
+    /// paused when a v1-era phone said nothing of the kind.
+    func testAbsentAgentAccessPausedStaysNilRatherThanBecomingFalse() throws {
+        let data = try XCTUnwrap(version1PayloadJSON.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(WatchRelaySnapshot.self, from: data)
+        XCTAssertNil(decoded.agentAccessPaused)
+        XCTAssertNotEqual(decoded.agentAccessPaused, false)
     }
 
     /// A v1 payload is missing `batteryIsReported`, which is exactly the case
@@ -272,7 +287,8 @@ final class WatchRelayPolicyTests: XCTestCase {
         disk: Double? = 40,
         throttling: Bool? = false,
         awakeIsActive: Bool? = false,
-        awakeExpiresAt: Date? = nil
+        awakeExpiresAt: Date? = nil,
+        agentAccessPaused: Bool? = false
     ) -> WatchRelaySnapshot {
         WatchRelaySnapshot(
             deviceName: "Test Mac",
@@ -290,7 +306,8 @@ final class WatchRelayPolicyTests: XCTestCase {
             diskUsedPercent: disk,
             isThrottling: throttling,
             awakeIsActive: awakeIsActive,
-            awakeExpiresAt: awakeExpiresAt
+            awakeExpiresAt: awakeExpiresAt,
+            agentAccessPaused: agentAccessPaused
         )
     }
 
@@ -352,6 +369,7 @@ final class WatchRelayPolicyTests: XCTestCase {
         XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(memoryPressure: .critical)))
         XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(awakeIsActive: true)))
         XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(battery: 51)))
+        XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(agentAccessPaused: true)))
     }
 
     /// **The load-bearing assertion of this whole file.** The redesigned
