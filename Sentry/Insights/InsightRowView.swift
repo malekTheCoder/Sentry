@@ -250,8 +250,21 @@ struct InsightRowView: View {
                 Button("Snooze for \(SnoozeDuration.week.displayName)") { onSnooze(.week) }
                 Button("Snooze for \(SnoozeDuration.month.displayName)") { onSnooze(.month) }
                 Button("Snooze for \(SnoozeDuration.quarter.displayName)") { onSnooze(.quarter) }
-                Divider()
-                Button("Dismiss permanently") { onDismiss() }
+                // Permanent dismissal is deliberately withheld for `.critical`
+                // findings. Suppression removes a finding from the score *and*
+                // from `ProtectionScore.highestSeverity` — correctly, because a
+                // number must never be driven by something the user cannot see.
+                // The consequence, though, is that dismissing "the disk is not
+                // encrypted" produces security 100 and the verdict "well
+                // protected" on a Mac with an unencrypted disk: exactly the
+                // contradiction the severity-floored banding was introduced to
+                // prevent, reached through a different door. Snoozing keeps the
+                // escape hatch — the row goes away for up to three months — but
+                // the finding, and the verdict it forces, always come back.
+                if insight.severity != .critical {
+                    Divider()
+                    Button("Dismiss permanently") { onDismiss() }
+                }
             } label: {
                 Label("Hide", systemImage: "eye.slash")
                     .font(palette.font(size: 11))
@@ -259,7 +272,11 @@ struct InsightRowView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .accessibilityLabel("Hide this finding")
-            .accessibilityHint("Snooze it for a week, a month, or three months, or dismiss it permanently")
+            .accessibilityHint(
+                insight.severity == .critical
+                    ? Text("Snooze it for a week, a month, or three months. Critical findings can't be dismissed permanently.")
+                    : Text("Snooze it for a week, a month, or three months, or dismiss it permanently")
+            )
         }
     }
 }
