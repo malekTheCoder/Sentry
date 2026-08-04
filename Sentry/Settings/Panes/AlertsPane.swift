@@ -429,7 +429,7 @@ struct AlertsPane: View {
 
     @ViewBuilder
     private func ruleInspector(_ rule: Binding<AlertRule>) -> some View {
-        let kind = RuleKind(id: rule.wrappedValue.id)
+        let kind = RuleKind(rule: rule.wrappedValue)
 
         Section("Rule") {
             TextField("Name", text: rule.name)
@@ -474,6 +474,15 @@ struct AlertsPane: View {
     @ViewBuilder
     private func conditionSection(_ rule: Binding<AlertRule>, kind: RuleKind) -> some View {
         Section {
+            // Only offered for the two rule kinds that reduce to an
+            // editable metric/comparison/threshold in the first place — the
+            // three ID-special-cased kinds have nothing this toggle could
+            // meaningfully apply to (see their `notApplicableNote`s below).
+            if kind == .generic || kind == .processMatch {
+                Toggle("Watch a specific process", isOn: processMatchEnabledBinding(rule))
+                    .accessibilityLabel("Limit this rule to a specific process by name, rather than a system-wide metric")
+            }
+
             switch kind {
             case .generic:
                 Picker("Metric", selection: rule.metric) {
@@ -490,6 +499,35 @@ struct AlertsPane: View {
                 // purely to satisfy one picker, is the wrong direction.
                 Picker("Comparison", selection: comparisonKindBinding(rule)) {
                     ForEach(ComparisonKind.allCases, id: \.self) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                .accessibilityLabel("Comparison")
+
+                thresholdField(rule, label: "Threshold")
+
+            case .processMatch:
+                TextField("Process name", text: processNameBinding(rule))
+                    .accessibilityLabel("Process name to match, case-insensitive")
+
+                // Deliberately not the full `MetricID.allCases` picker
+                // `.generic` shows above — `AlertEngine.evaluateProcessRule`
+                // only ever reads `.cpuTotalPercent`/`.memoryUsedBytes` for
+                // a process rule, so offering the other ~40 values would
+                // let a user "select" a metric that silently has no effect.
+                Picker("Metric", selection: processMetricBinding(rule)) {
+                    ForEach(ProcessMetricKind.allCases, id: \.self) { processMetric in
+                        Text(processMetric.displayName).tag(processMetric)
+                    }
+                }
+                .accessibilityLabel("Which of this process's metrics to watch")
+
+                // `.changedBy` has no meaningful baseline for a process rule
+                // (see `AlertEngine.evaluateProcessRule`'s doc comment) —
+                // excluded here rather than offered and silently evaluating
+                // to always-false.
+                Picker("Comparison", selection: comparisonKindBinding(rule)) {
+                    ForEach(ComparisonKind.allCases.filter { $0 != .changedBy }, id: \.self) { kind in
                         Text(kind.displayName).tag(kind)
                     }
                 }
@@ -925,6 +963,51 @@ struct AlertsPane: View {
         )
     }
 
+    /// Drives the "Watch a specific process" toggle: turning it on switches
+    /// `RuleKind(rule:)`'s derivation from `.generic` to `.processMatch` by
+    /// setting `processNameMatch` to a (still-empty, user fills it in next)
+    /// string; turning it off clears it back to nil. Also snaps `metric` to
+    /// `.cpuTotalPercent` and `comparison` off of `.changedBy` when turning
+    /// on — a metric like `.batteryChargePercent` or a `.changedBy`
+    /// comparison carried over from a generic rule would be meaningless
+    /// (and, for `.changedBy`, silently always-false — see
+    /// `AlertEngine.evaluateProcessRule`'s doc comment) the instant this
+    /// rule becomes process-scoped, so the switch lands on values that are
+    /// actually valid for the new kind rather than a technically-decodable
+    /// but nonsensical combination.
+    private func processMatchEnabledBinding(_ rule: Binding<AlertRule>) -> Binding<Bool> {
+        Binding(
+            get: { rule.wrappedValue.processNameMatch != nil },
+            set: { isOn in
+                if isOn {
+                    rule.wrappedValue.processNameMatch = rule.wrappedValue.processNameMatch ?? ""
+                    if ProcessMetricKind.allCases.map(\.metricID).contains(rule.wrappedValue.metric) == false {
+                        rule.wrappedValue.metric = .cpuTotalPercent
+                    }
+                    if rule.wrappedValue.comparison == .changedBy {
+                        rule.wrappedValue.comparison = .above
+                    }
+                } else {
+                    rule.wrappedValue.processNameMatch = nil
+                }
+            }
+        )
+    }
+
+    private func processNameBinding(_ rule: Binding<AlertRule>) -> Binding<String> {
+        Binding(
+            get: { rule.wrappedValue.processNameMatch ?? "" },
+            set: { rule.wrappedValue.processNameMatch = $0 }
+        )
+    }
+
+    private func processMetricBinding(_ rule: Binding<AlertRule>) -> Binding<ProcessMetricKind> {
+        Binding(
+            get: { ProcessMetricKind(metric: rule.wrappedValue.metric) },
+            set: { rule.wrappedValue.metric = $0.metricID }
+        )
+    }
+
     private func quietHoursEnabledBinding(_ rule: Binding<AlertRule>) -> Binding<Bool> {
         Binding(
             get: { rule.wrappedValue.quietHours != nil },
@@ -978,11 +1061,19 @@ struct AlertsPane: View {
     // MARK: - Display helpers
 
     static func conditionSummary(for rule: AlertRule) -> String {
-        switch RuleKind(id: rule.id) {
+        let kind = RuleKind(rule: rule)
+        switch kind {
         case .chargingPaused, .slowCharging:
-            return RuleKind(id: rule.id).fixedConditionSummary ?? ""
+            return kind.fixedConditionSummary ?? ""
         case .batteryHealthDrop:
             return String(localized: "Health drops by \(MetricFormatter.detailed(rule.threshold, unit: .percent)) or more")
+        case .processMatch:
+            let name = (rule.processNameMatch?.isEmpty == false) ? rule.processNameMatch! : String(localized: "(no process set)")
+            let comparison = ComparisonKind(comparison: rule.comparison).phrase
+            // Same "not `String(localized:)`" reasoning as `.generic` below
+            // — every segment is already independently localized at its
+            // source (the process name is user data, not UI copy).
+            return "\(name) \(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))"
         case .generic:
             let comparison = ComparisonKind(comparison: rule.comparison).phrase
             // Deliberately NOT `String(localized:)` (l10n audit): every
@@ -1163,13 +1254,26 @@ enum RuleKind: Hashable {
     case chargingPaused
     case slowCharging
     case batteryHealthDrop
+    /// `AlertRule.processNameMatch` is set — a "watch this process" rule.
+    /// Unlike the three cases above, this is never derived from a fixed
+    /// `id` (there is no shipped default process rule to special-case — see
+    /// `AlertEngine.defaultRules(cooldown:)`'s doc comment) and, unlike
+    /// `.generic`, its `metric` field is meaningful but deliberately
+    /// restricted to two values (`ProcessMetricKind`) rather than the full
+    /// `MetricID.allCases` picker `.generic` shows.
+    case processMatch
 
-    init(id: AlertRule.ID) {
-        switch id {
+    /// Derived from the *whole rule*, not just `id`, because `.processMatch`
+    /// can't be told apart from `.generic` any other way — it's a
+    /// user-created rule with an ordinary (non-special-cased) `id` whose
+    /// `processNameMatch` happens to be set. The three ID-special-cased
+    /// kinds still take priority over content, same as before.
+    init(rule: AlertRule) {
+        switch rule.id {
         case AlertEngine.chargingPausedRuleID: self = .chargingPaused
         case AlertEngine.slowChargingRuleID: self = .slowCharging
         case AlertEngine.batteryHealthDropRuleID: self = .batteryHealthDrop
-        default: self = .generic
+        default: self = rule.processNameMatch != nil ? .processMatch : .generic
         }
     }
 
@@ -1181,7 +1285,7 @@ enum RuleKind: Hashable {
             return String(localized: "Plugged in but not charging, with a reason reported")
         case .slowCharging:
             return String(localized: "Charging below half the adapter's rated wattage")
-        case .generic, .batteryHealthDrop:
+        case .generic, .batteryHealthDrop, .processMatch:
             return nil
         }
     }
@@ -1194,8 +1298,38 @@ enum RuleKind: Hashable {
             return String(localized: "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable.")
         case .batteryHealthDrop:
             return String(localized: "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed.")
+        case .processMatch:
+            return String(localized: "Matches by process name (case-insensitive) against the busiest processes seen in the last several seconds. A process using very little CPU may not appear in that list even while using a lot of memory, and a process that hasn't run yet this session won't match until Sentry has observed it at least once.")
         case .generic:
             return nil
+        }
+    }
+}
+
+/// Which of `ProcessStats`'s two attributions a `.processMatch` rule
+/// compares against — the picker-friendly mirror of the two `MetricID`
+/// values `AlertRule.processNameMatch`'s doc comment documents as
+/// meaningful once a rule is process-scoped (`.cpuTotalPercent`/
+/// `.memoryUsedBytes`). A dedicated type rather than reusing the full
+/// `MetricID` picker `.generic` rules use, because every other `MetricID`
+/// case is meaningless for a process rule — `AlertEngine.evaluateProcessRule`
+/// only ever reads these two.
+private enum ProcessMetricKind: String, CaseIterable, Hashable {
+    case cpuPercent
+    case memoryBytes
+
+    init(metric: MetricID) {
+        self = metric == .memoryUsedBytes ? .memoryBytes : .cpuPercent
+    }
+
+    var metricID: MetricID {
+        self == .memoryBytes ? .memoryUsedBytes : .cpuTotalPercent
+    }
+
+    var displayName: String {
+        switch self {
+        case .cpuPercent: return String(localized: "CPU")
+        case .memoryBytes: return String(localized: "Memory")
         }
     }
 }

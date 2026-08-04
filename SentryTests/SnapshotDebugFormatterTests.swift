@@ -135,7 +135,7 @@ final class SnapshotDebugFormatterTests: XCTestCase {
         let names = sections.map(\.name)
         XCTAssertEqual(
             names,
-            ["Snapshot", "Battery", "CPU", "GPU", "ANE", "Memory", "Disk", "Network", "Thermal", "Sleep Assertion", "Location"]
+            ["Snapshot", "Battery", "CPU", "GPU", "ANE", "Memory", "Disk", "Network", "Thermal", "Sleep Assertion", "Location", "Top Processes"]
         )
     }
 
