@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Foundation
 import Network
 import os.log
@@ -65,6 +66,17 @@ import os.log
 /// Users who want control at home turn on Remote Access and pair once; that
 /// listener is reachable over the local network too, not only from outside
 /// it.
+/// **Sleep/wake (connection-honesty review gap #4).** Before
+/// `registerSleepWakeObservers()` existed, a phone connected before the Mac
+/// slept had no reliable way to learn the Mac went away until a send
+/// actually failed or (on the remote path only) `SyncSecurity`'s keepalive
+/// eventually timed out — up to 15s, and unbounded on the plaintext LAN
+/// path, which has no keepalive of its own. `handleSystemWillSleep()` now
+/// closes every open connection the moment `NSWorkspace` reports sleep is
+/// imminent, so `LocalSyncClient` gets the same clean disconnect signal a
+/// dropped Wi-Fi connection would produce, right away. `handleSystemDidWake
+/// ()` is a no-op by design — see its doc comment for why `NWListener`
+/// doesn't need restarting.
 public final class LocalSyncServer: @unchecked Sendable {
 
     /// Must match `LocalSyncClient`'s browse type exactly — Bonjour service
@@ -91,6 +103,15 @@ public final class LocalSyncServer: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "dev.malekswilam.sentry.localsyncserver")
     private let log = Logger(subsystem: "dev.malekswilam.sentry", category: "LocalSyncServer")
+
+    /// Observer tokens for `NSWorkspace.willSleepNotification`/
+    /// `didWakeNotification` — see `start(feedingFrom:)`/`stop()` for
+    /// registration and `handleSystemWillSleep()`/`handleSystemDidWake()`
+    /// for what each does. Held so `stop()` can remove them by identity
+    /// rather than relying on `deinit` order between this type and
+    /// `NSWorkspace`'s shared notification center.
+    private var sleepObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
 
     private var listener: NWListener?
 
@@ -206,6 +227,8 @@ public final class LocalSyncServer: @unchecked Sendable {
                 self?.broadcast(snapshot)
             }
         }
+
+        registerSleepWakeObservers()
     }
 
     /// Tears down the listener and every open connection. Idempotent.
@@ -221,6 +244,80 @@ public final class LocalSyncServer: @unchecked Sendable {
             }
             connections.removeAll()
         }
+        removeSleepWakeObservers()
+    }
+
+    // MARK: - Sleep/wake lifecycle (connection-honesty review gap #4)
+
+    /// Registers for `NSWorkspace`'s sleep/wake notifications. Kept
+    /// self-contained to this file rather than living in `AppDelegate`
+    /// (which owns the `LocalSyncServer` instance but shouldn't need to
+    /// know this type has sleep-lifecycle needs at all) — this type is the
+    /// one that knows what "the Mac is about to disappear" should mean for
+    /// its own connection pool.
+    private func registerSleepWakeObservers() {
+        guard sleepObserver == nil, wakeObserver == nil else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        sleepObserver = center.addObserver(
+            forName: NSWorkspace.willSleepNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.handleSystemWillSleep()
+        }
+        wakeObserver = center.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.handleSystemDidWake()
+        }
+    }
+
+    private func removeSleepWakeObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        if let sleepObserver { center.removeObserver(sleepObserver) }
+        if let wakeObserver { center.removeObserver(wakeObserver) }
+        sleepObserver = nil
+        wakeObserver = nil
+    }
+
+    /// Closes every currently-open connection when the system is about to
+    /// sleep, rather than leaving them open for a client to discover only
+    /// once a send actually fails or `SyncSecurity`'s keepalive eventually
+    /// times out (gap #1 — up to `SyncSecurity.keepaliveIdleSeconds`, 15s,
+    /// on the remote path; the plaintext LAN path has no keepalive of its
+    /// own and could otherwise hang far longer). A connection that closes
+    /// cleanly here delivers `LocalSyncClient` a `.failed`/`.cancelled`
+    /// state update immediately — the same signal an ordinary drop
+    /// produces — so the phone's reconnect/retry logic (`LocalSyncClient
+    /// .handleClosed`) runs right away instead of the phone believing it's
+    /// still connected to a Mac that's about to go dark for an unknown
+    /// stretch of time.
+    ///
+    /// Does not stop the listener(s) themselves — see `handleSystemDidWake
+    /// ()` for why that isn't necessary.
+    private func handleSystemWillSleep() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            guard !self.connections.isEmpty else { return }
+            self.log.info("LocalSyncServer: system will sleep — closing \(self.connections.count) open connection(s)")
+            for state in self.connections.values {
+                state.connection.cancel()
+            }
+            self.connections.removeAll()
+        }
+    }
+
+    /// No action needed: per Apple's `Network.framework` documentation,
+    /// an `NWListener` survives system sleep transparently and continues
+    /// accepting new connections on wake without being restarted. Logged
+    /// (rather than omitted) so a support/debug log shows sleep and wake
+    /// were both observed, not just sleep — useful when diagnosing a report
+    /// that reconnection after wake didn't happen, to rule "the listener
+    /// never came back" in or out.
+    private func handleSystemDidWake() {
+        log.info("LocalSyncServer: system did wake — listener(s) remain open across sleep, nothing to restart")
     }
 
     // MARK: - Remote (off-LAN) listener

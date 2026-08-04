@@ -22,12 +22,19 @@ import os.log
 /// **Known simplification: first-found, not a real picker.** Bonjour
 /// browsing can surface more than one `_sentry._tcp` service on a
 /// household network with more than one Mac. A real multi-Mac experience
-/// would show a picker and let the user choose (and remember the choice).
-/// That UI doesn't exist yet, and building it is out of scope for this
-/// pass — this type connects to whichever result `NWBrowser` reports first
-/// and stays connected to it for the lifetime of the instance. Documented
-/// here rather than hidden, per this codebase's "say plainly what doesn't
-/// work" convention (see `SettingsTabView`'s doc comment for the canonical
+/// would show a picker and let the user choose. That UI doesn't exist yet,
+/// and building it is out of scope for this pass — on its very first
+/// connection of the process, this type still connects to whichever result
+/// `NWBrowser` reports first (browse results are a `Set`, so "first" isn't
+/// even a stable notion across calls). What *is* fixed (connection-honesty
+/// review gap #5): every reconnect *after* that — a drop, a Mac going to
+/// sleep and coming back, a Wi-Fi blip — prefers dialing the *same* Mac by
+/// Bonjour service name (`preferredEndpoint(among:preferring:)` below)
+/// rather than re-running "first result wins" on every retry, which used
+/// to mean a phone could silently hop to a second Mac's advertisement mid-
+/// session with no indication anything changed. Documented here rather
+/// than hidden, per this codebase's "say plainly what doesn't work"
+/// convention (see `SettingsTabView`'s doc comment for the canonical
 /// example of that discipline).
 ///
 /// **`send(command:)` is real; `upload(_:)` still isn't.** `send(command:)`
@@ -113,6 +120,46 @@ public actor LocalSyncClient: StatsTransport {
         connectionStateHandler = handler
     }
 
+    /// Invoked whenever a *direct* (remote, TLS-PSK) connection attempt
+    /// fails, with the best-guess reason, or with `nil` once a direct
+    /// connection succeeds (clearing a previously-shown reason). Never
+    /// invoked for LAN/Bonjour connect failures — there is no "wrong code"
+    /// concept on that plaintext path, so those keep retrying silently the
+    /// way they always have.
+    ///
+    /// Exists because `attemptDirectConnect()` used to retry every 3s on
+    /// *any* failure with no distinction (connection-honesty review gap
+    /// #2): a wrong pairing code and an unreachable Mac produced the exact
+    /// same "still trying…" UI forever, even though one of them (wrong
+    /// code) is something the user can actually fix by re-typing, and the
+    /// other isn't fixable from this screen at all. See `classifyDirect
+    /// ConnectFailure(_:)` below for how the two are told apart, and
+    /// `SettingsTabView.remoteMacSection` for where this surfaces.
+    private var directConnectFailureHandler: (@Sendable (DirectConnectFailureReason?) -> Void)?
+
+    public func setDirectConnectFailureHandler(_ handler: (@Sendable (DirectConnectFailureReason?) -> Void)?) {
+        directConnectFailureHandler = handler
+    }
+
+    /// Set only while the in-flight `connect(to:parameters:isDirect:)` call
+    /// is a direct (remote) attempt — read back in `handleClosed`/
+    /// `handleReady` to decide whether a failure/success should update
+    /// `directConnectFailureHandler`. Not part of `connection` itself
+    /// because `NWConnection` carries no such flag of its own.
+    private var connectionIsDirect = false
+
+    /// The Bonjour service name of the Mac this client most recently
+    /// connected to over the LAN path, or `nil` before any LAN connection
+    /// has succeeded. Read by `preferredEndpoint(among:preferring:)` so a
+    /// drop-and-reconnect prefers dialing the *same* Mac again rather than
+    /// whichever result `NWBrowser` happens to report first — see this
+    /// type's top-level doc comment, "First Bonjour result wins," for the
+    /// two-Mac-household bug this fixes (connection-honesty review gap #5).
+    /// Never set from a direct/remote connection — that path is dialed by
+    /// explicit host:port, not discovered by name, so "which Mac" is never
+    /// ambiguous there.
+    private var lastConnectedServiceIdentity: String?
+
     /// Wall-clock time of the most recently decoded snapshot, or nil —
     /// lets `AppDataSource.devices()` report an honest `lastSeen` instead
     /// of stamping catalog-fetch time.
@@ -175,8 +222,9 @@ public actor LocalSyncClient: StatsTransport {
         let browser = NWBrowser(for: descriptor, using: parameters)
 
         browser.browseResultsChangedHandler = { [weak self] results, _ in
-            guard let self, let first = results.first else { return }
-            Task { await self.connect(to: first.endpoint, parameters: Self.lanParameters()) }
+            guard let self else { return }
+            let endpoints = results.map(\.endpoint)
+            Task { await self.connectToPreferredBrowseResult(endpoints) }
         }
         browser.stateUpdateHandler = { [weak self] state in
             if case .failed(let error) = state {
@@ -189,17 +237,31 @@ public actor LocalSyncClient: StatsTransport {
         startDirectRetryLoopIfConfigured()
     }
 
+    /// TCP parameters for the LAN (plaintext Bonjour) path. Keepalive is set
+    /// here for the identical reason `SyncSecurity.remoteParameters`
+    /// documents it (gap #1, connection-honesty review): without it a LAN
+    /// connection can sit in `.ready` long after the Mac went to sleep or
+    /// dropped off Wi-Fi, silently misreporting `isLocalSyncConnected`.
+    /// Reuses `SyncSecurity.keepaliveIdleSeconds` rather than a second
+    /// constant — one interval, chosen once, for both paths this client can
+    /// take; see that constant's doc comment for why 15s.
     private static func lanParameters() -> NWParameters {
-        let parameters = NWParameters.tcp
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.enableKeepalive = true
+        tcpOptions.keepaliveIdle = Int(SyncSecurity.keepaliveIdleSeconds)
+        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         parameters.includePeerToPeer = true
         return parameters
     }
 
     /// Dials the configured remote endpoint every few seconds while no
-    /// connection exists, for as long as the client is started. A failed
-    /// TLS handshake (wrong pairing code) surfaces as an ordinary failed
-    /// connection — the loop just tries again later, and Bonjour keeps
-    /// racing it; whichever path connects first wins.
+    /// connection exists, for as long as the client is started. The loop
+    /// itself doesn't distinguish *why* an attempt failed — it just tries
+    /// again later, and Bonjour keeps racing it; whichever path connects
+    /// first wins — but each failure's likely cause (wrong pairing code vs.
+    /// Mac unreachable) is now classified and surfaced separately via
+    /// `directConnectFailureHandler`, so a caller isn't stuck reading "still
+    /// trying…" for both cases alike.
     private func startDirectRetryLoopIfConfigured() {
         guard directConfig != nil, directRetryTask == nil else { return }
         directRetryTask = Task { [weak self] in
@@ -218,7 +280,7 @@ public actor LocalSyncClient: StatsTransport {
         guard let config = directConfig, !isConnecting, !isReady, connection == nil else { return }
         guard let port = NWEndpoint.Port(rawValue: config.port) else { return }
         let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(config.host), port: port)
-        connect(to: endpoint, parameters: SyncSecurity.remoteParameters(pairingCode: config.code))
+        connect(to: endpoint, parameters: SyncSecurity.remoteParameters(pairingCode: config.code), isDirect: true)
     }
 
     /// Stops browsing and closes any open connection. Every open
@@ -278,9 +340,10 @@ public actor LocalSyncClient: StatsTransport {
         }
     }
 
-    private func connect(to endpoint: NWEndpoint, parameters: NWParameters) {
+    private func connect(to endpoint: NWEndpoint, parameters: NWParameters, isDirect: Bool = false) {
         guard !isConnecting, !isReady else { return }
         isConnecting = true
+        connectionIsDirect = isDirect
 
         let connection = NWConnection(to: endpoint, using: parameters)
         connection.stateUpdateHandler = { [weak self] state in
@@ -288,8 +351,10 @@ public actor LocalSyncClient: StatsTransport {
             switch state {
             case .ready:
                 Task { await self.handleReady(connection) }
-            case .failed, .cancelled:
-                Task { await self.handleClosed(connection) }
+            case .failed(let error):
+                Task { await self.handleClosed(connection, error: error) }
+            case .cancelled:
+                Task { await self.handleClosed(connection, error: nil) }
             default:
                 break
             }
@@ -298,22 +363,43 @@ public actor LocalSyncClient: StatsTransport {
         self.connection = connection
     }
 
+    /// Picks which discovered Mac to dial next and connects to it — the LAN
+    /// counterpart of `attemptDirectConnect()`. Threaded through
+    /// `preferredEndpoint(among:preferring:)` (gap #5) rather than
+    /// `results.first` directly, so a reconnect after a drop prefers the
+    /// same Mac this client was already talking to.
+    private func connectToPreferredBrowseResult(_ endpoints: [NWEndpoint]) {
+        guard let endpoint = Self.preferredEndpoint(among: endpoints, preferring: lastConnectedServiceIdentity) else { return }
+        connect(to: endpoint, parameters: Self.lanParameters())
+    }
+
     private func handleReady(_ connection: NWConnection) {
         guard connection === self.connection else { return }
         isConnecting = false
         isReady = true
+        if connectionIsDirect {
+            // A successful direct connection means whatever failure reason
+            // was showing (wrong code / unreachable) is stale — clear it
+            // rather than leaving it to linger next to a working connection.
+            directConnectFailureHandler?(nil)
+        } else if let identity = Self.serviceIdentity(for: connection.endpoint) {
+            lastConnectedServiceIdentity = identity
+        }
         resumeReadyWaiters(found: true)
         connectionStateHandler?(true)
         receiveNext(on: connection)
     }
 
-    private func handleClosed(_ connection: NWConnection) {
+    private func handleClosed(_ connection: NWConnection, error: NWError?) {
         guard connection === self.connection else { return }
         isConnecting = false
         isReady = false
         self.connection = nil
         resumeReadyWaiters(found: false)
         connectionStateHandler?(false)
+        if connectionIsDirect {
+            directConnectFailureHandler?(Self.classifyDirectConnectFailure(error))
+        }
         // Discovery keeps running (the browser wasn't stopped), so a
         // reconnect happens when `browseResultsChangedHandler` next fires —
         // but a bare TCP drop (Mac app crash, socket reset) often leaves
@@ -328,11 +414,83 @@ public actor LocalSyncClient: StatsTransport {
     /// see `handleClosed`. Gives up silently when discovery has been
     /// stopped, a connection attempt is already in flight, or there is
     /// nothing to connect to (the next results-changed event covers that).
+    /// Uses `preferredEndpoint(among:preferring:)` for the same reason
+    /// `connectToPreferredBrowseResult` does — a drop shouldn't silently
+    /// reconnect to a *different* Mac just because `NWBrowser.browseResults`
+    /// (a `Set`) happens to enumerate in a different order this time.
     private func retryConnectFromBrowserResults() async {
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         guard browser != nil, connection == nil, !isConnecting, !isReady else { return }
-        guard let first = browser?.browseResults.first else { return }
-        connect(to: first.endpoint, parameters: Self.lanParameters())
+        let endpoints = (browser?.browseResults ?? []).map(\.endpoint)
+        guard let endpoint = Self.preferredEndpoint(among: endpoints, preferring: lastConnectedServiceIdentity) else { return }
+        connect(to: endpoint, parameters: Self.lanParameters())
+    }
+
+    // MARK: - Pure helpers (unit-tested directly — see `LocalSyncClientTests`)
+
+    /// Extracts a Bonjour service's advertised name from an `NWEndpoint`,
+    /// or `nil` for any endpoint that isn't a `.service` case (e.g. a
+    /// direct `.hostPort` dial). Endpoint `Equatable`/`Hashable` conformance
+    /// is stricter than "same service" — it also factors in domain/
+    /// interface, which can legitimately differ between two browse results
+    /// for the very same Mac — so "same service" is decided by name alone.
+    public static func serviceIdentity(for endpoint: NWEndpoint) -> String? {
+        if case let .service(name, _, _, _) = endpoint {
+            return name
+        }
+        return nil
+    }
+
+    /// Chooses which discovered endpoint to (re)connect to: the one whose
+    /// service name matches `preferredIdentity` if it's still present in
+    /// `endpoints`, falling back to `endpoints.first` otherwise (no
+    /// preference yet, or that Mac is no longer being advertised at all —
+    /// nothing to prefer). A pure function, deliberately free of any
+    /// `Network.framework` I/O or actor isolation, so `LocalSyncClientTests`
+    /// can exercise the "don't silently switch Macs on a drop" behavior
+    /// (gap #5) with fabricated `NWEndpoint.service` values instead of a
+    /// live `NWBrowser`.
+    ///
+    /// This is intentionally still "prefer one, not a picker" — a real
+    /// multi-Mac UI that lets a user choose between several simultaneously
+    /// advertised Macs is out of scope here (see this type's top-level doc
+    /// comment); this only stops a *drop* from silently landing on a
+    /// different Mac than the one the user was already connected to.
+    public static func preferredEndpoint(among endpoints: [NWEndpoint], preferring preferredIdentity: String?) -> NWEndpoint? {
+        if let preferredIdentity, let match = endpoints.first(where: { serviceIdentity(for: $0) == preferredIdentity }) {
+            return match
+        }
+        return endpoints.first
+    }
+
+    /// Classifies why a *direct* (remote, TLS-PSK) connection attempt
+    /// failed, so `attemptDirectConnect()`'s retry loop can tell a wrong
+    /// pairing code apart from an unreachable Mac (gap #2) instead of both
+    /// looking like an identical "still trying…" forever.
+    ///
+    /// **The heuristic, and why it's good enough.** `SyncSecurity.tlsOptions
+    /// (pairingCode:)` is the *only* thing this connection's TLS layer does
+    /// — there is no certificate validation, no ALPN negotiation, nothing
+    /// else that could produce a `.tls` failure on this specific listener.
+    /// So on this narrowly-scoped path, any `NWError.tls` case reaching here
+    /// is the PSK handshake rejecting a key derived from the wrong code;
+    /// every other `NWError` case (`.posix` timeout/refused/host-unreachable,
+    /// `.dns`, or no error at all from a plain `.cancelled`) means the TLS
+    /// layer was never reached at all, i.e. the transport itself couldn't
+    /// get through. Network.framework does not expose a more specific
+    /// "PSK mismatch" case to distinguish further, and inspecting the
+    /// underlying `OSStatus` inside `.tls`'s associated value would tie this
+    /// to Security-framework error codes that aren't part of any documented,
+    /// stable contract — rejected as more fragile than the coarser but
+    /// reliable "any TLS failure here is a PSK failure" rule.
+    public static func classifyDirectConnectFailure(_ error: NWError?) -> DirectConnectFailureReason {
+        guard let error else { return .unreachable }
+        switch error {
+        case .tls:
+            return .wrongPairingCode
+        default:
+            return .unreachable
+        }
     }
 
     // MARK: - Receiving + framing
@@ -520,6 +678,25 @@ public actor LocalSyncClient: StatsTransport {
             "Uploading is not supported over the local-network transport — this transport only receives snapshots, it has no shared store to upload into."
         )
     }
+}
+
+/// Why a *direct* (remote, TLS-PSK) connection attempt failed — see
+/// `LocalSyncClient.classifyDirectConnectFailure(_:)` for how one is chosen,
+/// and `directConnectFailureHandler` for how it reaches `AppDataSource` and
+/// then `SettingsTabView`. Deliberately has no `.unknown`/`.other` case:
+/// every `NWError` this connection can produce falls cleanly into one of
+/// these two buckets per the classifier's doc comment, and a third bucket
+/// with no distinct UI message would just be a confusing thing to render.
+public enum DirectConnectFailureReason: Sendable, Equatable {
+    /// The TLS-PSK handshake completed the round trip but was rejected —
+    /// the pairing code typed into `SettingsTabView`'s "Remote Mac" fields
+    /// doesn't match the one the Mac is listening with.
+    case wrongPairingCode
+    /// The transport itself never got far enough to attempt a handshake —
+    /// connection timed out, was refused, or the host couldn't be resolved.
+    /// Usually means the Mac is asleep, off the configured network, or the
+    /// address/port is simply wrong.
+    case unreachable
 }
 
 /// Errors specific to `LocalSyncClient`, kept separate from

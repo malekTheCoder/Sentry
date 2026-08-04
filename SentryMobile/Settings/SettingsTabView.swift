@@ -215,6 +215,8 @@ struct SettingsTabView: View {
             .textFieldStyle(.roundedBorder)
 
             connectButton
+            remoteConnectFailureRow
+            forgetRemoteMacButton
 
             Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Fastest way: enable Remote Access on the Mac (Settings ▸ Sync) and scan the QR code it shows with this phone's Camera app — these fields fill themselves. Or enter the Mac's address, port, and pairing code by hand, then tap Connect. The connection is encrypted; leave the address empty to use local discovery only.")
                 .scaledFont(palette, size: 11)
@@ -267,6 +269,58 @@ struct SettingsTabView: View {
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Surfaces `AppDataSource.remoteConnectFailureReason` (connection-
+    /// honesty review bug #2) as a specific, actionable line instead of the
+    /// generic "still trying…" the retry loop used to leave the user
+    /// staring at regardless of cause. Empty when `nil` — no message shown
+    /// until a direct-connect attempt has actually failed this session, and
+    /// the message clears itself the moment a connection succeeds or a new
+    /// endpoint is entered (see `AppDataSource.reconfigureAndResolve`).
+    @ViewBuilder
+    private var remoteConnectFailureRow: some View {
+        if let reason = appDataSource.remoteConnectFailureReason {
+            Text(remoteConnectFailureMessage(for: reason))
+                .scaledFont(palette, size: 10.5, weight: .medium)
+                .foregroundStyle(palette.warning)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func remoteConnectFailureMessage(for reason: DirectConnectFailureReason) -> String {
+        switch reason {
+        case .wrongPairingCode:
+            return "Wrong code? The Mac rejected the pairing code above — check it against Settings ▸ Sync ▸ Remote Access on the Mac."
+        case .unreachable:
+            return "Mac not responding — check it's awake and on the network. The address or port above may also be wrong."
+        }
+    }
+
+    /// "Forget" control for the saved remote-Mac endpoint (connection-
+    /// honesty review bug #3). Hidden when there's nothing saved to forget
+    /// — an always-visible button next to three empty fields would invite a
+    /// confusing no-op tap. Clears the on-screen fields immediately (rather
+    /// than waiting on `AppDataSource`'s async round trip) so the UI doesn't
+    /// sit showing stale values while `forgetRemoteMac()` runs.
+    @ViewBuilder
+    private var forgetRemoteMacButton: some View {
+        if !remoteHost.isEmpty || !remoteCode.isEmpty {
+            Button(role: .destructive) {
+                focusedRemoteMacField = nil
+                remoteHost = ""
+                remotePort = "8643"
+                remoteCode = ""
+                remoteConnectResult = nil
+                Task { await appDataSource.forgetRemoteMac() }
+            } label: {
+                Text("Forget Remote Mac")
+                    .scaledFont(palette, size: 11.5, weight: .medium)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(palette.danger)
+            .accessibilityHint("Clears the saved address, port, and pairing code above and stops this phone from trying to reach that Mac.")
         }
     }
 
