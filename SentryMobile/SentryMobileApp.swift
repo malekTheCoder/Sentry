@@ -30,12 +30,41 @@ import SwiftUI
 @main
 struct SentryMobileApp: App {
 
+    /// True once the user has finished or skipped `OnboardingView`
+    /// (`SentryMobile/Onboarding/OnboardingView.swift`). Plain
+    /// `UserDefaults.standard` via `@AppStorage`, matching every other
+    /// one-time/per-device flag in this target
+    /// (`"selectedThemeID"` in `RootTabView`/`SettingsTabView`,
+    /// `"remoteSync.host/port/code"` in `SettingsTabView`) — there's no
+    /// App-Group or CloudKit-backed store anywhere in `SentryMobile` for a
+    /// flag this small to justify introducing one.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
+    /// Same key, same duplication tradeoff as `RootTabView`'s copy — see
+    /// that type's doc comment ("Why the `@AppStorage` key is duplicated
+    /// here and in `Settings/SettingsTabView.swift`"). `OnboardingView` is
+    /// presented via `.fullScreenCover` below, which starts a *new* view
+    /// hierarchy rather than descending from `RootTabView`'s
+    /// `.environment(\.themePalette:)`, so without reading the theme here
+    /// too, onboarding would render in whatever `Theme.terminal` the
+    /// environment's plain default is instead of the theme the user
+    /// actually picked (or the One Dark default a first-run user hasn't
+    /// changed yet).
+    @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.oneDark.id
+
     /// A scanned-but-not-yet-confirmed pairing; non-nil drives the alert.
     @State private var pendingPairing: RemotePairing.Endpoint?
 
     /// Drives the reconnect-on-foreground fix below — see the `.onChange`
     /// doc comment.
     @Environment(\.scenePhase) private var scenePhase
+
+    @Environment(\.colorScheme) private var systemColorScheme
+
+    private var onboardingPalette: ThemePalette {
+        let theme = Theme.builtInPresets.first { $0.id == selectedThemeID } ?? .defaultTheme
+        return ThemePalette(theme: theme, scheme: systemColorScheme)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -85,6 +114,30 @@ struct SentryMobileApp: App {
                     Button("Cancel", role: .cancel) {}
                 } message: { endpoint in
                     Text("This sets \(endpoint.host):\(String(endpoint.port)) as your remote Mac and replaces any saved pairing. Only pair from a QR code shown on your own Mac's screen.")
+                }
+                // First-run onboarding (connection-honesty review's other
+                // finding: a fresh install had nothing anywhere prominent
+                // telling a user this app needs Sentry running on a Mac
+                // too). A full-screen cover, not a `.sheet`, so it can't be
+                // swiped away by accident and reads as a gate in front of
+                // the app rather than an overlay on top of it — the same
+                // reason `AboutView` uses a sheet and this doesn't: About is
+                // optional reference material you dismiss back into a
+                // working app, this is the thing that's supposed to happen
+                // once before the app is used at all. Re-derives its
+                // `isPresented` binding from `hasCompletedOnboarding` rather
+                // than owning a separate `@State` flag, so there is exactly
+                // one source of truth for "has this run" and dismissing the
+                // cover (Skip or Get Started, both call the same
+                // `onFinish`) is just flipping that one flag.
+                .fullScreenCover(
+                    isPresented: Binding(
+                        get: { !hasCompletedOnboarding },
+                        set: { isPresented in hasCompletedOnboarding = !isPresented }
+                    )
+                ) {
+                    OnboardingView { hasCompletedOnboarding = true }
+                        .environment(\.themePalette, onboardingPalette)
                 }
         }
     }
