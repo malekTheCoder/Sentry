@@ -192,6 +192,77 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .inactive)
     }
 
+    // MARK: - Agent ownership survives extend/truncate (ownership-drift bug)
+
+    func testAdjustAssertionExtendPreservesAgentOwnership() throws {
+        // Before the fix, `adjustAssertion` called the untagged internal
+        // start path directly, which bumps `assertionGeneration` and
+        // silently detaches `agentOwnership` from the (now different)
+        // generation — leaving an agent-held hold that the kill switch and
+        // `AgentGuardrails.autoRevocationReason` can no longer see as
+        // agent-owned. This is the exact scenario: extend an agent-held
+        // assertion, then check the owner survived.
+        let service = PowerControlService(defaults: makeTestDefaults("adjustAgentExtend"))
+        defer { service.releaseAssertion() }
+
+        try service.startAgentAssertion(
+            mode: .systemOnly,
+            duration: 60,
+            reason: "agent hold",
+            clientName: "claude-code"
+        )
+        XCTAssertEqual(service.agentAssertionOwner, "claude-code")
+        let generationBeforeAdjust = service.assertionGeneration
+
+        try service.adjustAssertion(bySeconds: 300)
+
+        // The adjustment really did mint a new assertion (new generation) —
+        // otherwise this test would trivially pass without exercising the
+        // bug at all.
+        XCTAssertNotEqual(service.assertionGeneration, generationBeforeAdjust)
+        XCTAssertEqual(
+            service.agentAssertionOwner,
+            "claude-code",
+            "extending an agent-held assertion must not silently strip its owner tag"
+        )
+    }
+
+    func testAdjustAssertionTruncatePreservesAgentOwnership() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("adjustAgentTruncate"))
+        defer { service.releaseAssertion() }
+
+        try service.startAgentAssertion(
+            mode: .systemOnly,
+            duration: 600,
+            reason: "agent hold",
+            clientName: "codex"
+        )
+        XCTAssertEqual(service.agentAssertionOwner, "codex")
+
+        try service.adjustAssertion(bySeconds: -540)
+
+        guard case .active = service.state else {
+            return XCTFail("truncating to a positive remainder must leave the assertion active")
+        }
+        XCTAssertEqual(
+            service.agentAssertionOwner,
+            "codex",
+            "truncating an agent-held assertion must not silently strip its owner tag"
+        )
+    }
+
+    func testAdjustAssertionOnAUserStartedAssertionStaysUnowned() throws {
+        // The negative case: adjusting a hold nobody tagged as an agent's
+        // must not fabricate an owner out of nowhere.
+        let service = PowerControlService(defaults: makeTestDefaults("adjustUserOwned"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: 60, reason: "user hold")
+        try service.adjustAssertion(bySeconds: 120)
+
+        XCTAssertNil(service.agentAssertionOwner)
+    }
+
     // MARK: - Expiry-timer lifecycle races
 
     func testStaleExpiryTimerFireCannotReleaseASubsequentAssertion() throws {
@@ -364,6 +435,82 @@ final class PowerControlServiceTests: XCTestCase {
 
         first.releaseAssertion()
         second.releaseAssertion()
+    }
+
+    func testColdStartRestoreOfATimedAgentHoldPreservesItsOwner() throws {
+        // The cold-start counterpart to `testAdjustAssertion*PreservesAgentOwnership`:
+        // `reconcilePersistedState` restores a timed hold via the same
+        // untagged internal start path `adjustAssertion` used to, and
+        // before `PersistedRecord.agentOwnerClientName` existed there was
+        // nowhere for the owner to have survived a process relaunch at all
+        // — the fresh process's in-memory `agentOwnership` starts `nil`
+        // regardless of who held the assertion a moment ago.
+        let defaults = makeTestDefaults("reconcileAgentColdStart")
+
+        let first = PowerControlService(defaults: defaults)
+        try first.startAgentAssertion(
+            mode: .systemOnly,
+            duration: 3600,
+            reason: "agent hold across relaunch",
+            clientName: "claude-code"
+        )
+        XCTAssertEqual(first.agentAssertionOwner, "claude-code")
+
+        // A second instance sharing the same UserDefaults suite simulates a
+        // relaunch, as in `testColdStartStillRestoresATimedAssertionWithItsRemainingWindow`.
+        let second = PowerControlService(defaults: defaults)
+        guard case .active = second.state else {
+            return XCTFail("expected the timed hold to survive a cold start, per the existing restore behaviour")
+        }
+        XCTAssertEqual(
+            second.agentAssertionOwner,
+            "claude-code",
+            "a restored agent-held timed hold must still be visible to the kill switch / guardrails as agent-owned"
+        )
+
+        first.releaseAssertion()
+        second.releaseAssertion()
+    }
+
+    func testWakeReconcileOfAnAgentHoldPreservesItsOwner() throws {
+        // The wake counterpart: the process never died, so `agentOwnership`
+        // is still resident in memory, but `reconcilePersistedState` still
+        // bumps `assertionGeneration` when it recreates the (already live)
+        // OS assertion — see the type doc comment on why the wake path
+        // recreates at all. Without re-tagging after that bump, the
+        // in-memory tag would go stale on the very next guardrail check,
+        // exactly as `adjustAssertion` did before its fix.
+        let defaults = makeTestDefaults("reconcileAgentWake")
+        let service = PowerControlService(defaults: defaults)
+        try service.startAgentAssertion(
+            mode: .systemOnly,
+            duration: 3600,
+            reason: "agent hold across wake",
+            clientName: "claude-code"
+        )
+        let generationBeforeWake = service.assertionGeneration
+        XCTAssertEqual(service.agentAssertionOwner, "claude-code")
+
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        let resumed = expectation(description: "wake reconciliation ran")
+        DispatchQueue.main.async { resumed.fulfill() }
+        wait(for: [resumed], timeout: 2)
+
+        XCTAssertNotEqual(
+            service.assertionGeneration,
+            generationBeforeWake,
+            "the wake path really does recreate the assertion (new generation) — otherwise this test wouldn't exercise the bug"
+        )
+        XCTAssertEqual(
+            service.agentAssertionOwner,
+            "claude-code",
+            "waking must not silently strip an agent-held assertion's owner tag"
+        )
+
+        service.releaseAssertion()
     }
 
     func testWakeKeepsAnIndefiniteAssertionThatColdStartWouldHaveDiscarded() throws {

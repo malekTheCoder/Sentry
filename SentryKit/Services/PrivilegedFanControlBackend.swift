@@ -244,7 +244,8 @@ public final class PrivilegedFanControlBackend: FanControlBackend {
         }
 
         var thrown: Error?
-        var applied: Double = -1
+        var writtenRPM: Double = -1
+        var verifiedApplied = false
         var failureMessage: String?
 
         try withProxy { proxy, connectionError in
@@ -252,8 +253,9 @@ public final class PrivilegedFanControlBackend: FanControlBackend {
                 thrown = connectionError
                 return
             }
-            proxy?.setTarget(fanIndex: index, rpm: rpm) { appliedRPM, _, message in
-                applied = appliedRPM
+            proxy?.setTarget(fanIndex: index, rpm: rpm) { rpmReply, _, appliedReply, message in
+                writtenRPM = rpmReply
+                verifiedApplied = appliedReply
                 failureMessage = message
             }
         }
@@ -266,16 +268,30 @@ public final class PrivilegedFanControlBackend: FanControlBackend {
         // `FanDaemonProtocol.setTarget`'s contract — a failure that
         // produced a message must be reported with that message, and this
         // branch only catches a daemon that replied with neither.
-        guard applied >= 0 else {
+        guard writtenRPM >= 0 else {
             throw FanControlWriteError.helperRefused(
                 reason: "The fan helper replied without applying a speed and without saying why."
             )
         }
 
+        // The write reached the fan and stays held (`F{i}Md` remains 1 on
+        // the daemon's side) regardless of whether it verified — see
+        // `FanDaemonService.setTarget`'s matching comment. So the heartbeat
+        // must keep running either way; only the return value tells the
+        // caller whether to trust the number that was requested.
         queue.sync {
             heldFans.insert(index)
             lastFailureReason = nil
             startHeartbeatIfNeededLocked()
+        }
+
+        guard verifiedApplied else {
+            // Thrown, not swallowed — see `FanControlWriteError
+            // .writeNotVerified`'s doc comment for why this is a distinct
+            // case from `helperRefused` rather than a normal failure. The
+            // fan *is* held (see above); what the caller cannot trust is
+            // that it is actually spinning at `rpm`.
+            throw FanControlWriteError.writeNotVerified(requestedRPM: writtenRPM, fanIndex: index)
         }
     }
 

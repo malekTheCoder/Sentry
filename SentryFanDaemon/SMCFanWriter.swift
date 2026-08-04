@@ -32,6 +32,17 @@ import IOKit
 /// answering reads on, with the command byte changed and a payload written
 /// into the same `bytes` offset the reader decodes from; that is a strong
 /// inference and it is not an observation. See `docs/fan-control-spike.md`.
+///
+/// **Readback verification** (`setTargetRPM`'s poll of `F{i}Ac` after
+/// writing `F{i}Tg`) is subject to the same caveat, one level deeper: not
+/// only has the write itself never run, the *readback* — whether a
+/// genuine `thermalmonitord` override actually produces the "accepted but
+/// not applied" signal `FanDaemonReadback.applied` is meant to catch — has
+/// never been observed against real firmware behavior either. The
+/// tolerance band and movement threshold in `FanDaemonReadback` are
+/// reasoned from the spike's measured ranges and ramp behavior, not tuned
+/// against an observed override. They should be revisited against real
+/// hardware in the first-run checklist (`docs/fan-control-spike.md`).
 final class SMCFanWriter {
 
     /// `SMCParamStruct` geometry — identical to `SMCFanBridge.Layout`, and
@@ -137,7 +148,8 @@ final class SMCFanWriter {
         writeKey("F\(index)Md", bytes: [forced ? 1 : 0])
     }
 
-    /// `F{i}Tg` — the target RPM, a 4-byte little-endian `flt ` key.
+    /// `F{i}Tg` — the target RPM, a 4-byte little-endian `flt ` key —
+    /// **plus readback verification.**
     ///
     /// **This method does not clamp.** That is not an omission: clamping
     /// happens in `FanDaemonClamp.resolve`, one layer up, against ranges
@@ -146,8 +158,31 @@ final class SMCFanWriter {
     /// lower layer's version being the one that silently wins. The single
     /// caller (`FanDaemonService.setTarget`) has no path to this method
     /// that does not go through `resolve` first.
-    func setTargetRPM(_ rpm: Double, fan index: Int) -> Bool {
-        guard rpm.isFinite else { return false }
+    ///
+    /// **Why this polls `F{i}Ac` after writing `F{i}Tg`**, per
+    /// `docs/fan-control-spike.md`'s item 4 ("Readback verification is
+    /// straightforward: write `F{i}Tg`, poll `F{i}Ac`"): the SMC accepting
+    /// `WRITE_BYTES` only proves the write reached the SMC, not that the
+    /// fan actually moved. `thermalmonitord` can re-assert protected mode
+    /// and override the write a moment later — silently, from this
+    /// process's point of view, because it happens entirely inside the SMC
+    /// and macOS's thermal daemon, neither of which reports back to a
+    /// caller that already got a success return from `WRITE_BYTES`. Four of
+    /// seven competitor fan-control apps share this exact top user
+    /// complaint. Polling `F{i}Ac` a few times across roughly a second is
+    /// what turns "the SMC accepted my write" into "the fan is actually
+    /// doing what I asked" — see `FanDaemonReadback` for the tolerance-band
+    /// comparison, which is pure and unit-tested, unlike this method.
+    func setTargetRPM(_ rpm: Double, fan index: Int) -> FanWriteVerification {
+        guard rpm.isFinite else { return .notAccepted }
+
+        // Read before writing so `FanDaemonReadback.applied` has a baseline
+        // to measure movement against for large requests that haven't
+        // finished ramping by the end of the poll window (see that type's
+        // doc comment). A `nil` here isn't fatal — the tolerance-band check
+        // alone still catches the ordinary case.
+        let initialRPM = readActualRPM(fan: index)
+
         let bits = Float(rpm).bitPattern
         let payload: [UInt8] = [
             UInt8(truncatingIfNeeded: bits),
@@ -155,7 +190,21 @@ final class SMCFanWriter {
             UInt8(truncatingIfNeeded: bits >> 16),
             UInt8(truncatingIfNeeded: bits >> 24)
         ]
-        return writeKey("F\(index)Tg", bytes: payload)
+        guard writeKey("F\(index)Tg", bytes: payload) else { return .notAccepted }
+
+        var samples: [Double] = []
+        samples.reserveCapacity(FanDaemonReadback.sampleCount)
+        for sampleIndex in 0..<FanDaemonReadback.sampleCount {
+            if sampleIndex > 0 {
+                Thread.sleep(forTimeInterval: FanDaemonReadback.sampleInterval)
+            }
+            if let actual = readActualRPM(fan: index) {
+                samples.append(actual)
+            }
+        }
+
+        let applied = FanDaemonReadback.applied(target: rpm, initialRPM: initialRPM, samples: samples)
+        return FanWriteVerification(accepted: true, applied: applied, finalRPM: samples.last)
     }
 
     /// One `WRITE_BYTES` round trip.

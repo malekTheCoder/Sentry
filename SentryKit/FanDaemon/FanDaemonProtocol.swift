@@ -70,13 +70,29 @@ import Foundation
     /// difference (`FanTargetResolution.wasClamped` has carried this
     /// concept since Phase 2).
     ///
-    /// - Parameter reply: `(appliedRPM, wasClamped, failureMessage)`.
-    ///   `appliedRPM` is `-1` when the call failed, and the app checks
-    ///   `failureMessage` first rather than sniffing that sentinel — an
-    ///   `@objc` reply block cannot carry an optional `Double`, and a
-    ///   sentinel nobody is required to notice is how a failure becomes a
-    ///   silently-wrong reading.
-    func setTarget(fanIndex: Int, rpm: Double, reply: @escaping (Double, Bool, String?) -> Void)
+    /// **`verifiedApplied` is not the same question as "did the call
+    /// succeed."** The SMC accepting `WRITE_BYTES` (which is what
+    /// `writtenRPM >= 0` and a `nil` `failureMessage` mean) only proves the
+    /// write reached the SMC — `thermalmonitord` can silently re-assert
+    /// protected mode and override it a moment later, which is the exact
+    /// failure four of seven competitor apps' users report most. So the
+    /// daemon also polls `F{i}Ac` after the write (`SMCFanWriter
+    /// .setTargetRPM`, `FanDaemonReadback`) and reports whether the fan's
+    /// actual speed was observed moving toward the target. A call can
+    /// succeed (`failureMessage == nil`) with `verifiedApplied == false`;
+    /// that combination is the "SMC said yes, thermalmonitord said no"
+    /// case, and it is a distinct outcome from either an ordinary success
+    /// or an outright refusal — never collapsed into `failureMessage` to
+    /// keep it from being treated as one more `helperRefused` string.
+    ///
+    /// - Parameter reply: `(writtenRPM, wasClamped, verifiedApplied,
+    ///   failureMessage)`. `writtenRPM` is `-1` when the call failed, and
+    ///   the app checks `failureMessage` first rather than sniffing that
+    ///   sentinel — an `@objc` reply block cannot carry an optional
+    ///   `Double`, and a sentinel nobody is required to notice is how a
+    ///   failure becomes a silently-wrong reading. `verifiedApplied` is
+    ///   always `false` when `writtenRPM` is `-1`.
+    func setTarget(fanIndex: Int, rpm: Double, reply: @escaping (Double, Bool, Bool, String?) -> Void)
 
     /// Hands one fan back to the firmware (`F{i}Md = 0`) — plan §8's
     /// mandatory escape hatch, at the layer that can actually perform it.
