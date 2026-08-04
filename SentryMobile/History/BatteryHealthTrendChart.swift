@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import Accessibility
 import SentryKit
 
 /// The History tab's headline long-term chart (plan §12.1's "battery health
@@ -21,6 +22,18 @@ struct BatteryHealthTrendChart: View {
     @Environment(\.themePalette) private var palette
     let series: [DailyHealth]
 
+    /// Raw x-axis date under the finger while dragging; `nil` otherwise. See
+    /// `ChartScrubOverlay` for why it is deliberately not pre-snapped.
+    @State private var scrubDate: Date?
+
+    /// One record per day, by construction — `DailyHealth.day` is midnight UTC
+    /// and `SyntheticDailyHealth` emits at most one per day. Stated as a
+    /// constant rather than derived from a query tier the way the Mac app does
+    /// it, because there is no `HistoryStore` on this platform to have a tier
+    /// (see the type doc comment above), so a day is the only cadence this
+    /// series can have.
+    private static let dayCadence: TimeInterval = 86400
+
     var body: some View {
         Group {
             if series.isEmpty {
@@ -38,21 +51,52 @@ struct BatteryHealthTrendChart: View {
     }
 
     private var chart: some View {
-        Chart(series, id: \.day) { record in
-            AreaMark(
-                x: .value("Day", record.day),
-                y: .value("Health", record.healthPercent)
-            )
-            .interpolationMethod(.monotone)
-            .foregroundStyle(palette.success.opacity(0.14))
+        Chart {
+            // Grouped into gapless runs the same way the Mac app's
+            // `DashboardChart` is: a phone that was off (or an app that hadn't
+            // synced) for a fortnight leaves a hole in `dailyHealth`, and a
+            // smooth curve drawn across it would claim two weeks of health
+            // readings that were never taken.
+            ForEach(Array(series.enumerated()), id: \.offset) { offset, record in
+                AreaMark(
+                    x: .value("Day", record.day),
+                    y: .value("Health", record.healthPercent),
+                    series: .value("Segment", segmentNumbers[offset])
+                )
+                .interpolationMethod(.monotone)
+                .foregroundStyle(palette.success.opacity(0.14))
 
-            LineMark(
-                x: .value("Day", record.day),
-                y: .value("Health", record.healthPercent)
-            )
-            .interpolationMethod(.monotone)
-            .lineStyle(StrokeStyle(lineWidth: 2, lineJoin: .round))
-            .foregroundStyle(palette.success)
+                LineMark(
+                    x: .value("Day", record.day),
+                    y: .value("Health", record.healthPercent),
+                    series: .value("Segment", segmentNumbers[offset])
+                )
+                .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 2, lineJoin: .round))
+                .foregroundStyle(palette.success)
+            }
+
+            if let marker = scrubMarker {
+                RuleMark(x: .value("Scrubbed day", marker.date))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(palette.textTertiary)
+                if let value = marker.value {
+                    PointMark(
+                        x: .value("Scrubbed day", marker.date),
+                        y: .value("Health", value)
+                    )
+                    .symbolSize(40)
+                    .foregroundStyle(palette.success)
+                }
+            }
+        }
+        .chartOverlay { proxy in
+            gapShading(proxy: proxy)
+        }
+        .chartOverlay { proxy in
+            ChartScrubOverlay(proxy: proxy, scrubDate: $scrubDate, anchor: scrubMarker?.date) {
+                scrubReadout
+            }
         }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
@@ -84,6 +128,104 @@ struct BatteryHealthTrendChart: View {
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityLabel("Battery health trend, \(series.count) days")
         .accessibilityValue(rangeDescription)
+        .accessibilityChartDescriptor(self)
+    }
+
+    // MARK: - Gaps and scrubbing
+
+    private var days: [Date] { series.map(\.day) }
+
+    private var gaps: [ChartScrubbing.Gap] {
+        ChartScrubbing.gaps(
+            timestamps: days,
+            threshold: ChartScrubbing.gapThreshold(cadence: Self.dayCadence)
+        )
+    }
+
+    /// Which gapless run each record belongs to, as the marks' `series` value.
+    private var segmentNumbers: [Int] {
+        var numbers = [Int](repeating: 0, count: series.count)
+        let segments = ChartScrubbing.segments(
+            timestamps: days,
+            threshold: ChartScrubbing.gapThreshold(cadence: Self.dayCadence)
+        )
+        for (number, range) in segments.enumerated() {
+            for index in range { numbers[index] = number }
+        }
+        return numbers
+    }
+
+    /// A barely-there wash over days with no record — see the same treatment
+    /// in `Sentry/Dashboard/DashboardChart.swift` for why it is this quiet.
+    @ViewBuilder
+    private func gapShading(proxy: ChartProxy) -> some View {
+        GeometryReader { geometry in
+            if let plotAnchor = proxy.plotFrame {
+                let plot = geometry[plotAnchor]
+                ZStack(alignment: .topLeading) {
+                    ForEach(gaps, id: \.start) { gap in
+                        if let startX = proxy.position(forX: gap.start),
+                           let endX = proxy.position(forX: gap.end) {
+                            Rectangle()
+                                .fill(palette.textTertiary.opacity(0.06))
+                                .frame(width: max(endX - startX, 1), height: plot.height)
+                                .offset(x: plot.minX + startX, y: plot.minY)
+                        }
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var reading: ChartScrubbing.Reading? {
+        guard let scrubDate else { return nil }
+        return ChartScrubbing.resolve(at: scrubDate, timestamps: days, cadence: Self.dayCadence)
+    }
+
+    private var scrubMarker: (date: Date, value: Double?)? {
+        switch reading {
+        case .sample(let index):
+            guard series.indices.contains(index) else { return nil }
+            return (series[index].day, series[index].healthPercent)
+        case .noData:
+            return scrubDate.map { ($0, nil) }
+        case nil:
+            return nil
+        }
+    }
+
+    @ViewBuilder
+    private var scrubReadout: some View {
+        if let text = Self.readoutText(reading: reading, series: series) {
+            Text(text)
+                .scaledFont(palette, size: 11, monospacedDigit: true)
+                .foregroundStyle(palette.textPrimary)
+                .fixedSize()
+                .chartScrubPlate(palette)
+        }
+    }
+
+    /// Pure so the gap wording is testable without a touch —
+    /// `SentryTests/ChartScrubbingTests.swift` covers the Mac app's twin of
+    /// this; the phrasing here is deliberately the phone's own, since a phone
+    /// has no "Mac asleep" to blame.
+    static func readoutText(reading: ChartScrubbing.Reading?, series: [DailyHealth]) -> String? {
+        switch reading {
+        case nil:
+            return nil
+        case .noData:
+            return String(localized: "no reading for this day")
+        case .sample(let index):
+            guard series.indices.contains(index) else { return nil }
+            let record = series[index]
+            let day = record.day.formatted(.dateTime.month(.abbreviated).day())
+            // Through `MetricFormatter`, like every other number in both apps
+            // — `healthPercent` is a `.percent`-unit metric and this is the
+            // one formatting path for that unit.
+            let value = MetricFormatter.compact(record.healthPercent, unit: .percent)
+            return "\(day) · \(value)"
+        }
     }
 
     @ViewBuilder
@@ -127,10 +269,76 @@ struct BatteryHealthTrendChart: View {
         }
     }
 
+    /// The lowest and highest health the range actually contains.
+    ///
+    /// Was `String(first.healthPercent)` / `String(last.healthPercent)`: the
+    /// first and last *days*' values rather than the range's extremes, printed
+    /// at full `Double` precision ("ranging from 92.41739 to 91.0 percent").
+    /// Same bug, same fix, as `DashboardChart.rangeDescription` — see its
+    /// comment for the full account. This string is what VoiceOver reads as
+    /// the chart's value, so it has to be the truth in a readable form.
     private var rangeDescription: String {
-        guard let first = series.first, let last = series.last else { return String(localized: "no data") }
-        let fromText = String(first.healthPercent)
-        let toText = String(last.healthPercent)
+        let values = series.map(\.healthPercent)
+        guard let extremes = ChartScrubbing.extremes(mins: values, maxes: values) else {
+            return String(localized: "no data")
+        }
+        let fromText = MetricFormatter.compact(extremes.min, unit: .percent, includeUnit: false)
+        let toText = MetricFormatter.compact(extremes.max, unit: .percent, includeUnit: false)
         return String(localized: "ranging from \(fromText) to \(toText) percent")
+    }
+}
+
+// MARK: - VoiceOver chart traversal
+
+/// Lets VoiceOver walk the health series day by day, the non-visual
+/// counterpart to the drag scrubbing above. Same reasoning as
+/// `Sentry/Dashboard/DashboardChart.swift`'s conformance — see it for why an
+/// `AXChartDescriptor` beats making every mark its own accessibility element.
+extension BatteryHealthTrendChart: AXChartDescriptorRepresentable {
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let values = series.map(\.healthPercent)
+        let extremes = ChartScrubbing.extremes(mins: values, maxes: values)
+
+        // Degenerate ranges are illegal for `AXNumericDataAxisDescriptor`, and
+        // a battery whose health never moved across the window is the *normal*
+        // case here (see `SyntheticDailyHealth`), not an edge case — so the
+        // y-range is widened to at least a point rather than assumed to span.
+        let low = extremes?.min ?? 0
+        let high = Swift.max(extremes?.max ?? 100, low + 1)
+        let firstDay = series.first?.day.timeIntervalSince1970 ?? 0
+        let lastDay = Swift.max(series.last?.day.timeIntervalSince1970 ?? 1, firstDay + 1)
+
+        let xAxis = AXNumericDataAxisDescriptor(
+            title: String(localized: "Day"),
+            range: firstDay...lastDay,
+            gridlinePositions: []
+        ) { seconds in
+            Date(timeIntervalSince1970: seconds).formatted(.dateTime.month(.abbreviated).day())
+        }
+
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: String(localized: "Battery health"),
+            range: low...high,
+            gridlinePositions: []
+        ) { value in
+            MetricFormatter.compact(value, unit: .percent)
+        }
+
+        let dataSeries = AXDataSeriesDescriptor(
+            name: String(localized: "Battery health"),
+            isContinuous: true,
+            dataPoints: series.map { record in
+                AXDataPoint(x: record.day.timeIntervalSince1970, y: record.healthPercent)
+            }
+        )
+
+        return AXChartDescriptor(
+            title: String(localized: "Battery health trend"),
+            summary: rangeDescription,
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [dataSeries]
+        )
     }
 }

@@ -99,6 +99,21 @@ final class DashboardViewModel: ObservableObject {
     /// confuse "queried and genuinely empty" with "not requested."
     @Published private(set) var series: [ChartMetric: RangedSamples] = [:]
 
+    /// Per-metric expected spacing between the points in `series`, published
+    /// alongside it because only this type knows both halves of the
+    /// derivation: the tier `timeRange` picked (and therefore the raw row
+    /// cadence) and how many rows `downsample` folded into each output bucket.
+    ///
+    /// Charts need it to tell "the Mac was asleep" apart from "these two
+    /// samples are simply an hour apart because this is a 30-day chart" — see
+    /// `ChartScrubbing.expectedCadence(baseInterval:inputCount:outputCount:)`.
+    /// Kept as a sibling dictionary rather than folded into `RangedSamples`
+    /// because `RangedSamples` is deliberately the exact tuple shape
+    /// `HistoryStore.samplesWithRange` returns (see its typealias comment) and
+    /// wrapping it here would put a translation step back between the store
+    /// and `DashboardChart`.
+    @Published private(set) var expectedCadence: [ChartMetric: TimeInterval] = [:]
+
     /// AI-agent-integration pass (see Sentry-AI-Features-Research.md item
     /// #15) — a `HistoryStore.agentActivityEvents` summary for the current
     /// `timeRange`, refreshed alongside `series`. `nil` until `refresh()`
@@ -166,6 +181,14 @@ final class DashboardViewModel: ObservableObject {
     /// not capture launch-time ones.
     @Published var detailedCharts: Bool = false
 
+    /// Mirrors `AppSettings.globalRefreshInterval`, pushed by `AppDelegate`
+    /// the same way `theme` and `detailedCharts` are and for the same reason.
+    /// It is the `.raw` tier's row cadence — the base input to
+    /// `expectedCadence` — and a user who changes the refresh interval in
+    /// Settings changes what "a gap" means on a 24h chart, so a launch-time
+    /// capture would go stale in a window that is never rebuilt.
+    @Published var samplingInterval: TimeInterval = 3
+
     private let historyStore: HistoryStore
 
     /// - Parameters:
@@ -221,16 +244,25 @@ final class DashboardViewModel: ObservableObject {
     /// - Parameter now: injectable for tests; defaults to the wall clock.
     func refresh(now: Date = Date()) {
         let (since, tier) = timeRange.queryWindow(now: now)
+        let rowInterval = timeRange.expectedRowInterval(samplingInterval: samplingInterval)
         var next: [ChartMetric: RangedSamples] = [:]
+        var nextCadence: [ChartMetric: TimeInterval] = [:]
         for metric in ChartMetric.allCases where enabledModules.contains(metric.module) {
             let raw = historyStore.samplesWithRange(
                 metric: metric.metricID.rawValue,
                 since: since,
                 tier: tier
             )
-            next[metric] = Self.downsample(raw, cap: Self.maxPointsPerSeries)
+            let reduced = Self.downsample(raw, cap: Self.maxPointsPerSeries)
+            next[metric] = reduced
+            nextCadence[metric] = ChartScrubbing.expectedCadence(
+                baseInterval: rowInterval,
+                inputCount: raw.count,
+                outputCount: reduced.count
+            )
         }
         series = next
+        expectedCadence = nextCadence
         let agentEvents = historyStore.agentActivityEvents(since: since)
         agentActivity = Self.summarize(agentEvents)
         agentSessions = AgentSessionReport.sessions(from: agentEvents, awakeHolds: awakeHoldsProvider(), now: now)
@@ -294,6 +326,14 @@ final class DashboardViewModel: ObservableObject {
     /// itself, just with the empty-dictionary-lookup boilerplate hidden.
     func series(for metric: ChartMetric) -> RangedSamples? {
         series[metric]
+    }
+
+    /// Companion to `series(for:)` with the same "absent means not requested"
+    /// contract. A chart handed `nil` falls back to the observed median
+    /// spacing of its own points (see
+    /// `ChartScrubbing.effectiveCadence(expected:timestamps:)`).
+    func cadence(for metric: ChartMetric) -> TimeInterval? {
+        expectedCadence[metric]
     }
 
     // MARK: - Downsampling

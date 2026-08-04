@@ -36,6 +36,12 @@ struct DashboardGrid: View {
     /// key the same as an empty array; both render the chart's own empty
     /// state rather than this view special-casing `nil`.
     let series: [ChartMetric: DashboardViewModel.RangedSamples]
+    /// Expected spacing between the points of each entry in `series`, from
+    /// `DashboardViewModel.expectedCadence` — see that property for how it is
+    /// derived. Keyed identically, with the same "absent means not queried"
+    /// contract; a card with no entry falls back to the median spacing of its
+    /// own points.
+    let expectedCadence: [ChartMetric: TimeInterval]
     /// Same set `DropdownView`/`ModuleCardStack` filter against — a module
     /// the user turned off in Settings shouldn't reappear here just because
     /// history for it still exists in the database.
@@ -71,18 +77,19 @@ struct DashboardGrid: View {
     @ViewBuilder
     private func card(for metric: ChartMetric) -> some View {
         let samples = series[metric] ?? []
+        let seriesCadence = expectedCadence[metric]
         let headline = MetricFormatting.value(snapshot?.value(for: metric.metricID), metric: metric.metricID)
 
         switch metric {
         case .cpu:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "E-cores"), value: MetricFormatting.percent(snapshot?.cpu?.ecorePercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "P-cores"), value: MetricFormatting.percent(snapshot?.cpu?.pcorePercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "Frequency"), value: MetricFormatting.value(snapshot?.value(for: .cpuFrequencyMHz), metric: .cpuFrequencyMHz))
                 MetricDetailRow(label: String(localized: "Package power"), value: MetricFormatting.watts(snapshot?.cpu?.packagePowerWatts))
             }
         case .gpu:
-            DashboardMetricCard(metric: metric, headline: headline, samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "Renderer"), value: MetricFormatting.percent(snapshot?.gpu?.rendererPercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "Tiler"), value: MetricFormatting.percent(snapshot?.gpu?.tilerPercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "VRAM"), value: MetricFormatting.bytes(snapshot?.gpu?.vramUsedBytes))
@@ -92,11 +99,11 @@ struct DashboardGrid: View {
         case .ane:
             // Same "no public ANE utilization" caveat as `ModuleCardStack` —
             // see `ANEStats`'s doc comment.
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "Active"), value: aneActivity)
             }
         case .memory:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "App"), value: MetricFormatting.bytes(snapshot?.memory?.appMemoryBytes))
                 MetricDetailRow(label: String(localized: "Wired"), value: MetricFormatting.bytes(snapshot?.memory?.wiredBytes))
                 MetricDetailRow(label: String(localized: "Compressed"), value: MetricFormatting.bytes(snapshot?.memory?.compressedBytes))
@@ -105,7 +112,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Pressure"), value: memoryPressure)
             }
         case .disk:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "Write"), value: MetricFormatting.bytesPerSecond(snapshot?.disk?.writeBytesPerSec))
                 MetricDetailRow(label: String(localized: "Read IOPS"), value: MetricFormatting.value(snapshot?.disk?.readIOPS, metric: .diskReadIOPS))
                 MetricDetailRow(label: String(localized: "Write IOPS"), value: MetricFormatting.value(snapshot?.disk?.writeIOPS, metric: .diskWriteIOPS))
@@ -113,7 +120,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Used"), value: MetricFormatting.percent(snapshot?.value(for: .diskUsedPercent), decimals: 1))
             }
         case .network:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "Upload"), value: MetricFormatting.bytesPerSecond(snapshot?.network?.txBytesPerSec))
                 MetricDetailRow(label: String(localized: "Session ↓"), value: MetricFormatting.bytes(snapshot?.network?.rxSessionTotalBytes))
                 MetricDetailRow(label: String(localized: "Session ↑"), value: MetricFormatting.bytes(snapshot?.network?.txSessionTotalBytes))
@@ -122,7 +129,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Link rate"), value: MetricFormatting.value(snapshot?.network?.wifiTxRateMbps, metric: .networkWifiTxRateMbps))
             }
         case .thermal:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples, cadence: seriesCadence) {
                 MetricDetailRow(label: String(localized: "Throttling"), value: thermalThrottling)
                 ForEach(Array(fanRPMs.enumerated()), id: \.offset) { index, rpm in
                     MetricDetailRow(label: String(localized: "Fan \(String(index + 1))"), value: String(localized: "\(String(Int(rpm.rounded()))) RPM"))
@@ -213,6 +220,7 @@ private struct DashboardMetricCard<Detail: View>: View {
     let headline: String
     var subtitle: String? = nil
     let samples: DashboardViewModel.RangedSamples
+    let cadence: TimeInterval?
     @ViewBuilder let detail: () -> Detail
 
     private var tint: Color { palette.metricColor(metric.colorID) }
@@ -226,7 +234,15 @@ private struct DashboardMetricCard<Detail: View>: View {
                 .foregroundStyle(palette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            DashboardChart(samples: samples, tint: tint, metricTitle: metric.title, height: 36, compact: true)
+            DashboardChart(
+                samples: samples,
+                tint: tint,
+                metricTitle: metric.title,
+                unit: metric.unit,
+                expectedCadence: cadence,
+                height: 36,
+                compact: true
+            )
                 .padding(.top, 2)
             if let subtitle {
                 Text(subtitle)

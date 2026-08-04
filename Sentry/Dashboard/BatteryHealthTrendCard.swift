@@ -66,6 +66,11 @@ struct BatteryHealthTrendCard: View {
                     samples: samples,
                     tint: tint,
                     metricTitle: "Battery Health",
+                    unit: MetricID.batteryHealthPercent.unit,
+                    // Same reasoning as `BatteryOverviewCard`'s chart: this
+                    // card owns its `.daily` query, so one row per day is the
+                    // cadence, and no downsampling applies at this row count.
+                    expectedCadence: 86400,
                     height: 160
                 )
             }

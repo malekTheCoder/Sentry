@@ -77,6 +77,29 @@ enum TimeRangePicker: String, CaseIterable, Identifiable, Sendable {
             return (now.addingTimeInterval(-182 * 86400), .daily)
         }
     }
+
+    /// How far apart the rows this range queries are *expected* to be, before
+    /// `DashboardViewModel.downsample` widens the spacing further.
+    ///
+    /// This is the tier's own cadence, read straight off the same tier choice
+    /// `queryWindow` makes rather than inferred from the returned rows:
+    /// `.raw` rows are written once per snapshot tick, so their cadence is
+    /// whatever `AppSettings.globalRefreshInterval` is set to; `.hourly` and
+    /// `.daily` rows are produced by `RollupJob` on fixed calendar boundaries,
+    /// so theirs are constants of the schema, not of any setting.
+    ///
+    /// Feeds `ChartScrubbing.expectedCadence(baseInterval:inputCount:outputCount:)`
+    /// — see that method for why the gap threshold is derived from this rather
+    /// than from a fixed number of minutes.
+    ///
+    /// - Parameter samplingInterval: `AppSettings.globalRefreshInterval`.
+    func expectedRowInterval(samplingInterval: TimeInterval) -> TimeInterval {
+        switch queryWindow().tier {
+        case .raw: return samplingInterval
+        case .hourly: return 3600
+        case .daily: return 86400
+        }
+    }
 }
 
 // MARK: - Text range switcher

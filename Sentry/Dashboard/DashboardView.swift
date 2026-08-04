@@ -125,7 +125,7 @@ struct DashboardView: View {
                 // The handoff's full-width Activity plot: the glance
                 // strip's numbers, drawn over time, one band — no header
                 // of its own because it *is* the glance band's second row.
-                ActivityOverlayChart(series: overlaySeries)
+                ActivityOverlayChart(series: overlaySeries, expectedCadence: viewModel.expectedCadence)
                     .padding(.bottom, palette.spacingSection)
 
                 SectionRule()
@@ -172,6 +172,7 @@ struct DashboardView: View {
                 DashboardGrid(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
+                    expectedCadence: viewModel.expectedCadence,
                     enabledModules: viewModel.enabledModules
                 )
             }

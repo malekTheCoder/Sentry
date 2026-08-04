@@ -197,6 +197,14 @@ struct BatteryOverviewCard: View {
                     samples: healthSamples,
                     tint: palette.metricColor(.batteryHealthPercent),
                     metricTitle: "Battery Health",
+                    unit: MetricID.batteryHealthPercent.unit,
+                    // This card runs its own `.daily`-tier query (see
+                    // `loadHistory` below) rather than going through
+                    // `DashboardViewModel`, so the cadence is stated here
+                    // instead of being read from the view model: one row per
+                    // day, and the query is capped well above the number of
+                    // days it can return, so no downsample factor applies.
+                    expectedCadence: 86400,
                     height: 88
                 )
             }
