@@ -52,6 +52,7 @@ struct AlertsTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 title
+                readOnlyNotice
                 ForEach(AlertCategory.allCases) { category in
                     if let indices = groupedIndices[category], !indices.isEmpty {
                         categorySection(category, indices: indices)
@@ -70,6 +71,30 @@ struct AlertsTabView: View {
         Text("Alerts")
             .scaledFont(palette, size: 20, weight: .semibold)
             .foregroundStyle(palette.textPrimary)
+    }
+
+    /// **Connection-honesty review, bug #4.** Every rule below used to carry
+    /// a real, animating `Toggle` that changed local `@State`, persisted
+    /// nothing, and never reached the Mac — the exact "settings slider that
+    /// silently does nothing" anti-pattern `SettingsTabView`'s doc comment
+    /// (quoting `SyncPane.swift`) names as this codebase's own canonical
+    /// prior bug. Real two-way sync needs Mac-side wiring (a synced,
+    /// editable `AlertRule` record or a `ControlCommand` round-trip — see
+    /// this file's top doc comment) that's out of scope here. Until that
+    /// exists, this one-line notice sits above the list so the read-only
+    /// nature is established before a user reaches for the first switch,
+    /// not discovered by flipping one and wondering why nothing happened.
+    private var readOnlyNotice: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "circle")
+                .scaledSystemFont(size: 9)
+                .foregroundStyle(palette.textTertiary)
+            Text("Read-only preview of your Mac's alert rules — switches here don't change anything yet.")
+                .scaledFont(palette, size: 11)
+                .foregroundStyle(palette.textTertiary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Rule editing stays on the Mac. These rows show each rule's current enabled state for reference; the switches are disabled because there is no live connection this tab can send a change through yet.")
     }
 
     // MARK: - Rules, grouped by category
@@ -108,12 +133,21 @@ struct AlertsTabView: View {
     /// round-trip — either a synced, editable `AlertRule` record (which
     /// doesn't exist; see this file's top doc comment) or a `ControlCommand`
     /// sent over CloudKit (`SyncRecords.swift`), which needs the same live
-    /// container `SyncPane.swift` explains this build doesn't have. The
-    /// toggle below is real and interactive (so the list isn't a static,
-    /// unreadable wall of text), but it only ever changes local view state
-    /// on this iPhone — the accessibility hint says so every time, not just
-    /// once at the top of the screen, because a toggle a user just flipped
-    /// is the moment they're most likely to assume it did something.
+    /// container `SyncPane.swift` explains this build doesn't have.
+    ///
+    /// **Disabled, not animating (connection-honesty review, bug #4).** This
+    /// `Toggle` used to be fully interactive — it flipped, animated, and
+    /// changed local `@State`, giving every visual signal of doing something
+    /// real while persisting nothing and reaching the Mac never. That is
+    /// this codebase's own named anti-pattern (`SyncPane.swift`'s "a
+    /// settings slider that silently does nothing," quoted in
+    /// `SettingsTabView`'s doc comment). It's `.disabled(true)` now — still
+    /// showing each rule's real enabled/disabled state at a glance (a
+    /// disabled `Toggle` still renders its bound value), just not offering a
+    /// tap that goes nowhere. `readOnlyNotice` above states the read-only
+    /// reason once, up front; this row's hint restates it locally too, since
+    /// a toggle someone just tapped (and felt not move) is the moment
+    /// they're most likely to look for an explanation.
     private func ruleRow(_ rule: Binding<AlertRule>) -> some View {
         // A `Toggle` has a fixed ~51pt intrinsic width that never shrinks, so
         // at accessibility sizes the rule name and its condition summary get
@@ -136,10 +170,11 @@ struct AlertsTabView: View {
             Toggle("", isOn: rule.isEnabled)
                 .labelsHidden()
                 .tint(palette.accent)
+                .disabled(true)
         }
         .padding(.vertical, palette.spacing * 0.6)
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Local display only — does not change this rule on your Mac")
+        .accessibilityHint("Read-only preview of this rule's state on your Mac — does not change this rule.")
     }
 
     // MARK: - History (deliberately an honest gap, not a feed)

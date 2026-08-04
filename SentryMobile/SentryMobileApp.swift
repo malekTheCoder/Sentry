@@ -33,6 +33,10 @@ struct SentryMobileApp: App {
     /// A scanned-but-not-yet-confirmed pairing; non-nil drives the alert.
     @State private var pendingPairing: RemotePairing.Endpoint?
 
+    /// Drives the reconnect-on-foreground fix below — see the `.onChange`
+    /// doc comment.
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             RootTabView()
@@ -44,6 +48,23 @@ struct SentryMobileApp: App {
                     // than something a single tab's view model owns.
                     WatchRelayManager.shared.start()
                     await AppDataSource.shared.resolveIfNeeded()
+                }
+                .onChange(of: scenePhase) { oldPhase, newPhase in
+                    // Nothing anywhere in this app was watching `scenePhase`
+                    // before this (connection-honesty review, bug #2): iOS
+                    // suspends the process while backgrounded, so
+                    // `LocalSyncClient`'s Bonjour browser only reconnects on
+                    // resume if it happens to refire on its own, which isn't
+                    // guaranteed. Foregrounding is exactly the moment a
+                    // dropped or never-established connection is worth
+                    // retrying, so it reuses the same `retryConnection()`
+                    // path the Dashboard's demo-data banner's tap target
+                    // uses (`AppDataSource.swift`) — one reconnect path, two
+                    // triggers. `oldPhase` is checked so this doesn't also
+                    // fire on the very first `.active` at cold launch, which
+                    // `resolveIfNeeded()` above already handles.
+                    guard oldPhase != .active, newPhase == .active else { return }
+                    Task { await AppDataSource.shared.retryConnection() }
                 }
                 .onOpenURL { url in
                     if let endpoint = RemotePairing.endpoint(from: url) {

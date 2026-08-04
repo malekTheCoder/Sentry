@@ -83,6 +83,24 @@ struct SettingsTabView: View {
     /// doc comment.
     @State private var showsAbout = false
 
+    /// Which "Remote Mac" field currently has keyboard focus, if any — lets
+    /// the numeric-pad "Done" button (bug #5, connection-honesty review)
+    /// dismiss the keyboard without a return key, and lets the "Connect"
+    /// button below dismiss it before dialing.
+    private enum RemoteMacField: Hashable { case host, port, code }
+    @FocusState private var focusedRemoteMacField: RemoteMacField?
+
+    /// True while `applyRemoteSettingsFromDefaults()` is in flight — the
+    /// "Connect" button shows a spinner in place of its label so a tap that
+    /// takes up to `AppDataSource.discoveryTimeout` seconds to resolve
+    /// doesn't look like it did nothing.
+    @State private var isConnectingRemote = false
+
+    /// Set after a "Connect" tap resolves — `nil` means "hasn't been tried
+    /// this session," not "failed," so the row doesn't open with a stale
+    /// error before the user has done anything.
+    @State private var remoteConnectResult: String?
+
     /// Drives `locationLogSection` below — see `LocationLogViewModel`'s doc
     /// comment for why this follows `AppDataSource.shared`'s snapshot stream
     /// independently of `DashboardViewModel` rather than sharing that view
@@ -113,7 +131,27 @@ struct SettingsTabView: View {
             }
             .padding(palette.spacing * 2)
         }
-        .themedScreenBackground(palette)
+        // Bug #5 (connection-honesty review): the port field's
+        // `.keyboardType(.numberPad)` has no return key at all, and this
+        // `ScrollView` had no way to dismiss the keyboard by scrolling
+        // either — once it was up, the only way down was tapping a
+        // non-text-field part of the screen. `.interactively` lets a drag
+        // on the scroll view itself follow the keyboard down, same gesture
+        // Messages/Mail use.
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            // Scoped to the numeric field specifically, per the review note
+            // — the host/code fields are ordinary text fields a user can
+            // already dismiss via the return-key-less-but-scrollable path
+            // above, but the number pad has no return key at all, so it
+            // needs an explicit way out.
+            if focusedRemoteMacField == .port {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedRemoteMacField = nil }
+                }
+            }
+        }
         .sheet(isPresented: $showsAbout) {
             // The palette is re-injected explicitly: a sheet is presented
             // from a separate window scene, and relying on it inheriting
@@ -141,6 +179,17 @@ struct SettingsTabView: View {
     /// and the pairing code shown on the Mac. Read by `AppDataSource` at
     /// launch as the fallback when Bonjour finds nothing on this network.
     /// Stored on this phone only.
+    ///
+    /// **The "Connect" button (bug #3, connection-honesty review).** These
+    /// fields used to be write-only from this screen's point of view: they
+    /// wrote to `@AppStorage`, which `AppDataSource.remoteEndpointFromDefaults()`
+    /// only ever reads once, at launch. Typing a corrected hostname after a
+    /// typo did nothing until the whole app relaunched — even though the
+    /// help text below promised the change "takes effect the next time the
+    /// app connects." It does now, but only once something actually asks
+    /// `AppDataSource` to look again; this button is that ask, calling
+    /// `applyRemoteSettingsFromDefaults()` (`AppDataSource.swift`), which is
+    /// the exact live-apply path a scanned QR pairing already used.
     private var remoteMacSection: some View {
         VStack(alignment: .leading, spacing: palette.spacingRow) {
             Text("REMOTE MAC")
@@ -154,15 +203,20 @@ struct SettingsTabView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
+                    .focused($focusedRemoteMacField, equals: .host)
                 TextField("Port", text: $remotePort)
                     .keyboardType(.numberPad)
+                    .focused($focusedRemoteMacField, equals: .port)
                 TextField("Pairing code (from the Mac's Sync settings)", text: $remoteCode)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
+                    .focused($focusedRemoteMacField, equals: .code)
             }
             .textFieldStyle(.roundedBorder)
 
-            Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Fastest way: enable Remote Access on the Mac (Settings ▸ Sync) and scan the QR code it shows with this phone's Camera app — these fields fill themselves. Or enter the Mac's address, port, and pairing code by hand. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only.")
+            connectButton
+
+            Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Fastest way: enable Remote Access on the Mac (Settings ▸ Sync) and scan the QR code it shows with this phone's Camera app — these fields fill themselves. Or enter the Mac's address, port, and pairing code by hand, then tap Connect. The connection is encrypted; leave the address empty to use local discovery only.")
                 .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -170,6 +224,50 @@ struct SettingsTabView: View {
         .padding(palette.spacingBlock)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(palette)
+    }
+
+    /// Dismisses the keyboard, then hands the current field values to
+    /// `AppDataSource` right now rather than leaving them to be picked up on
+    /// some future relaunch. Disabled while a previous tap is still
+    /// resolving, so a second tap can't race a second `LocalSyncClient` into
+    /// existence underneath the first.
+    @ViewBuilder
+    private var connectButton: some View {
+        Button {
+            focusedRemoteMacField = nil
+            Task {
+                isConnectingRemote = true
+                let applied = await appDataSource.applyRemoteSettingsFromDefaults()
+                isConnectingRemote = false
+                remoteConnectResult = applied
+                    ? "Applied. Watch the Dashboard's connection line for the result."
+                    : "Enter an address, port, and pairing code first."
+            }
+        } label: {
+            HStack(spacing: palette.spacingTight) {
+                if isConnectingRemote {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(palette.background)
+                }
+                Text(isConnectingRemote ? "Connecting…" : "Connect")
+                    .scaledFont(palette, size: 12, weight: .semibold)
+                    .foregroundStyle(palette.background)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, palette.spacingTight)
+            .background(palette.accent, in: RoundedRectangle(cornerRadius: palette.cornerRadius * 0.6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(isConnectingRemote)
+        .accessibilityHint("Applies the address, port, and pairing code above immediately, instead of waiting for the app to relaunch.")
+
+        if let remoteConnectResult {
+            Text(remoteConnectResult)
+                .scaledFont(palette, size: 10.5)
+                .foregroundStyle(palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Theme (the real, working section)
@@ -237,22 +335,23 @@ struct SettingsTabView: View {
     /// discipline in this codebase (`SyncPane.swift`, `demoDataBanner` on
     /// Dashboard/History, this same file's own doc comment) exists
     /// specifically to stop a screen from claiming a sync event that never
-    /// happened. Showing "Last synced 2m ago" one card above "iCloud sync
-    /// isn't available in this build yet" would be a direct, visible
-    /// self-contradiction on the same screen. The meta line instead reports
-    /// the one true thing this build knows about the device (its model)
-    /// plus the honest state, keeping the intended two-line visual shape
-    /// without inventing a sync timestamp.
+    /// happened. Showing "Last synced 2m ago" one card above a row admitting
+    /// this phone isn't connected to a Mac right now would be a direct,
+    /// visible self-contradiction on the same screen. The meta line instead
+    /// reports the one true thing this build knows about the device (its
+    /// model) plus the honest state, keeping the intended two-line visual
+    /// shape without inventing a sync timestamp.
     private var deviceCard: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(displayedDevice.deviceName)
                 .scaledFont(palette, size: 12.5, weight: .medium)
                 .foregroundStyle(palette.textPrimary)
             // The meta line's second half distinguishes a real local-network
-            // connection from `MockDataSource`'s demo data — `syncStatusRow`
-            // right below is scoped specifically to iCloud/CloudKit sync
-            // (still genuinely unavailable), not this local-network path, so
-            // this is the one place on this tab that actually reflects
+            // connection from demo data — `syncStatusRow` right below is
+            // scoped specifically to iCloud/CloudKit sync (still genuinely
+            // unavailable, and unrelated to whether a Mac is reachable over
+            // local Wi-Fi right now), not this local-network path, so this
+            // is the one place on this tab that actually reflects
             // `AppDataSource.isUsingLocalSync`.
             Text("\(displayedDevice.model) · \(appDataSource.isUsingLocalSync ? "Live on your local network" : "Demo device, not synced")")
                 .scaledFont(palette, size: 10.5)
@@ -265,7 +364,7 @@ struct SettingsTabView: View {
         .accessibilityHint(
             appDataSource.isUsingLocalSync
                 ? "This device is live data from a Mac reporting in over your local Wi-Fi network."
-                : "This is demo data from MockDataSource, not a real Mac — there is no Mac on the other end reporting in."
+                : "This is demo data, not a real Mac — this phone isn't currently connected to a Mac over your local network, so there is nothing real on the other end reporting in."
         )
     }
 
@@ -282,17 +381,31 @@ struct SettingsTabView: View {
     /// `chargeSessionGapNotice` and Alerts' `historyDisclosure` — a small
     /// outlined circle + one line of tertiary text, full explanation in the
     /// accessibility hint.
+    ///
+    /// **Not the reason demo data shows up (connection-honesty review, bug
+    /// #6).** This row used to read "iCloud sync isn't available in this
+    /// build yet," full stop — which reads, right next to `deviceCard`'s
+    /// "Demo device, not synced," as though iCloud is *why* the Dashboard is
+    /// showing synthetic data. It isn't: the app was never going to try
+    /// iCloud for that. The actual, working transport is local-network
+    /// Bonjour (`LocalSyncClient`) plus an optional remote TLS-PSK fallback
+    /// (`remoteMacSection` above) — a user whose Mac is simply unreachable
+    /// on Wi-Fi doesn't need a story about a cloud feature that was never
+    /// involved. This row now says what's genuinely true (no iCloud channel
+    /// exists in this build) without implying it's the culprit; `deviceCard`
+    /// and the Dashboard's connection line are the places that actually
+    /// explain *why* this phone isn't seeing a real Mac right now.
     private var syncStatusRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "circle")
                 .scaledSystemFont(size: 9)
                 .foregroundStyle(palette.textTertiary)
-            Text("iCloud sync isn't available in this build yet.")
+            Text("This build has no iCloud sync — it reaches your Mac over your local network instead.")
                 .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Sentry isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced through iCloud to or from a real Mac.")
+        .accessibilityHint("Sentry isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through. That's unrelated to whether this phone is currently connected to a Mac — this build reaches a Mac over your local Wi-Fi network, or a remote address you configure above, never through iCloud.")
     }
 
     // MARK: - Notifications (informational only — no working preferences)
