@@ -42,6 +42,49 @@ public enum InsightWeight {
     public static let none = 0
 }
 
+/// The verdict printed beside the score numeral: three words the user reads
+/// instead of doing arithmetic.
+///
+/// A separate type rather than a string the view derives, because the band is
+/// a *product claim* ("you are well protected") and every surface that makes
+/// it — the Insights card today, Watch/iOS/MCP payloads later — has to make it
+/// from the same rule. The previous arrangement had the thresholds inlined in
+/// a SwiftUI view, which is exactly how a second surface ends up disagreeing
+/// with the first.
+///
+/// `Comparable` ascends by seriousness, so "cap the band at `needsAttention`"
+/// is expressible as `Swift.max(pointsBand, .needsAttention)` rather than as a
+/// nest of ifs.
+public enum ProtectionBand: String, Codable, Sendable, CaseIterable, Comparable {
+    case wellProtected
+    case needsAttention
+    case actOnThis
+
+    /// Ascending seriousness. Not the raw enum order by accident — code
+    /// depends on it, so it is stated.
+    public var rank: Int {
+        switch self {
+        case .wellProtected: return 0
+        case .needsAttention: return 1
+        case .actOnThis: return 2
+        }
+    }
+
+    public static func < (lhs: ProtectionBand, rhs: ProtectionBand) -> Bool {
+        lhs.rank < rhs.rank
+    }
+
+    /// The words shown to the user. Lower case: they sit beside a 64pt
+    /// numeral as a continuation of it, not as a heading.
+    public var caption: String {
+        switch self {
+        case .wellProtected: return String(localized: "well protected")
+        case .needsAttention: return String(localized: "needs attention")
+        case .actOnThis: return String(localized: "act on this")
+        }
+    }
+}
+
 /// A deterministic, explainable 0–100 rating of how well this Mac is
 /// protected, plus the same rating per category.
 ///
@@ -69,6 +112,32 @@ public enum InsightWeight {
 /// moment it should not. Deriving the band from `weakerSubscore` means the
 /// score can never claim to be in better shape than its worst side. The
 /// number keeps all the information; the words carry the severity.
+///
+/// **Why the band is not points alone — the firewall case.** Banding the
+/// weaker half on points was still not enough, and a real machine proved it:
+/// a Mac with its firewall off fires exactly one `majorSecurity` finding,
+/// which costs 15, which lands the security half on exactly 85 — the "well
+/// protected" boundary. The app named a defeated protection in the list and
+/// called the machine well protected in the same view. Any point threshold
+/// has such a boundary; moving it to 86 would just relocate the contradiction
+/// to the next weight. So the band is gated on *severity* as well as points:
+/// - a `.critical` finding forces `.actOnThis`, whatever the arithmetic says.
+///   A defeated protection is not a "needs attention" situation, and a Mac
+///   with an unencrypted disk should not be one clean hardware half away from
+///   a softer word.
+/// - a `.warning` finding caps the band at `.needsAttention`. It can still be
+///   worse than that when the points say so.
+/// - with neither present, points decide, so a pile of `advice`-level
+///   findings can still push the verdict down on its own.
+///
+/// The severity is read from the *same insight set the score was computed
+/// over* (`highestSeverity`, populated by `compute`), which is the visible,
+/// unsuppressed set. A finding the user dismissed or snoozed is not on screen
+/// and therefore must not drive the verdict — the same auditability rule that
+/// keeps suppressed findings out of the points. It is a stored property, not
+/// derived from `deductions`, because a finding can be severe and cost zero
+/// points (a `warning` whose weight is `InsightWeight.none`) and such a
+/// finding must still gate the verdict.
 ///
 /// Consequences of that choice, all deliberate:
 /// - **Monotonic.** Adding a finding can never raise the score. A user who
@@ -150,6 +219,11 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
     public var hardwareSubscore: Int
     public var securitySubscore: Int
 
+    /// The most serious severity among the insights this score was computed
+    /// from — i.e. among the findings the user can actually see. `.good` when
+    /// nothing but positives fired. Gates `band`; see the type doc.
+    public var highestSeverity: InsightSeverity
+
     /// `true` when the hardware half rests on less than
     /// `InsightContext.minimumHistoryDays` of history. The UI labels the
     /// score "provisional" rather than presenting a number built on four
@@ -179,12 +253,49 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
         Swift.min(hardwareSubscore, securitySubscore)
     }
 
+    /// Score at or above which points alone would say "well protected".
+    public static let wellProtectedThreshold = 85
+    /// Below this, points alone say "act on this".
+    public static let needsAttentionThreshold = 60
+
+    /// The points-only band for a 0…100 figure. Exposed so the per-number
+    /// meters elsewhere in the UI (category rows, subscore bars) tint from the
+    /// same boundaries the verdict starts from, instead of re-typing 85 and 60
+    /// in each view — a divergent literal in a second view is how the
+    /// contradiction this type documents got shipped in the first place.
+    ///
+    /// This is deliberately *not* the verdict: it knows nothing about
+    /// severity. Use `band` for anything that puts words on the screen.
+    public static func pointsBand(for score: Int) -> ProtectionBand {
+        if score >= wellProtectedThreshold { return .wellProtected }
+        if score >= needsAttentionThreshold { return .needsAttention }
+        return .actOnThis
+    }
+
+    /// The verdict. Points from the weaker half, floored by severity — see
+    /// the type doc's firewall case for why both are needed.
+    public var band: ProtectionBand {
+        let byPoints = Self.pointsBand(for: weakerSubscore)
+        switch highestSeverity {
+        case .critical:
+            // A defeated protection is never anything but the worst band.
+            return .actOnThis
+        case .warning:
+            // A cap, not an override: 40 points with a warning is still
+            // "act on this".
+            return Swift.max(byPoints, .needsAttention)
+        case .good, .advice:
+            return byPoints
+        }
+    }
+
     public init(
         overall: Int,
         categories: [CategoryScore],
         deductions: [Deduction],
         hardwareSubscore: Int,
         securitySubscore: Int,
+        highestSeverity: InsightSeverity = .good,
         isProvisional: Bool,
         historyCoverageDays: Int
     ) {
@@ -193,6 +304,7 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
         self.deductions = deductions
         self.hardwareSubscore = hardwareSubscore
         self.securitySubscore = securitySubscore
+        self.highestSeverity = highestSeverity
         self.isProvisional = isProvisional
         self.historyCoverageDays = historyCoverageDays
     }
@@ -256,6 +368,10 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
             deductions: deductions,
             hardwareSubscore: hardware,
             securitySubscore: security,
+            // Read from `insights` — the same set the points came from, which
+            // the engine has already stripped of suppressed findings. A
+            // dismissed finding is off the screen and off the verdict.
+            highestSeverity: insights.map(\.severity).max() ?? .good,
             isProvisional: !context.hasEnoughHistory,
             historyCoverageDays: context.historyCoverageDays
         )
