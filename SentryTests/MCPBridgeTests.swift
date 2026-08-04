@@ -339,6 +339,7 @@ final class MCPEndpointPublisherTests: XCTestCase {
         func getAgentCapacity(clientName: String, requestedAgents: Int, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func getAgentActivity(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func getSessionResourceReport(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
+        func getSessionResourceReport(clientName: String, sinceSeconds: Double, targetClientName: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func keepAwake(clientName: String, mode: String, durationSeconds: Double, reason: String, reply: @escaping (Bool, String?) -> Void) { reply(false, "stub") }
         func releaseAwake(clientName: String, reply: @escaping (Bool, String?) -> Void) { reply(false, "stub") }
         func setRefreshInterval(clientName: String, tier: String, seconds: Double, reply: @escaping (Bool, String?) -> Void) { reply(false, "stub") }

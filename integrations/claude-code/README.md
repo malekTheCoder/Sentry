@@ -102,13 +102,21 @@ Claude Code's `subagentStatusLine` setting renders a custom row for each
 subagent in the agent panel, replacing the default `name · description ·
 token count` line. [`scripts/subagent-statusline.sh`](scripts/subagent-statusline.sh)
 wires it to `sentryctl session-report`, with one caveat worth stating up
-front rather than discovering later: `sentryctl` has no way today to scope
-a resource report to one specific subagent, so every visible row shows the
-same machine/session-wide number, explicitly prefixed `mac:`. The script's
-own header comment explains why, in full, and what closing that gap for
-real would require in `sentryctl` itself. Everything the script *does*
-print (CPU, temperature, throttling, keep-awake seconds, alert count) is
-real `session-report --json` output, not invented.
+front rather than discovering later, updated by the CLI session-scoping
+pass: `sentryctl session-report` now accepts `--client=<name>` to scope its
+answer to one self-reported MCP client (see item 2 below), but that flag
+selects *which client/session* to report on, not *which subagent within one
+Claude Code session* — Claude Code spawns one MCP connection per top-level
+session, and every subagent that session runs shares it, so there is no
+identity on this boundary finer than "the whole session" to select. Every
+visible subagent row therefore still shows the same number; the script
+tags it `client:` when `SENTRYCTL_STATUSLINE_CLIENT` narrows it to one MCP
+client, or `mac:` in its original whole-Mac default. The script's own
+header comment explains the full reasoning and exactly what closing the
+per-subagent gap for real would still require (Claude Code itself would
+need to mint and forward a distinguishable identity per subagent). Everything
+the script *does* print (CPU, temperature, throttling, keep-awake seconds,
+alert count) is real `session-report --json` output, not invented.
 
 ```json
 {

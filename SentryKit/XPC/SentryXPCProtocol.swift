@@ -124,8 +124,37 @@ public enum SentryXPCServiceName {
     /// `get_agent_activity`: the last `limit` entries of `MCPActivityLog`.
     func getAgentActivity(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void)
     /// `get_session_resource_report`: aggregated CPU/thermal/memory "cost"
-    /// over `[now - sinceSeconds, now]`.
+    /// over `[now - sinceSeconds, now]`, scoped to the calling connection's
+    /// own session. Superseded by, and now forwards to, the
+    /// `targetClientName` overload below with `targetClientName: ""` — kept
+    /// as its own protocol requirement (rather than deleted) so no existing
+    /// `@objc` caller across this boundary (`MCPToolCatalog`'s
+    /// `get_session_resource_report` MCP tool dispatch, any external
+    /// `SentryXPCServiceProtocol` conformance) has to change its selector.
     func getSessionResourceReport(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void)
+
+    /// `sentryctl session-report --client=<name>` (CLI session-scoping pass):
+    /// like `getSessionResourceReport` above, but can scope the report to one
+    /// *other* self-reported MCP client's activity instead of the caller's
+    /// own session — for a script that already knows which agent it cares
+    /// about, typically piped straight from `sentryctl sessions`' output.
+    ///
+    /// Additive by construction: this is a new selector, not a change to the
+    /// one above, so every existing caller keeps compiling and behaving
+    /// exactly as before; only `sentryctl session-report`'s new `--client`
+    /// flag calls this one directly.
+    ///
+    /// - Parameter targetClientName: the exact `clientName`
+    ///   `SentryXPCServiceProtocol.listAgentSessions` (`sentryctl sessions`)
+    ///   reports for the agent to scope to — see `AgentSessionRegistry`'s
+    ///   doc comment for why that's a self-reported label, not an
+    ///   authenticated identity, and why two clients sharing a name collapse
+    ///   into one report here exactly as they do in `sentryctl sessions`.
+    ///   `""` (same "0/empty means unset" convention as `getAlertHistory`'s
+    ///   `ruleID` and `getResourceUsage`'s siblings above — `@objc` protocol
+    ///   requirements can't declare a default) means "no target", falling
+    ///   back to the caller's-own-session behavior of the method above.
+    func getSessionResourceReport(clientName: String, sinceSeconds: Double, targetClientName: String, reply: @escaping (Data?, String?) -> Void)
 
     // MARK: - Write tools (plan §13.4 — off by default, individually gated)
 

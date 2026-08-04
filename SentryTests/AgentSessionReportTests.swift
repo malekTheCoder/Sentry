@@ -168,6 +168,63 @@ final class AgentSessionReportTests: XCTestCase {
         XCTAssertEqual(attribution.thermalPressureElevatedSeconds, 100, accuracy: 0.001)
     }
 
+    func testAttributionWithKeepAwakeOwnersSumsAcrossMultipleSessionIDs() {
+        // CLI session-scoping pass (`sentryctl session-report
+        // --client=<name>`): a client name can span more than one real
+        // connection/sessionID within a window (e.g. the same MCP client
+        // relaunched mid-window). `keepAwakeOwners` must sum every owner's
+        // held time rather than only the single `sessionID` the attribution
+        // is nominally "for" — see `MCPXPCService
+        // .getSessionResourceReport(targetClientName:)`'s call site.
+        let window = date(1_000)...date(2_000)
+        let events = [
+            AgentActivityEvent(timestamp: date(1_100), clientName: "Claude Code", tool: "keep_awake", sessionID: "s1"),
+            AgentActivityEvent(timestamp: date(1_800), clientName: "Claude Code", tool: "keep_awake", sessionID: "s2"),
+        ]
+        let holds = [
+            AgentAwakeHold(owner: "s1", start: date(1_100), end: date(1_300)),
+            AgentAwakeHold(owner: "s2", start: date(1_700), end: date(1_900)),
+            // A third session's hold, not among this client's owners, must
+            // not be swept in.
+            AgentAwakeHold(owner: "s3", start: date(1_000), end: date(2_000)),
+        ]
+
+        let attribution = AgentSessionReport.attribution(
+            sessionID: "",
+            clientName: "Claude Code",
+            events: events,
+            awakeHolds: holds,
+            batterySamples: [],
+            thermalPressureSamples: [],
+            window: window,
+            keepAwakeOwners: ["s1", "s2"]
+        )
+
+        XCTAssertEqual(attribution.keepAwakeSecondsHeld, 400, accuracy: 0.001)
+    }
+
+    func testAttributionWithoutKeepAwakeOwnersFallsBackToSessionIDAlone() {
+        // Default `nil` must reproduce every pre-existing call site's exact
+        // behavior: sum over `[sessionID]` alone.
+        let window = date(1_000)...date(2_000)
+        let holds = [
+            AgentAwakeHold(owner: "s1", start: date(1_000), end: date(1_500)),
+            AgentAwakeHold(owner: "s2", start: date(1_000), end: date(2_000)),
+        ]
+
+        let attribution = AgentSessionReport.attribution(
+            sessionID: "s1",
+            clientName: "Claude Code",
+            events: [],
+            awakeHolds: holds,
+            batterySamples: [],
+            thermalPressureSamples: [],
+            window: window
+        )
+
+        XCTAssertEqual(attribution.keepAwakeSecondsHeld, 500, accuracy: 0.001)
+    }
+
     func testAttributionWithNoEventsHasNilSessionSpan() {
         let attribution = AgentSessionReport.attribution(
             sessionID: "s1",
@@ -205,6 +262,49 @@ final class AgentSessionReportTests: XCTestCase {
         XCTAssertEqual(sessions[1].toolCallCounts, ["keep_awake": 1, "release_awake": 1])
         XCTAssertEqual(sessions[1].awakeSecondsHeld, 500, accuracy: 0.001)
         XCTAssertEqual(sessions[0].awakeSecondsHeld, 0)
+    }
+
+    // MARK: - SessionResourceReport payload shape (CLI session-scoping pass)
+
+    func testSessionResourceReportRoundTripsWithNilSessionIDForClientScopedReports() {
+        // `MCPXPCService.getSessionResourceReport(targetClientName:)` nils
+        // out `sessionID` when a report is scoped by client name rather than
+        // one connection (no single `sessionID` represents it — see that
+        // method's doc comment). The wire payload must still encode/decode
+        // cleanly with `sessionID: nil` and `sessionClientName` set, exactly
+        // like any other optional field in this Codable struct.
+        let report = MCPPayloads.SessionResourceReport(
+            windowStart: date(1_000),
+            windowEnd: date(2_000),
+            averageCPUPercent: 42,
+            peakCPUPercent: 88,
+            peakSoCTemperatureCelsius: 70,
+            secondsThrottling: 0,
+            peakMemoryPressurePercent: 30,
+            alertsFired: 1,
+            sessionID: nil,
+            sessionClientName: "Claude Code",
+            sessionStart: date(1_100),
+            sessionEnd: date(1_900),
+            toolCallCounts: ["get_system_snapshot": 3],
+            keepAwakeSecondsHeld: 120,
+            batteryPercentDrained: 2.5,
+            thermalPressureElevated: false,
+            thermalPressureElevatedSeconds: 0
+        )
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let data = try! encoder.encode(report)
+        let decoded = try! decoder.decode(MCPPayloads.SessionResourceReport.self, from: data)
+
+        XCTAssertNil(decoded.sessionID)
+        XCTAssertEqual(decoded.sessionClientName, "Claude Code")
+        XCTAssertEqual(decoded.keepAwakeSecondsHeld, 120)
+        XCTAssertEqual(decoded.toolCallCounts, ["get_system_snapshot": 3])
     }
 
     func testSessionsGroupsLegacyEventsByClientNameWithZeroAwakeTime() {
