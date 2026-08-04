@@ -13,7 +13,7 @@ for the `Stop` hook — both are read tools, enabled by default).
 
 Claude Code's `PreToolUse` hook can deny a pending tool call by exiting with
 code `2`; whatever the hook writes to stderr is fed back to the model as
-context for why. `sentry hook pretooluse` wraps exactly this: it calls
+context for why. `sentryctl hook pretooluse` wraps exactly this: it calls
 Sentry's `preflight_check` (thermal pressure, SoC temp, CPU load, battery),
 and denies the call with a real reason if now is a bad time to start
 something heavy.
@@ -29,7 +29,7 @@ Add to `.claude/settings.json` (project or user-level):
         "hooks": [
           {
             "type": "command",
-            "command": "sentry hook pretooluse"
+            "command": "sentryctl hook pretooluse"
           }
         ]
       }
@@ -42,7 +42,7 @@ Add to `.claude/settings.json` (project or user-level):
 default, since Sentry can't distinguish "about to run a 40-minute build"
 from "about to run `ls`" without inspecting the command itself. If that's too
 aggressive, narrow the matcher to specific commands via Claude Code's own
-matcher syntax, or wrap `sentry hook pretooluse` in a script that only
+matcher syntax, or wrap `sentryctl hook pretooluse` in a script that only
 proceeds for command lines containing `make`, `xcodebuild`, `npm run build`,
 etc.
 
@@ -53,7 +53,7 @@ hook pretooluse`, or wherever your build output lands during development).
 ## 2. `Stop` — enrich the completion notification with real resource cost
 
 Claude Code's `Stop` hook fires when the agent finishes responding. This
-script pairs it with `sentry session-report` to post a native notification
+script pairs it with `sentryctl session-report` to post a native notification
 that includes what the last while actually cost the machine — something none
 of the existing zero-context "notify me when Claude Code finishes" tools
 (`claudecodenotify`, `claude-notify`) can do, since they have no visibility
@@ -128,8 +128,8 @@ Two things worth knowing before you wire hooks around it:
 
 ```bash
 sentryctl check
-sentry wait --until=thermal_normal --timeout=60
-sentry session-report --since=1800
+sentryctl wait --until=thermal_normal --timeout=60
+sentryctl session-report --since=1800
 sentryctl statusline --format plain
 sentryctl watch --metric cpu.total_percent --interval 2s | head -5
 ```

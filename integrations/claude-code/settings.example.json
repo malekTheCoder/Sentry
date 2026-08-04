@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sentry hook pretooluse"
+            "command": "sentryctl hook pretooluse"
           }
         ]
       }
