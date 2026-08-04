@@ -95,5 +95,23 @@ struct SentryWidget: Widget {
 struct SentryWidgetBundle: WidgetBundle {
     var body: some Widget {
         SentryWidget()
+        // `ControlWidget` conforms to `Widget`, so it's registered the same
+        // way as `SentryWidget` above — see `MacAwakeControlWidget.swift`'s
+        // top-of-file doc comment for why the whole type is iOS-only
+        // (`#if os(iOS)`) and additionally gated `@available(iOS 18.0, *)`
+        // here: this bundle is the one piece of `SentryWidget/` that
+        // *also* compiles for `SentryWidgetExtension_macOS`, whose
+        // deployment target (macOS 14.0) predates Control Center widgets
+        // entirely, and even on iOS this appex's own deployment target is
+        // 17.0 (`project.yml`), one major version below what
+        // `AppIntentControlConfiguration` requires. `WidgetBundleBuilder`
+        // supports `if #available` the same way `ViewBuilder` does, so a
+        // device on iOS 17 simply never sees this entry rather than
+        // failing to launch the extension at all.
+        #if os(iOS)
+        if #available(iOS 18.0, *) {
+            MacAwakeControlWidget()
+        }
+        #endif
     }
 }
