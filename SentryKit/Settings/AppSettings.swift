@@ -336,6 +336,21 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// per-agent identity being a self-reported label.
     public var agentGuardrails: AgentGuardrailSettings
 
+    // MARK: - Onboarding
+
+    /// Has the first-run welcome popover (`Sentry/Onboarding/WelcomeView.swift`,
+    /// shown by `Sentry/Onboarding/OnboardingCoordinator.swift`) already been
+    /// shown once? The app launches straight into building the status item
+    /// with no explanation of what it is — this flag is what keeps that
+    /// one-time "here's your menu bar icon" moment from reappearing on every
+    /// subsequent launch. `false` by default, and the only thing that ever
+    /// sets it `true` is `OnboardingCoordinator.showIfNeeded` the instant it
+    /// decides to show the popover — not, deliberately, anything the popover
+    /// itself does, so a crash between "popover shown" and "settings saved"
+    /// fails toward showing it again rather than toward silently skipping it
+    /// forever.
+    public var hasSeenWelcome: Bool
+
     // MARK: - Updates
 
     public var updateCheckDaily: Bool
@@ -423,6 +438,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         proLicenseLastVerifiedAt: Date? = nil,
         fanControl: FanControlSettings = FanControlSettings(),
         agentGuardrails: AgentGuardrailSettings = AgentGuardrailSettings(),
+        hasSeenWelcome: Bool = false,
         updateCheckDaily: Bool = true,
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
@@ -463,6 +479,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
         self.fanControl = fanControl
         self.agentGuardrails = agentGuardrails
+        self.hasSeenWelcome = hasSeenWelcome
         self.updateCheckDaily = updateCheckDaily
         self.schemaVersion = schemaVersion
     }
@@ -545,6 +562,14 @@ extension AppSettings {
         // thermal auto-revoke on) — an upgrading install gets the same
         // protections a fresh one does, and nothing it never opted into.
         case agentGuardrails
+        // Onboarding, additive: absent in any settings.json written before
+        // the first-run welcome popover existed, and its fallback is
+        // `false` — an upgrading install (which has obviously already seen
+        // the menu bar icon by the time it upgrades) would be a false
+        // negative here, but that's the safe direction: it shows one
+        // superfluous popover once rather than risking a *new* install ever
+        // silently skipping it.
+        case hasSeenWelcome
         case updateCheckDaily
         case schemaVersion
     }
@@ -670,6 +695,10 @@ extension AppSettings {
             // survives a policy field being added later, same as `fanControl`.
             agentGuardrails: try container.decodeIfPresent(AgentGuardrailSettings.self, forKey: .agentGuardrails)
                 ?? fallback.agentGuardrails,
+            // Must upgrade to `false` — see this property's own doc comment
+            // for why that's the safe direction for an existing install.
+            hasSeenWelcome: try container.decodeIfPresent(Bool.self, forKey: .hasSeenWelcome)
+                ?? fallback.hasSeenWelcome,
             updateCheckDaily: try container.decodeIfPresent(Bool.self, forKey: .updateCheckDaily)
                 ?? fallback.updateCheckDaily,
             // An absent version means a file written before versioning existed;
