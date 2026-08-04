@@ -170,6 +170,24 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// empty-state message for.
     public var alertRules: [AlertRule]
 
+    /// `AlertEngine`'s persisted runtime state (verified-bug pass:
+    /// "cooldowns, sustained timers, and the hourly rate cap all reset on
+    /// relaunch") — see `AlertEnginePersistedState`'s doc comment for what
+    /// each field means and why `conditionTrueSince` deliberately isn't one
+    /// of them. `AppDelegate` seeds `AlertEngine.init(persistedState:)` from
+    /// this on launch and writes it back on every
+    /// `AlertEngine.onPersistedStateChanged` callback, the same one-way
+    /// "engine is the source of truth, settings just mirrors it for
+    /// durability" flow `alertRules`/`AlertEngine.updateRules` already
+    /// establishes in the other direction.
+    ///
+    /// Absent-and-empty are the same situation here, unlike `alertRules`:
+    /// the shipped default genuinely is "nothing has fired yet, no
+    /// baseline captured" — there is no missing-key-versus-explicitly-empty
+    /// upgrade distinction to preserve, so `init(from:)` below just falls
+    /// back to `AlertEnginePersistedState()`.
+    public var alertPersistedState: AlertEnginePersistedState
+
     // MARK: - Sync
 
     public var cloudKitSyncEnabled: Bool
@@ -345,7 +363,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// promise quietly breaks.
     public static let defaultAlertCooldownMinutes: Int = 30
 
-    /// The 11 shipped rules from plan §11.2, built once.
+    /// The 14 shipped rules (`AlertEngine.defaultRules(cooldown:)` — 11 from
+    /// plan §11.2 plus 3 added by a later verified-bug pass), built once.
     ///
     /// A `static let` rather than a computed property on purpose:
     /// `AlertEngine.defaultRules(cooldown:)` mints a fresh `UUID` for every
@@ -388,6 +407,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         alertCooldownMinutes: Int = AppSettings.defaultAlertCooldownMinutes,
         doNotDisturb: Bool = false,
         alertRules: [AlertRule] = AppSettings.defaultAlertRules,
+        alertPersistedState: AlertEnginePersistedState = AlertEnginePersistedState(),
         cloudKitSyncEnabled: Bool = false,
         mcpServerEnabled: Bool = false,
         mcpWriteToolsEnabled: Bool = false,
@@ -427,6 +447,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.alertCooldownMinutes = alertCooldownMinutes
         self.doNotDisturb = doNotDisturb
         self.alertRules = alertRules
+        self.alertPersistedState = alertPersistedState
         self.cloudKitSyncEnabled = cloudKitSyncEnabled
         self.mcpServerEnabled = mcpServerEnabled
         self.mcpWriteToolsEnabled = mcpWriteToolsEnabled
@@ -483,6 +504,12 @@ extension AppSettings {
         case alertCooldownMinutes
         case doNotDisturb
         case alertRules
+        // `AlertEngine` persistence pass, additive: absent in any
+        // settings.json written before this key existed, and its fallback
+        // is `AlertEnginePersistedState()` — the same "nothing has fired
+        // yet" state an install from before this key existed was already
+        // implicitly in.
+        case alertPersistedState
         case cloudKitSyncEnabled
         case mcpServerEnabled
         case mcpWriteToolsEnabled
@@ -583,7 +610,7 @@ extension AppSettings {
                 ?? fallback.doNotDisturb,
             // Same `decodeIfPresent ?? fallback` shape as every other field,
             // and it matters more here than anywhere else: the fallback is
-            // the shipped 11-rule default set, *not* `[]`. A file written by
+            // the shipped 14-rule default set, *not* `[]`. A file written by
             // a build from before this key existed must upgrade into working
             // alerts — decoding it into an empty list would leave the user
             // with no alerts and nothing on screen explaining why. An
@@ -591,6 +618,11 @@ extension AppSettings {
             // that one really is a user who removed every rule.
             alertRules: try container.decodeIfPresent([AlertRule].self, forKey: .alertRules)
                 ?? fallback.alertRules,
+            // Missing and explicitly-absent collapse to the same
+            // "nothing has fired yet" state here, unlike `alertRules` just
+            // above — see this property's own doc comment.
+            alertPersistedState: try container.decodeIfPresent(AlertEnginePersistedState.self, forKey: .alertPersistedState)
+                ?? fallback.alertPersistedState,
             cloudKitSyncEnabled: try container.decodeIfPresent(Bool.self, forKey: .cloudKitSyncEnabled)
                 ?? fallback.cloudKitSyncEnabled,
             mcpServerEnabled: try container.decodeIfPresent(Bool.self, forKey: .mcpServerEnabled)

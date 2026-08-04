@@ -86,10 +86,12 @@ public enum Migrations {
         // active recently" over a real window (days/weeks) instead of only
         // the session-scoped, in-memory `MCPActivityLog` (which is what
         // powers the live dropdown/AI-Access-pane views and intentionally
-        // does not persist — see its own doc comment). Kept forever, same
-        // as `alert_log`: this is a discrete-event log, not a time series,
-        // and volume is inherently low (only *executed* write-tool calls,
-        // not every read).
+        // does not persist — see its own doc comment). Kept forever (unlike
+        // `alert_log`, which `RollupJob` now prunes on a generous fixed
+        // window — see `RollupJob.alertLogRetentionDays`'s doc comment for
+        // why that one needed it and this table, so far, hasn't): this is a
+        // discrete-event log, not a time series, and volume is inherently
+        // low (only *executed* write-tool calls, not every read).
         migrator.registerMigration("v3AgentActivityLog") { db in
             try db.create(table: "agent_activity_log") { t in
                 t.autoIncrementedPrimaryKey("id")

@@ -96,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         rules: settingsStore.settings.alertRules,
         historyStore: historyStore,
         rateCapPerHour: settingsStore.settings.notificationRateCapPerHour,
-        doNotDisturb: settingsStore.settings.doNotDisturb
+        doNotDisturb: settingsStore.settings.doNotDisturb,
+        persistedState: settingsStore.settings.alertPersistedState
     )
 
     // MARK: - UI
@@ -465,6 +466,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Apple Developer Program enrollment.
         alertEngine.phonePushRecorder = { [weak self] push in
             self?.pendingAlertPushStore.enqueue(push)
+        }
+        // Persistence pass (verified-bug fix: "cooldowns, sustained timers,
+        // and the hourly rate cap all reset on relaunch"): mirrors
+        // `alertEngine`'s durable runtime state into `settingsStore.settings`
+        // on every change, so the *next* launch's `AlertEngine(persistedState:)`
+        // above picks up where this one left off instead of starting every
+        // rule's cooldown/rate-cap/battery-health-baseline cold. One-way
+        // (engine → settings), matching every other injectable hook on this
+        // type — `SettingsStore`'s own debounced-write `didSet` (see that
+        // type's doc comment) is what turns this into an actual disk write.
+        alertEngine.onPersistedStateChanged = { [weak self] state in
+            self?.settingsStore.settings.alertPersistedState = state
         }
         // Seed the enabled set so `applySettings` can spot a genuine
         // disabled→enabled transition later. Deliberately *without* calling

@@ -233,20 +233,46 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     /// Reads back recent `alert_log` rows, most recent first — the data
-    /// source for the future history pane (out of scope for this task, but
-    /// there's no reason to make that pane reach into raw SQL to get it).
-    public func recentAlertFirings(limit: Int = 200) -> [AlertLogEntry] {
+    /// source for the future history pane and `get_alert_history` (plan
+    /// §13.3).
+    ///
+    /// - Parameters:
+    ///   - since: when non-`nil`, only rows with `ts >= since` are
+    ///     returned — mirrors `samples(metric:since:)`'s `since` parameter,
+    ///     which `get_metric_history` already exposes as `sinceSeconds`.
+    ///     `nil` (the default) means "no time filter", matching every
+    ///     existing caller from before this parameter existed.
+    ///   - ruleID: when non-`nil`, only rows for that rule are returned.
+    ///     `nil` (the default) means "every rule", same
+    ///     backward-compatible-default convention as `since`.
+    public func recentAlertFirings(limit: Int = 200, since: Date? = nil, ruleID: UUID? = nil) -> [AlertLogEntry] {
         guard let dbQueue else { return [] }
         do {
             return try dbQueue.read { db in
-                let rows = try Row.fetchAll(
-                    db,
-                    sql: """
-                    SELECT ts, rule_id, rule_name, metric, value, delivered, suppressed
-                    FROM alert_log ORDER BY ts DESC LIMIT ?
-                    """,
-                    arguments: [limit]
-                )
+                // Built as a fixed base clause plus two optional `AND`s
+                // rather than always binding both filters (e.g. `ts >= ?`
+                // with a sentinel of `-.infinity`), so a call with neither
+                // filter runs the exact same query plan
+                // (`ORDER BY ts DESC LIMIT ?`) it always has — no risk of a
+                // sentinel value ever being mistaken for a genuine filter.
+                var sql = "SELECT ts, rule_id, rule_name, metric, value, delivered, suppressed FROM alert_log"
+                var conditions: [String] = []
+                var arguments: [(any DatabaseValueConvertible)?] = []
+                if let since {
+                    conditions.append("ts >= ?")
+                    arguments.append(since.timeIntervalSince1970)
+                }
+                if let ruleID {
+                    conditions.append("rule_id = ?")
+                    arguments.append(ruleID.uuidString)
+                }
+                if !conditions.isEmpty {
+                    sql += " WHERE " + conditions.joined(separator: " AND ")
+                }
+                sql += " ORDER BY ts DESC LIMIT ?"
+                arguments.append(limit)
+
+                let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
                 return rows.compactMap { row -> AlertLogEntry? in
                     guard
                         let ts: Double = row["ts"],

@@ -3,13 +3,18 @@ import GRDB
 import os
 
 /// The four-step maintenance job from plan §6.3 that keeps `sample_raw`
-/// bounded while turning it into cheap, long-horizon history:
+/// bounded while turning it into cheap, long-horizon history — plus a fifth,
+/// added by a later verified-bug pass, that bounds `alert_log`:
 ///
 /// 1. Roll complete hours of `sample_raw` into `sample_hourly` (min/max/avg/count).
 /// 2. Delete `sample_raw` rows older than 48h.
 /// 3. Once daily: roll `sample_hourly` into `sample_daily`, then delete
 ///    `sample_hourly` rows older than 90d.
 /// 4. Weekly: `PRAGMA incremental_vacuum` to actually reclaim disk.
+/// 5. Once daily (alongside step 3): delete `alert_log` rows older than
+///    `alertLogRetentionDays` — see that constant's doc comment for why
+///    `alert_log` needed this at all (it had no retention before this pass)
+///    and why it isn't user-configurable like steps 2/3's windows are.
 ///
 /// `runHourlyRollup`/`runDailyRollup` take an injected `now` so tests can
 /// drive them deterministically instead of depending on the wall clock.
@@ -47,6 +52,21 @@ public final class RollupJob: @unchecked Sendable {
         rawRetentionHoursStorage = max(rawHours, 1)
         hourlyRetentionDaysStorage = max(hourlyDays, 1)
     }
+
+    /// Age-based retention for `alert_log` (verified-bug pass: "`alert_log`
+    /// is never pruned" — a misconfigured, rapidly-refiring rule grows it
+    /// forever, since it was never given a retention window the way
+    /// `sample_raw`/`sample_hourly` were). Not user-configurable, unlike
+    /// `rawRetentionHoursStorage`/`hourlyRetentionDaysStorage` above — plan
+    /// §6.3's "make retention configurable" request is specifically about
+    /// the sample tiers, and `alert_log` is a low-volume discrete-event log
+    /// under normal operation (`Migrations.swift`'s v3 migration comment
+    /// says as much), so a generous fixed window is enough to bound it
+    /// without adding a settings-pane control nobody asked for. 180 days is
+    /// comfortably longer than `hourlyRetentionDays`'s 90-day default, since
+    /// alert history is exactly the kind of thing worth keeping longer than
+    /// raw metric samples.
+    private static let alertLogRetentionDays: Int = 180
 
     private static let lastDailyRollupKey = "dev.malekswilam.sentry.rollupjob.lastDailyRollup"
     private static let lastVacuumKey = "dev.malekswilam.sentry.rollupjob.lastVacuum"
@@ -239,6 +259,21 @@ public final class RollupJob: @unchecked Sendable {
                 try db.execute(
                     sql: "DELETE FROM sample_hourly WHERE hour_start < ?",
                     arguments: [hourlyCutoff]
+                )
+
+                // Verified-bug pass: `alert_log` had no retention at all
+                // before this. Pruned here (daily cadence) rather than in
+                // `runHourlyRollup` above — `alert_log` isn't a rollup
+                // source the way `sample_raw` is for `sample_hourly` (there
+                // is no "alert_log_hourly" tier to protect from a
+                // mid-bucket cutoff), so there's no correctness reason to
+                // prune it any more often than once a day, and doing it
+                // here keeps this one `dbQueue.write` transaction as the
+                // single place a day's worth of retention deletes happen.
+                let alertLogCutoff = now.timeIntervalSince1970 - Double(Self.alertLogRetentionDays) * 86400
+                try db.execute(
+                    sql: "DELETE FROM alert_log WHERE ts < ?",
+                    arguments: [alertLogCutoff]
                 )
             }
         } catch {
