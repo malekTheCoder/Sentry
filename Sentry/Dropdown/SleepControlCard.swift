@@ -20,20 +20,19 @@ import SentryKit
 /// hides *what will happen* — only *how to change it*.
 ///
 /// **Scope, and what's deliberately missing.** Plan §10.3 lists six trigger
-/// kinds; a later competitive pass against Amphetamine added two more
-/// (download-active, scheduled). Six of those eight are here (indefinite,
-/// fixed presets, battery threshold, sustained-CPU threshold, process
-/// running, download active, scheduled window — see below). Two are not:
+/// kinds; a later competitive pass against other keep-awake utilities added
+/// two more (download-active, scheduled) and, later still, a clock-time
+/// trigger. Seven of those eight are here (indefinite, fixed presets, battery
+/// threshold, sustained-CPU threshold, process running, download active,
+/// scheduled window, until a specific time — see below). One is not:
 ///
-/// - *Until a specific time* needs a `DatePicker`, and
 /// - *While a specific app is running* needs a running-app browser.
 ///
-/// Both would roughly double this card's height inside a 320pt popover whose
-/// remaining space belongs to the vitals. They're deferred to the Settings
+/// That would roughly double this card's height inside a 320pt popover whose
+/// remaining space belongs to the vitals. It's deferred to the Settings
 /// window, not dropped: `ReleaseCondition.whileAppRunning` already exists and
 /// is fully handled by `PowerControlService`'s `NSWorkspace` termination
-/// observer, and "until a time" is just a fixed duration computed from `Date`.
-/// Neither needs service-layer work to land later — only UI.
+/// observer — it needs no service-layer work to land later, only UI.
 ///
 /// **Why the scheduled trigger is preset-only, not a free-form day/time
 /// picker.** `ReleaseCondition.scheduledWindow` can express any weekday set
@@ -79,6 +78,14 @@ struct SleepControlCard: View {
     /// presets. See the type doc comment for why this is preset-only rather
     /// than a free-form weekday/time picker.
     @State private var schedule: KeepAwakeSchedule = .weeknights
+    /// `.untilTime`'s picked clock time — only the hour/minute components
+    /// are read (`SleepTriggerOption.resolvedDuration(untilTime:)`), so the
+    /// day/month/year `DatePicker(.hourAndMinute)` leaves this at are never
+    /// used. Defaults to 10 PM, the same "end of evening" instinct
+    /// `KeepAwakeSchedule.everyNight`/`.weeknights` already encode.
+    @State private var untilTime: Date = {
+        Calendar.current.date(bySettingHour: 22, minute: 0, second: 0, of: Date()) ?? Date()
+    }()
 
     /// Whether the trigger/mode pickers are disclosed. Local and not
     /// persisted: it's a "I'm about to change something" state, not a
@@ -194,7 +201,8 @@ struct SleepControlCard: View {
             batteryThreshold: batteryThreshold,
             cpuThreshold: cpuThreshold,
             processName: processName,
-            schedule: schedule
+            schedule: schedule,
+            untilTime: untilTime
         )
         return "\(triggerText) · \(mode.shortLabel)"
     }
@@ -207,7 +215,8 @@ struct SleepControlCard: View {
                     batteryThreshold: batteryThreshold,
                     cpuThreshold: cpuThreshold,
                     processName: processName,
-                    schedule: schedule
+                    schedule: schedule,
+                    untilTime: untilTime
                 )
             ) {
                 ForEach(SleepTriggerOption.allOptions) { option in
@@ -238,6 +247,8 @@ struct SleepControlCard: View {
     @ViewBuilder
     private var thresholdStepper: some View {
         switch trigger {
+        case .untilTime:
+            untilTimeRow
         case .batteryBelow:
             percentStepper(String(localized: "Battery floor"), value: $batteryThreshold, range: 5...95)
         case .cpuAbove:
@@ -249,6 +260,26 @@ struct SleepControlCard: View {
         case .indefinite, .fixed, .downloadActive:
             EmptyView()
         }
+    }
+
+    /// `.untilTime`'s clock-time picker — see `SleepTriggerOption.untilTime`'s
+    /// doc comment for why this is a real `DatePicker`, not the `optionMenu`
+    /// preset idiom `scheduleRow`/`mode` use. `.compact` keeps it to the same
+    /// single-row height as every other threshold control here; `.hourAndMinute`
+    /// excludes the date component this trigger never reads.
+    private var untilTimeRow: some View {
+        HStack(spacing: palette.spacingTight) {
+            Text("Until")
+                .font(palette.font(size: 11))
+                .foregroundStyle(palette.textTertiary)
+            Spacer(minLength: palette.spacingTight)
+            DatePicker("", selection: $untilTime, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.compact)
+                .labelsHidden()
+                .font(palette.numericFont(size: 11, weight: .medium))
+        }
+        .padding(.horizontal, palette.spacingTight)
+        .padding(.bottom, palette.spacingTight)
     }
 
     /// `.scheduledWindow`'s preset picker — the same `optionMenu` idiom the
@@ -515,7 +546,8 @@ struct SleepControlCard: View {
             batteryThreshold: batteryThreshold,
             cpuThreshold: cpuThreshold,
             processName: processName,
-            schedule: schedule
+            schedule: schedule,
+            untilTime: untilTime
         )
         do {
             if let condition = trigger.releaseCondition(
@@ -528,7 +560,11 @@ struct SleepControlCard: View {
             ) {
                 try powerControl.startConditionalAssertion(mode: mode, condition: condition, reason: reason)
             } else {
-                try powerControl.startAssertion(mode: mode, duration: trigger.duration, reason: reason)
+                // `resolvedDuration`, not `duration`: `.untilTime` needs `now`
+                // (read fresh right here at start-time, not when the trigger
+                // was picked) to turn a clock time into a countdown — see
+                // that method's doc comment.
+                try powerControl.startAssertion(mode: mode, duration: trigger.resolvedDuration(untilTime: untilTime), reason: reason)
             }
             startError = nil
             // The options were a means to starting this session; leaving them
@@ -662,12 +698,23 @@ enum SleepTriggerOption: Hashable, Identifiable {
     case batteryBelow
     case cpuAbove
     case processRunning
-    /// Amphetamine-parity trigger added by the competitive review — see
+    /// Competitive-parity trigger added by the competitive review — see
     /// `ReleaseCondition.whileDownloadActive`'s doc comment.
     case downloadActive
-    /// Amphetamine-parity trigger added by the competitive review — see
+    /// Competitive-parity trigger added by the competitive review — see
     /// `ReleaseCondition.scheduledWindow`'s doc comment.
     case scheduledWindow
+    /// Other keep-awake utilities' "Other Time/Until" — the one clock-time trigger, as
+    /// opposed to `.scheduledWindow`'s recurring weekly window. Unlike
+    /// `.scheduledWindow`, this is a genuine `DatePicker(.hourAndMinute)`
+    /// row rather than a preset menu: the type doc comment's "preset-only"
+    /// rationale is about avoiding a *weekday-plus-time* control (roughly
+    /// doubling this card's height), and a single compact hour/minute wheel
+    /// doesn't have that cost. A curated preset list would also just be
+    /// worse here — "until 5 PM" only matters if 5 PM is the number the user
+    /// actually wants right now, which a fixed menu can't guess as well as
+    /// picking it can.
+    case untilTime
 
     static let allOptions: [SleepTriggerOption] = [
         .indefinite,
@@ -677,6 +724,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
         .fixed(2 * 60 * 60),
         .fixed(4 * 60 * 60),
         .fixed(8 * 60 * 60),
+        .untilTime,
         .batteryBelow,
         .cpuAbove,
         .processRunning,
@@ -688,6 +736,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
         switch self {
         case .indefinite: return "indefinite"
         case .fixed(let seconds): return "fixed-\(Int(seconds))"
+        case .untilTime: return "until-time"
         case .batteryBelow: return "battery"
         case .cpuAbove: return "cpu"
         case .processRunning: return "process"
@@ -698,10 +747,38 @@ enum SleepTriggerOption: Hashable, Identifiable {
 
     /// `nil` for everything that isn't a fixed window — both "indefinite" and
     /// the conditional triggers are open-ended as far as `PowerControlService`
-    /// is concerned.
+    /// is concerned. `.untilTime` needs `now` and the picked clock time to
+    /// compute a duration, so it's handled by `resolvedDuration(untilTime:)`
+    /// below rather than here — this property stays a pure function of the
+    /// case itself, matching every other member on this type.
     var duration: TimeInterval? {
         if case .fixed(let seconds) = self { return seconds }
         return nil
+    }
+
+    /// Seconds from now until the next occurrence of `untilTime`'s
+    /// hour/minute — rolling to tomorrow if that time of day has already
+    /// passed today, the same "always in the future" rule a keep-awake
+    /// utility's user relies on ("until 9 AM" typed at 11 PM means tomorrow morning,
+    /// not a negative duration). Floored at 60s: a pick that lands inside the
+    /// next minute (DST edges, or the sheet sitting open past the target
+    /// second) becomes "basically now," which is confusing as a keep-awake
+    /// duration — rolling it to the following day instead is the same
+    /// "always meaningfully in the future" guarantee for a boundary case
+    /// that's otherwise a fraction-of-a-second race.
+    func resolvedDuration(untilTime: Date, now: Date = Date(), calendar: Calendar = .current) -> TimeInterval? {
+        guard case .untilTime = self else { return duration }
+        let components = calendar.dateComponents([.hour, .minute], from: untilTime)
+        var candidate = calendar.date(
+            bySettingHour: components.hour ?? 0,
+            minute: components.minute ?? 0,
+            second: 0,
+            of: now
+        ) ?? now
+        if candidate.timeIntervalSince(now) < 60 {
+            candidate = calendar.date(byAdding: .day, value: 1, to: candidate) ?? candidate
+        }
+        return candidate.timeIntervalSince(now)
     }
 
     func releaseCondition(
@@ -713,7 +790,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
         schedule: KeepAwakeSchedule
     ) -> ReleaseCondition? {
         switch self {
-        case .indefinite, .fixed:
+        case .indefinite, .fixed, .untilTime:
             return nil
         case .batteryBelow:
             return .batteryBelowPercent(batteryThreshold)
@@ -738,6 +815,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
         switch self {
         case .indefinite: return String(localized: "Indefinitely")
         case .fixed(let seconds): return SleepCountdownFormatting.presetLabel(seconds)
+        case .untilTime: return String(localized: "Until a time")
         case .batteryBelow: return String(localized: "Until battery is low")
         case .cpuAbove: return String(localized: "While CPU is busy")
         case .processRunning: return String(localized: "While a process runs")
@@ -748,10 +826,12 @@ enum SleepTriggerOption: Hashable, Identifiable {
 
     /// Collapsed label for the closed menu, where the chosen threshold has to
     /// be visible without opening anything.
-    func menuLabel(batteryThreshold: Double, cpuThreshold: Double, processName: String, schedule: KeepAwakeSchedule) -> String {
+    func menuLabel(batteryThreshold: Double, cpuThreshold: Double, processName: String, schedule: KeepAwakeSchedule, untilTime: Date) -> String {
         switch self {
         case .indefinite, .fixed, .downloadActive:
             return pickerLabel
+        case .untilTime:
+            return String(localized: "Until \(untilTime.formatted(date: .omitted, time: .shortened))")
         case .batteryBelow:
             return String(localized: "Battery < \(MetricFormatting.percent(batteryThreshold))")
         case .cpuAbove:
@@ -784,12 +864,14 @@ enum SleepTriggerOption: Hashable, Identifiable {
     /// the same trade Apple's own daemons make. If the card ever needs a
     /// localized caption, derive it separately at display time rather than
     /// localizing what gets persisted into the assertion.
-    func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String, schedule: KeepAwakeSchedule) -> String {
+    func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String, schedule: KeepAwakeSchedule, untilTime: Date) -> String {
         switch self {
         case .indefinite:
             return "Sentry — keep awake until turned off"
         case .fixed(let seconds):
             return "Sentry — keep awake for \(SleepCountdownFormatting.presetLabel(seconds))"
+        case .untilTime:
+            return "Sentry — keep awake until \(untilTime.formatted(date: .omitted, time: .shortened))"
         case .batteryBelow:
             return "Sentry — keep awake until battery drops below \(MetricFormatting.percent(batteryThreshold))"
         case .cpuAbove:

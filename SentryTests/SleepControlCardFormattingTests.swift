@@ -59,6 +59,7 @@ final class SleepControlCardFormattingTests: XCTestCase {
     /// exercising.
     private let noDownloadTimeout: TimeInterval = 8
     private let noSchedule = KeepAwakeSchedule.weeknights
+    private let noUntilTime = Date(timeIntervalSince1970: 1_700_000_000)
 
     func testFixedTriggersCarryADurationAndNoCondition() {
         let option = SleepTriggerOption.fixed(30 * 60)
@@ -98,7 +99,7 @@ final class SleepControlCardFormattingTests: XCTestCase {
         )
         XCTAssertTrue(
             SleepTriggerOption.processRunning
-                .assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "xcodebuild", schedule: noSchedule)
+                .assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "xcodebuild", schedule: noSchedule, untilTime: noUntilTime)
                 .contains("xcodebuild"),
             "process reason should name the watched process"
         )
@@ -129,8 +130,58 @@ final class SleepControlCardFormattingTests: XCTestCase {
     func testMenuOrderMatchesPlanSection103() {
         XCTAssertEqual(
             SleepTriggerOption.allOptions.map(\.id),
-            ["indefinite", "fixed-900", "fixed-1800", "fixed-3600", "fixed-7200", "fixed-14400", "fixed-28800", "battery", "cpu", "process", "download", "schedule"]
+            ["indefinite", "fixed-900", "fixed-1800", "fixed-3600", "fixed-7200", "fixed-14400", "fixed-28800", "until-time", "battery", "cpu", "process", "download", "schedule"]
         )
+    }
+
+    // MARK: untilTime
+
+    /// `.untilTime` has no fixed `duration` — it needs `now` to turn a clock
+    /// time into a countdown, which `resolvedDuration` alone provides.
+    func testUntilTimeHasNoFixedDuration() {
+        XCTAssertNil(SleepTriggerOption.untilTime.duration)
+        XCTAssertNil(SleepTriggerOption.untilTime.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude", downloadIdleTimeout: noDownloadTimeout, schedule: noSchedule))
+    }
+
+    /// The ordinary case: the picked time is later today.
+    func testUntilTimeResolvesToTheRemainderOfToday() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 5, hour: 14, minute: 0))!
+        let untilTime = calendar.date(from: DateComponents(year: 1970, month: 1, day: 1, hour: 22, minute: 30))!
+        let resolved = try XCTUnwrap(SleepTriggerOption.untilTime.resolvedDuration(untilTime: untilTime, now: now, calendar: calendar))
+        XCTAssertEqual(resolved, 8 * 3600 + 30 * 60, accuracy: 0.001)
+    }
+
+    /// A time already passed today rolls to tomorrow rather than going
+    /// negative — the same "always in the future" guarantee a keep-awake
+    /// utility's own "Until" trigger should give.
+    func testUntilTimeRollsToTomorrowWhenTheTimeHasAlreadyPassedToday() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 5, hour: 14, minute: 0))!
+        let untilTime = calendar.date(from: DateComponents(year: 1970, month: 1, day: 1, hour: 9, minute: 0))!
+        let resolved = try XCTUnwrap(SleepTriggerOption.untilTime.resolvedDuration(untilTime: untilTime, now: now, calendar: calendar))
+        XCTAssertEqual(resolved, 19 * 3600, accuracy: 0.001)
+    }
+
+    /// Inside the 60s floor — treated the same as "already passed," rolling
+    /// to tomorrow rather than arming a near-zero assertion.
+    func testUntilTimeInsideTheFloorRollsToTomorrow() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 5, hour: 14, minute: 0, second: 45))!
+        let untilTime = calendar.date(from: DateComponents(year: 1970, month: 1, day: 1, hour: 14, minute: 1))!
+        let resolved = SleepTriggerOption.untilTime.resolvedDuration(untilTime: untilTime, now: now, calendar: calendar)!
+        XCTAssertGreaterThan(resolved, 23 * 3600, "a sub-minute gap should roll to tomorrow, not resolve to ~15 seconds")
+    }
+
+    func testUntilTimeMenuLabelNamesTheClockTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let untilTime = calendar.date(from: DateComponents(year: 2026, month: 1, day: 5, hour: 22, minute: 30))!
+        let label = SleepTriggerOption.untilTime.menuLabel(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: noSchedule, untilTime: untilTime)
+        XCTAssertTrue(label.contains("Until"), "menu label should read as an 'Until <time>' sentence, got: \(label)")
     }
 
     /// The reason string is the only description of a conditional trigger that
@@ -139,22 +190,22 @@ final class SleepControlCardFormattingTests: XCTestCase {
     /// to name the actual threshold.
     func testAssertionReasonNamesTheChosenThreshold() {
         XCTAssertTrue(
-            SleepTriggerOption.batteryBelow.assertionReason(batteryThreshold: 25, cpuThreshold: 80, processName: "claude", schedule: noSchedule).contains("25%"),
+            SleepTriggerOption.batteryBelow.assertionReason(batteryThreshold: 25, cpuThreshold: 80, processName: "claude", schedule: noSchedule, untilTime: noUntilTime).contains("25%"),
             "battery reason should name its threshold"
         )
         XCTAssertTrue(
-            SleepTriggerOption.cpuAbove.assertionReason(batteryThreshold: 20, cpuThreshold: 65, processName: "claude", schedule: noSchedule).contains("65%"),
+            SleepTriggerOption.cpuAbove.assertionReason(batteryThreshold: 20, cpuThreshold: 65, processName: "claude", schedule: noSchedule, untilTime: noUntilTime).contains("65%"),
             "CPU reason should name its threshold"
         )
     }
 
     func testDownloadAndScheduleAssertionReasonsAreDescriptive() {
         XCTAssertTrue(
-            SleepTriggerOption.downloadActive.assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: noSchedule).contains("download"),
+            SleepTriggerOption.downloadActive.assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: noSchedule, untilTime: noUntilTime).contains("download"),
             "download reason should mention what it's watching"
         )
         XCTAssertTrue(
-            SleepTriggerOption.scheduledWindow.assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: .workHours).contains(KeepAwakeSchedule.workHours.label),
+            SleepTriggerOption.scheduledWindow.assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: .workHours, untilTime: noUntilTime).contains(KeepAwakeSchedule.workHours.label),
             "schedule reason should name the chosen preset"
         )
     }

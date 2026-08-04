@@ -25,6 +25,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let thermalCollector = ThermalCollector()
     private let gpuCollector = GPUCollector()
     private let aneCollector = ANECollector()
+    // Feeds `coordinator`'s slower, independent process tier — see
+    // `StatsCoordinator.Tier.process`'s doc comment. Deliberately a second
+    // `ProcessCollector` instance from `Sentry/Dashboard/ProcessMonitor.swift`'s
+    // own (which stays untouched): they serve different consumers — this
+    // one feeds `SystemSnapshot.topProcesses` for `AlertEngine`'s process-
+    // scoped rules, that one feeds the Dashboard's Top Processes card — and
+    // per-provider-closure state can't be safely shared between them.
+    private let processCollector = ProcessCollector()
 
     private lazy var coordinator = StatsCoordinator(
         batteryProvider: batteryCollector.collect,
@@ -34,7 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         networkProvider: networkCollector.collect,
         thermalProvider: thermalCollector.collect,
         gpuProvider: gpuCollector.collect,
-        aneProvider: aneCollector.collect
+        aneProvider: aneCollector.collect,
+        processProvider: { [processCollector] in processCollector.collectTopProcesses(limit: 20) }
     )
 
     // MARK: - Storage

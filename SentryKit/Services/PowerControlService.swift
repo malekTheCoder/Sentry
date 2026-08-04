@@ -35,8 +35,8 @@ extension AwakeMode {
 /// considered and rejected for it specifically.
 ///
 /// **What's deliberately absent: "while the display is closed."** A
-/// competitive review against Amphetamine flagged this as a gap, but it is
-/// not one — a clamshell close is one of the two explicit exceptions
+/// competitive review of keep-awake utilities flagged this as a gap, but
+/// it is not one — a clamshell close is one of the two explicit exceptions
 /// `PowerControlService`'s own type doc calls out ("none of the assertion
 /// types used here override an explicit user Sleep ... or a clamshell
 /// close. That's correct, intended OS behavior"). Implementing a trigger
@@ -64,7 +64,7 @@ public enum ReleaseCondition: Codable, Equatable, Sendable {
     case whileProcessRunning(name: String)
 
     /// Holds the assertion while `~/Downloads` has been written to within
-    /// the last `idleTimeout` seconds — the Amphetamine-parity trigger for
+    /// the last `idleTimeout` seconds — the competitive-parity trigger for
     /// "keep awake while a download is running."
     ///
     /// **Why a polled mtime heuristic, not a real download-completion
@@ -110,7 +110,7 @@ public enum ReleaseCondition: Codable, Equatable, Sendable {
     case whileDownloadActive(idleTimeout: TimeInterval)
 
     /// Holds the assertion during a recurring day-of-week/time-of-day
-    /// window — the Amphetamine-parity "scheduled" trigger. `weekdays` uses
+    /// window — the competitive-parity "scheduled" trigger. `weekdays` uses
     /// `Calendar.Component.weekday`'s 1...7 (Sunday = 1) convention, matching
     /// `Calendar` itself rather than inventing a zero-based one. `startMinute`
     /// and `endMinute` are minutes after local midnight (0...1440), the same
