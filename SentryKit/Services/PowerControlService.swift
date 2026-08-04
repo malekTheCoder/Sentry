@@ -148,6 +148,31 @@ public final class PowerControlService: ObservableObject {
     private struct PersistedRecord: Codable {
         var state: SleepAssertionState
         var condition: ReleaseCondition?
+
+        /// `agentOwnership`'s `clientName`, persisted alongside `state` so a
+        /// restore can re-tag the assertion it recreates rather than
+        /// silently dropping the tag.
+        ///
+        /// **Why this field exists.** `agentOwnership` is keyed to
+        /// `assertionGeneration`, and `reconcilePersistedState` restores a
+        /// timed hold by calling `startAssertionInternal` — which bumps the
+        /// generation, same as any other new assertion. Before this field
+        /// existed, an agent-held timed hold that survived sleep/wake (or a
+        /// cold-start relaunch) came back as a real `IOPMAssertion` with no
+        /// owner: `agentAssertionOwner` returned `nil` for it, so the kill
+        /// switch and `AgentGuardrails.autoRevocationReason` could no longer
+        /// see it, revoke it, or attribute it — an agent hold invisible to
+        /// every safety control built to police agent holds. Persisting the
+        /// name (not just a "was agent-owned" bool) is what lets the restore
+        /// re-tag the *same* owner, the same way `startAgentAssertion` tags
+        /// a fresh one. See `reconcilePersistedState` and `adjustAssertion`
+        /// for the two call sites that populate `agentOwnership` after a
+        /// `startAssertionInternal` call and must re-persist afterward for
+        /// this field to be correct — `startAssertionInternal` itself
+        /// persists *before* either caller has had a chance to tag the new
+        /// generation, so the first `persistState()` call always writes
+        /// `nil` here for an agent-started or agent-adjusted assertion.
+        var agentOwnerClientName: String?
     }
 
     /// - Parameter defaults: override for tests; defaults to `.standard`,
@@ -271,18 +296,48 @@ public final class PowerControlService: ObservableObject {
     /// a clock — see `ReleaseCondition`). A truncation that lands at or
     /// before now releases the assertion immediately rather than starting a
     /// new one with a zero-or-negative duration.
+    /// **Ownership note.** `startAssertionInternal` is the plain internal
+    /// path — it takes no `owner`/`clientName` and bumps
+    /// `assertionGeneration` regardless of who is adjusting. Left alone,
+    /// that means extending or truncating an *agent-held* assertion (the
+    /// Mac dropdown's own extend button, or `LocalCommandExecutor`'s
+    /// `extendAwake`/`truncateAwake`, reachable over MCP) would silently
+    /// strip the `agentOwnership` tag: the new, bumped-generation assertion
+    /// would have no owner, `agentAssertionOwner` would start returning
+    /// `nil` for it, and the kill switch / `AgentGuardrails
+    /// .autoRevocationReason` would lose the ability to see or release a
+    /// hold that is, in fact, still agent-held — an orphaned hold the
+    /// safety controls believe is untagged or user-owned. So the current
+    /// owner (if any) is read *before* the adjustment and re-applied to the
+    /// new generation after, mirroring what `startAgentAssertion` does for
+    /// a fresh hold.
     public func adjustAssertion(bySeconds delta: TimeInterval) throws {
         guard case .active(let mode, let expiresAt, let reason) = state,
               let expiresAt,
               activeCondition == nil else {
             throw PowerControlError.noAdjustableAssertion
         }
+        // Read before `startAssertionInternal` runs: it bumps
+        // `assertionGeneration`, which would make this read `nil` (a stale
+        // tag is "simply ignored", per `agentOwnership`'s doc comment) if
+        // taken afterward instead.
+        let owner = agentAssertionOwner
         let newRemaining = expiresAt.timeIntervalSinceNow + delta
         guard newRemaining > 0 else {
             releaseAssertion()
             return
         }
         try startAssertionInternal(mode: mode, duration: newRemaining, reason: reason, condition: nil)
+        if let owner {
+            agentOwnership = (assertionGeneration, owner)
+            // `startAssertionInternal` already persisted once, before this
+            // line could tag the new generation — see `PersistedRecord
+            // .agentOwnerClientName`'s doc comment. Re-persist so a
+            // relaunch or wake immediately after an extend/truncate
+            // restores the hold *with* its owner instead of racing this
+            // method.
+            persistState()
+        }
     }
 
     /// Feeds a fresh `SystemSnapshot` from the app's single poll loop (plan
@@ -540,6 +595,18 @@ public final class PowerControlService: ObservableObject {
             let remaining = expiresAt.map { $0.timeIntervalSince(Date()) }
             do {
                 try startAssertionInternal(mode: mode, duration: remaining, reason: reason, condition: record.condition)
+                // Same drift `adjustAssertion` fixes, on the restore path:
+                // `startAssertionInternal` bumped `assertionGeneration`, so
+                // without this the restored hold would come back live but
+                // untagged even though the record says exactly who owned
+                // it. Re-persisting keeps a *second* restore (wake, then a
+                // crash before the next real state change) reading the
+                // same owner rather than racing this method the way an
+                // un-re-persisted `adjustAssertion` would.
+                if let owner = record.agentOwnerClientName {
+                    agentOwnership = (assertionGeneration, owner)
+                    persistState()
+                }
             } catch {
                 // Best-effort restore (P5) — if IOKit itself refuses, don't
                 // leave `state` claiming an assertion exists that doesn't.
@@ -553,7 +620,11 @@ public final class PowerControlService: ObservableObject {
     // MARK: - Persistence (UserDefaults — small key-value state, not time series)
 
     private func persistState() {
-        let record = PersistedRecord(state: state, condition: activeCondition)
+        let record = PersistedRecord(
+            state: state,
+            condition: activeCondition,
+            agentOwnerClientName: agentAssertionOwner
+        )
         do {
             let data = try JSONEncoder().encode(record)
             defaults.set(data, forKey: Self.defaultsKey)
@@ -621,9 +692,29 @@ public final class PowerControlService: ObservableObject {
     /// identity; see `AgentGuardrailSettings`'s trust note) started the
     /// current assertion, tagged with the `assertionGeneration` it belongs
     /// to. The generation tag is what keeps this additive: `releaseAssertion`
-    /// and every user-initiated start path stay untouched, because a stale
-    /// tag is simply *ignored* — `agentAssertionOwner` below only honors it
-    /// while that exact generation's assertion is still the live one.
+    /// and a genuinely new, user-initiated `startAssertion`/
+    /// `startConditionalAssertion` stay untouched, because a stale tag is
+    /// simply *ignored* — `agentAssertionOwner` below only honors it while
+    /// that exact generation's assertion is still the live one.
+    ///
+    /// **This is not, on its own, enough to keep the tag attached.**
+    /// `startAssertionInternal` bumps `assertionGeneration` on *every*
+    /// successful call, including the ones `adjustAssertion` and
+    /// `reconcilePersistedState` make to extend/truncate or restore an
+    /// already-agent-owned hold — calls that are not "a new, user-initiated
+    /// start" in the sense above, but that go through the exact same
+    /// generation-bumping path. Left alone, that silently detaches the tag
+    /// from a hold that never actually changed hands (the bug this file's
+    /// history calls "ownership drift"). Both of those call sites now read
+    /// the current owner *before* calling `startAssertionInternal` and
+    /// re-apply it to the new generation after — the same pattern
+    /// `startAgentAssertion` uses for a fresh hold — so an earlier version
+    /// of this comment's implication that the generation tag alone
+    /// prevents drift was not accurate; the tag prevents a *stale* owner
+    /// from sticking to a *different* assertion, but preserving a *live*
+    /// owner across an adjustment or a restore is each call site's own
+    /// responsibility, done explicitly. See `PersistedRecord
+    /// .agentOwnerClientName` for the matching persistence-side fix.
     private var agentOwnership: (generation: UInt64, clientName: String)?
 
     /// The client name holding the current assertion, or `nil` when no
@@ -657,6 +748,14 @@ public final class PowerControlService: ObservableObject {
         try startAssertion(mode: mode, duration: duration, reason: reason, owner: sessionID)
         if state != .inactive {
             agentOwnership = (assertionGeneration, clientName)
+            // `startAssertion` → `startAssertionInternal` already persisted
+            // once, before this line existed to tag the new generation —
+            // see `PersistedRecord.agentOwnerClientName`'s doc comment.
+            // Re-persisting closes the same race `adjustAssertion` and
+            // `reconcilePersistedState` close: without it, a crash or
+            // relaunch in the instant between those two calls would
+            // restore this hold with no owner.
+            persistState()
         }
     }
 

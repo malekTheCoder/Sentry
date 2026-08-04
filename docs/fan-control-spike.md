@@ -8,6 +8,17 @@ documentation folklore. Probe source: read-only SMC key reader (selector 2,
 80-byte `SMCParamStruct`), kept out of the repo; the shipping implementation
 it validated is `SystemMetricsKit/Bridges/SMCFanBridge.swift`.
 
+**⚠️ Single-hardware caveat.** Every measurement in this document — the key
+names, the type codes, the attribute bits, the ranges — comes from one
+machine, the M1 Pro above. Nothing here has been checked against an M2, M3,
+or M4 Mac. Apple has changed SMC key layouts across generations before, so
+treating these findings as "how the SMC works on Apple Silicon" rather than
+"how it works on this specific Mac" would be overclaiming. **Per-generation
+SMC key validation (M2/M3/M4) is an open item, not attempted here or as
+part of the readback-verification fix below** — that fix builds on top of
+the keys this document already measured (`F{i}Tg`, `F{i}Ac`) and does not
+widen the hardware this has been checked against.
+
 ## Findings
 
 | Question | Answer (measured) |
@@ -31,8 +42,13 @@ it validated is `SystemMetricsKit/Bridges/SMCFanBridge.swift`.
    the app currently ad-hoc signed, `SMAppService` daemon registration is
    the fragile part — that, not the SMC protocol, is the real Phase 3 risk.
 4. Readback verification is straightforward: write `F{i}Tg`, poll `F{i}Ac`.
-   Revert-to-auto is `F{i}Md = 0`. Clamps come from the SMC's own
-   `F{i}Mn`/`F{i}Mx`, not hardcoded numbers.
+   **Implemented** — `SMCFanWriter.setTargetRPM` now polls `F{i}Ac` a few
+   times across roughly a second after the write and reports two distinct
+   booleans, `accepted` (the SMC took the write) and `applied` (the fan's
+   actual RPM was observed moving toward the target), up through
+   `FanDaemonProtocol.setTarget` and `FanControlBackend.applyTarget`. See
+   "Readback verification" below. Revert-to-auto is `F{i}Md = 0`. Clamps
+   come from the SMC's own `F{i}Mn`/`F{i}Mx`, not hardcoded numbers.
 5. Path corrections to the plan's §11: paths are repo-relative
    (`SystemMetricsKit/…`, `Sentry/…`, `SentryKit/…`), not nested under a
    `Sentry/` prefix.
@@ -53,12 +69,15 @@ it validated is `SystemMetricsKit/Bridges/SMCFanBridge.swift`.
       surface — all three would be dead controls today, and the rationale
       for each omission is recorded in `FanControlPane`'s doc comment.
 - [x] Phase 3: the write path — a privileged helper. Built. `SentryFanDaemon`
-      (a `tool` target, four files of its own plus the four pure files in
+      (a `tool` target, four files of its own plus the six files in
       `SentryKit/FanDaemon/`), registered by `SMAppService.daemon(plistName:)`
       from `PrivilegedFanControlBackend` **only when the user presses Install
       in Settings ▸ Fans**. `FanWriteAvailability` gained the `.available`
       case the Phase 2 note promised would break every `switch` over it; each
       one was revisited in the same change.
+- [x] Readback verification (item 4 above) — a write is no longer reported
+      as successful purely because the SMC accepted `WRITE_BYTES`. See
+      "Readback verification" below.
 
 ## Phase 3: what was built, and what is unverified
 
@@ -90,6 +109,53 @@ courtesy, not the guarantee, exactly as `PowerControlService` documents for
 `F{i}Mn` floor (a stuck override cannot park a fan below what the firmware
 itself considers safe) and the fact that `F{i}Md` does not survive a power
 cycle.
+
+### Readback verification
+
+Item 4 above named the fix and, for a while, nothing implemented it:
+`SMCFanWriter.setTargetRPM` reported success purely from `WRITE_BYTES`
+being accepted, never from the fan actually moving. That gap is exactly
+market research's top complaint about four of seven competitor apps
+(Stats, TG Pro, Sensei, iStatistica): `thermalmonitord` can re-assert
+protected mode and silently override an accepted write, and an app that
+only checks acceptance tells the user it worked anyway.
+
+The fix: after `F{i}Tg` is written, `setTargetRPM` polls `F{i}Ac` (four
+samples, ~350 ms apart, so roughly a second of polling — long enough for a
+fan to visibly start responding, short enough not to block the synchronous
+XPC call for long) and returns a `FanWriteVerification` with two
+independent booleans:
+
+* `accepted` — the SMC took the write. This is all the pre-fix code
+  checked.
+* `applied` — the fan's actual RPM was seen landing within a tolerance
+  band of the target, or moving meaningfully toward it (`FanDaemonReadback
+  .applied`, in `SentryKit/FanDaemon/FanDaemonReadback.swift` — a pure,
+  unit-tested function over the samples, separate from the SMC I/O that
+  cannot be unit-tested on a machine with no signing identities).
+
+`accepted && !applied` is the "SMC said yes, thermalmonitord said no"
+case. It is threaded up as its own thing at every layer rather than folded
+into an ordinary failure: `FanDaemonService.setTarget` logs it at fault
+level (distinct from the `.notice` a verified success gets) and replies
+with `verifiedApplied: false` and no failure message (the SMC did not
+refuse anything, so `FanDaemonRefusal` doesn't apply);
+`FanDaemonProtocol.setTarget` carries `verifiedApplied` as a fourth reply
+parameter; `PrivilegedFanControlBackend.applyTarget` throws the new
+`FanControlWriteError.writeNotVerified(requestedRPM:fanIndex:)` rather than
+treating it as `.helperRefused` or as success. The fan stays held (`F{i}Md`
+remains 1) in the unverified case exactly as it does in the verified one —
+an unconfirmed write is a reason to say so, not a reason to hand the fan
+back to firmware control out from under a client that still believes it is
+holding it.
+
+**Caveat, stated the same way the rest of this document does.** The
+tolerance band (150 rpm) and movement threshold (75 rpm) that decide
+`applied` are reasoned from the ranges this document measured and from
+Apple Silicon's observed idle-to-ramp behavior, not tuned against an
+observed `thermalmonitord` override — because, per the single-hardware
+caveat above and the section below, the write path itself has never run.
+Revisit both constants against real hardware in the first-run checklist.
 
 ### Uninstall, stated without softening
 
@@ -133,6 +199,13 @@ here by construction and the Mach service is never published. Therefore
    offset the reader decodes from — a strong inference, not a measurement.
 5. launchd's behavior on daemon exit, and whether it respects the omitted
    `KeepAlive` the way this design needs it to.
+6. **The readback-verification poll actually catching a `thermalmonitord`
+   override.** `FanDaemonReadback.applied`'s tolerance band and movement
+   threshold are unit-tested against fabricated sample sequences (see
+   "Readback verification" above and `SentryTests/FanDaemonReadbackTests
+   .swift`), which proves the *arithmetic* is correct. It does not prove
+   the constants are well-tuned against a real override, because no write
+   has run to produce one.
 
 What *has* been verified, on this hardware, from this branch: the app with no
 registered daemon behaves exactly as it did in Phase 2 — two fans detected,
@@ -159,8 +232,13 @@ Do these **in order**, on a machine you are willing to reboot:
    the job exists and the Mach service is registered.
 6. **Watch the fans and the log while applying a fixed speed.** `log stream
    --predicate 'subsystem == "dev.malekswilam.sentry.fandaemon"'`. Verify
-   the applied RPM matches what the daemon reports, and that a deliberately
-   out-of-range request (e.g. 12000) comes back clamped and *says* it was.
+   the applied RPM matches what the daemon reports, that a deliberately
+   out-of-range request (e.g. 12000) comes back clamped and *says* it was,
+   and that a verified write logs at `.notice` while `verifiedApplied` reads
+   `true` in the app. If a request comes back `accepted` but not
+   `verifiedApplied` on hardware that should have complied, that is the
+   signal to re-tune `FanDaemonReadback`'s tolerance band and movement
+   threshold against what real fan ramp behavior actually looks like.
 7. **Verify the fail-safe before trusting it.** With a fan held: `kill` the
    app (not the daemon) and confirm the fans return to firmware control
    within a second or two; then wedge the app (attach a debugger and pause

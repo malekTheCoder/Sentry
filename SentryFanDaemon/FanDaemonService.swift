@@ -130,7 +130,7 @@ final class FanDaemonService: NSObject, FanDaemonProtocol {
         }
     }
 
-    func setTarget(fanIndex: Int, rpm: Double, reply: @escaping (Double, Bool, String?) -> Void) {
+    func setTarget(fanIndex: Int, rpm: Double, reply: @escaping (Double, Bool, Bool, String?) -> Void) {
         let now = Date()
         queue.async { [self] in
             // A message is proof the client is alive, and the client is
@@ -149,7 +149,7 @@ final class FanDaemonService: NSObject, FanDaemonProtocol {
             switch outcome {
             case .refuse(let refusal):
                 Self.log.error("Refused \(FanDaemonCommand.setTarget(fanIndex: fanIndex, requestedRPM: rpm).logSummary, privacy: .public): \(refusal.message, privacy: .public)")
-                reply(-1, false, refusal.message)
+                reply(-1, false, false, refusal.message)
 
             case .write(let clampedRPM, let wasClamped):
                 // Order matters and is the reverse of the intuitive one.
@@ -163,13 +163,14 @@ final class FanDaemonService: NSObject, FanDaemonProtocol {
                 // not. See `FanDaemonFailSafe.heldFans`.
                 if !failSafe.heldFans.contains(fanIndex) {
                     guard writer.setForcedMode(true, fan: fanIndex) else {
-                        reply(-1, false, FanDaemonRefusal.smcWriteFailed(key: "F\(fanIndex)Md").message)
+                        reply(-1, false, false, FanDaemonRefusal.smcWriteFailed(key: "F\(fanIndex)Md").message)
                         return
                     }
                     failSafe.noteHoldingFan(fanIndex)
                 }
 
-                guard writer.setTargetRPM(clampedRPM, fan: fanIndex) else {
+                let verification = writer.setTargetRPM(clampedRPM, fan: fanIndex)
+                guard verification.accepted else {
                     // The target write failed while the fan is already out
                     // of firmware control. Do not leave it there: put it
                     // straight back and report the failure. This is the one
@@ -177,12 +178,29 @@ final class FanDaemonService: NSObject, FanDaemonProtocol {
                     if writer.setForcedMode(false, fan: fanIndex) {
                         failSafe.noteReleasedFan(fanIndex)
                     }
-                    reply(-1, false, FanDaemonRefusal.smcWriteFailed(key: "F\(fanIndex)Tg").message)
+                    reply(-1, false, false, FanDaemonRefusal.smcWriteFailed(key: "F\(fanIndex)Tg").message)
                     return
                 }
 
-                Self.log.notice("Applied \(Int(clampedRPM.rounded()), privacy: .public) rpm to fan \(fanIndex, privacy: .public)\(wasClamped ? " (clamped)" : "", privacy: .public)")
-                reply(clampedRPM, wasClamped, nil)
+                // The fan stays held (`F{i}Md` remains 1) either way — an
+                // unverified write is not a reason to hand the fan back to
+                // firmware control, only a reason to say so. Reverting here
+                // would also fight the client, which still believes it is
+                // holding the fan and will keep heartbeating.
+                if verification.applied {
+                    Self.log.notice("Applied \(Int(clampedRPM.rounded()), privacy: .public) rpm to fan \(fanIndex, privacy: .public)\(wasClamped ? " (clamped)" : "", privacy: .public)")
+                } else {
+                    // Logged at fault level, not notice: this is the
+                    // "thermalmonitord silently won" case the readback poll
+                    // exists to catch, and it is exactly the situation a
+                    // support log needs to be able to find. `reply`'s
+                    // `failureMessage` stays `nil` — the SMC did not refuse
+                    // anything, so this is not `FanDaemonRefusal` territory
+                    // — and `verifiedApplied` carries the distinction up to
+                    // the app instead.
+                    Self.log.fault("Fan \(fanIndex, privacy: .public) accepted target \(Int(clampedRPM.rounded()), privacy: .public) rpm but readback never confirmed the fan moved (last sample: \(verification.finalRPM.map { String(Int($0.rounded())) } ?? "none", privacy: .public)); something else may be overriding it.")
+                }
+                reply(clampedRPM, wasClamped, verification.applied, nil)
             }
         }
     }

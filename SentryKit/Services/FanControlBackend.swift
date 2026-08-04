@@ -197,6 +197,24 @@ public enum FanControlWriteError: Error, LocalizedError, Equatable, Sendable {
     /// never reported as "the privileged helper is missing" — two
     /// completely different problems with two completely different fixes.
     case policyProducedNoTarget(reason: String)
+    /// The daemon accepted the write — the SMC took `F{i}Tg`, the far end
+    /// did not refuse anything, `helperRefused` does not apply — but a
+    /// several-sample readback poll of `F{i}Ac` never saw the fan's actual
+    /// RPM move to (or meaningfully toward) the requested target. See
+    /// `FanDaemonReadback` and `FanDaemonService.setTarget`'s handling of
+    /// `verifiedApplied == false`.
+    ///
+    /// **Why this is not `helperRefused`.** `helperRefused` means the path
+    /// is open and the far end said no; this means the far end said yes and
+    /// the hardware disagreed anyway — the exact "SMC accepted the write,
+    /// `thermalmonitord` silently overrode it" failure mode that four of
+    /// seven competitor fan-control apps' users report as their top
+    /// complaint. Folding the two together would hide the one case an
+    /// operator most needs to be able to tell apart from an ordinary
+    /// refusal, because the fix is different: a refusal means try again or
+    /// report a bug; this means something else on the system is actively
+    /// fighting the request.
+    case writeNotVerified(requestedRPM: Double, fanIndex: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -210,6 +228,8 @@ public enum FanControlWriteError: Error, LocalizedError, Equatable, Sendable {
             return "This Mac has no fan \(index + 1)."
         case .rpmOutsideHardwareLimits(let requested, let limits):
             return "\(Int(requested.rounded())) rpm is outside this fan's \(Int(limits.minRPM.rounded()))–\(Int(limits.maxRPM.rounded())) rpm range."
+        case .writeNotVerified(let requestedRPM, let fanIndex):
+            return "Sentry's fan helper wrote \(Int(requestedRPM.rounded())) rpm to fan \(fanIndex + 1), but couldn't confirm the fan actually moved. Something else on this Mac — most likely thermalmonitord reasserting control — may be overriding it."
         }
     }
 }
