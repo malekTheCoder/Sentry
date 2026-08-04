@@ -101,6 +101,16 @@ public final class AppDataSource: ObservableObject {
     /// the Dashboard shows a connection-lost banner off this flag.
     @Published public private(set) var isLocalSyncConnected = false
 
+    /// The most recent reason a *direct* (remote, TLS-PSK) connect attempt
+    /// failed, or `nil` if none has failed yet this session, or the most
+    /// recent attempt succeeded. `SettingsTabView.remoteMacSection` reads
+    /// this to show "Wrong code?" vs. "Mac not responding — check it's
+    /// awake and on the network" instead of the identical, undifferentiated
+    /// "still trying…" both cases produced before this existed
+    /// (connection-honesty review gap #2). Meaningless — and never set —
+    /// for the Bonjour/LAN path, which has no "wrong code" concept.
+    @Published public private(set) var remoteConnectFailureReason: DirectConnectFailureReason?
+
     private var localClient: LocalSyncClient?
     private var resolveTask: Task<Void, Never>?
 
@@ -138,6 +148,16 @@ public final class AppDataSource: ObservableObject {
     private func resolve() async {
         let client = LocalSyncClient()
         localClient = client
+        // Registered before `waitForFirstConnection` runs, not after, so a
+        // direct-connect failure during the very first resolution (not just
+        // ones after a fallback-to-mock) still reaches `SettingsTabView` —
+        // see `remoteConnectFailureReason`'s doc comment.
+        await client.setDirectConnectFailureHandler { [weak self] reason in
+            Task { @MainActor in
+                guard let self, self.localClient != nil else { return }
+                self.remoteConnectFailureReason = reason
+            }
+        }
         var timeout = Self.discoveryTimeout
         if let remote = Self.remoteEndpointFromDefaults() {
             await client.configureDirectEndpoint(host: remote.host, port: remote.port, pairingCode: remote.code)
@@ -219,6 +239,10 @@ public final class AppDataSource: ObservableObject {
         if let resolveTask {
             await resolveTask.value
         }
+        // A freshly-entered endpoint deserves a clean slate — otherwise a
+        // "wrong code" message from a previous attempt could sit under the
+        // Connect button while a corrected code is already being dialed.
+        remoteConnectFailureReason = nil
 
         if let localClient {
             await localClient.configureDirectEndpoint(host: host, port: port, pairingCode: code)
@@ -262,8 +286,36 @@ public final class AppDataSource: ObservableObject {
         transport = MockDataSource()
         isUsingLocalSync = false
         isLocalSyncConnected = false
+        remoteConnectFailureReason = nil
         resolveTask = nil
         await resolveIfNeeded()
+    }
+
+    /// Clears the phone's saved remote-Mac endpoint — the counterpart to
+    /// `applyPairing(_:)`/`applyRemoteSettingsFromDefaults()`: those two
+    /// write an endpoint and (re)dial it, this un-writes one and stops
+    /// dialing it. Exists because a saved bad/stale endpoint had no way
+    /// back except manually clearing three text fields in `SettingsTabView`
+    /// — which still left `LocalSyncClient`'s direct-dial retry loop
+    /// redialing the stale address every ~3s forever, a real background
+    /// battery/network cost for an address the user no longer wants tried
+    /// (connection-honesty review gap #3).
+    ///
+    /// Reuses `configureDirectEndpoint`'s existing "empty host/code clears
+    /// it" contract (see that method's doc comment) rather than adding a
+    /// second way to express "no direct endpoint" on `LocalSyncClient`. Does
+    /// *not* tear down or re-resolve the transport — if this phone also has
+    /// a Mac reachable over the LAN/Bonjour, that connection is unaffected;
+    /// only the direct/remote fallback is forgotten.
+    public func forgetRemoteMac() async {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "remoteSync.host")
+        defaults.removeObject(forKey: "remoteSync.port")
+        defaults.removeObject(forKey: "remoteSync.code")
+        remoteConnectFailureReason = nil
+        if let localClient {
+            await localClient.configureDirectEndpoint(host: "", port: 0, pairingCode: "")
+        }
     }
 
     // MARK: - Mock-only conveniences, generalized across both transports

@@ -40,6 +40,31 @@ public enum SyncSecurity {
     /// key in the handshake.
     private static let pskIdentity = "sentry-remote-sync-v1"
 
+    /// TCP keepalive idle time for the remote (TLS-PSK) path, in seconds —
+    /// how long the connection sits silent before the OS starts sending
+    /// keepalive probes. Without this, `NWConnection` can sit in `.ready`
+    /// long after the underlying path is actually dead (Mac asleep, phone
+    /// backgrounded on cellular, a silent NAT/VPN drop that never sends a
+    /// TCP RST) — `LocalSyncClient.isReady`, and therefore
+    /// `AppDataSource.isLocalSyncConnected`, keeps reporting "live" with
+    /// nothing on the other end (connection-honesty review gap #1).
+    ///
+    /// **Why 15s, not shorter or longer.** A remote tunnel (Tailscale/VPN,
+    /// or a router port-forward reached over cellular) is exactly the path
+    /// this listener exists for, and it's also the path where a dead peer
+    /// is least likely to announce itself with a clean RST — the failure
+    /// mode this exists to catch. Shorter (e.g. 2-5s) would fire probes
+    /// often enough to matter for cellular data/battery on a connection
+    /// that, once paired, is meant to sit open for the lifetime of the
+    /// session; longer (e.g. 60s+) leaves `isLocalSyncConnected` lying for
+    /// up to a minute, which is the whole bug this fixes. 15s is the same
+    /// order of magnitude Apple's own `URLSession` background-transfer
+    /// guidance uses for "detect a stalled peer without being chatty," and
+    /// is short enough that a user who force-quits the Mac app or puts the
+    /// Mac to sleep sees the phone's connection state catch up within one
+    /// UI-refresh's worth of waiting, not a coffee break.
+    static let keepaliveIdleSeconds: TimeInterval = 15
+
     /// Three groups of four, e.g. "M3QP-7TWK-9XCF" — ~62 bits from
     /// `SystemRandomNumberGenerator`, far beyond online-guessing range for
     /// a TLS handshake that fails closed.
@@ -90,8 +115,13 @@ public enum SyncSecurity {
     }
 
     /// `NWParameters` for the remote path — TLS-PSK over TCP. Shared by
-    /// server listener and client connection.
+    /// server listener and client connection, so both ends independently
+    /// notice a dead peer via `keepaliveIdleSeconds` above rather than only
+    /// one side detecting the drop.
     public static func remoteParameters(pairingCode: String) -> NWParameters {
-        NWParameters(tls: tlsOptions(pairingCode: pairingCode), tcp: NWProtocolTCP.Options())
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.enableKeepalive = true
+        tcpOptions.keepaliveIdle = Int(keepaliveIdleSeconds)
+        return NWParameters(tls: tlsOptions(pairingCode: pairingCode), tcp: tcpOptions)
     }
 }
