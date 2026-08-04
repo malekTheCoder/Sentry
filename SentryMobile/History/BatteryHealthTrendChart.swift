@@ -29,11 +29,11 @@ struct BatteryHealthTrendChart: View {
                 chart
             }
         }
-        // `minHeight`, not `height`. The chart itself is fine at a fixed 180pt
-        // — its axis labels are system-styled and scale within it — but the
-        // empty state is a line of text in the same box, and at an
-        // accessibility size that text needs more than 180pt. A minimum lets
-        // the empty state grow while leaving the chart's proportions alone.
+        // `minHeight`, not `height`: the empty state is a line of text in the
+        // same box, and at an accessibility size that text needs more than
+        // 180pt. A minimum lets it grow while leaving the chart's proportions
+        // alone. (The chart's own axis labels are bounded separately — see
+        // `chart` below.)
         .frame(minHeight: 180)
     }
 
@@ -70,6 +70,18 @@ struct BatteryHealthTrendChart: View {
             }
         }
         .chartYScale(domain: yDomain)
+        // Axis labels are furniture, not prose, and they do not reflow: the
+        // y-axis reserves whatever width its widest label needs, and the
+        // x-axis truncates rather than wrapping. Left unbounded they scale
+        // with everything else, and at the largest accessibility sizes
+        // "100.0"/"99.5" claimed roughly a third of the card's width while
+        // the dates below collapsed to "J… J… J… A" — a chart whose data is
+        // unreadable is the opposite of an accessibility win. Capping at
+        // `xxLarge` keeps them comfortably larger than default while leaving
+        // the plot legible; the surrounding card title, the empty state and
+        // the summary text all still scale to the full range, because those
+        // are prose and they reflow.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityLabel("Battery health trend, \(series.count) days")
         .accessibilityValue(rangeDescription)
     }
