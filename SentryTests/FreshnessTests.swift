@@ -104,4 +104,23 @@ final class FreshnessTests: XCTestCase {
     func testAsleepUsesMoonSymbol() {
         XCTAssertEqual(Freshness.asleep.symbolName, "moon.fill")
     }
+
+    // MARK: - warrantsCompactStalenessCue (ComplicationView.swift's dim/glyph cue)
+
+    /// `.live` and `.recent` are the tiers a healthy relay passes through
+    /// routinely — `WatchRelayPolicy.minimumRelayInterval` heartbeats every 5
+    /// minutes even with nothing to report — so neither should trip a
+    /// complication's staleness cue.
+    func testLiveAndRecentDoNotWarrantAComplicationStalenessCue() {
+        XCTAssertFalse(Freshness.live.warrantsCompactStalenessCue)
+        XCTAssertFalse(Freshness.recent.warrantsCompactStalenessCue)
+    }
+
+    /// `.stale` (>= 5 minutes) is exactly the point at which the heartbeat
+    /// itself has gone missing, which is the thing a compact complication
+    /// family should flag.
+    func testStaleAndAsleepWarrantAComplicationStalenessCue() {
+        XCTAssertTrue(Freshness.stale.warrantsCompactStalenessCue)
+        XCTAssertTrue(Freshness.asleep.warrantsCompactStalenessCue)
+    }
 }
