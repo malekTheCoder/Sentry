@@ -211,6 +211,37 @@ final class WatchRelaySnapshotTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode(WatchRelaySnapshot.self, from: data))
     }
 
+    // MARK: showsBattery (ComplicationView.swift's / OverviewPage's battery/CPU swap)
+
+    /// `batteryIsReported == true` is the ordinary case: a laptop that
+    /// genuinely reported a battery.
+    func testShowsBatteryIsTrueWhenBatteryIsReportedTrue() {
+        var snapshot = makeFullyPopulated()
+        snapshot.batteryIsReported = true
+        XCTAssertTrue(snapshot.showsBattery)
+    }
+
+    /// `batteryIsReported == false` is a Mac mini/Studio/Pro that explicitly
+    /// reported no battery — this is the case the headline metric must swap
+    /// away from `batteryPercent` for, since `WatchRelayManager` fills that
+    /// field with a fake `0` on exactly these Macs.
+    func testShowsBatteryIsFalseWhenBatteryIsReportedFalse() {
+        var snapshot = makeFullyPopulated()
+        snapshot.batteryIsReported = false
+        XCTAssertFalse(snapshot.showsBattery)
+    }
+
+    /// `nil` — a phone predating the field — must default to `true`, not
+    /// `false`: it is silence, not a claim that there is no battery. This is
+    /// the same assertion `testAbsentBatteryIsReportedStaysNilRatherThanBecomingFalse`
+    /// makes about the raw field; this one covers the derived property every
+    /// rendering call site actually reads.
+    func testShowsBatteryDefaultsToTrueWhenBatteryIsReportedIsNil() {
+        var snapshot = makeFullyPopulated()
+        snapshot.batteryIsReported = nil
+        XCTAssertTrue(snapshot.showsBattery)
+    }
+
     // MARK: Encoded size
 
     /// The payload crosses `WCSession`, which is not a place for a full

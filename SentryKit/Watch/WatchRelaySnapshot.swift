@@ -357,6 +357,36 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
     }
 }
 
+// MARK: - Complication battery/CPU swap
+
+extension WatchRelaySnapshot {
+    /// Whether a Watch surface should render `batteryPercent` as a real
+    /// reading, or fall back to a different headline metric (CPU, per
+    /// `OverviewPage.HeroReadout.subject`).
+    ///
+    /// Mirrors `OverviewPage.HeroReadout.showsBattery`
+    /// (`SentryWatch/Pages/OverviewPage.swift`) exactly, and follows the same
+    /// v1-compatibility convention `batteryIsReported`'s own doc comment
+    /// spells out: `false` means a Mac that genuinely has no battery (Mac
+    /// mini/Studio/Pro), and `nil` means a phone predating the field, which
+    /// said nothing either way and must not be read as "no battery" — so,
+    /// like `OverviewPage`, the missing case defaults to `true`, never to
+    /// `false`.
+    ///
+    /// Added for `ComplicationView.swift`
+    /// (`SentryWatchWidget/ComplicationView.swift`), which previously read
+    /// `batteryPercent` directly in every complication family and so
+    /// rendered a confident, unchanging "0%" on any desktop Mac — precisely
+    /// the fake zero `batteryIsReported` exists to prevent. Defined here
+    /// rather than duplicated once per family view, and here rather than in
+    /// `SentryWatch` because `SentryWatchWidgetExtension` only compiles
+    /// `SentryKit_watchOS` (see `project.yml`), not the `SentryWatch` app
+    /// target's own helper types.
+    public var showsBattery: Bool {
+        batteryIsReported ?? true
+    }
+}
+
 // MARK: - Additive-tolerant decoding
 
 extension WatchRelaySnapshot {

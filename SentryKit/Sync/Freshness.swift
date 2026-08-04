@@ -120,6 +120,27 @@ extension Freshness {
     /// user picked, so there's no "Fires immediately"/singular-plural
     /// hand-off to a zero-or-negative case — `max(0, ...)` alone covers the
     /// clock-skew edge from `init(lastSeen:now:)` above.
+    /// Whether this tier is stale enough that a surface with no room for the
+    /// full `FreshnessBadge` label — the Watch complication families other
+    /// than `.accessoryRectangular`, see `ComplicationView.swift`'s doc
+    /// comments — should still show *some* visual cue that the reading is
+    /// not current.
+    ///
+    /// `.live` and `.recent` are excluded deliberately, not just for
+    /// simplicity: `WatchRelayPolicy.minimumRelayInterval`
+    /// (`SentryKit/Watch/WatchRelayPolicy.swift`) heartbeats every 5 minutes
+    /// even when nothing has changed, so a reading "up to 5 minutes old" is
+    /// the normal, healthy operation of the relay, not a problem worth
+    /// flagging on a watch face. `.stale` (>= 5 minutes) is exactly the
+    /// point at which the heartbeat itself has gone missing, which is the
+    /// thing worth surfacing.
+    public var warrantsCompactStalenessCue: Bool {
+        switch self {
+        case .live, .recent: return false
+        case .stale, .asleep: return true
+        }
+    }
+
     private static func compactAge(from lastSeen: Date, to now: Date) -> String {
         let age = max(0, now.timeIntervalSince(lastSeen))
         let minutes = Int((age / 60).rounded(.down))
