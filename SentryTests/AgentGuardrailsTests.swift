@@ -313,6 +313,7 @@ final class AgentGuardrailsTests: XCTestCase {
         XCTAssertEqual(decoded.quietHoursStartMinute, 22 * 60)
         XCTAssertEqual(decoded.quietHoursEndMinute, 7 * 60)
         XCTAssertTrue(decoded.thermalAutoRevokeEnabled)
+        XCTAssertTrue(decoded.enforceAgainstExternalCaffeinate)
     }
 
     func testAppSettingsMissingGuardrailKeyUpgradesToDefaults() throws {

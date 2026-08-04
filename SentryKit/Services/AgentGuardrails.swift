@@ -104,6 +104,35 @@ public struct AgentGuardrailSettings: Codable, Equatable, Sendable {
     /// a throttling Mac awake makes the thermal problem strictly worse.
     public var thermalAutoRevokeEnabled: Bool
 
+    // MARK: External sleep-inhibitor enforcement (see CaffeinateArbitrator)
+
+    /// When on, and only while an `AgentGuardrails.autoRevocationReason`
+    /// condition is active (battery critical, quiet hours, thermal serious+
+    /// — i.e. the exact moment Sentry would already be releasing its own
+    /// agent-held `keep_awake`), Sentry also terminates any `caffeinate`
+    /// process it detects was spawned by a Claude Code session
+    /// (`CaffeinateArbitrator.enforce(settings:context:sessions:)`).
+    ///
+    /// **This deserves honest copy, not a euphemism, because of what it
+    /// actually does: it calls `kill()` on a process Sentry does not own.**
+    /// Claude Code spawns `caffeinate -i -t 300` on its own, respawning it
+    /// every ~300 seconds, with no user-facing setting on Claude's side to
+    /// disable it (documented, unresolved, on Anthropic's own issue
+    /// tracker as of this writing) — it is invisible to, and unaffected by,
+    /// every other guardrail in this file, because those only ever govern
+    /// Sentry's *own* `keep_awake` MCP tool via `PowerControlService`. This
+    /// is the one guardrail that reaches outside that boundary. On by
+    /// default for the same reasoning `batteryFloorEnabled` and
+    /// `thermalAutoRevokeEnabled` already use here: a coding agent's
+    /// sleep-inhibitor left running on a critically low battery is
+    /// precisely the failure mode this feature set exists to prevent, and
+    /// it fires only in the narrow window where Sentry has independently
+    /// decided this Mac should not be held awake right now. A user who
+    /// doesn't want Sentry killing a process it doesn't own — even in that
+    /// narrow window — can turn this off; the rest of the guardrails above
+    /// are unaffected either way.
+    public var enforceAgainstExternalCaffeinate: Bool
+
     private enum CodingKeys: String, CodingKey {
         case killSwitchEngaged
         case revokedClientNames
@@ -115,6 +144,7 @@ public struct AgentGuardrailSettings: Codable, Equatable, Sendable {
         case quietHoursStartMinute
         case quietHoursEndMinute
         case thermalAutoRevokeEnabled
+        case enforceAgainstExternalCaffeinate
     }
 
     public init(
@@ -127,7 +157,8 @@ public struct AgentGuardrailSettings: Codable, Equatable, Sendable {
         quietHoursEnabled: Bool = false,
         quietHoursStartMinute: Int = 22 * 60,
         quietHoursEndMinute: Int = 7 * 60,
-        thermalAutoRevokeEnabled: Bool = true
+        thermalAutoRevokeEnabled: Bool = true,
+        enforceAgainstExternalCaffeinate: Bool = true
     ) {
         self.killSwitchEngaged = killSwitchEngaged
         self.revokedClientNames = revokedClientNames
@@ -139,6 +170,7 @@ public struct AgentGuardrailSettings: Codable, Equatable, Sendable {
         self.quietHoursEndMinute = quietHoursEndMinute
         self.quietHoursStartMinute = quietHoursStartMinute
         self.thermalAutoRevokeEnabled = thermalAutoRevokeEnabled
+        self.enforceAgainstExternalCaffeinate = enforceAgainstExternalCaffeinate
     }
 
     /// Same additive-`Codable` discipline as `FanControlSettings.init(from:)`
@@ -168,7 +200,9 @@ public struct AgentGuardrailSettings: Codable, Equatable, Sendable {
             quietHoursEndMinute: try container.decodeIfPresent(Int.self, forKey: .quietHoursEndMinute)
                 ?? fallback.quietHoursEndMinute,
             thermalAutoRevokeEnabled: try container.decodeIfPresent(Bool.self, forKey: .thermalAutoRevokeEnabled)
-                ?? fallback.thermalAutoRevokeEnabled
+                ?? fallback.thermalAutoRevokeEnabled,
+            enforceAgainstExternalCaffeinate: try container.decodeIfPresent(Bool.self, forKey: .enforceAgainstExternalCaffeinate)
+                ?? fallback.enforceAgainstExternalCaffeinate
         )
     }
 }
