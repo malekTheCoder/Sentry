@@ -178,6 +178,11 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
     /// background sweep nobody is waiting on.
     public static let defaultCommandTimeout: TimeInterval = 2.0
 
+    /// World-readable — panic reports are written here by the kernel itself
+    /// before any user session exists, so they cannot be restricted to an
+    /// admin-only ACL the way `/Library/Logs` sometimes is elsewhere.
+    private static let kernelPanicDirectory = "/Library/Logs/DiagnosticReports"
+
     private let queue = DispatchQueue(label: "dev.malekswilam.sentry.securityposture", qos: .utility)
     private let runner: PostureCommandRunning
     private let cacheTTL: TimeInterval
@@ -234,6 +239,13 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
         static let socketfilterfw = "/usr/libexec/ApplicationFirewall/socketfilterfw"
         static let defaultsRead = "/usr/bin/defaults"
         static let netstat = "/usr/sbin/netstat"
+        /// `destinationinfo` and `latestbackup` are both unprivileged reads —
+        /// unlike `startbackup`/`stopbackup`, nothing here mutates state or
+        /// needs Full Disk Access.
+        static let tmutil = "/usr/bin/tmutil"
+        /// `diskutil info -plist` is a read-only query; nothing here touches
+        /// `eraseDisk`, `partitionDisk`, or any other mutating verb.
+        static let diskutil = "/usr/sbin/diskutil"
     }
 
     private enum Domain {
@@ -281,6 +293,17 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
             netstatOutput: run(Tool.netstat, ["-an", "-p", "tcp"])
         )
 
+        let timeMachineDestination = SecurityPostureParser.timeMachineDestinationConfigured(
+            run(Tool.tmutil, ["destinationinfo"])
+        )
+        let timeMachineLastBackup = SecurityPostureParser.timeMachineLastBackupDate(
+            run(Tool.tmutil, ["latestbackup", "-t"])
+        )
+        let smartStatus = SecurityPostureParser.driveSMARTStatus(
+            run(Tool.diskutil, ["info", "-plist", "/"])
+        )
+        let kernelPanicCount = recentKernelPanicCount(now: now)
+
         var notes = [
             String(localized: "Sharing services are inferred from listening TCP sockets, not from launchd — reading a Sharing service's enabled state needs privileges Sentry does not request."),
             String(localized: "Only sockets bound to a network-reachable address are counted; a service listening on the loopback interface alone is not treated as reachable.")
@@ -292,6 +315,12 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
             notes.append(String(localized: "macOS 14 and later no longer expose the screen-lock preference to an unprivileged read, so it is reported as unknown rather than guessed."))
         }
         notes.append(String(localized: "Sentry never checks for pending updates here — that requires a network round-trip to Apple. The update findings describe this Mac's update settings, not its update backlog."))
+        if smartStatus == .unknown {
+            notes.append(String(localized: "SMART status could not be read for the startup volume — some external, virtual, and Apple Fabric-attached volumes don't report it at all, which reads the same as a failed probe."))
+        }
+        if kernelPanicCount == nil {
+            notes.append(String(localized: "The kernel panic log directory could not be listed, so recent panic history is unknown rather than assumed clean."))
+        }
 
         return SecurityPosture(
             collectedAt: now,
@@ -318,7 +347,51 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
                 port: SharingServicePort.remoteManagement, in: listeningPorts
             ),
             guestAccount: guest,
+            timeMachineDestinationConfigured: timeMachineDestination,
+            timeMachineLastBackupAt: timeMachineLastBackup,
+            driveSMARTStatus: smartStatus,
+            recentKernelPanicCount: kernelPanicCount,
             notes: notes
         )
+    }
+
+    /// Lists `/Library/Logs/DiagnosticReports` and hands the filenames and
+    /// modification dates to `SecurityPostureParser.kernelPanicCount` for
+    /// the actual counting. The only impure step; deliberately not run
+    /// through `PostureCommandRunning`, because there's a native, no-shell-out
+    /// way to answer this one.
+    ///
+    /// `nil` when the directory can't be listed. A directory that doesn't
+    /// exist counts as zero rather than unknown: on a Mac that has never
+    /// panicked, macOS never creates it, and that is itself the honest
+    /// "nothing to report" case — different from a listing that fails
+    /// because of a permissions problem this app can't explain.
+    private func recentKernelPanicCount(now: Date) -> Int? {
+        let directory = URL(fileURLWithPath: Self.kernelPanicDirectory)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return 0
+        }
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        let entries: [(filename: String, modifiedAt: Date)] = contents.compactMap { url in
+            guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else {
+                return nil
+            }
+            return (url.lastPathComponent, modified)
+        }
+
+        // The window itself is defined on `KernelPanicHistoryRule` in
+        // SentryKit — see that constant's doc comment for why the source of
+        // truth lives on the rule side of the module boundary rather than
+        // here.
+        let windowStart = now.addingTimeInterval(-Double(KernelPanicHistoryRule.windowDays) * 86_400)
+        return SecurityPostureParser.kernelPanicCount(entries: entries, windowStart: windowStart)
     }
 }

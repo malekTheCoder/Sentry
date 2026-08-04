@@ -28,6 +28,19 @@ import Foundation
 /// - `moderateHardware` (7): a habit that shortens life at a slower rate —
 ///   high-state-of-charge residency, heavy swap.
 /// - `minorHardware` (3): worth knowing, not worth worrying about.
+///
+/// **A tier name describes a class of harm, not a domain.** Almost every
+/// rule's category and weight tier agree on domain (a `.security`-category
+/// rule uses a `*Security` weight), but a few hardware-domain findings —
+/// no Time Machine backup at all, a SMART-failing drive — describe
+/// irrecoverable total data loss, which is the class of harm
+/// `criticalSecurity` names, not the gradual, fixable wear `majorHardware`
+/// tops out at describing. Those rules stay filed under their honest
+/// hardware category (so they land in the hardware subscore, where a
+/// backup or a drive genuinely belongs) while borrowing the security tier's
+/// *point value* to say "this is as bad as an unencrypted disk." Each such
+/// rule documents this explicitly at its use site; it is the exception, not
+/// a precedent for picking whichever number reads better.
 public enum InsightWeight {
     public static let criticalSecurity = 25
     public static let majorSecurity = 15
@@ -157,9 +170,66 @@ public enum ProtectionBand: String, Codable, Sendable, CaseIterable, Comparable 
 /// aren't readable has no thermal history, and a 100/100 "Thermals" chip
 /// would be a fabricated pass. Those categories carry `hasData == false` and
 /// the UI renders them as "not enough data" rather than as perfect.
+///
+/// **Why one category cannot spend the whole hardware domain's budget.** A
+/// real machine surfaced the flip side of "one finding per fact": a single
+/// hot, sustained workload can legitimately fire `SustainedHeatRule`,
+/// `ThermalThrottlingRule`, and `SustainedCPULoadRule` (all `.thermal`) at
+/// once, plus `RisingThermalBaselineRule` (`.maintenance`) and
+/// `ChargingWhileHotRule` (`.batteryLongevity`) if it happened while
+/// charging — five findings, one root cause, and at worst tier that is 45
+/// points off a 100-point domain. Because the verdict is banded on the
+/// weaker half, a Mac that is otherwise pristine and simply doing real work
+/// it was asked to do can read "act on this" for a single afternoon of
+/// rendering.
+///
+/// The fix is `categoryDeductionCapHardware`: **a category may not, by
+/// itself, cost the hardware domain more than this many of its 100 points**,
+/// no matter how many findings in that category fired or how they're
+/// individually weighted. This is a domain-level aggregation rule, not a
+/// per-finding one — `Deduction.points` and `CategoryScore.pointsLost` both
+/// keep reporting the true, uncapped total for that category (so the
+/// Thermals chip in the UI still honestly shows how bad thermals are); only
+/// the *slice of the hardware subscore* a single category is allowed to
+/// consume is bounded. This is exactly the aggregation `CategoryScore`
+/// already computes per category, applied one level up to how those
+/// categories sum into the domain, rather than a new mechanism.
+///
+/// **The cap value: 24, or two `majorHardware` findings' worth.** Two
+/// independent, genuinely serious problems landing in the same category
+/// (say, both `CapacityLossRateRule` and a hypothetical second
+/// battery-longevity warning) still cost the domain their full combined
+/// weight — the cap only starts trimming once a category's total goes
+/// *past* what two unrelated significant findings would plausibly sum to,
+/// which is the point past which more findings in one category are more
+/// likely to be several rules describing the same underlying event than
+/// several unrelated ones. Applied to the scenario above: `.thermal`'s raw
+/// 31 points (12 + 12 + 7) is capped to 24, `.maintenance`'s 7 and
+/// `.batteryLongevity`'s 7 are both untouched, for a domain loss of 38
+/// instead of 45 — hardware subscore 62 instead of 55, which crosses the
+/// `needsAttention` boundary at 60 rather than landing in `actOnThis`.
+///
+/// **Deliberately scoped to the hardware domain only.** The security domain
+/// has no equivalent to "one hot workload sets off five sensors" — a Mac
+/// with FileVault, SIP, and Gatekeeper all independently disabled has three
+/// genuinely separate, deliberate failures that happen to share the
+/// `.security` category, and each one is exactly as bad as it looks. Capping
+/// that category the same way would silently forgive the second and third
+/// disabled protection, which is the opposite of this feature's purpose.
+/// Hardware wear signals correlate through shared physical causes (heat,
+/// charge, load) in a way that independently-configured security settings
+/// do not, and the cap only fires where that correlation risk is real.
 public struct ProtectionScore: Codable, Sendable, Equatable {
 
     public static let maximum = 100
+
+    /// The most a single `InsightCategory` may subtract from the *hardware*
+    /// domain's 100-point subscore, regardless of how many findings fired in
+    /// it or how they're weighted. See the type doc's "Why one category
+    /// cannot spend the whole hardware domain's budget" section for the
+    /// reasoning and the worked example behind the number 24. Not applied to
+    /// the security domain — same section, last paragraph, for why.
+    public static let categoryDeductionCapHardware = 24
 
     /// One line of the score's arithmetic.
     public struct Deduction: Codable, Sendable, Equatable, Identifiable {
@@ -347,10 +417,23 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
             )
         }
 
+        // Built from `categories` (uncapped, per-category truth) rather than
+        // re-filtering `insights` — this is the "natural extension of the
+        // per-category scores the type already computes" the type doc's cap
+        // section describes, not a second, independent aggregation that
+        // could drift from what the category chips show.
         func subscore(for domain: InsightDomain) -> Int {
-            let lost = insights
+            let lost = categories
                 .filter { $0.category.domain == domain }
-                .reduce(0) { $0 + $1.scoreImpact }
+                .reduce(0) { total, categoryScore in
+                    // The cap only applies within the hardware domain — see
+                    // `categoryDeductionCapHardware`'s doc comment for why
+                    // the security domain is deliberately exempt.
+                    let contribution = domain == .hardware
+                        ? Swift.min(categoryScore.pointsLost, categoryDeductionCapHardware)
+                        : categoryScore.pointsLost
+                    return total + contribution
+                }
             return clamp(maximum - lost)
         }
 

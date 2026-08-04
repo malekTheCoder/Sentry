@@ -54,6 +54,30 @@ public enum SharingServicePort {
     public static let remoteManagement = 3283
 }
 
+// MARK: - Drive health
+
+/// `diskutil info -plist <volume>` → `SMARTStatus`.
+///
+/// Not a `PostureState`: SMART has a genuine third meaning beyond
+/// on/off/unknown — "this device does not report SMART data at all", which
+/// is common for external, virtual, and some Apple Fabric-attached volumes
+/// and is not the same fact as "the read failed". Both collapse to
+/// `.unknown` here because neither lets a rule say anything about the
+/// drive's health, but the parser test suite keeps them conceptually
+/// distinct in its naming even though the type does not.
+public enum DriveSMARTState: String, Codable, Sendable, CaseIterable, Hashable {
+    /// SMART reports the drive healthy ("Verified").
+    case verified
+    /// SMART reports a failing or pre-fail condition.
+    case failing
+    /// Unreadable, missing, or a status string this parser doesn't
+    /// recognise — including "Not Supported".
+    case unknown
+
+    public var isDefinitelyFailing: Bool { self == .failing }
+    public var isDefinitelyVerified: Bool { self == .verified }
+}
+
 // MARK: - SecurityPosture
 
 /// A point-in-time reading of this Mac's security and privacy posture.
@@ -136,6 +160,39 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
     /// `/Library/Preferences/com.apple.loginwindow` → `GuestEnabled`.
     public var guestAccount: PostureState
 
+    // MARK: Backup & drive health
+    //
+    // These four live on `SecurityPosture` rather than a separate type for
+    // the same reason the sharing-service fields do: they are read by the
+    // same unprivileged collector, in the same sweep, and a rule reasoning
+    // about "is this Mac protected" needs FileVault and "does this Mac have
+    // a backup" in the same context without a second optional to unwrap.
+
+    /// `tmutil destinationinfo`. Whether at least one Time Machine
+    /// destination is configured at all — says nothing about whether it has
+    /// ever completed a backup, which is `timeMachineLastBackupAt`'s job.
+    public var timeMachineDestinationConfigured: PostureState
+
+    /// `tmutil latestbackup -t`. The timestamp of the most recent completed
+    /// local backup snapshot, or `nil` when none could be found — which
+    /// covers both "this Mac has never completed one" and "the probe
+    /// couldn't tell". Only meaningful to read alongside
+    /// `timeMachineDestinationConfigured`; see
+    /// `TimeMachineBackupStaleRule`'s doc comment for how the two combine.
+    public var timeMachineLastBackupAt: Date?
+
+    /// `diskutil info -plist <startup volume>` → `SMARTStatus`.
+    public var driveSMARTStatus: DriveSMARTState
+
+    /// `.panic` files under `/Library/Logs/DiagnosticReports` modified
+    /// within `SecurityPostureCollector.kernelPanicWindowDays`. `nil` when
+    /// the directory couldn't be listed (permissions, or it doesn't exist in
+    /// a way `FileManager` can distinguish from "genuinely empty" — see the
+    /// collector for how that ambiguity is resolved). A definite `0` means
+    /// the directory was listed and nothing in the window matched, which is
+    /// a real answer, not an absence of one.
+    public var recentKernelPanicCount: Int?
+
     /// Human-readable notes about *how* this posture was determined and what
     /// couldn't be. Surfaced verbatim in the UI's methodology disclosure —
     /// the user paying for this is entitled to know which findings are
@@ -189,6 +246,10 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
             fileSharing: .unknown,
             remoteManagement: .unknown,
             guestAccount: .unknown,
+            timeMachineDestinationConfigured: .unknown,
+            timeMachineLastBackupAt: nil,
+            driveSMARTStatus: .unknown,
+            recentKernelPanicCount: nil,
             notes: notes
         )
     }
@@ -210,6 +271,10 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
         fileSharing: PostureState = .unknown,
         remoteManagement: PostureState = .unknown,
         guestAccount: PostureState = .unknown,
+        timeMachineDestinationConfigured: PostureState = .unknown,
+        timeMachineLastBackupAt: Date? = nil,
+        driveSMARTStatus: DriveSMARTState = .unknown,
+        recentKernelPanicCount: Int? = nil,
         notes: [String] = []
     ) {
         self.collectedAt = collectedAt
@@ -228,6 +293,10 @@ public struct SecurityPosture: Codable, Sendable, Equatable {
         self.fileSharing = fileSharing
         self.remoteManagement = remoteManagement
         self.guestAccount = guestAccount
+        self.timeMachineDestinationConfigured = timeMachineDestinationConfigured
+        self.timeMachineLastBackupAt = timeMachineLastBackupAt
+        self.driveSMARTStatus = driveSMARTStatus
+        self.recentKernelPanicCount = recentKernelPanicCount
         self.notes = notes
     }
 }

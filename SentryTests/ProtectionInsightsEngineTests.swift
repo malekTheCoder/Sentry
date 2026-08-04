@@ -753,4 +753,310 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         XCTAssertEqual(gated.unlocked.count, 1)
         XCTAssertTrue(gated.locked.isEmpty)
     }
+
+    // MARK: - Time Machine backup rules
+
+    func testTimeMachineNoBackupDestinationRuleFiresOnlyWhenDefinitelyOff() {
+        let rule = TimeMachineNoBackupDestinationRule()
+
+        let off = InsightContext(now: now, posture: SecurityPosture(timeMachineDestinationConfigured: .off))
+        let insight = rule.evaluate(off)
+        XCTAssertNotNil(insight)
+        XCTAssertEqual(insight?.severity, .critical)
+        XCTAssertFalse(insight?.evidence.isEmpty ?? true)
+
+        let on = InsightContext(now: now, posture: SecurityPosture(timeMachineDestinationConfigured: .on))
+        XCTAssertNil(rule.evaluate(on))
+
+        // Unknown must never be treated as "no destination" — the collector
+        // couldn't tell, which is not the same fact as there being none.
+        let unknown = InsightContext(now: now, posture: SecurityPosture(timeMachineDestinationConfigured: .unknown))
+        XCTAssertNil(rule.evaluate(unknown))
+    }
+
+    func testTimeMachineBackupStaleRuleDistinguishesNeverCompletedFromStale() {
+        let rule = TimeMachineBackupStaleRule()
+        let staleDays = TimeMachineBackupStaleRule.staleWarningDays
+
+        // Destination off entirely: this rule stays silent —
+        // TimeMachineNoBackupDestinationRule covers that case instead.
+        let noDestination = InsightContext(now: now, posture: SecurityPosture(timeMachineDestinationConfigured: .off))
+        XCTAssertNil(rule.evaluate(noDestination))
+
+        // Destination on, but no backup timestamp at all: never completed,
+        // which is critical — functionally unprotected despite the setup.
+        let neverCompleted = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .on, timeMachineLastBackupAt: nil
+        ))
+        let neverInsight = rule.evaluate(neverCompleted)
+        XCTAssertEqual(neverInsight?.severity, .critical)
+        XCTAssertEqual(neverInsight?.scoreImpact, InsightWeight.criticalSecurity)
+
+        // Exactly at the stale threshold: fires as a warning.
+        let atThreshold = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .on,
+            timeMachineLastBackupAt: now.addingTimeInterval(-Double(staleDays) * 86_400)
+        ))
+        let staleInsight = rule.evaluate(atThreshold)
+        XCTAssertEqual(staleInsight?.severity, .warning)
+        XCTAssertEqual(staleInsight?.scoreImpact, InsightWeight.majorSecurity)
+
+        // One day under the threshold: silent (TimeMachineBackupHealthyRule
+        // covers this case).
+        let underThreshold = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .on,
+            timeMachineLastBackupAt: now.addingTimeInterval(-Double(staleDays - 1) * 86_400)
+        ))
+        XCTAssertNil(rule.evaluate(underThreshold))
+    }
+
+    func testTimeMachineBackupHealthyRuleFiresOnlyWhenRecent() {
+        let rule = TimeMachineBackupHealthyRule()
+        let staleDays = TimeMachineBackupStaleRule.staleWarningDays
+
+        let recent = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .on,
+            timeMachineLastBackupAt: now.addingTimeInterval(-3600)
+        ))
+        let insight = rule.evaluate(recent)
+        XCTAssertEqual(insight?.severity, .good)
+        XCTAssertFalse(insight?.evidence.isEmpty ?? true)
+
+        let stale = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .on,
+            timeMachineLastBackupAt: now.addingTimeInterval(-Double(staleDays) * 86_400)
+        ))
+        XCTAssertNil(rule.evaluate(stale))
+
+        let noTimestamp = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .on, timeMachineLastBackupAt: nil
+        ))
+        XCTAssertNil(rule.evaluate(noTimestamp))
+
+        let noDestination = InsightContext(now: now, posture: SecurityPosture(
+            timeMachineDestinationConfigured: .off, timeMachineLastBackupAt: now
+        ))
+        XCTAssertNil(rule.evaluate(noDestination))
+    }
+
+    func testTimeMachineDestinationConfiguredParsing() {
+        XCTAssertEqual(
+            SecurityPostureParser.timeMachineDestinationConfigured("tmutil: No destinations configured."),
+            .off
+        )
+        XCTAssertEqual(
+            SecurityPostureParser.timeMachineDestinationConfigured("Name            : Backup Drive\nKind            : Local"),
+            .on
+        )
+        XCTAssertEqual(SecurityPostureParser.timeMachineDestinationConfigured(nil), .unknown)
+        XCTAssertEqual(SecurityPostureParser.timeMachineDestinationConfigured(""), .unknown)
+    }
+
+    func testTimeMachineLastBackupDateParsing() {
+        let parsed = SecurityPostureParser.timeMachineLastBackupDate("2024-01-15-123456")
+        XCTAssertNotNil(parsed)
+
+        // Extra surrounding text (a full path, not just -t output) still
+        // yields the timestamp.
+        let fromPath = SecurityPostureParser.timeMachineLastBackupDate(
+            "/Volumes/Backup/Backups.backupdb/Mac/2024-01-15-123456"
+        )
+        XCTAssertEqual(fromPath, parsed)
+
+        XCTAssertNil(SecurityPostureParser.timeMachineLastBackupDate(nil))
+        XCTAssertNil(SecurityPostureParser.timeMachineLastBackupDate(""))
+        XCTAssertNil(SecurityPostureParser.timeMachineLastBackupDate("Failed to mount backup destination"))
+    }
+
+    // MARK: - Drive health (SMART)
+
+    func testDriveSMARTFailingAndHealthyRulesRespectTriState() {
+        let failingRule = DriveSMARTFailingRule()
+        let healthyRule = DriveSMARTHealthyRule()
+
+        let failing = InsightContext(now: now, posture: SecurityPosture(driveSMARTStatus: .failing))
+        XCTAssertEqual(failingRule.evaluate(failing)?.severity, .critical)
+        XCTAssertEqual(failingRule.evaluate(failing)?.scoreImpact, InsightWeight.criticalSecurity)
+        XCTAssertNil(healthyRule.evaluate(failing))
+
+        let verified = InsightContext(now: now, posture: SecurityPosture(driveSMARTStatus: .verified))
+        XCTAssertNil(failingRule.evaluate(verified))
+        XCTAssertEqual(healthyRule.evaluate(verified)?.severity, .good)
+
+        // Unknown (unreadable, or a device that doesn't report SMART at
+        // all) fires neither — never fabricate a pass or a failure.
+        let unknown = InsightContext(now: now, posture: SecurityPosture(driveSMARTStatus: .unknown))
+        XCTAssertNil(failingRule.evaluate(unknown))
+        XCTAssertNil(healthyRule.evaluate(unknown))
+    }
+
+    func testDriveSMARTStatusParsing() {
+        let verifiedPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>SMARTStatus</key><string>Verified</string></dict></plist>
+        """
+        XCTAssertEqual(SecurityPostureParser.driveSMARTStatus(verifiedPlist), .verified)
+
+        let failingPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>SMARTStatus</key><string>Failing</string></dict></plist>
+        """
+        XCTAssertEqual(SecurityPostureParser.driveSMARTStatus(failingPlist), .failing)
+
+        // No SMARTStatus key at all — some external/virtual volumes don't
+        // report it. Honest unknown, not a fabricated pass.
+        let noKeyPlist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict><key>FreeSpace</key><integer>0</integer></dict></plist>
+        """
+        XCTAssertEqual(SecurityPostureParser.driveSMARTStatus(noKeyPlist), .unknown)
+
+        XCTAssertEqual(SecurityPostureParser.driveSMARTStatus(nil), .unknown)
+        XCTAssertEqual(SecurityPostureParser.driveSMARTStatus("not a plist"), .unknown)
+    }
+
+    // MARK: - Kernel panic history
+
+    func testKernelPanicHistoryRuleBoundary() {
+        let rule = KernelPanicHistoryRule()
+        let minimum = KernelPanicHistoryRule.minimumPanicsToFlag
+
+        // Below the minimum: silent, even though a panic did occur — a
+        // single panic isn't a pattern.
+        let one = InsightContext(now: now, posture: SecurityPosture(recentKernelPanicCount: minimum - 1))
+        XCTAssertNil(rule.evaluate(one))
+
+        // At the minimum: fires.
+        let atMinimum = InsightContext(now: now, posture: SecurityPosture(recentKernelPanicCount: minimum))
+        let insight = rule.evaluate(atMinimum)
+        XCTAssertEqual(insight?.severity, .warning)
+        XCTAssertEqual(insight?.scoreImpact, InsightWeight.majorHardware)
+        XCTAssertFalse(insight?.evidence.isEmpty ?? true)
+
+        // Zero panics: silent, and deliberately not a positive finding
+        // either — see the rule's doc comment on absence-of-evidence.
+        let zero = InsightContext(now: now, posture: SecurityPosture(recentKernelPanicCount: 0))
+        XCTAssertNil(rule.evaluate(zero))
+
+        // Unknown (directory couldn't be listed): silent, never assumed
+        // clean.
+        let unknown = InsightContext(now: now, posture: SecurityPosture(recentKernelPanicCount: nil))
+        XCTAssertNil(rule.evaluate(unknown))
+    }
+
+    func testKernelPanicCountParsing() {
+        let windowStart = now.addingTimeInterval(-30 * 86_400)
+        let entries: [(filename: String, modifiedAt: Date)] = [
+            ("Kernel-2024-01-01-100000.panic", now.addingTimeInterval(-86_400)),
+            ("Kernel-2023-01-01-100000.panic", now.addingTimeInterval(-1000 * 86_400)), // outside the window
+            ("SomeApp-2024-01-01-100000.crash", now.addingTimeInterval(-86_400)), // not a panic
+            ("KERNEL-RECENT.PANIC", now.addingTimeInterval(-86_400)) // case-insensitive match
+        ]
+        XCTAssertEqual(SecurityPostureParser.kernelPanicCount(entries: entries, windowStart: windowStart), 2)
+        XCTAssertEqual(SecurityPostureParser.kernelPanicCount(entries: [], windowStart: windowStart), 0)
+    }
+
+    // MARK: - Outdated macOS version
+
+    func testOutdatedMacOSVersionRuleBoundary() {
+        let rule = OutdatedMacOSVersionRule()
+        let minimum = OutdatedMacOSVersionRule.minimumSupportedMajorVersion
+
+        // One major version below the cutoff: fires.
+        let outdated = InsightContext(now: now, device: DeviceFacts(macOSVersion: "\(minimum - 1).6.3"))
+        let insight = rule.evaluate(outdated)
+        XCTAssertEqual(insight?.severity, .critical)
+        XCTAssertEqual(insight?.scoreImpact, InsightWeight.criticalSecurity)
+
+        // Exactly at the cutoff: still supported, stays silent.
+        let atCutoff = InsightContext(now: now, device: DeviceFacts(macOSVersion: "\(minimum).0.0"))
+        XCTAssertNil(rule.evaluate(atCutoff))
+
+        // Well above the cutoff: silent.
+        let current = InsightContext(now: now, device: DeviceFacts(macOSVersion: "\(minimum + 2).0.0"))
+        XCTAssertNil(rule.evaluate(current))
+
+        // No version string at all, or an unparseable one: honest silence
+        // rather than a guess.
+        let missing = InsightContext(now: now, device: DeviceFacts(macOSVersion: nil))
+        XCTAssertNil(rule.evaluate(missing))
+
+        let garbled = InsightContext(now: now, device: DeviceFacts(macOSVersion: "not-a-version"))
+        XCTAssertNil(rule.evaluate(garbled))
+    }
+
+    // MARK: - Category deduction cap (correlated hardware findings)
+
+    /// **The exact scenario from the review this cap was added for.** One
+    /// hot, sustained workload fires `SustainedHeatRule` and
+    /// `ThermalThrottlingRule` and `SustainedCPULoadRule` (all `.thermal`,
+    /// 12 + 12 + 7 = 31), plus `RisingThermalBaselineRule` (`.maintenance`,
+    /// 7) and `ChargingWhileHotRule` (`.batteryLongevity`, 7) — five
+    /// findings, one root cause, 45 raw points. Before the cap, that reads
+    /// hardware 55 / weakerSubscore 55 / `.actOnThis`. After it, `.thermal`'s
+    /// 31 is capped to 24, for a domain loss of 38 and hardware 62 —
+    /// crossing the `needsAttention` boundary.
+    func testCategoryDeductionCapLimitsCorrelatedHardwareFindings() {
+        let correlatedFindings = [
+            finding("thermal.sustained-heat", category: .thermal, severity: .warning, impact: InsightWeight.majorHardware),
+            finding("thermal.throttling-frequency", category: .thermal, severity: .warning, impact: InsightWeight.majorHardware),
+            finding("load.sustained-cpu", category: .thermal, severity: .warning, impact: InsightWeight.moderateHardware),
+            finding("thermal.rising-baseline", category: .maintenance, severity: .warning, impact: InsightWeight.moderateHardware),
+            finding("battery.charging-while-hot", category: .batteryLongevity, severity: .warning, impact: InsightWeight.moderateHardware)
+        ]
+        let score = ProtectionScore.compute(insights: correlatedFindings, context: InsightContext(now: now))
+
+        let thermalCategory = score.categories.first { $0.category == .thermal }
+        // The category's own truth is uncapped — 31 raw points lost, so the
+        // Thermals chip still honestly reports how bad thermals are.
+        XCTAssertEqual(thermalCategory?.pointsLost, 31)
+
+        // The domain aggregate is capped: 24 (thermal, capped from 31) + 7
+        // (maintenance) + 7 (batteryLongevity) = 38 lost, not 45.
+        XCTAssertEqual(score.hardwareSubscore, 100 - 38)
+        XCTAssertEqual(score.hardwareSubscore, 62)
+
+        // The before/after headline: uncapped this would have banded
+        // `.actOnThis` (55 < 60); capped it bands `.needsAttention`.
+        XCTAssertEqual(ProtectionScore.pointsBand(for: 55), .actOnThis)
+        XCTAssertEqual(score.band, .needsAttention)
+    }
+
+    /// A category sitting exactly at the cap is untouched; one point past it
+    /// is trimmed by exactly that one point — the cap is a ceiling, not a
+    /// rounding step.
+    func testCategoryDeductionCapBoundaryIsExact() {
+        let atCap = ProtectionScore.compute(
+            insights: [finding("a", category: .thermal, severity: .warning, impact: ProtectionScore.categoryDeductionCapHardware)],
+            context: InsightContext(now: now)
+        )
+        XCTAssertEqual(atCap.hardwareSubscore, 100 - ProtectionScore.categoryDeductionCapHardware)
+
+        let onePast = ProtectionScore.compute(
+            insights: [finding("a", category: .thermal, severity: .warning, impact: ProtectionScore.categoryDeductionCapHardware + 1)],
+            context: InsightContext(now: now)
+        )
+        // Capped at the same value as "atCap" above — the extra point is
+        // absorbed, not applied.
+        XCTAssertEqual(onePast.hardwareSubscore, 100 - ProtectionScore.categoryDeductionCapHardware)
+    }
+
+    /// The cap must never touch the security domain — a Mac with several
+    /// independently-disabled protections that happen to share the
+    /// `.security` category is not "one correlated event" the way a hot
+    /// workload is, and each disabled protection must still cost its full
+    /// weight. This is the same fixture `testSubscoreClampsAtZeroRatherThanGoingNegative`
+    /// uses; restated here to pin the cap-exemption explicitly by name.
+    func testCategoryDeductionCapDoesNotApplyToSecurityDomain() {
+        let manyIndependentSecurityFindings = (0..<4).map { i in
+            finding("critical-\(i)", category: .security, severity: .critical, impact: InsightWeight.criticalSecurity)
+        }
+        let score = ProtectionScore.compute(insights: manyIndependentSecurityFindings, context: InsightContext(now: now))
+        // 4 × 25 = 100 lost, uncapped — if the hardware-domain cap of 24 had
+        // leaked into security, this would floor at 76, not 0.
+        XCTAssertEqual(score.securitySubscore, 0)
+    }
 }
