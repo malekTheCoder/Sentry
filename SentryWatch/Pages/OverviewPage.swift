@@ -165,7 +165,11 @@ struct OverviewPage: View {
     /// decides whether the rest of the screen is worth reading.
     private var header: some View {
         HStack(spacing: 6) {
-            FreshnessBadge(lastSeen: snapshot.lastSeen)
+            // `refreshingEvery:`, not the plain initializer: this is the
+            // page's one "must never lie" element (the header doc comment
+            // above), and a watch app left open with no new relay arriving
+            // must not keep reading "Live" past its actual freshness window.
+            FreshnessBadge(lastSeen: snapshot.lastSeen, refreshingEvery: FreshnessBadge.defaultRefreshInterval)
                 .font(.caption2)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
