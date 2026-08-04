@@ -238,17 +238,32 @@ struct DropdownView: View {
     private var agentControlSection: some View {
         if settingsStore.settings.agentGuardrails.killSwitchEngaged {
             HStack(spacing: palette.spacingTight) {
-                Image(systemName: "bolt.slash.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.warning)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Agent access paused")
-                        .font(palette.font(size: 12, weight: .semibold))
+                // Only the icon + message are combined into one VoiceOver
+                // element — not the whole row. The combine used to wrap the
+                // `Button` too, which folds a `Button` into a non-interactive
+                // combined element and makes it unreachable: VoiceOver users
+                // lost the one control that un-pauses agent access, arguably
+                // the most important control in the dropdown while this
+                // banner is showing. Scoping `.combine` to just this HStack
+                // keeps "Agent access paused / Every MCP tool call is being
+                // declined." reading as one coherent announcement — which is
+                // still the right behavior for those two lines — while
+                // leaving the button as its own, independently focusable
+                // element right after it.
+                HStack(spacing: palette.spacingTight) {
+                    Image(systemName: "bolt.slash.fill")
+                        .font(.system(size: 12))
                         .foregroundStyle(palette.warning)
-                    Text("Every MCP tool call is being declined.")
-                        .font(palette.font(size: 10))
-                        .foregroundStyle(palette.textSecondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Agent access paused")
+                            .font(palette.font(size: 12, weight: .semibold))
+                            .foregroundStyle(palette.warning)
+                        Text("Every MCP tool call is being declined.")
+                            .font(palette.font(size: 10))
+                            .foregroundStyle(palette.textSecondary)
+                    }
                 }
+                .accessibilityElement(children: .combine)
                 Spacer(minLength: palette.spacingTight)
                 Button("Resume") {
                     setAgentAccessPaused(false)
@@ -258,12 +273,12 @@ struct DropdownView: View {
                 .accessibilityLabel("Resume agent access")
             }
             .padding(.horizontal, palette.spacingTight)
-            .accessibilityElement(children: .combine)
         } else {
             DropdownTextAction(
                 title: String(localized: "Stop AI agents"),
                 symbol: "bolt.slash",
-                action: { setAgentAccessPaused(true) }
+                action: { setAgentAccessPaused(true) },
+                isDestructive: true
             )
         }
     }
@@ -534,18 +549,39 @@ struct DropdownTextAction: View {
     let title: String
     let symbol: String
     let action: () -> Void
+    /// True for actions that revoke access rather than navigate — currently
+    /// only "Stop AI agents".
+    ///
+    /// **Bug this fixes.** "Stop AI agents" and "Open Dashboard"
+    /// (`actionsRow`) used to be two `DropdownTextAction`s with identical
+    /// styling: same text weight, same `textPrimary`/`accent`-on-hover tint.
+    /// One navigates, the other kills all agent access — reading them apart
+    /// required actually parsing the words, every time. `isDestructive`
+    /// tints the row `palette.danger` at rest (not just on hover, unlike the
+    /// default treatment), the same token `ThemePane`'s contrast-audit flag
+    /// and this file's own agent-paused banner already use for "something
+    /// serious" — so this doesn't invent a new meaning for red, it reuses the
+    /// one the app already has. `role: .destructive` on the underlying
+    /// `Button` is free AX benefit on top (VoiceOver/Full Keyboard Access
+    /// both understand the role), even though the row's own custom label
+    /// means the system doesn't restyle it for us.
+    var isDestructive: Bool = false
 
     @State private var isHovered = false
 
+    private var tint: Color {
+        isDestructive ? palette.danger : (isHovered ? palette.accent : palette.textPrimary)
+    }
+
     var body: some View {
-        Button(action: action) {
+        Button(role: isDestructive ? .destructive : nil, action: action) {
             HStack(spacing: 4) {
                 Text(title)
                     .font(palette.font(size: 11, weight: .medium))
                 Image(systemName: symbol)
                     .font(.system(size: 9, weight: .medium))
             }
-            .foregroundStyle(isHovered ? palette.accent : palette.textPrimary)
+            .foregroundStyle(tint)
             .padding(.horizontal, palette.spacingTight)
             // 28pt: the accessibility floor for a hit target, and the same
             // height as a vitals row, so the two grids agree.

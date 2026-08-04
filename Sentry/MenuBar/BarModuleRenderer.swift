@@ -57,6 +57,39 @@ struct MenuBarPalette {
         default: return warning
         }
     }
+
+    /// Alpha for the highlight wash `StatusItemView.drawHighlightIfNeeded`
+    /// paints behind the bar's modules.
+    ///
+    /// **Why this exists.** `accent`/`success`/`warning`/`danger` are all the
+    /// same `NSColor` above (see this struct's doc comment — the bar is
+    /// strictly monochrome, so every token collapses to the mono base at a
+    /// fixed alpha). That meant `alertHighlightColor(for:)`'s whole switch
+    /// resolved to one indistinguishable wash regardless of what fired it: a
+    /// critical alert and an "ok" one drew the exact same rounded rectangle.
+    /// Since hue can't carry the difference here (§9.4's constraint is the
+    /// *opposite* problem to solve than usual — there's no color budget left
+    /// to spend), the wash's own opacity is the one lever still available
+    /// without inventing a new visual language.
+    ///
+    /// **Rejected: a glyph or shape difference**, the same fix `severity(for:
+    /// value:)`'s warning/critical cue below uses. A highlight wash sits
+    /// *behind* a variable number of modules at a size and position that
+    /// changes with the user's layout, so there's no single fixed spot to
+    /// anchor a glyph the way the "!" cue can anchor to the start of one
+    /// module's slot — doing it properly would mean redesigning where the
+    /// highlight itself draws, which is a much bigger change than this bug
+    /// warrants. Opacity is the proportionate fix: heavier for the severity
+    /// that matters most, lighter for the ones that don't, using the exact
+    /// alpha already hardcoded at the one call site before this change.
+    func alertHighlightAlpha(for token: String) -> CGFloat {
+        switch token.lowercased() {
+        case "critical", "danger", "error": return 0.42
+        case "success", "ok": return 0.16
+        case "accent", "info": return 0.20
+        default: return 0.28
+        }
+    }
 }
 
 /// Where a value sits in a `.thresholdGradient` ramp.
@@ -103,6 +136,41 @@ final class BarModuleRenderer {
     /// The non-color cue drawn beside a critical value (§9.4). A glyph rather
     /// than a shape so it survives every theme, font and bar height.
     private static let criticalCue = "!"
+
+    /// The non-color cue for the warning band (0.6–0.85 of the ramp).
+    ///
+    /// **Bug this fixes.** `severity(for:value:)` used to return `.warning`
+    /// but nothing ever drew it — `cueWidth`/`draw` only special-cased
+    /// `.critical`, so the entire middle of the threshold ramp was silently
+    /// unflagged. Since most modules default to `.matchSystemAccent` (see
+    /// `color(for:value:)`), the "!" cue was in practice the bar's *only*
+    /// alerting mechanism, and two thirds of its own severity range drew
+    /// nothing at all.
+    ///
+    /// **Why a different glyph, not just `criticalCue` in a different
+    /// color.** The bar is strictly monochrome — `MenuBarPalette.warning`
+    /// and `.danger` are the same `NSColor` (see that struct's doc comment) —
+    /// so tinting alone cannot tell the two bands apart here any more than it
+    /// could for `alertHighlightColor` (see that function's doc comment for
+    /// the sibling problem). A distinct, deliberately quieter mark is the
+    /// fix: an interpunct is visually much lighter than "!" at the same point
+    /// size — no ascender, no risers, roughly a third of the ink — which
+    /// reads as "notice" next to "!"'s "look now" even before the reduced
+    /// alpha below is factored in. `drawSeverityCue` also draws it in
+    /// `palette.textSecondary` rather than `palette.danger`, stacking a lower
+    /// alpha (0.55 vs. 0.9) on top of the shape difference so the two cues
+    /// differ in weight as well as form — two independent, monochrome-safe
+    /// signals instead of one.
+    ///
+    /// **Rejected: reusing `VitalLevel`'s triangle/octagon SF Symbols**
+    /// (`Sentry/Dropdown/SystemVitals.swift`). Those are drawn by SwiftUI at
+    /// dropdown sizes; the bar draws everything through `CoreText`/`CGPath`
+    /// at as small as 8pt, where a tiny SF Symbol competes with the digit
+    /// beside it for legibility the way this type's own header comment on
+    /// `criticalCue` already rejected for the critical case. A text glyph
+    /// stays consistent with the existing cue instead of mixing two rendering
+    /// systems for what is visually one feature.
+    private static let warningCue = "‧"
 
     /// Fractions of the ramp at which a value stops being ordinary. Chosen so
     /// the warning band starts around where the ramp visibly leaves green.
@@ -180,11 +248,15 @@ final class BarModuleRenderer {
         in rect: CGRect
     ) {
         var slot = rect
-        let cue = cueWidth(for: module, value: value)
-        if cue > 0 {
+        let sev = severity(for: module, value: value)
+        let cue = cueWidth(for: sev)
+        if cue > 0, let glyph = Self.cueGlyph(for: sev) {
             // §9.4: never state-by-hue alone. The critical band gets a glyph
-            // in the danger color *and* the color itself.
-            drawText(Self.criticalCue, in: slot, x: slot.minX, color: palette.danger)
+            // in the danger color *and* the color itself; the warning band
+            // gets a visually lighter glyph (see `warningCue`'s doc comment)
+            // in a quieter tone, so the two remain distinguishable even
+            // though `palette.warning` and `.danger` are the same NSColor.
+            drawText(glyph, in: slot, x: slot.minX, color: sev == .critical ? palette.danger : palette.textSecondary)
             slot = CGRect(x: slot.minX + cue, y: slot.minY, width: max(slot.width - cue, 0), height: slot.height)
         }
 
@@ -247,10 +319,25 @@ final class BarModuleRenderer {
         return .nominal
     }
 
+    /// The cue glyph for a severity band, or nil at `.nominal`/no severity —
+    /// `nominal` stays silent for the same reason `VitalLevel.symbolName`
+    /// does in the dropdown (`Sentry/Dropdown/SystemVitals.swift`): a cue
+    /// that is always present carries no information.
+    private static func cueGlyph(for severity: BarSeverity?) -> String? {
+        switch severity {
+        case .critical: return criticalCue
+        case .warning: return warningCue
+        case .nominal, nil: return nil
+        }
+    }
+
+    private func cueWidth(for severity: BarSeverity?) -> CGFloat {
+        guard let glyph = Self.cueGlyph(for: severity) else { return 0 }
+        return textSize(glyph).width + iconTextGap
+    }
+
     private func cueWidth(for module: BarModule, value: Double?) -> CGFloat {
-        severity(for: module, value: value) == .critical
-            ? textSize(Self.criticalCue).width + iconTextGap
-            : 0
+        cueWidth(for: severity(for: module, value: value))
     }
 
     // MARK: - Text modes

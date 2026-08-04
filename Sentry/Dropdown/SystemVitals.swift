@@ -87,6 +87,25 @@ struct VitalValue: Equatable, Sendable {
             unit: "%"
         )
     }
+
+    /// One pre-formatted run with no separate unit — for the modules that
+    /// joined the vitals list without a natural 0–100% reading (GPU aside,
+    /// which does have one and uses `.percent` above).
+    ///
+    /// `.percent` splits number and unit because every percent sign is one
+    /// glyph at a fixed width, so the split typesets as a tidy column. A
+    /// byte-rate string ("1.2 MB/s") or a temperature ("58°") has no such
+    /// fixed-width suffix — its unit varies in both text and magnitude with
+    /// the number in front of it — so there is nothing clean to split off,
+    /// and forcing one would just misalign the column these rows already
+    /// don't share with the percent-based ones (the meter is unbounded too,
+    /// see `SystemVitals.networkVital`/`thermalVital`/`aneVital`). Kept as
+    /// text, not a `Double` + `MetricUnit`, for the same P5 reason `Vital`'s
+    /// own doc comment gives: all the nil handling stays in
+    /// `MetricFormatting`, which already returns `placeholder` for `nil`.
+    static func raw(_ text: String) -> VitalValue {
+        VitalValue(number: text, unit: nil)
+    }
 }
 
 /// One line of the dropdown's "is my Mac OK" list.
@@ -181,25 +200,49 @@ enum SystemVitals {
 
     // MARK: Vitals
 
-    static func vitals(for snapshot: SystemSnapshot?, enabledModules: Set<MetricModule>) -> [Vital] {
-        guard let snapshot else { return [] }
-        var result: [Vital] = []
-        if enabledModules.contains(.cpu), let cpu = snapshot.cpu {
-            result.append(cpuVital(cpu, snapshot: snapshot))
-        }
-        if enabledModules.contains(.memory), let memory = snapshot.memory, memory.totalBytes > 0 {
-            result.append(memoryVital(memory))
-        }
-        if enabledModules.contains(.disk), let disk = snapshot.disk, disk.totalBytes > 0 {
-            result.append(diskVital(disk))
-        }
+    /// Bug fix: this used to be four `if`s wired straight to CPU/Memory/Disk/
+    /// Battery and nothing else, so a user who turned those four off and GPU/
+    /// Network/Thermal *on* in Settings → Modules saw "No modules are turned
+    /// on" in the dropdown even though three modules plainly were — and had no
+    /// way to reach network throughput or SoC temperature from this surface at
+    /// all. The fix is this table: one entry per `MetricModule` the app can
+    /// build a row for, each guarded the same way the original four already
+    /// were (module enabled *and* the snapshot actually carrying that reading),
+    /// so turning a module on or off in Settings has the same visible effect
+    /// here for all nine modules, not just the original four.
+    ///
+    /// `.system` has no entry: unlike every other module it has no snapshot
+    /// field of its own (`SystemSnapshot` carries no `SystemStats`) — its
+    /// metrics are uptime and process count, both of which already surface
+    /// elsewhere in this dropdown (the caption line's uptime, CPU's own
+    /// "Processes" detail row). A row that just repeated one of those under a
+    /// fifth label would be noise, not a fix for the bug above.
+    private static let builders: [(module: MetricModule, build: (SystemSnapshot) -> Vital?)] = [
+        (.cpu, { snapshot in snapshot.cpu.map { cpuVital($0, snapshot: snapshot) } }),
+        (.memory, { snapshot in
+            guard let memory = snapshot.memory, memory.totalBytes > 0 else { return nil }
+            return memoryVital(memory)
+        }),
+        (.disk, { snapshot in
+            guard let disk = snapshot.disk, disk.totalBytes > 0 else { return nil }
+            return diskVital(disk)
+        }),
         // Absent (not placeholdered) on a Mac with no battery: a desktop that
         // shows a permanent "Battery —" row is stating a missing capability as
         // a missing *reading*, which is the same P5 lie as a fabricated zero.
-        if enabledModules.contains(.battery), let battery = snapshot.battery {
-            result.append(batteryVital(battery))
+        (.battery, { snapshot in snapshot.battery.map(batteryVital) }),
+        (.gpu, { snapshot in snapshot.gpu.map(gpuVital) }),
+        (.network, { snapshot in snapshot.network.map(networkVital) }),
+        (.thermal, { snapshot in snapshot.thermal.map(thermalVital) }),
+        (.ane, { snapshot in snapshot.ane.map(aneVital) })
+    ]
+
+    static func vitals(for snapshot: SystemSnapshot?, enabledModules: Set<MetricModule>) -> [Vital] {
+        guard let snapshot else { return [] }
+        return builders.compactMap { entry in
+            guard enabledModules.contains(entry.module) else { return nil }
+            return entry.build(snapshot)
         }
-        return result
     }
 
     private static func cpuVital(_ cpu: CPUStats, snapshot: SystemSnapshot) -> Vital {
@@ -367,12 +410,152 @@ enum SystemVitals {
         )
     }
 
+    /// GPU utilization is the one addition that keeps the "every vital is a
+    /// percentage" convention `Vital.value`'s doc comment describes — unlike
+    /// `networkVital`/`thermalVital`/`aneVital` below, it slots into the
+    /// existing meter and column exactly the way CPU does.
+    ///
+    /// **Level is always `.normal`.** Neither `SystemAdvisor` nor
+    /// `AlertEngine.defaultRules` defines a "GPU is too busy" threshold
+    /// anywhere in the kit — CPU's 90% and the battery/SoC-temp numbers this
+    /// file already reuses are the *only* canonical thresholds that exist.
+    /// Inventing a GPU number here, just for this row, would let the dropdown
+    /// flag something the alert log and `preflight_check` MCP tool both stay
+    /// silent about — a worse P5 violation than an unflagged row, since it
+    /// reads as a claim ("this is bad") the rest of the app doesn't back up.
+    /// The row stays informational until a canonical GPU threshold exists
+    /// somewhere the alert engine can also read it from.
+    private static func gpuVital(_ gpu: GPUStats) -> Vital {
+        Vital(
+            module: .gpu,
+            title: String(localized: "GPU"),
+            value: .percent(gpu.utilizationPercent),
+            fraction: gpu.utilizationPercent.flatMap { clampFraction($0 / 100) },
+            level: .normal,
+            levelNote: nil,
+            details: [
+                VitalDetail(label: String(localized: "Renderer"), value: MetricFormatting.percent(gpu.rendererPercent, decimals: 1)),
+                VitalDetail(label: String(localized: "Tiler"), value: MetricFormatting.percent(gpu.tilerPercent, decimals: 1)),
+                VitalDetail(label: String(localized: "VRAM"), value: MetricFormatting.bytes(gpu.vramUsedBytes)),
+                VitalDetail(label: String(localized: "Frequency"), value: MetricFormatting.value(gpu.frequencyMHz, unit: .megahertz)),
+                VitalDetail(label: String(localized: "Power"), value: MetricFormatting.watts(gpu.powerWatts))
+            ]
+        )
+    }
+
+    /// Throughput is unbounded (a Time Machine backup can peg it at hundreds
+    /// of MB/s for minutes without anything being wrong), so unlike the four
+    /// original rows this one has no 0...1 quantity to put in the meter —
+    /// `fraction: nil` draws the bare track, same as "not measured", which is
+    /// an acceptable read here since there genuinely is no ceiling to measure
+    /// against. `value` leads with download since that's the number a user
+    /// checking "is something hogging my connection" almost always wants
+    /// first; upload lives one tap away in the details, same trade the
+    /// original disk row already makes for read vs. write.
+    ///
+    /// **Level is always `.normal`** — same reasoning as `gpuVital`: no
+    /// canonical "network is too busy" threshold exists anywhere in the kit,
+    /// and a Mac happily saturating a gigabit link is not a problem the way a
+    /// CPU pegged at 100% is.
+    private static func networkVital(_ network: NetworkStats) -> Vital {
+        Vital(
+            module: .network,
+            title: String(localized: "Network"),
+            value: .raw(MetricFormatting.bytesPerSecond(network.rxBytesPerSec)),
+            fraction: nil,
+            level: .normal,
+            levelNote: nil,
+            details: [
+                VitalDetail(label: String(localized: "Download"), value: MetricFormatting.bytesPerSecond(network.rxBytesPerSec)),
+                VitalDetail(label: String(localized: "Upload"), value: MetricFormatting.bytesPerSecond(network.txBytesPerSec)),
+                VitalDetail(label: String(localized: "Interface"), value: network.activeInterface ?? MetricFormatting.placeholder),
+                VitalDetail(label: String(localized: "Wi-Fi signal"), value: MetricFormatting.value(network.wifiRSSIdBm.map { Double($0) }, unit: .decibelMilliwatts)),
+                VitalDetail(label: String(localized: "Link rate"), value: MetricFormatting.value(network.wifiTxRateMbps, unit: .megabitsPerSecond))
+            ]
+        )
+    }
+
+    /// Mirrors the thermal reasoning `status(for:vitals:enabledModules:)`
+    /// already applies to the verdict line (throttling, pressure, SoC temp
+    /// against `SystemAdvisor.highSoCTempCelsius`) so a flagged Thermal row
+    /// and a "Running hot" verdict never disagree about *whether* the Mac is
+    /// hot, even though they're computed in two places.
+    ///
+    /// **Why two places at all, instead of `status` reading this row's
+    /// `level`/`levelNote` the way it does for every other vital.** Thermal
+    /// is the one module `status` already had a bespoke block for before this
+    /// row existed — throttling in particular has no percentage and so can
+    /// never be a single `VitalDetail`, only a sentence. Folding thermal into
+    /// the generic "every flagged vital contributes a finding" loop as well
+    /// would append a *second*, differently-worded finding for the same
+    /// condition (e.g. "Thermal pressure is serious" from the bespoke block
+    /// and "Thermal: pressure serious" from this row), which the loop's
+    /// string-based de-duplication would not catch since the two sentences
+    /// don't match verbatim. `status` therefore still excludes `.thermal`
+    /// from that loop — see its own comment there.
+    private static func thermalVital(_ thermal: ThermalStats) -> Vital {
+        let level: VitalLevel
+        let note: String?
+        if thermal.isThrottling {
+            level = .critical
+            note = String(localized: "Throttling")
+        } else if thermal.pressureLevel == .critical || thermal.pressureLevel == .serious {
+            level = .critical
+            note = String(localized: "Pressure \(thermal.pressureLevel.displayName.lowercased())")
+        } else if let temp = thermal.socTemperatureCelsius, temp > SystemAdvisor.highSoCTempCelsius {
+            level = .critical
+            note = String(localized: "SoC is at \(MetricFormatting.celsius(temp))")
+        } else if thermal.pressureLevel == .fair {
+            level = .warning
+            note = String(localized: "Pressure elevated")
+        } else {
+            level = .normal
+            note = nil
+        }
+        return Vital(
+            module: .thermal,
+            title: String(localized: "Thermals"),
+            value: .raw(MetricFormatting.celsius(thermal.socTemperatureCelsius)),
+            fraction: nil,
+            level: level,
+            levelNote: note,
+            details: [
+                VitalDetail(label: String(localized: "Pressure"), value: thermal.pressureLevel.displayName),
+                VitalDetail(label: String(localized: "Throttling"), value: thermal.isThrottling ? String(localized: "Yes") : String(localized: "No")),
+                VitalDetail(label: String(localized: "Fans"), value: fanText(thermal.fanRPMs))
+            ]
+        )
+    }
+
+    /// The Neural Engine reports power draw, not a load percentage — there is
+    /// no "ANE at 40%" reading anywhere in `ANEStats`, so like network and
+    /// thermal this row has no bounded quantity for the meter. `.normal`
+    /// always, for the same no-canonical-threshold reason as `gpuVital`.
+    private static func aneVital(_ ane: ANEStats) -> Vital {
+        Vital(
+            module: .ane,
+            title: String(localized: "Neural Engine"),
+            value: .raw(MetricFormatting.watts(ane.powerWatts)),
+            fraction: nil,
+            level: .normal,
+            levelNote: nil,
+            details: [
+                VitalDetail(label: String(localized: "Power"), value: MetricFormatting.watts(ane.powerWatts)),
+                VitalDetail(label: String(localized: "Active"), value: activeText(ane.isActive))
+            ]
+        )
+    }
+
     // MARK: Status
 
     /// The verdict line. Built from findings rather than from `vitals` alone so
-    /// thermal state — which has no percentage and therefore no row — is still
-    /// part of the answer, and so the *reason* survives ("Thermal pressure is
-    /// serious" rather than a red row the user has to interpret).
+    /// throttling — which has no percentage and so can never be a
+    /// `VitalDetail` — is still part of the answer, and so the *reason*
+    /// survives ("Thermal pressure is serious" rather than a red row the user
+    /// has to interpret). Thermal pressure and SoC temp *do* also have a row
+    /// now (`thermalVital`), but this block stays the single source of truth
+    /// for what thermal contributes to the verdict — see the exclusion note
+    /// on the vitals loop below.
     static func status(
         for snapshot: SystemSnapshot?,
         vitals: [Vital],
@@ -403,7 +586,19 @@ enum SystemVitals {
 
         // Every flagged vital contributes its own note, so the list and the
         // verdict can never disagree about which row is the problem.
-        for vital in vitals where vital.level != .normal {
+        //
+        // `.thermal` is excluded here even though `thermalVital` (see
+        // `SystemVitals.vitals`) computes a `level`/`levelNote` for its own
+        // row: this loop would otherwise append a *second*, differently
+        // worded finding for the exact condition the bespoke thermal block
+        // above already reported (e.g. "Thermal pressure is serious" here vs.
+        // "Thermal: pressure serious" from the loop), and the string-based
+        // de-duplication below only catches verbatim repeats. Thermal is the
+        // one module whose verdict contribution predates having its own row
+        // at all — throttling in particular has no percentage and so was
+        // never expressible as a `Vital` — so it keeps its dedicated block
+        // instead of also feeding this generic one.
+        for vital in vitals where vital.level != .normal && vital.module != .thermal {
             let note = vital.levelNote ?? "\(vital.title) \(vital.value.plain)"
             findings.append((vital.level, headline(for: vital), "\(vital.title): \(note.lowercased())"))
         }
@@ -477,10 +672,43 @@ enum SystemVitals {
         return battery.isPluggedIn ? String(localized: "Connected") : MetricFormatting.placeholder
     }
 
+    /// "3200 RPM, 3400 RPM" for however many fans reported in, or the
+    /// placeholder for a Mac that reports none (every laptop the app ships
+    /// on, and any desktop the HID bridge couldn't read).
+    private static func fanText(_ rpms: [Double]) -> String {
+        guard !rpms.isEmpty else { return MetricFormatting.placeholder }
+        return rpms.map { String(localized: "\(String(Int($0.rounded()))) RPM") }.joined(separator: ", ")
+    }
+
+    /// "Yes"/"No" for an optional flag, `placeholder` when the platform
+    /// couldn't report it at all — distinguishing "not active" from "unknown"
+    /// the same way every other absent reading in this file does (P5).
+    private static func activeText(_ isActive: Bool?) -> String {
+        guard let isActive else { return MetricFormatting.placeholder }
+        return isActive ? String(localized: "Yes") : String(localized: "No")
+    }
+
     /// Guards the meter against a non-finite or out-of-range reading rather
     /// than letting it draw a negative or overflowing bar.
     private static func clampFraction(_ value: Double) -> Double? {
         guard value.isFinite else { return nil }
         return min(max(value, 0), 1)
+    }
+}
+
+/// Moved here from the now-deleted `Sentry/Dropdown/ModuleCards/
+/// ModuleCardStack.swift` (see that commit's dead-code cleanup) — this file
+/// was already `thermal.pressureLevel.displayName`'s only consumer inside
+/// `status(for:vitals:enabledModules:)` before `thermalVital` added a second
+/// one, so the extension belongs next to its callers now rather than in a
+/// deleted view file.
+extension ThermalStats.PressureLevel {
+    var displayName: String {
+        switch self {
+        case .nominal: return String(localized: "Nominal")
+        case .fair: return String(localized: "Fair")
+        case .serious: return String(localized: "Serious")
+        case .critical: return String(localized: "Critical")
+        }
     }
 }

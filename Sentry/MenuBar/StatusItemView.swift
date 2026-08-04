@@ -37,9 +37,39 @@ final class StatusItemView: NSView {
     private var isTruncated = false
     private var cachedWidth: CGFloat = 0
 
-    /// A readable summary for VoiceOver (plan §9.4) — without it the custom
-    /// view reads as an unlabeled blank.
+    /// A readable summary for VoiceOver (plan §9.4) and the status item's
+    /// tooltip (`StatusItemController`) — without it the custom view reads as
+    /// an unlabeled blank, and hovering the bar item shows nothing at all.
+    /// Kept as one glued "Sentry: CPU 42%, Memory 68%…" sentence — its exact
+    /// shape is covered by `StatusItemViewTruncationTests` and is what the
+    /// tooltip shows verbatim — even though the AX label/value split below
+    /// no longer feeds it to VoiceOver the same way.
     private(set) var accessibilitySummary: String = "Sentry"
+
+    /// The live readings alone, comma-joined ("CPU 42 percent, Memory 68
+    /// percent"), with no "Sentry: " glued on the front — `accessibilityValue`
+    /// on `self` and the owning `NSStatusBarButton` both bind to this,
+    /// separately from `accessibilityLabel`, which bind to the constant name
+    /// "Sentry" (see `rebuildAccessibilitySummary`).
+    ///
+    /// **The bug this fixes.** Before this, `setAccessibilityLabel` alone
+    /// carried the whole "Sentry: CPU 42%, Memory 68%…" sentence, so
+    /// VoiceOver announced the item's name and its constantly-changing
+    /// reading as one undifferentiated run — a user can't tell "this is the
+    /// Sentry status item" from "here is this instant's data" without
+    /// listening to the entire sentence. `accessibilityLabel`/
+    /// `accessibilityValue` is the standard AX split for exactly this shape
+    /// (compare a battery menu extra: name "Battery", value "82%") — VoiceOver
+    /// announces the two as distinct pieces of state instead of one glued run.
+    ///
+    /// A full redesign (per-module AX elements, one per `RenderItem`, so a
+    /// user could navigate module-by-module) is a bigger project than this
+    /// bug — the whole bar is one custom-drawn `NSView` today, and giving it
+    /// real AX children would mean implementing the accessibility container
+    /// protocol, not just this getter. This is the proportionate slice: two
+    /// pieces of state instead of one, without restructuring how the view
+    /// exposes itself to AX.
+    private(set) var accessibilityValue: String = ""
 
     /// Semantic color token of the currently-displayed alert highlight, or
     /// nil when none is active. Set via `highlight(token:for:)`.
@@ -52,7 +82,7 @@ final class StatusItemView: NSView {
         self.renderer = BarModuleRenderer(theme: theme, dark: true)
         super.init(frame: CGRect(x: 0, y: 0, width: 24, height: NSStatusBar.system.thickness))
         setAccessibilityRole(.image)
-        setAccessibilityLabel(accessibilitySummary)
+        setAccessibilityLabel("Sentry")
         rebuildRenderer()
         pruneHistory()
         rebuildLayout()
@@ -330,6 +360,11 @@ final class StatusItemView: NSView {
         guard let token = highlightToken,
               let ctx = NSGraphicsContext.current?.cgContext else { return }
         let color = renderer.palette.alertHighlightColor(for: token)
+        // Opacity, not just color, now carries severity — see
+        // `alertHighlightAlpha(for:)`'s doc comment: in monochrome mode every
+        // token resolves to the same `NSColor`, so a critical alert has to
+        // read as visually heavier than a lesser one some other way.
+        let alpha = renderer.palette.alertHighlightAlpha(for: token)
         let inset = slot.insetBy(dx: 1, dy: 2)
         let path = CGPath(
             roundedRect: inset,
@@ -339,7 +374,7 @@ final class StatusItemView: NSView {
         )
         ctx.saveGState()
         ctx.addPath(path)
-        ctx.setFillColor(color.withAlphaComponent(0.28).cgColor)
+        ctx.setFillColor(color.withAlphaComponent(alpha).cgColor)
         ctx.fillPath()
         ctx.restoreGState()
     }
@@ -376,7 +411,9 @@ final class StatusItemView: NSView {
     private func rebuildAccessibilitySummary() {
         guard !items.isEmpty else {
             accessibilitySummary = "Sentry"
-            setAccessibilityLabel(accessibilitySummary)
+            accessibilityValue = ""
+            setAccessibilityLabel("Sentry")
+            setAccessibilityValue(accessibilityValue)
             return
         }
         let parts = items.map { item -> String in
@@ -390,8 +427,12 @@ final class StatusItemView: NSView {
             }
             return spoken
         }
-        accessibilitySummary = "Sentry: " + parts.joined(separator: ", ")
-        setAccessibilityLabel(accessibilitySummary)
+        accessibilityValue = parts.joined(separator: ", ")
+        accessibilitySummary = "Sentry: " + accessibilityValue
+        // Name and value announced as two distinct pieces of AX state rather
+        // than one glued sentence — see `accessibilityValue`'s doc comment.
+        setAccessibilityLabel("Sentry")
+        setAccessibilityValue(accessibilityValue)
     }
 
     /// VoiceOver reads "72%" as "seventy-two percent" reliably, but "45.8W"

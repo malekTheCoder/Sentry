@@ -121,66 +121,29 @@ struct MetricSeries: Identifiable, Equatable, Sendable {
 /// `StatsCoordinator`: the AppDelegate owns that stream and forwards into
 /// `ingest(_:)`, so opening a second consumer here would duplicate polling
 /// (plan §3.2 P3) and make the class untestable without a live coordinator.
+///
+/// **Dead-code removal.** This used to also build eight rolling 60-sample
+/// `MetricSeries` buffers (one per `ChartMetric`) on every single snapshot,
+/// forever — on the app's hottest recurring path — for a `series(for:)`
+/// accessor nothing called: the dropdown's per-module cards that once read it
+/// (`ModuleCards/ModuleCardStack.swift`, `ModuleCards/MetricCard.swift`) were
+/// themselves dead after the "lighter headline-glance layout" redesign (see
+/// `DropdownView`'s doc comment) and have been deleted. The Dashboard has its
+/// own, separate series machinery (`DashboardViewModel`) and never read this
+/// one either — confirmed via grep before removing it. `snapshot` is the only
+/// thing still consumed (by `SystemVitals` through `DropdownView`), so that's
+/// all that remains.
 @MainActor
 final class DropdownViewModel: ObservableObject {
-    /// 60 samples is the window plan §8.3 specifies for dropdown charts.
-    /// `nonisolated` so it stays usable as a default argument and from view
-    /// code without hopping the actor (a main-actor-isolated static constant
-    /// is an error in the Swift 6 language mode).
-    nonisolated static let historyLimit = 60
-
     @Published private(set) var snapshot: SystemSnapshot?
-    @Published private(set) var history: [ChartMetric: MetricSeries] = [:]
-
-    private let historyLimit: Int
-
-    init(historyLimit: Int = DropdownViewModel.historyLimit) {
-        self.historyLimit = max(1, historyLimit)
-    }
 
     func ingest(_ snapshot: SystemSnapshot) {
         self.snapshot = snapshot
-        let stamp = snapshot.timestamp
-        for metric in ChartMetric.allCases {
-            // A nil reading appends nothing rather than a zero — a gap in the
-            // chart is honest, a flat zero line is a lie (plan §3.2 P5).
-            guard let value = Self.value(of: metric, in: snapshot) else { continue }
-            // In-place via `default:` rather than copy-out/append/copy-in:
-            // the latter leaves two references alive across the mutation, so
-            // CoW copies the whole 60-sample buffer for every metric on every
-            // tick, forever (P6). `StatusItemView.appendHistory` avoids the
-            // same trap for the same reason.
-            history[metric, default: MetricSeries(metric: metric)]
-                .append(value, at: stamp, limit: historyLimit)
-        }
     }
 
-    func series(for metric: ChartMetric) -> MetricSeries? {
-        guard let series = history[metric], !series.isEmpty else { return nil }
-        return series
-    }
-
-    /// Used when the popover reopens after a long gap, where stale samples
-    /// would render as a misleading continuous line.
+    /// Used when the popover reopens after a long gap, where a stale snapshot
+    /// would render as though it were current.
     func reset() {
         snapshot = nil
-        history.removeAll()
-    }
-
-    // MARK: Extraction
-
-    private static func value(of metric: ChartMetric, in snapshot: SystemSnapshot) -> Double? {
-        switch metric {
-        case .power:
-            // One "power" series, two source fields: what's going in while
-            // charging, what's being drawn otherwise.
-            if snapshot.battery?.isCharging == true,
-               let charging = snapshot.value(for: .batteryChargingWatts) {
-                return charging
-            }
-            return snapshot.value(for: .batterySystemPowerWatts)
-        default:
-            return snapshot.value(for: metric.metricID)
-        }
     }
 }
