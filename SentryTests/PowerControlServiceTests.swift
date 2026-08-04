@@ -670,6 +670,211 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .inactive)
     }
 
+    // MARK: - ReleaseCondition.whileDownloadActive
+
+    /// Fixed reference instant for the download-heuristic comparison tests,
+    /// mirroring `AgentGuardrailsTests`' fixed-clock convention: the decision
+    /// under test (`isDownloadActive`) is a pure function of (mtime,
+    /// timeout, now), so pinning `now` keeps these deterministic rather than
+    /// racing the real clock the way a `Date()` default would.
+    private let downloadNow = Date(timeIntervalSinceReferenceDate: 1_000_000)
+
+    func testIsDownloadActiveTrueJustInsideTheTimeout() {
+        // mtime 5s before `now`, 8s timeout — inside the window.
+        let mtime = downloadNow.addingTimeInterval(-5)
+        XCTAssertTrue(PowerControlService.isDownloadActive(mostRecentModification: mtime, idleTimeout: 8, now: downloadNow))
+    }
+
+    func testIsDownloadActiveTrueExactlyAtTheTimeoutBoundary() {
+        // The comparison is `<=`, so exactly at the boundary still counts —
+        // matching `AgentGuardrails`'s start-inclusive convention elsewhere
+        // rather than leaving this edge to fall out of a `<` by accident.
+        let mtime = downloadNow.addingTimeInterval(-8)
+        XCTAssertTrue(PowerControlService.isDownloadActive(mostRecentModification: mtime, idleTimeout: 8, now: downloadNow))
+    }
+
+    func testIsDownloadActiveFalseJustPastTheTimeout() {
+        let mtime = downloadNow.addingTimeInterval(-8.5)
+        XCTAssertFalse(PowerControlService.isDownloadActive(mostRecentModification: mtime, idleTimeout: 8, now: downloadNow))
+    }
+
+    func testIsDownloadActiveFalseWithNoModificationAtAll() {
+        // No file found under `~/Downloads` (or an unreadable directory) —
+        // `mostRecentDownloadsModification` returns `nil` for that, and `nil`
+        // must read as "not active," not crash or default to "active."
+        XCTAssertFalse(PowerControlService.isDownloadActive(mostRecentModification: nil, idleTimeout: 8, now: downloadNow))
+    }
+
+    func testIsDownloadActiveFalseForAStaleModificationWellOutsideTheWindow() {
+        let mtime = downloadNow.addingTimeInterval(-3600)
+        XCTAssertFalse(PowerControlService.isDownloadActive(mostRecentModification: mtime, idleTimeout: 8, now: downloadNow))
+    }
+
+    func testDownloadConditionHoldsWhileProbeReportsActiveAndReleasesWhenItDoesNot() throws {
+        // Exercises `evaluate(_:)`'s `.whileDownloadActive` branch end to
+        // end via the injectable `downloadProbe`, the same style
+        // `testProcessConditionHoldsWhileProbeSeesProcess` uses for
+        // `.whileProcessRunning` — but note there is no miss-count grace
+        // here (see `ReleaseCondition.whileDownloadActive`'s doc comment):
+        // a single "not active" tick releases immediately.
+        let service = PowerControlService(defaults: makeTestDefaults("downloadHolds"))
+        defer { service.releaseAssertion() }
+        service.downloadProbe = { _ in true }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .whileDownloadActive(idleTimeout: 8),
+            reason: "download hold test"
+        )
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive)
+
+        service.downloadProbe = { _ in false }
+        service.evaluate(snapshot())
+        XCTAssertEqual(service.state, .inactive)
+    }
+
+    // MARK: - ReleaseCondition.scheduledWindow
+
+    /// A fixed GMT calendar, mirroring `AgentGuardrailsTests`' rationale
+    /// exactly: schedule tests shouldn't inherit the build machine's locale
+    /// or time zone.
+    private var scheduleCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "GMT")!
+        return calendar
+    }()
+
+    /// 2026-08-03 is a Monday (weekday 2) in this fixed calendar — chosen so
+    /// same-day-window tests exercise an ordinary weekday, with Friday/
+    /// Saturday close by for the midnight-crossing tests below.
+    private func scheduleDate(dayOffset: Int = 0, hour: Int, minute: Int = 0) -> Date {
+        scheduleCalendar.date(from: DateComponents(year: 2026, month: 8, day: 3 + dayOffset, hour: hour, minute: minute))!
+    }
+
+    func testScheduledWindowSameDayInsideIsActive() {
+        // Weekdays Mon–Fri (2...6), 09:00–17:00, checked at noon on Monday.
+        XCTAssertTrue(PowerControlService.isWithinScheduledWindow(
+            weekdays: [2, 3, 4, 5, 6], startMinute: 9 * 60, endMinute: 17 * 60,
+            date: scheduleDate(hour: 12), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowSameDayBoundariesAreStartInclusiveEndExclusive() {
+        let weekdays: Set<Int> = [2, 3, 4, 5, 6]
+        // 09:00 exactly is inside...
+        XCTAssertTrue(PowerControlService.isWithinScheduledWindow(
+            weekdays: weekdays, startMinute: 9 * 60, endMinute: 17 * 60,
+            date: scheduleDate(hour: 9, minute: 0), calendar: scheduleCalendar
+        ))
+        // ...17:00 exactly is outside.
+        XCTAssertFalse(PowerControlService.isWithinScheduledWindow(
+            weekdays: weekdays, startMinute: 9 * 60, endMinute: 17 * 60,
+            date: scheduleDate(hour: 17, minute: 0), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowSameDayOutsideWeekdaySetIsNeverActive() {
+        // Monday (weekday 2) at noon, but only Tue–Fri (3...6) are armed.
+        XCTAssertFalse(PowerControlService.isWithinScheduledWindow(
+            weekdays: [3, 4, 5, 6], startMinute: 9 * 60, endMinute: 17 * 60,
+            date: scheduleDate(hour: 12), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowZeroLengthWindowIsNeverActive() {
+        XCTAssertFalse(PowerControlService.isWithinScheduledWindow(
+            weekdays: Set(1...7), startMinute: 12 * 60, endMinute: 12 * 60,
+            date: scheduleDate(hour: 12), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowEmptyWeekdaySetIsNeverActive() {
+        XCTAssertFalse(PowerControlService.isWithinScheduledWindow(
+            weekdays: [], startMinute: 0, endMinute: 1440,
+            date: scheduleDate(hour: 12), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowCrossingMidnightLateEveningOnStartDayIsActive() {
+        // Fri 22:00–Sat 07:00, armed for Friday (weekday 6) only. 23:00
+        // Friday is the late-evening half of the window.
+        XCTAssertTrue(PowerControlService.isWithinScheduledWindow(
+            weekdays: [6], startMinute: 22 * 60, endMinute: 7 * 60,
+            date: scheduleDate(dayOffset: 4, hour: 23), calendar: scheduleCalendar // Aug 7 = Friday
+        ))
+    }
+
+    func testScheduledWindowCrossingMidnightEarlyMorningOnFollowingDayIsActive() {
+        // The Saturday-morning tail of a window that *started* Friday night
+        // must still count as "Friday" per the doc comment — armed only for
+        // weekday 6 (Friday), checked at 03:00 on the following calendar day
+        // (Saturday).
+        XCTAssertTrue(PowerControlService.isWithinScheduledWindow(
+            weekdays: [6], startMinute: 22 * 60, endMinute: 7 * 60,
+            date: scheduleDate(dayOffset: 5, hour: 3), calendar: scheduleCalendar // Aug 8 = Saturday
+        ))
+    }
+
+    func testScheduledWindowCrossingMidnightSaturdayNightIsNotActiveWhenOnlyFridayArmed() {
+        // The negative case proving the previous test actually exercises the
+        // "belongs to the starting day" rule rather than trivially passing
+        // for any date: Saturday *night* (22:00 Saturday, a fresh window
+        // start) must NOT be active when only Friday is armed.
+        XCTAssertFalse(PowerControlService.isWithinScheduledWindow(
+            weekdays: [6], startMinute: 22 * 60, endMinute: 7 * 60,
+            date: scheduleDate(dayOffset: 5, hour: 22), calendar: scheduleCalendar // Aug 8 = Saturday
+        ))
+    }
+
+    func testScheduledWindowCrossingMidnightMiddayIsNeverActive() {
+        XCTAssertFalse(PowerControlService.isWithinScheduledWindow(
+            weekdays: Set(1...7), startMinute: 22 * 60, endMinute: 7 * 60,
+            date: scheduleDate(hour: 12), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowAllDayPresetCoversTheFullDay() {
+        // `endMinute: 1440` — the documented "through end of day" value —
+        // must cover 23:59 as well as 00:00, not stop one minute short.
+        XCTAssertTrue(PowerControlService.isWithinScheduledWindow(
+            weekdays: [1], startMinute: 0, endMinute: 1440,
+            date: scheduleDate(dayOffset: -1, hour: 23, minute: 59), calendar: scheduleCalendar // Aug 2 = Sunday
+        ))
+        XCTAssertTrue(PowerControlService.isWithinScheduledWindow(
+            weekdays: [1], startMinute: 0, endMinute: 1440,
+            date: scheduleDate(dayOffset: -1, hour: 0, minute: 0), calendar: scheduleCalendar
+        ))
+    }
+
+    func testScheduledWindowConditionHoldsInsideWindowAndReleasesOutside() throws {
+        // End-to-end through `evaluate(_:)`, using a same-day window and the
+        // real `Date()`/`Calendar.current` path — so this only asserts the
+        // shape (still active immediately after arming "all week, all day"),
+        // not a specific boundary, which the pure-function tests above
+        // already pin down precisely.
+        let service = PowerControlService(defaults: makeTestDefaults("scheduleHolds"))
+        defer { service.releaseAssertion() }
+
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .scheduledWindow(weekdays: Set(1...7), startMinute: 0, endMinute: 1440),
+            reason: "schedule hold test"
+        )
+        service.evaluate(snapshot())
+        XCTAssertNotEqual(service.state, .inactive, "an 'all week, all day' schedule must be active right now")
+
+        // A zero-length window, by contrast, is never active and must
+        // release on the very next tick.
+        try service.startConditionalAssertion(
+            mode: .systemOnly,
+            condition: .scheduledWindow(weekdays: Set(1...7), startMinute: 12 * 60, endMinute: 12 * 60),
+            reason: "schedule zero-length test"
+        )
+        service.evaluate(snapshot())
+        XCTAssertEqual(service.state, .inactive)
+    }
+
     func testIsProcessRunningFindsThisTestHostAndNotNonsense() {
         // Whatever hosts this test bundle (xctest or the Sentry app) is
         // certainly running; an invented name is certainly not. Exercises

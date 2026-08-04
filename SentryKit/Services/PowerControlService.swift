@@ -23,11 +23,29 @@ extension AwakeMode {
 }
 
 /// A condition-based release trigger (plan §10.3's "last three" duration
-/// options) — what elevates this above a plain Caffeine clone. Evaluated
-/// either by feeding live `SystemSnapshot`s through `evaluate(_:)` (for the
-/// two numeric conditions) or by observing app-termination notifications
-/// directly (for `.whileAppRunning` — see `PowerControlService`'s
-/// `NSWorkspace` observer).
+/// options, later extended with two more — see below) — what elevates this
+/// above a plain Caffeine clone. Evaluated one of three ways: by feeding live
+/// `SystemSnapshot`s through `evaluate(_:)` (`.batteryBelowPercent`,
+/// `.cpuAbovePercent`, `.whileProcessRunning`, `.whileDownloadActive`,
+/// `.scheduledWindow` — everything that either rides the snapshot itself or
+/// is cheap enough to poll on the same tick); by observing app-termination
+/// notifications directly (`.whileAppRunning` — see `PowerControlService`'s
+/// `NSWorkspace` observer); there is no third, timer-driven path — see
+/// `.scheduledWindow`'s doc comment for why a dedicated `Timer` was
+/// considered and rejected for it specifically.
+///
+/// **What's deliberately absent: "while the display is closed."** A
+/// competitive review against Amphetamine flagged this as a gap, but it is
+/// not one — a clamshell close is one of the two explicit exceptions
+/// `PowerControlService`'s own type doc calls out ("none of the assertion
+/// types used here override an explicit user Sleep ... or a clamshell
+/// close. That's correct, intended OS behavior"). Implementing a trigger
+/// whose entire purpose is to fight that OS behavior would mean acquiring a
+/// `kIOPMAssertionTypePreventUserIdleDisplaySleep`-style assertion that
+/// actively defeats clamshell sleep — the one keep-awake behavior this
+/// codebase has already decided, deliberately, not to offer. Do not add it;
+/// see the file-level type doc comment above `PowerControlService` before
+/// reconsidering.
 public enum ReleaseCondition: Codable, Equatable, Sendable {
     case batteryBelowPercent(Double)
     /// Sustained: the CPU must stay above `Double`% for at least
@@ -44,6 +62,81 @@ public enum ReleaseCondition: Codable, Equatable, Sendable {
     /// case-insensitive and exact (no substring matching — "node" must not
     /// hold the machine awake because "com.apple.noded" exists).
     case whileProcessRunning(name: String)
+
+    /// Holds the assertion while `~/Downloads` has been written to within
+    /// the last `idleTimeout` seconds — the Amphetamine-parity trigger for
+    /// "keep awake while a download is running."
+    ///
+    /// **Why a polled mtime heuristic, not a real download-completion
+    /// signal.** There is no public, cross-browser API for "is a download in
+    /// progress" — each browser (and CLI tool: `curl`, `git clone`, `scp`)
+    /// tracks its own transfers privately. What every one of them shares is
+    /// that a file actively downloading is a file whose modification time
+    /// keeps advancing, written into (by convention) `~/Downloads`. So "any
+    /// file under `~/Downloads` modified within the last few seconds" is the
+    /// closest system-level proxy available, evaluated the same way
+    /// `.whileProcessRunning` evaluates its libproc scan: polled per
+    /// snapshot tick in `evaluate(_:)` via `PowerControlService.downloadProbe`,
+    /// not a separate watcher.
+    ///
+    /// **Why polling, not `FSEventStream`.** `FSEventStream` would notify
+    /// asynchronously on writes under `~/Downloads`, but it reports *paths*,
+    /// not *timestamps* — turning an FSEvent into "was this modified in the
+    /// last N seconds" still means `stat()`-ing the changed path afterward,
+    /// so FSEvents buys asynchronous delivery at the cost of a second API
+    /// surface (a dispatch-queue-driven C callback, run-loop scheduling,
+    /// careful stream teardown in `deinit`) for a condition that's already
+    /// being polled once per snapshot tick regardless, on the same cadence
+    /// `.whileProcessRunning`'s full-machine `proc_listallpids` scan already
+    /// rides. A `~/Downloads`-sized, non-recursive directory enumeration
+    /// plus a handful of `contentModificationDate` reads is negligible next
+    /// to that existing scan on the same tick, so there's no performance
+    /// case for the heavier mechanism here — see
+    /// `PowerControlService.mostRecentDownloadsModification(in:fileManager:)`.
+    ///
+    /// **The honest caveat.** This cannot distinguish a genuine in-progress
+    /// download from a file in `~/Downloads` merely being edited, renamed
+    /// into, or re-saved within the timeout window — the same spirit as
+    /// `.whileProcessRunning`'s "exact name match, not a real identity
+    /// check" caveat above. `~/Downloads` plus a very recent write is a
+    /// reasonable proxy, not a certainty.
+    ///
+    /// Unlike `.whileProcessRunning`, there is no consecutive-miss grace
+    /// window here: `idleTimeout` itself is already the slack (a brief pause
+    /// between chunks reads as "still active" until the timeout elapses on
+    /// its own), so stacking a second grace mechanism on top would only
+    /// extend the hold well past the point the heuristic itself considers
+    /// the download finished.
+    case whileDownloadActive(idleTimeout: TimeInterval)
+
+    /// Holds the assertion during a recurring day-of-week/time-of-day
+    /// window — the Amphetamine-parity "scheduled" trigger. `weekdays` uses
+    /// `Calendar.Component.weekday`'s 1...7 (Sunday = 1) convention, matching
+    /// `Calendar` itself rather than inventing a zero-based one. `startMinute`
+    /// and `endMinute` are minutes after local midnight (0...1440), the same
+    /// representation `AgentGuardrailSettings.quietHoursStartMinute`/
+    /// `quietHoursEndMinute` use (`SentryKit/Services/AgentGuardrails.swift`)
+    /// — chosen for the same reason: it's DST-proof (no `DateComponents`
+    /// wall-clock-vs-absolute-time ambiguity to resolve) and round-trips
+    /// through JSON with no `Calendar`/`TimeZone` riding along in `Codable`.
+    /// `endMinute` may be `1440` to mean "through the end of the day" (a
+    /// same-day window with no natural minute-1439 boundary to name, e.g. an
+    /// all-day weekend schedule) — see
+    /// `PowerControlService.isWithinScheduledWindow(weekdays:startMinute:endMinute:date:calendar:)`
+    /// for the exact comparison, including midnight-crossing.
+    ///
+    /// **Why `evaluate(_:)`, not a dedicated `Timer`.** A schedule sounds
+    /// timer-shaped — "fire an event at 22:00" — but what this condition
+    /// actually needs checked is not an edge, it's a level: "is *now* inside
+    /// the window," the same shape `.batteryBelowPercent` already polls off
+    /// `snapshot.battery`. Arming a `Timer` for the next boundary would mean
+    /// duplicating `expiryTimer`'s generation-guarded stale-fire protection
+    /// (see `assertionGeneration`'s doc comment) for a second, independent
+    /// timer with its own race between "fires" and "the main-actor task
+    /// actually runs" — real complexity purchased for a case `evaluate(_:)`
+    /// already handles for free on the tick cadence every other condition
+    /// already pays for.
+    case scheduledWindow(weekdays: Set<Int>, startMinute: Int, endMinute: Int)
 }
 
 /// Wraps an `IOReturn` failure from `IOPMAssertionCreateWithProperties`.
@@ -137,6 +230,19 @@ public final class PowerControlService: ObservableObject {
     /// Called at most once per snapshot tick, and only while a
     /// `.whileProcessRunning` condition is armed.
     public var processProbe: (String) -> Bool = PowerControlService.isProcessRunning(named:)
+
+    /// Injectable for tests — the default scans `~/Downloads` for its most
+    /// recently modified file and checks it against `idleTimeout`. Called at
+    /// most once per snapshot tick, and only while a `.whileDownloadActive`
+    /// condition is armed, mirroring `processProbe`'s convention exactly
+    /// (see `ReleaseCondition.whileDownloadActive`'s doc comment for why
+    /// this is a poll rather than an `FSEventStream`).
+    public var downloadProbe: (TimeInterval) -> Bool = { idleTimeout in
+        PowerControlService.isDownloadActive(
+            mostRecentModification: PowerControlService.mostRecentDownloadsModification(),
+            idleTimeout: idleTimeout
+        )
+    }
 
     private var wakeObserver: NSObjectProtocol?
     private var terminationObserver: NSObjectProtocol?
@@ -258,13 +364,15 @@ public final class PowerControlService: ObservableObject {
         try startAssertionInternal(mode: mode, duration: duration, reason: reason, condition: nil, owner: owner)
     }
 
-    /// Conditional assertion (plan §10.3's "last three": battery threshold,
-    /// sustained CPU threshold, or while a specific app runs). Indefinite by
-    /// construction — it's released when `condition` is satisfied, not on a
-    /// timer. Feed live data via `evaluate(_:)` (for the two numeric
-    /// conditions) from the same `StatsCoordinator` stream everything else
-    /// already consumes; `.whileAppRunning` is handled internally via an
-    /// `NSWorkspace` termination observer instead.
+    /// Conditional assertion — any `ReleaseCondition` (battery threshold,
+    /// sustained CPU threshold, while a specific app or process runs, while a
+    /// download is active, or on a schedule). Indefinite by construction —
+    /// it's released when `condition` is satisfied, not on a timer. Feed live
+    /// data via `evaluate(_:)` from the same `StatsCoordinator` stream
+    /// everything else already consumes; `.whileAppRunning` is handled
+    /// internally via an `NSWorkspace` termination observer instead — see
+    /// `ReleaseCondition`'s own doc comment for exactly which conditions go
+    /// through which path.
     public func startConditionalAssertion(mode: AwakeMode, condition: ReleaseCondition, reason: String) throws {
         try startAssertionInternal(mode: mode, duration: nil, reason: reason, condition: condition)
     }
@@ -341,12 +449,17 @@ public final class PowerControlService: ObservableObject {
     }
 
     /// Feeds a fresh `SystemSnapshot` from the app's single poll loop (plan
-    /// §3.2 P3 — this service doesn't own or create that stream) so the two
-    /// numeric `ReleaseCondition`s can be checked. A no-op unless a
-    /// conditional assertion is currently active. `.whileAppRunning` isn't
-    /// evaluated here — there's nothing on a `SystemSnapshot` to check it
-    /// against — it's handled by the `NSWorkspace` termination observer
-    /// registered in `init`.
+    /// §3.2 P3 — this service doesn't own or create that stream) so every
+    /// `ReleaseCondition` except `.whileAppRunning` can be checked —
+    /// `.batteryBelowPercent` and `.cpuAbovePercent` read straight off the
+    /// snapshot, `.whileProcessRunning` and `.whileDownloadActive` piggyback
+    /// on the same tick with their own polls (libproc, `~/Downloads` mtime
+    /// scan respectively), and `.scheduledWindow` just checks wall-clock time
+    /// against the window on the same cadence. A no-op unless a conditional
+    /// assertion is currently active. `.whileAppRunning` isn't evaluated here
+    /// — there's nothing on a `SystemSnapshot` to check it against — it's
+    /// handled by the `NSWorkspace` termination observer registered in
+    /// `init`.
     public func evaluate(_ snapshot: SystemSnapshot) {
         guard let condition = activeCondition else { return }
 
@@ -387,6 +500,25 @@ public final class PowerControlService: ObservableObject {
                     releaseAssertion()
                 }
             }
+
+        case .whileDownloadActive(let idleTimeout):
+            // No miss-count grace, deliberately — see
+            // `ReleaseCondition.whileDownloadActive`'s doc comment for why:
+            // `idleTimeout` is already the slack this condition gets.
+            if !downloadProbe(idleTimeout) {
+                releaseAssertion()
+            }
+
+        case .scheduledWindow(let weekdays, let startMinute, let endMinute):
+            if !Self.isWithinScheduledWindow(
+                weekdays: weekdays,
+                startMinute: startMinute,
+                endMinute: endMinute,
+                date: Date(),
+                calendar: .current
+            ) {
+                releaseAssertion()
+            }
         }
     }
 
@@ -426,6 +558,98 @@ public final class PowerControlService: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Pure comparison: given the most recent modification time found under
+    /// `~/Downloads` (or `nil` when the directory is empty, missing, or
+    /// unreadable), is a download "active" under `.whileDownloadActive`'s
+    /// heuristic? Split out from `mostRecentDownloadsModification(in:fileManager:)`
+    /// specifically so this decision — "is `mostRecentModification` within
+    /// `idleTimeout` of `now`" — is unit-testable with a fabricated clock and
+    /// a fabricated timestamp, with no real filesystem access involved. The
+    /// directory scan itself is *not* meaningfully unit-testable — it depends
+    /// on real write activity in a real `~/Downloads`, which a test can't
+    /// fabricate deterministically — so it's exercised only by the smoke-style
+    /// checks `isProcessRunning`'s tests already model for the equivalent
+    /// libproc scan, not asserted against here.
+    public nonisolated static func isDownloadActive(
+        mostRecentModification: Date?,
+        idleTimeout: TimeInterval,
+        now: Date = Date()
+    ) -> Bool {
+        guard let mostRecentModification else { return false }
+        return now.timeIntervalSince(mostRecentModification) <= idleTimeout
+    }
+
+    /// Scans `directory` (default `~/Downloads`) non-recursively for the most
+    /// recent `contentModificationDate` among its entries — the mtime feed
+    /// for `isDownloadActive(mostRecentModification:idleTimeout:now:)`.
+    /// Non-recursive on purpose: a download in progress writes directly into
+    /// `~/Downloads`, and chasing every user-configured subfolder would widen
+    /// this from "a reasonable proxy" (see `ReleaseCondition
+    /// .whileDownloadActive`'s doc comment) toward false positives from
+    /// unrelated file activity elsewhere in the tree. Returns `nil` (not an
+    /// error) for a missing/unreadable directory or one with no readable
+    /// entries — `isDownloadActive` already treats `nil` as "not active,"
+    /// which is the correct read of "we couldn't find evidence of a
+    /// download," not "assume one is happening."
+    public nonisolated static func mostRecentDownloadsModification(
+        in directory: URL? = nil,
+        fileManager: FileManager = .default
+    ) -> Date? {
+        let downloadsURL = directory ?? fileManager.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        guard let downloadsURL,
+              let items = try? fileManager.contentsOfDirectory(
+                  at: downloadsURL,
+                  includingPropertiesForKeys: [.contentModificationDateKey],
+                  options: [.skipsHiddenFiles]
+              ) else { return nil }
+        return items.compactMap { url -> Date? in
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        }.max()
+    }
+
+    /// Whether `date` falls inside a `.scheduledWindow` — see that case's
+    /// doc comment for the representation. Start-inclusive, end-exclusive
+    /// (`[startMinute, endMinute)`), matching `AgentGuardrails
+    /// .isWithinQuietHours`'s convention exactly, extended with a weekday
+    /// set that quiet hours didn't need. `nonisolated static` and pure (no
+    /// `Date()`/`Calendar.current` defaults) for the same reason
+    /// `AgentGuardrailsTests` pins `isWithinQuietHours` down with a fixed
+    /// calendar and fabricated dates rather than the real clock — see
+    /// `PowerControlServiceTests`' schedule tests, which mirror that pattern.
+    ///
+    /// **Midnight-crossing weekday handling.** When `startMinute > endMinute`
+    /// (the window crosses midnight, e.g. Fri 22:00–Sat 07:00), the tail of
+    /// the window on the *following* calendar day still belongs to the
+    /// *starting* day's weekday — the window is "Friday night," not
+    /// "Friday, then separately, unrelated Saturday morning." So a moment at
+    /// 03:00 on Saturday is inside the window only if `weekdays` contains
+    /// *Friday* (`date`'s weekday minus one, wrapping 1...7). A same-day
+    /// window (`startMinute < endMinute`) has no such ambiguity: `date`'s own
+    /// weekday is checked directly. `startMinute == endMinute` is a
+    /// zero-length window (never active) and an empty `weekdays` set is
+    /// never active either, both mirroring `isWithinQuietHours`'s
+    /// `start == end` guard.
+    public nonisolated static func isWithinScheduledWindow(
+        weekdays: Set<Int>,
+        startMinute: Int,
+        endMinute: Int,
+        date: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard startMinute != endMinute, !weekdays.isEmpty else { return false }
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: date)
+        guard let weekday = components.weekday else { return false }
+        let minute = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+
+        if startMinute < endMinute {
+            return weekdays.contains(weekday) && minute >= startMinute && minute < endMinute
+        }
+        // Crosses midnight — see the doc comment above.
+        let previousWeekday = weekday == 1 ? 7 : weekday - 1
+        return (weekdays.contains(weekday) && minute >= startMinute)
+            || (weekdays.contains(previousWeekday) && minute < endMinute)
     }
 
     // MARK: - Assertion creation (shared by both public entry points)
