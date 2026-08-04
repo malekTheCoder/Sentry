@@ -59,6 +59,12 @@ struct VitalsSection: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let vitals: [Vital]
+    /// Feeds the CPU row's "why is it busy" detail rows (see
+    /// `DropdownProcessList` and `details(for:)` below) — whatever
+    /// `DropdownViewModel.processMonitor` last published, unsorted and
+    /// uncapped; this view doesn't trust it to already be top-3
+    /// (`DropdownProcessList.topThree(_:)` re-derives that).
+    let topProcesses: [ProcessStats]
     /// Distinguishes "no snapshot yet" (draw the skeleton, data is coming)
     /// from "a snapshot arrived and produced no rows" (every module is off).
     let isAwaitingFirstReading: Bool
@@ -183,11 +189,51 @@ struct VitalsSection: View {
             ForEach(vital.details) { detail in
                 detailLine(label: detail.label, value: detail.value, level: .normal)
             }
+            // "CPU is very busy" used to be a verdict with no next step —
+            // the busiest processes are the answer to "busy because of
+            // what", so they ride along in the same expanded-row spot every
+            // other CPU detail already lives in, rather than a second
+            // expandable region. CPU-only: memory pressure/disk/etc. have no
+            // equivalent per-process breakdown this app collects
+            // (`ProcessCollector` reports CPU + resident memory, but a
+            // memory-sorted list would answer a different question than the
+            // one CPU's own "busy" verdict raises).
+            if vital.module == .cpu {
+                topProcessRows
+            }
         }
         .padding(.bottom, palette.spacingTight)
         .transition(.opacity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(vital.title) details")
+    }
+
+    /// The top 3 processes by CPU, styled as more `detailLine`s so they read
+    /// as part of the same list rather than a nested card. Renders nothing
+    /// while `topProcesses` is still empty (monitor just started, or its
+    /// first pass hasn't landed — see `ProcessMonitor.start()`'s doc comment
+    /// for why the first pass is always zeros) rather than a placeholder
+    /// row: the row briefly not being there is honest, a "Gathering
+    /// data…" row that then vanishes forever would just be noise for
+    /// something that resolves within ~1.2s of the row expanding.
+    @ViewBuilder
+    private var topProcessRows: some View {
+        let top = DropdownProcessList.topThree(topProcesses)
+        if !top.isEmpty {
+            Text(String(localized: "Top processes"))
+                .font(palette.font(size: 10, weight: .medium))
+                .foregroundStyle(palette.textTertiary)
+                .padding(.leading, palette.spacingTight + palette.spacingRow)
+                .padding(.top, 2)
+                .frame(height: DropdownGrid.detailRowHeight, alignment: .leading)
+            ForEach(top) { process in
+                detailLine(
+                    label: process.name,
+                    value: String(format: "%.0f%%", process.cpuPercent),
+                    level: .normal
+                )
+            }
+        }
     }
 
     private func detailLine(label: String, value: String?, level: VitalLevel) -> some View {
@@ -408,6 +454,7 @@ struct MetricDetailRow: View {
 #Preview {
     VitalsSection(
         vitals: [],
+        topProcesses: [],
         isAwaitingFirstReading: true,
         isStale: false,
         onOpenSettings: {}

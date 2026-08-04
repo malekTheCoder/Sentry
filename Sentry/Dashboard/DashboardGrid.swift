@@ -47,6 +47,17 @@ struct DashboardGrid: View {
     /// history for it still exists in the database.
     let enabledModules: Set<MetricModule>
 
+    /// `DashboardChart.ExportContext` for each card's "Export…" context menu
+    /// needs a live `HistoryStore` (to re-query the *un*-downsampled rows —
+    /// see that type's doc comment) and this grid's own `(since, tier)`
+    /// window, neither of which `series`/`expectedCadence` above carry. Both
+    /// optional so a preview or a future caller that doesn't have a
+    /// `HistoryStore` handy can simply omit them and get cards with no
+    /// export menu, exactly like passing `nil` to
+    /// `DashboardChart.exportContext` directly.
+    var historyStore: HistoryStore? = nil
+    var exportRange: (since: Date, tier: HistoryStore.Tier)? = nil
+
     /// Same module ordering as `ModuleCardStack`, minus `.power` — power
     /// lives in `BatteryHeroCard`/`BatteryHealthTrendCard` here too, not as
     /// a grid card, for the same reason `ModuleCardStack.card(for:)` renders
@@ -79,17 +90,18 @@ struct DashboardGrid: View {
         let samples = series[metric] ?? []
         let seriesCadence = expectedCadence[metric]
         let headline = MetricFormatting.value(snapshot?.value(for: metric.metricID), metric: metric.metricID)
+        let export = exportContext(for: metric)
 
         switch metric {
         case .cpu:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "E-cores"), value: MetricFormatting.percent(snapshot?.cpu?.ecorePercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "P-cores"), value: MetricFormatting.percent(snapshot?.cpu?.pcorePercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "Frequency"), value: MetricFormatting.value(snapshot?.value(for: .cpuFrequencyMHz), metric: .cpuFrequencyMHz))
                 MetricDetailRow(label: String(localized: "Package power"), value: MetricFormatting.watts(snapshot?.cpu?.packagePowerWatts))
             }
         case .gpu:
-            DashboardMetricCard(metric: metric, headline: headline, samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Renderer"), value: MetricFormatting.percent(snapshot?.gpu?.rendererPercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "Tiler"), value: MetricFormatting.percent(snapshot?.gpu?.tilerPercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "VRAM"), value: MetricFormatting.bytes(snapshot?.gpu?.vramUsedBytes))
@@ -99,11 +111,11 @@ struct DashboardGrid: View {
         case .ane:
             // Same "no public ANE utilization" caveat as `ModuleCardStack` —
             // see `ANEStats`'s doc comment.
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Active"), value: aneActivity)
             }
         case .memory:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "App"), value: MetricFormatting.bytes(snapshot?.memory?.appMemoryBytes))
                 MetricDetailRow(label: String(localized: "Wired"), value: MetricFormatting.bytes(snapshot?.memory?.wiredBytes))
                 MetricDetailRow(label: String(localized: "Compressed"), value: MetricFormatting.bytes(snapshot?.memory?.compressedBytes))
@@ -112,7 +124,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Pressure"), value: memoryPressure)
             }
         case .disk:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Write"), value: MetricFormatting.bytesPerSecond(snapshot?.disk?.writeBytesPerSec))
                 MetricDetailRow(label: String(localized: "Read IOPS"), value: MetricFormatting.value(snapshot?.disk?.readIOPS, metric: .diskReadIOPS))
                 MetricDetailRow(label: String(localized: "Write IOPS"), value: MetricFormatting.value(snapshot?.disk?.writeIOPS, metric: .diskWriteIOPS))
@@ -120,7 +132,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Used"), value: MetricFormatting.percent(snapshot?.value(for: .diskUsedPercent), decimals: 1))
             }
         case .network:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Upload"), value: MetricFormatting.bytesPerSecond(snapshot?.network?.txBytesPerSec))
                 MetricDetailRow(label: String(localized: "Session ↓"), value: MetricFormatting.bytes(snapshot?.network?.rxSessionTotalBytes))
                 MetricDetailRow(label: String(localized: "Session ↑"), value: MetricFormatting.bytes(snapshot?.network?.txSessionTotalBytes))
@@ -129,7 +141,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Link rate"), value: MetricFormatting.value(snapshot?.network?.wifiTxRateMbps, metric: .networkWifiTxRateMbps))
             }
         case .thermal:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples, cadence: seriesCadence) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Throttling"), value: thermalThrottling)
                 ForEach(Array(fanRPMs.enumerated()), id: \.offset) { index, rpm in
                     MetricDetailRow(label: String(localized: "Fan \(String(index + 1))"), value: String(localized: "\(String(Int(rpm.rounded()))) RPM"))
@@ -140,6 +152,19 @@ struct DashboardGrid: View {
             // `BatteryHeroCard`/`BatteryHealthTrendCard`, not here.
             EmptyView()
         }
+    }
+
+    /// `nil` unless both `historyStore` and `exportRange` were supplied — see
+    /// their doc comments — in which case this is what actually enables the
+    /// card's "Export…" menu (`DashboardChart.exportContext`).
+    private func exportContext(for metric: ChartMetric) -> DashboardChart.ExportContext? {
+        guard let historyStore, let exportRange else { return nil }
+        return DashboardChart.ExportContext(
+            historyStore: historyStore,
+            metricID: metric.metricID.rawValue,
+            since: exportRange.since,
+            tier: exportRange.tier
+        )
     }
 
     // MARK: Subtitles / derived text
@@ -221,6 +246,11 @@ private struct DashboardMetricCard<Detail: View>: View {
     var subtitle: String? = nil
     let samples: DashboardViewModel.RangedSamples
     let cadence: TimeInterval?
+    /// Forwarded straight to `DashboardChart.exportContext` — see that
+    /// property's doc comment. `nil` here (the default) means this card's
+    /// chart shows no "Export…" menu, same as every call site before this
+    /// feature existed.
+    var exportContext: DashboardChart.ExportContext? = nil
     @ViewBuilder let detail: () -> Detail
 
     private var tint: Color { palette.metricColor(metric.colorID) }
@@ -241,7 +271,8 @@ private struct DashboardMetricCard<Detail: View>: View {
                 unit: metric.unit,
                 expectedCadence: cadence,
                 height: 36,
-                compact: true
+                compact: true,
+                exportContext: exportContext
             )
                 .padding(.top, 2)
             if let subtitle {

@@ -173,7 +173,16 @@ struct DashboardView: View {
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
                     expectedCadence: viewModel.expectedCadence,
-                    enabledModules: viewModel.enabledModules
+                    enabledModules: viewModel.enabledModules,
+                    // Enables each card's "Export…" context menu
+                    // (`DashboardChart.ExportContext`) — `historyStore` is
+                    // the same instance already threaded through this view
+                    // for `BatteryOverviewCard`/`EnergyReportCard` above,
+                    // and `exportRange` is `viewModel.timeRange`'s own
+                    // `(since, tier)` pair, so an export always covers
+                    // exactly the window the visible charts are showing.
+                    historyStore: historyStore,
+                    exportRange: viewModel.timeRange.queryWindow()
                 )
             }
             .padding(.horizontal, palette.spacingPage)

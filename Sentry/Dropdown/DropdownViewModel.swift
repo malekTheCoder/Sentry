@@ -137,6 +137,33 @@ struct MetricSeries: Identifiable, Equatable, Sendable {
 final class DropdownViewModel: ObservableObject {
     @Published private(set) var snapshot: SystemSnapshot?
 
+    /// Backs the CPU vital's top-3-processes detail rows (see
+    /// `DropdownProcessList` and `VitalsSection.details(for:)`).
+    ///
+    /// **Why a second `ProcessMonitor` instance, not the Dashboard's one.**
+    /// `AppDelegate` already owns a `ProcessMonitor` and starts/stops it via
+    /// `updateProcessMonitorState()` — but that gate is deliberately narrowed
+    /// to "main window visible AND Dashboard tab selected"
+    /// (`updateProcessMonitorState`'s own doc comment), specifically so the
+    /// app's most expensive collector doesn't run for a Dashboard the user
+    /// isn't looking at. Widening that gate to "OR the dropdown is open"
+    /// would mean editing `AppDelegate.swift`, which is off-limits for this
+    /// change (owned by another agent) — so this dropdown gets its own
+    /// instance instead, started/stopped by `DropdownView`'s own
+    /// `onAppear`/`onDisappear` (see that file), independently of whatever
+    /// the Dashboard's instance is doing. The two instances never share
+    /// state and don't need to: each already stops itself the moment nobody
+    /// is looking at *it*, which is the same "don't pay for what nobody's
+    /// looking at" posture `ProcessMonitor`'s own doc comment describes — the
+    /// only real cost of a second instance is one extra `ProcessCollector`
+    /// enumeration pass on the rare tick where both the dropdown and the
+    /// Dashboard happen to be open at once, and nothing at all otherwise.
+    ///
+    /// `limit: 3` (rather than reusing the Dashboard's 8) because the
+    /// dropdown only ever displays `DropdownProcessList.topThree(_:)` — no
+    /// point collecting rows this surface will just discard.
+    let processMonitor = ProcessMonitor(limit: 3)
+
     func ingest(_ snapshot: SystemSnapshot) {
         self.snapshot = snapshot
     }
@@ -145,5 +172,17 @@ final class DropdownViewModel: ObservableObject {
     /// would render as though it were current.
     func reset() {
         snapshot = nil
+    }
+
+    /// Called from `DropdownView.onAppear` — see `processMonitor`'s doc
+    /// comment for why this dropdown owns its own start/stop rather than
+    /// sharing the Dashboard's gating.
+    func startProcessMonitoring() {
+        processMonitor.start()
+    }
+
+    /// Called from `DropdownView.onDisappear`.
+    func stopProcessMonitoring() {
+        processMonitor.stop()
     }
 }
