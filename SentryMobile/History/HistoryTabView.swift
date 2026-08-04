@@ -94,10 +94,20 @@ struct HistoryTabView: View {
 
     // MARK: - Demo data disclosure
 
+    /// **Connection-honesty review, bug #6.** Used to say "this build has no
+    /// live iCloud sync yet" — true in isolation, but shown exactly when
+    /// `!appDataSource.isUsingLocalSync`, i.e. precisely when this phone
+    /// isn't reachable to a Mac over the local network right now. iCloud was
+    /// never the transport this build tries; naming it here told the reader
+    /// their real, fixable problem (Mac unreachable on Wi-Fi) was actually
+    /// an unrelated, unfinished cloud feature. Reworded to name the actual
+    /// cause: no local-network connection right now, same signal
+    /// `DashboardTabView`'s connection line and `SettingsTabView`'s device
+    /// card already key off.
     private var demoDataBanner: some View {
         Label {
-            Text("Showing demo data — this build has no live iCloud sync yet")
-                .font(.caption)
+            Text("Showing demo data — not currently connected to a Mac on your local network")
+                .scaledFont(palette, size: 12)
                 .foregroundStyle(palette.textSecondary)
         } icon: {
             Image(systemName: "wand.and.stars")
@@ -106,6 +116,8 @@ struct HistoryTabView: View {
         .padding(palette.spacing)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(palette)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("This tab's numbers are synthesized, not a real Mac's history, because this phone isn't currently connected to a Mac over your local Wi-Fi network or a configured remote address — not because of any iCloud limitation.")
     }
 
     // MARK: - Battery health

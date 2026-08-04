@@ -104,19 +104,47 @@ struct DashboardTabView: View {
     /// 6pt dot + one sentence, per the handoff: green "Live · updated 2 s
     /// ago", gray "unreachable · last seen …", amber for demo data. A slow
     /// clock ages the caption without re-rendering the whole screen.
+    ///
+    /// **Retry (connection-honesty review, bug #1).** Before this existed,
+    /// demo data was a dead end: `AppDataSource.resolveIfNeeded()` runs once
+    /// per launch, so a Mac that was merely asleep or briefly slow meant the
+    /// only way back to a real connection was force-quitting the app. The
+    /// non-live states (demo and unreachable) are now a `Button` that calls
+    /// `AppDataSource.retryConnection()` — the same reconnect path
+    /// `SentryMobileApp`'s `scenePhase` observer uses on foreground — with a
+    /// small trailing "Retry" affordance so the tap target doesn't have to
+    /// be inferred from the sentence alone. Disabled and hidden while
+    /// already live: retrying a working connection has nothing useful to do.
     private var connectionLine: some View {
         TimelineView(.periodic(from: .now, by: 5)) { context in
             let state = connectionState(now: context.date)
-            HStack(spacing: palette.spacingTight) {
-                Circle()
-                    .fill(state.color)
-                    .frame(width: 6, height: 6)
-                    .accessibilityHidden(true)
-                Text(state.sentence)
-                    .scaledFont(palette, size: 12)
-                    .foregroundStyle(palette.textSecondary)
+            Button {
+                Task { await appDataSource.retryConnection() }
+            } label: {
+                HStack(spacing: palette.spacingTight) {
+                    Circle()
+                        .fill(state.color)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                    Text(state.sentence)
+                        .scaledFont(palette, size: 12)
+                        .foregroundStyle(palette.textSecondary)
+                    if !appDataSource.isLocalSyncConnected {
+                        Text("Retry")
+                            .scaledFont(palette, size: 12, weight: .semibold)
+                            .foregroundStyle(palette.accent)
+                    }
+                }
             }
+            .buttonStyle(.plain)
+            .disabled(appDataSource.isLocalSyncConnected)
             .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(appDataSource.isLocalSyncConnected ? [] : [.isButton])
+            .accessibilityHint(
+                appDataSource.isLocalSyncConnected
+                    ? ""
+                    : "Double-tap to try reconnecting to a Mac on your local network."
+            )
         }
     }
 

@@ -184,20 +184,86 @@ public final class AppDataSource: ObservableObject {
         defaults.set(String(endpoint.port), forKey: "remoteSync.port")
         defaults.set(endpoint.code, forKey: "remoteSync.code")
 
-        // Let any in-flight first resolution finish before deciding whether
-        // a second attempt is needed — racing it could stand up two clients.
+        await reconfigureAndResolve(host: endpoint.host, port: endpoint.port, code: endpoint.code)
+    }
+
+    /// The `SettingsTabView` "Connect" button's live-apply path (bug #3 in
+    /// the connection-honesty review): before this existed, the "Remote Mac"
+    /// fields were `@AppStorage`-backed and read only once, by
+    /// `remoteEndpointFromDefaults()` at launch — typing a corrected
+    /// hostname did nothing until the app relaunched, even though the help
+    /// text under the fields promised the new address "takes effect the next
+    /// time the app connects." This re-reads those same defaults keys right
+    /// now and hands them to the identical tail `applyPairing(_:)` already
+    /// uses, rather than only writing to `UserDefaults` and hoping
+    /// `resolveIfNeeded()` happens to run again. A no-op (returns `false`)
+    /// when the fields don't yet form a valid endpoint — `SettingsTabView`
+    /// uses the return value to decide whether to show a validation cue
+    /// instead of silently doing nothing.
+    @discardableResult
+    public func applyRemoteSettingsFromDefaults() async -> Bool {
+        guard let remote = Self.remoteEndpointFromDefaults() else { return false }
+        await reconfigureAndResolve(host: remote.host, port: remote.port, code: remote.code)
+        return true
+    }
+
+    /// Shared tail for `applyPairing(_:)` and
+    /// `applyRemoteSettingsFromDefaults()`: let any in-flight resolution
+    /// finish (racing a second one could stand up two `LocalSyncClient`s),
+    /// then either hand the new endpoint to the already-running client's
+    /// direct-dial retry loop, or — the case that matters for a fresh
+    /// install or a prior launch that had already given up — re-run
+    /// resolution from scratch, since that earlier fallback to
+    /// `MockDataSource` was decided before this endpoint existed to try.
+    private func reconfigureAndResolve(host: String, port: UInt16, code: String) async {
         if let resolveTask {
             await resolveTask.value
         }
 
         if let localClient {
-            await localClient.configureDirectEndpoint(
-                host: endpoint.host, port: endpoint.port, pairingCode: endpoint.code
-            )
+            await localClient.configureDirectEndpoint(host: host, port: port, pairingCode: code)
         } else {
             resolveTask = nil
             await resolveIfNeeded()
         }
+    }
+
+    /// User- or system-initiated retry, deliberately bypassing
+    /// `resolveIfNeeded()`'s once-per-launch guard (see that method's doc
+    /// comment for why automatic resolution stays single-shot). Two call
+    /// sites, both real bugs from the connection-honesty review:
+    ///
+    /// 1. The amber "Demo data — not from a real Mac" indicator
+    ///    (`DashboardTabView.connectionLine`) is now tappable and calls this
+    ///    — before this existed, a Mac that was merely asleep or slow at
+    ///    launch latched the app onto `MockDataSource` forever, with no
+    ///    recovery short of force-quitting.
+    /// 2. `SentryMobileApp`'s `scenePhase` observer calls this when the app
+    ///    returns to `.active` from the background — iOS suspends the
+    ///    process while backgrounded, so `LocalSyncClient`'s Bonjour browser
+    ///    and its retry loops can go stale and not refire on resume, and
+    ///    nothing was watching `scenePhase` at all before this.
+    ///
+    /// No-ops while already connected. Otherwise tears down whatever client
+    /// exists (a stale, backgrounded one included) and re-runs resolution
+    /// from a clean slate — simpler and more robust than trying to nudge a
+    /// possibly-stale `NWBrowser`/`NWConnection` back to life, and cheap
+    /// enough for a user-initiated or once-per-foregrounding retry.
+    public func retryConnection() async {
+        if let resolveTask {
+            await resolveTask.value
+        }
+        guard !isLocalSyncConnected else { return }
+
+        if let localClient {
+            await localClient.stop()
+        }
+        localClient = nil
+        transport = MockDataSource()
+        isUsingLocalSync = false
+        isLocalSyncConnected = false
+        resolveTask = nil
+        await resolveIfNeeded()
     }
 
     // MARK: - Mock-only conveniences, generalized across both transports
