@@ -674,11 +674,51 @@ extension Theme {
         surfaceElevated: ThemeColor(light: "#EFEEE9", dark: "#2C2C2C"),
         textPrimary: ThemeColor(light: "#37352F", dark: "#D4D4D4"),
         textSecondary: ThemeColor(light: "#787774", dark: "#9B9B9B"),
-        textTertiary: ThemeColor(light: "#9B9A97", dark: "#6F6F6F"),
+        // `textTertiary`, `warning` and `danger` below were darkened
+        // (light) / lightened (dark) from their original Notion values to
+        // clear WCAG 2.1 SC 1.4.3's 4.5:1 text bar. `isTextToken` on
+        // `ThemeColorToken` documents why 4.5:1 is the applicable
+        // requirement rather than 1.4.11's 3:1 non-text floor: real call
+        // sites (`Sentry/Insights/InsightRowView.swift`,
+        // `Sentry/Dropdown/VitalsSection.swift`,
+        // `Sentry/Dashboard/AnomaliesCard.swift`,
+        // `Sentry/MenuBar/BarModuleRenderer.swift`, etc.) render all three
+        // as literal text — timestamps, status sentences, numeric readouts,
+        // and menu-bar glyphs — not just icons or dots. The worst-case
+        // backdrop for every one of these is `surfaceElevated`, the
+        // lightest of the three surfaces in light mode and (in dark mode)
+        // the lightest of the three dark surfaces, which is where each
+        // ratio below was measured.
+        //
+        // Original `#9B9A97` measured 2.81:1 on `background`, 2.42:1 (worst
+        // case) on `surfaceElevated` — both fail 4.5:1. New `#6B6A67` keeps
+        // the same warm-neutral hue/saturation (HSL hue ~0.125, sat ~0.02)
+        // and reaches 4.66:1 on `surfaceElevated` (5.41:1 on `background`).
+        // This unavoidably lands close to — in fact slightly darker than —
+        // `textSecondary`'s own `#787774` (which itself measures 4.48:1 on
+        // `background`, just short of AA and part of the still-tracked gap
+        // `ThemeContrastTests` documents): a tertiary token cannot pass
+        // 4.5:1 on white while staying lighter than a secondary token that
+        // doesn't. Fixing `textSecondary` is out of scope for this change.
+        textTertiary: ThemeColor(light: "#6B6A67", dark: "#949494"),
         accent: ThemeColor(light: "#2383E2", dark: "#529CCA"),
         success: ThemeColor(light: "#0F7B6C", dark: "#4DAB9A"),
-        warning: ThemeColor(light: "#D9730D", dark: "#FFA344"),
-        danger: ThemeColor(light: "#E03E3E", dark: "#FF7369"),
+        // Original `#D9730D` on `surfaceElevated` measured 2.82:1 (worst
+        // case among the three light surfaces) — fails 4.5:1. New `#A3560A`
+        // keeps the same orange hue/saturation (HSL hue ~0.083, sat ~0.89),
+        // darkened, and reaches 4.64:1 on `surfaceElevated` (5.39:1 on
+        // `background`). Dark mode's `#FFA344` already measures 7.03:1
+        // worst-case and is left untouched.
+        warning: ThemeColor(light: "#A3560A", dark: "#FFA344"),
+        // Original `#E03E3E` on `surfaceElevated` measured 3.67:1 (worst
+        // case) — fails 4.5:1 even though it clears 1.4.11's 3:1 non-text
+        // floor; the call sites above confirm `danger` is used as text, so
+        // 4.5:1 is the bar that governs. New `#D02121` keeps the same red
+        // hue/saturation (HSL hue 0, sat ~0.72), darkened, and reaches
+        // 4.61:1 on `surfaceElevated` (5.36:1 on `background`). Dark mode's
+        // `#FF7369` already measures 5.26:1 worst-case and is left
+        // untouched.
+        danger: ThemeColor(light: "#D02121", dark: "#FF7369"),
         chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
         chartFill: [
             ThemeColor(light: "#2383E2", dark: "#529CCA", opacity: 0.18),
@@ -688,8 +728,14 @@ extension Theme {
         metricColors: nocturneMetricColors(
             accent: ThemeColor(light: "#2383E2", dark: "#529CCA"),
             success: ThemeColor(light: "#0F7B6C", dark: "#4DAB9A"),
-            warning: ThemeColor(light: "#D9730D", dark: "#FFA344"),
-            danger: ThemeColor(light: "#E03E3E", dark: "#FF7369")
+            // Kept in sync with the `warning`/`danger` tokens above rather
+            // than left on the pre-fix hues — metric colors are only held
+            // to the 3:1 non-text floor (both the old and new values clear
+            // it comfortably), but leaving "memory" and "thermal" on the
+            // old orange/red would put two different warning hues and two
+            // different danger hues in the same preset for no reason.
+            warning: ThemeColor(light: "#A3560A", dark: "#FFA344"),
+            danger: ThemeColor(light: "#D02121", dark: "#FF7369")
         ),
         fontFamily: .system,
         barFontSize: 11,
