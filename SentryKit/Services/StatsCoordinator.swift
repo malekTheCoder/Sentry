@@ -88,8 +88,39 @@ public final class StatsCoordinator: @unchecked Sendable {
     // FR-2 ("refresh interval user-adjustable per module") is implemented at
     // this tier granularity, not per collector — see `setBaseInterval`'s doc
     // comment below for why that's a deliberate scope call, not a shortcut.
+    //
+    //   Process (8s default) — top-N processes by CPU
+    //                          (`SystemSnapshot.topProcesses`). Deliberately
+    //                          its own tier, not folded into `.fast` or even
+    //                          `.slow`: `ProcessCollector`'s own doc comment
+    //                          (`SystemMetricsKit/Collectors/ProcessCollector.swift`)
+    //                          calls per-process enumeration meaningfully
+    //                          more expensive than any other single
+    //                          collector's per-tick cost, so it needs a
+    //                          cadence slower than `.fast`'s 3s — but 30s
+    //                          (`.slow`'s default) is too coarse for
+    //                          "process X has been pegging CPU for N
+    //                          minutes" alerting to notice promptly. 8s
+    //                          lands in the same 5–10s neighborhood
+    //                          `ProcessMonitor` (the Dashboard's own,
+    //                          entirely separate poller for the same
+    //                          underlying data) already uses for its "Top
+    //                          Processes" card, without literally sharing a
+    //                          cadence — these are two independent
+    //                          `ProcessCollector` instances, each enumerating
+    //                          on its own timer for its own consumer
+    //                          (Dashboard UI vs. `AlertEngine`), exactly the
+    //                          same "no shared mutable collector state
+    //                          across consumers" posture every other
+    //                          provider closure on this type already has.
+    //                          Reuses the same adaptive-throttling
+    //                          multipliers as every other tier
+    //                          (`effectiveInterval(for:)`), since a
+    //                          comparatively expensive collector is
+    //                          precisely the one that should back off
+    //                          hardest on battery / with the popover closed.
     public enum Tier: Hashable {
-        case fast, medium, slow
+        case fast, medium, slow, process
     }
 
     // MARK: - Dependencies (provider closures — see type doc for why)
@@ -106,6 +137,31 @@ public final class StatsCoordinator: @unchecked Sendable {
     /// provider closure, so wiring it in (or leaving it nil on a Mac where
     /// it's unavailable) is the composition root's call.
     private let gpuProvider: (() -> GPUStats?)?
+
+    /// Optional dependency slot: process enumeration
+    /// (`SystemSnapshot.topProcesses`) is meaningfully more expensive than
+    /// every other collector here (see the `.process` tier's doc comment
+    /// above), so it gets the same "optional provider closure, nil on a
+    /// composition root that hasn't wired it in" treatment as `gpuProvider`
+    /// rather than being a required dependency every caller (including every
+    /// existing test that constructs a `StatsCoordinator`) would otherwise
+    /// have to supply. `nil` means the `.process` tier never starts a timer
+    /// at all (see `startPollingIfNeeded`) — not "starts and yields nothing"
+    /// — so a Mac/build without this wired pays literally zero cost for it,
+    /// matching P6 ("cheap by default").
+    private let processProvider: (() -> [ProcessStats]?)?
+
+    /// Base interval for the `.process` tier — see that tier's doc comment
+    /// for why 8s and why it's a separate tier from `.fast`/`.medium`/`.slow`
+    /// rather than reusing one of them. `let`, not `var` like
+    /// `fastInterval`/`mediumInterval`/`slowInterval`: those three are
+    /// user-adjustable via `AppSettings`/`GeneralPane` (FR-2), and wiring a
+    /// fourth settings-pane slider for this tier is out of scope for the
+    /// alerting feature this exists to support — nothing currently reads or
+    /// writes this after construction. `effectiveInterval(for:)`'s adaptive
+    /// throttling still applies on top of it exactly as it does for the
+    /// other three tiers' base intervals.
+    private let processInterval: TimeInterval
 
     /// Optional dependency slot for ANE stats. No `ANECollector` type exists
     /// yet anywhere in the codebase. Settable post-init (unlike the other
@@ -368,6 +424,12 @@ public final class StatsCoordinator: @unchecked Sendable {
         var disk: DiskStats?
         var network: NetworkStats?
         var thermal: ThermalStats?
+        /// Only ever assigned from the `.process` tier's tick, and only when
+        /// that tick actually produced a non-nil result — see
+        /// `SystemSnapshot.topProcesses`'s doc comment for why every other
+        /// tier's tick, and even a `.process` tick that itself yields nil,
+        /// must leave this exactly as it was rather than clearing it.
+        var topProcesses: [ProcessStats]?
     }
     private var latest = LatestSamples()
 
@@ -382,8 +444,17 @@ public final class StatsCoordinator: @unchecked Sendable {
     ///     called repeatedly on the same instance.
     ///   - gpuProvider: optional; nil on a Mac/build where GPU stats aren't
     ///     wired up.
+    ///   - processProvider: optional; nil on a Mac/build where process
+    ///     enumeration isn't wired up — see `processProvider`'s own doc
+    ///     comment. Expected to close over one persistent `ProcessCollector`
+    ///     instance, e.g. `{ processCollector.collectTopProcesses(limit: 20) }`,
+    ///     same "one collector instance per provider" contract as every
+    ///     other stateful provider here.
     ///   - fastInterval/mediumInterval/slowInterval: base tier intervals
     ///     before adaptive throttling (plan §8.4 defaults: 3s/5s/30s).
+    ///   - processInterval: base interval for the `.process` tier (default
+    ///     8s) — see that tier's doc comment above for why it's slower than
+    ///     `.fast` but faster than `.slow`.
     ///   - deviceID: see the `deviceID` property doc — in-memory only for
     ///     Phase 1.
     public init(
@@ -395,9 +466,11 @@ public final class StatsCoordinator: @unchecked Sendable {
         thermalProvider: @escaping () -> ThermalStats?,
         gpuProvider: (() -> GPUStats?)? = nil,
         aneProvider: (() -> ANEStats?)? = nil,
+        processProvider: (() -> [ProcessStats]?)? = nil,
         fastInterval: TimeInterval = 3,
         mediumInterval: TimeInterval = 5,
         slowInterval: TimeInterval = 30,
+        processInterval: TimeInterval = 8,
         deviceID: String = UUID().uuidString
     ) {
         self.batteryProvider = batteryProvider
@@ -408,9 +481,11 @@ public final class StatsCoordinator: @unchecked Sendable {
         self.thermalProvider = thermalProvider
         self.gpuProvider = gpuProvider
         self.aneCollectorProviderStorage = aneProvider
+        self.processProvider = processProvider
         self.fastInterval = fastInterval
         self.mediumInterval = mediumInterval
         self.slowInterval = slowInterval
+        self.processInterval = processInterval
         self.deviceID = deviceID
     }
 
@@ -507,6 +582,15 @@ public final class StatsCoordinator: @unchecked Sendable {
             tick(tier: tier)
             scheduleTimer(for: tier)
         }
+        // `.process` only starts its own timer when a provider is actually
+        // wired in — see `processProvider`'s doc comment. Unlike the three
+        // tiers above, a build/composition-root that hasn't wired process
+        // enumeration in must not pay for a timer that would just tick a
+        // provider closure that always returns nil.
+        if processProvider != nil {
+            tick(tier: .process)
+            scheduleTimer(for: .process)
+        }
     }
 
     /// Self-rescheduling rather than a fixed `repeating:` interval, so a
@@ -536,6 +620,7 @@ public final class StatsCoordinator: @unchecked Sendable {
         case .fast: return fastInterval
         case .medium: return mediumInterval
         case .slow: return slowInterval
+        case .process: return processInterval
         }
     }
 
@@ -612,6 +697,25 @@ public final class StatsCoordinator: @unchecked Sendable {
                     self.publishSnapshot()
                 }
             }
+        case .process:
+            guard let processProvider = self.processProvider else { return }
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let processes = processProvider()
+                self?.queue.async {
+                    guard let self else { return }
+                    // Only overwrite on an actual result — see
+                    // `LatestSamples.topProcesses`'s doc comment. A nil
+                    // result here (provider hiccup, or simply "hasn't run
+                    // yet") must never clobber the last-known list, unlike
+                    // every other tier's tick, which does overwrite on nil
+                    // (nil there legitimately means "this Mac doesn't have
+                    // this capability," not "temporarily unavailable").
+                    if let processes {
+                        self.latest.topProcesses = processes
+                    }
+                    self.publishSnapshot()
+                }
+            }
         }
     }
 
@@ -641,7 +745,8 @@ public final class StatsCoordinator: @unchecked Sendable {
             sleepAssertion: sleepAssertionStateStorage,
             location: locationStorage,
             agentAccessPaused: agentAccessPausedStorage,
-            protectionScore: protectionScoreStorage
+            protectionScore: protectionScoreStorage,
+            topProcesses: latest.topProcesses
         )
     }
 }

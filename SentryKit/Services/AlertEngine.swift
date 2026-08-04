@@ -67,6 +67,18 @@ import AppKit
 /// so `AlertEngine` reads them directly for these two rule IDs instead of
 /// going through `SystemSnapshot.value(for:)`.
 ///
+/// **Process-scoped rules.** A rule with `AlertRule.processNameMatch` set
+/// (always user-created — see `defaultRules(cooldown:)`'s doc comment for
+/// why none ship by default) takes a fourth evaluation path,
+/// `evaluateProcessRule`, alongside the three ID-special-cased rules above —
+/// but unlike those three, it's selected by rule *content*
+/// (`processNameMatch != nil`), not a fixed ID, since any number of these
+/// can exist. It still goes through the exact same
+/// sustained/cooldown/rate-cap/DND/quiet-hours pipeline as every other rule
+/// in `evaluate(rule:snapshot:now:)` — only `currentCondition(for:snapshot:now:)`,
+/// the function that decides *whether* the condition is currently true,
+/// differs per rule kind.
+///
 /// **Delivery.** `.notification` goes out via `UNUserNotificationCenter`,
 /// with authorization requested lazily — the first time *any* rule
 /// transitions from disabled to enabled (plan §11.3: "not at launch"), via
@@ -621,6 +633,17 @@ public final class AlertEngine {
         if rule.id == Self.batteryHealthDropRuleID {
             return evaluateBatteryHealthDrop(snapshot, threshold: rule.threshold, now: now)
         }
+        // Unlike the three ID-special-cased rules above, this branch is
+        // driven by `AlertRule` *content* (`processNameMatch`), not a fixed
+        // UUID — a process-scoped rule is always user-created (there is no
+        // shipped default one; see `AlertEngine.defaultRules`'s doc comment
+        // for why), so there is no fixed ID to key off of the way the three
+        // shipped special cases have. See `AlertRule.processNameMatch`'s doc
+        // comment for exactly what `metric`/`comparison`/`threshold` mean
+        // once this is set.
+        if let processName = rule.processNameMatch {
+            return evaluateProcessRule(rule, processName: processName, snapshot: snapshot)
+        }
 
         guard let value = snapshot.value(for: rule.metric) else { return (false, nil) }
 
@@ -668,6 +691,52 @@ public final class AlertEngine {
             return (false, value)
         }
         return (baseline - value >= threshold, value)
+    }
+
+    /// A user-created "watch this process" rule (`AlertRule.processNameMatch`
+    /// non-nil) — matches `processName` case-insensitively against
+    /// `SystemSnapshot.topProcesses`, then compares whichever of
+    /// `ProcessStats.cpuPercent`/`.residentMemoryBytes` the rule's `metric`
+    /// selects (`.memoryUsedBytes` reads memory, anything else — in
+    /// practice always `.cpuTotalPercent`, the only other value the
+    /// `AlertsPane` editor offers for this rule kind — reads CPU) against
+    /// `rule.threshold` via `rule.comparison`.
+    ///
+    /// **Honest-nil, twice over, matching P5:**
+    /// - `snapshot.topProcesses == nil` means the `.process` tier hasn't
+    ///   ticked yet this session (`StatsCoordinator`'s doc comment) —
+    ///   reported as "condition not met," never as a false positive built on
+    ///   data that doesn't exist yet.
+    /// - A non-nil but process-not-found list (the named process isn't
+    ///   currently running, or is running but didn't crack the top-N cut —
+    ///   see `SystemSnapshot.topProcesses`'s doc comment on that limitation)
+    ///   is reported the same way: not met, not a crash, not a stale value
+    ///   from some earlier tick.
+    ///
+    /// `.changedBy` has no meaningful "baseline" for a value that can vanish
+    /// and reappear as the process starts/stops between ticks, unlike a
+    /// system-wide metric that's always present once its module exists — so
+    /// it's treated as always-false here rather than silently reusing the
+    /// generic bidirectional-delta machinery (`changedByBaseline`) against a
+    /// process that might not be the *same* process (a reused/relaunched
+    /// PID with the same executable name) across observations.
+    private func evaluateProcessRule(_ rule: AlertRule, processName: String, snapshot: SystemSnapshot) -> (Bool, Double?) {
+        guard let topProcesses = snapshot.topProcesses else { return (false, nil) }
+        guard let match = topProcesses.first(where: { $0.name.caseInsensitiveCompare(processName) == .orderedSame }) else {
+            return (false, nil)
+        }
+        let value = rule.metric == .memoryUsedBytes ? Double(match.residentMemoryBytes) : match.cpuPercent
+
+        switch rule.comparison {
+        case .above:
+            return (value >= rule.threshold, value)
+        case .below:
+            return (value <= rule.threshold, value)
+        case .equals:
+            return (abs(value - rule.threshold) < 0.0001, value)
+        case .changedBy:
+            return (false, value)
+        }
     }
 
     /// "Charging paused": `BatteryStats.notChargingReason` non-zero while

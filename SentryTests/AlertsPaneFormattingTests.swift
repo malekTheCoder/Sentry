@@ -12,11 +12,48 @@ final class AlertsPaneFormattingTests: XCTestCase {
 
     // MARK: - Rule kind routing
 
+    /// Minimal rule builder for `RuleKind` routing tests, which only care
+    /// about `id`/`processNameMatch`, never the rest of the condition.
+    private func routingRule(id: UUID = UUID(), processNameMatch: String? = nil) -> AlertRule {
+        AlertRule(
+            id: id,
+            name: "Test rule",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 0,
+            cooldown: 0,
+            actions: [],
+            processNameMatch: processNameMatch
+        )
+    }
+
     func testSpecialCasedRuleIDsRouteToTheirOwnKinds() {
-        XCTAssertEqual(RuleKind(id: AlertEngine.chargingPausedRuleID), .chargingPaused)
-        XCTAssertEqual(RuleKind(id: AlertEngine.slowChargingRuleID), .slowCharging)
-        XCTAssertEqual(RuleKind(id: AlertEngine.batteryHealthDropRuleID), .batteryHealthDrop)
-        XCTAssertEqual(RuleKind(id: UUID()), .generic)
+        XCTAssertEqual(RuleKind(rule: routingRule(id: AlertEngine.chargingPausedRuleID)), .chargingPaused)
+        XCTAssertEqual(RuleKind(rule: routingRule(id: AlertEngine.slowChargingRuleID)), .slowCharging)
+        XCTAssertEqual(RuleKind(rule: routingRule(id: AlertEngine.batteryHealthDropRuleID)), .batteryHealthDrop)
+        XCTAssertEqual(RuleKind(rule: routingRule()), .generic)
+    }
+
+    func testProcessNameMatchRoutesToProcessMatchKindRegardlessOfID() {
+        // Unlike the three ID-special-cased kinds, `.processMatch` is
+        // content-derived — any non-special-cased `id` with
+        // `processNameMatch` set must route here.
+        XCTAssertEqual(RuleKind(rule: routingRule(processNameMatch: "node")), .processMatch)
+        // An empty-but-non-nil string still counts as "process mode is on,"
+        // even before the user has typed a name — the toggle binding relies
+        // on this (`processMatchEnabledBinding`'s doc comment).
+        XCTAssertEqual(RuleKind(rule: routingRule(processNameMatch: "")), .processMatch)
+    }
+
+    func testSpecialCasedIDsTakePriorityOverProcessNameMatch() {
+        // A pathological/hand-edited rule that happens to carry both a
+        // reserved ID and a `processNameMatch` must still route to the
+        // ID-special-cased kind — `AlertEngine.currentCondition` itself
+        // checks the three fixed IDs before `processNameMatch`, so the
+        // editor must agree about which fields are actually read.
+        let rule = routingRule(id: AlertEngine.chargingPausedRuleID, processNameMatch: "node")
+        XCTAssertEqual(RuleKind(rule: rule), .chargingPaused)
     }
 
     func testEverySpecialCasedRuleExplainsWhichFieldsDoNotApply() {
@@ -28,6 +65,15 @@ final class AlertsPaneFormattingTests: XCTestCase {
         XCTAssertNil(RuleKind.generic.notApplicableNote)
     }
 
+    func testProcessMatchExplainsItsTopNAndUnobservedLimitations() {
+        // `.processMatch` isn't "not applicable" the way the three
+        // ID-special-cased kinds are — its fields are editable — but it
+        // still gets an explanatory note, covering a real limitation
+        // (`SystemSnapshot.topProcesses`'s doc comment) a user could
+        // otherwise be confused by ("why didn't my rule fire?").
+        XCTAssertNotNil(RuleKind.processMatch.notApplicableNote)
+    }
+
     func testOnlyTheTwoFullyPlaceholderRulesGetAFixedConditionSummary() {
         // Battery health drop is excluded on purpose: its `threshold` *is*
         // read by the engine, so it gets a real editable field rather than a
@@ -36,6 +82,7 @@ final class AlertsPaneFormattingTests: XCTestCase {
         XCTAssertNotNil(RuleKind.slowCharging.fixedConditionSummary)
         XCTAssertNil(RuleKind.batteryHealthDrop.fixedConditionSummary)
         XCTAssertNil(RuleKind.generic.fixedConditionSummary)
+        XCTAssertNil(RuleKind.processMatch.fixedConditionSummary)
     }
 
     // MARK: - History value rendering
@@ -176,7 +223,7 @@ final class AlertsPaneFormattingTests: XCTestCase {
         XCTAssertFalse(rule.actions.isEmpty, "a new rule with no actions fires and does nothing")
         XCTAssertEqual(rule.cooldown, 1800, "cooldown must come from the caller's current setting, not a baked-in literal")
         XCTAssertTrue(rule.isEnabled)
-        XCTAssertEqual(RuleKind(id: rule.id), .generic, "a new rule must take the generic evaluation path, not collide with a special-cased one")
+        XCTAssertEqual(RuleKind(rule: rule), .generic, "a new rule must take the generic evaluation path, not collide with a special-cased one")
     }
 
     // MARK: - Condition summaries
@@ -206,5 +253,36 @@ final class AlertsPaneFormattingTests: XCTestCase {
             AlertsPane.conditionSummary(for: rule),
             "CPU ≥ \(MetricFormatter.detailed(90, unit: .percent))"
         )
+    }
+
+    func testConditionSummaryForAProcessRuleNamesTheProcess() {
+        let rule = AlertRule(
+            name: "Watch node",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 300,
+            cooldown: 1800,
+            actions: [],
+            processNameMatch: "node"
+        )
+        XCTAssertEqual(
+            AlertsPane.conditionSummary(for: rule),
+            "node CPU ≥ \(MetricFormatter.detailed(90, unit: .percent))"
+        )
+    }
+
+    func testConditionSummaryForAnUnnamedProcessRuleSaysSoRatherThanShowingAnEmptyName() {
+        let rule = AlertRule(
+            name: "Watch",
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 0,
+            cooldown: 0,
+            actions: [],
+            processNameMatch: ""
+        )
+        XCTAssertTrue(AlertsPane.conditionSummary(for: rule).contains("no process set"))
     }
 }

@@ -65,6 +65,31 @@ public struct AlertRule: Codable, Identifiable, Equatable, Sendable {
 
     public var actions: [AlertAction]
 
+    /// The process name to match, case-insensitively, against
+    /// `ProcessStats.name` in `SystemSnapshot.topProcesses` — e.g. "node" or
+    /// "Xcode". `nil` (the default) means this is an ordinary
+    /// metric/comparison/threshold rule; non-nil switches `AlertEngine`'s
+    /// evaluation for this rule onto the process path (see
+    /// `AlertEngine.currentCondition(for:snapshot:now:)`'s `processNameMatch`
+    /// branch), where `metric` is still read but narrowed to exactly two
+    /// meaningful values — `.cpuTotalPercent` (compares
+    /// `ProcessStats.cpuPercent`) and `.memoryUsedBytes` (compares
+    /// `ProcessStats.residentMemoryBytes`) — and `comparison`/`threshold`
+    /// keep their normal generic meaning against whichever of those two the
+    /// rule selects.
+    ///
+    /// This is the one genuinely new piece of information a process rule
+    /// needs that no existing field can express — a *name* to look up,
+    /// rather than a scalar to compare. Added additively (optional, default
+    /// nil) rather than as a new required field or a parallel "rule kind"
+    /// enum, so every existing `AlertRule` literal, every persisted
+    /// `settings.json`, and every `Codable` round trip in this codebase
+    /// keeps compiling and decoding unchanged — a settings file written
+    /// before this field existed simply decodes it as nil, which is exactly
+    /// "not a process rule," the correct reading for a rule that predates
+    /// the feature.
+    public var processNameMatch: String?
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -76,7 +101,8 @@ public struct AlertRule: Codable, Identifiable, Equatable, Sendable {
         cooldown: TimeInterval,
         quietHours: QuietHours? = nil,
         onlyWhen: [Precondition] = [],
-        actions: [AlertAction]
+        actions: [AlertAction],
+        processNameMatch: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -89,6 +115,7 @@ public struct AlertRule: Codable, Identifiable, Equatable, Sendable {
         self.quietHours = quietHours
         self.onlyWhen = onlyWhen
         self.actions = actions
+        self.processNameMatch = processNameMatch
     }
 }
 

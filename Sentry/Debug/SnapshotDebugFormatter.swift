@@ -52,9 +52,14 @@ public enum SnapshotDebugFormatter {
     /// discovered purely via `Mirror`, so the section order in the window is
     /// stable and matches the plan even though `Mirror`'s child order
     /// already happens to follow declaration order (an implementation
-    /// detail `Mirror`'s docs don't actually guarantee).
+    /// detail `Mirror`'s docs don't actually guarantee). `topProcesses`
+    /// (added alongside process-scoped alert rules — see
+    /// `SystemSnapshot.topProcesses`'s doc comment) is appended last,
+    /// after `location`, for the same "added after the plan was written"
+    /// reasoning.
     private static let subStructKeys = [
         "battery", "cpu", "gpu", "ane", "memory", "disk", "network", "thermal", "sleepAssertion", "location",
+        "topProcesses",
     ]
 
     /// One `Section` per `SystemSnapshot` sub-struct, plus a leading
@@ -160,6 +165,7 @@ public enum SnapshotDebugFormatter {
         case "ane": return "ANE"
         case "sleepAssertion": return "Sleep Assertion"
         case "location": return "Location"
+        case "topProcesses": return "Top Processes"
         default: return key.prefix(1).uppercased() + key.dropFirst()
         }
     }

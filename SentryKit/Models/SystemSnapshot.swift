@@ -74,6 +74,45 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
     /// absent reading must not be spelled the same way.
     public var protectionScore: Int?
 
+    /// The busiest processes on the Mac by CPU, as of the last time
+    /// `StatsCoordinator` ran its (deliberately slower, separate) process
+    /// tier — see that type's doc comment for the cadence and why process
+    /// enumeration doesn't ride along with the fast/medium/slow tiers every
+    /// other field here does. This is what lets `AlertEngine` build a rule
+    /// against "process X is pegging CPU/memory" (`SentryKit/Services/AlertRule.swift`'s
+    /// `processNameMatch`) without `AlertEngine` reaching into the Dashboard
+    /// layer, which already owns its own independent, UI-driven collection
+    /// of the same underlying data (`Sentry/Dashboard/ProcessMonitor.swift`,
+    /// `SystemMetricsKit/Collectors/ProcessCollector.swift`) for the "Top
+    /// Processes" card.
+    ///
+    /// **Honest-nil, with a twist versus every other field on this type.**
+    /// `nil` here means "no process tier has ticked yet this session" (e.g.
+    /// the composition root never wired a process provider in, or the app
+    /// only just launched) — the same "not yet measured" meaning every other
+    /// optional field on `SystemSnapshot` already carries. The twist:
+    /// once non-nil, this field is **not** reset to nil between process-tier
+    /// ticks the way, say, `battery` conceptually could be if its provider
+    /// ever returned nil — `StatsCoordinator` deliberately leaves the
+    /// previous value in place on every *other* tier's tick (and even on a
+    /// process tick that itself produced no data), so a rule referencing a
+    /// named process always sees the last-known ranked list rather than
+    /// flickering to "unavailable" between the (comparatively rare)
+    /// full re-enumerations. A caller that wants to know how fresh this
+    /// specific slice is has nothing to check it against on this type alone
+    /// (there is no per-field timestamp) — same limitation `timestamp`
+    /// already has for every other field, just more visible here because
+    /// this field updates far less often than the rest.
+    ///
+    /// Ranked by CPU percent, top-N only (not every running process) — see
+    /// `ProcessCollector.collect(limit:matching:now:)`'s doc comment for why
+    /// a full enumeration's *result* still can't be a database row per
+    /// process. A rule matching a process that never cracks the top-N (e.g.
+    /// a memory hog that stays CPU-quiet) will not find it here — documented
+    /// as a known limitation on `AlertRule.processNameMatch` rather than
+    /// silently guessed around.
+    public var topProcesses: [ProcessStats]?
+
     public init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
@@ -90,7 +129,8 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         sleepAssertion: SleepAssertionState? = nil,
         location: MacLocation? = nil,
         agentAccessPaused: Bool? = nil,
-        protectionScore: Int? = nil
+        protectionScore: Int? = nil,
+        topProcesses: [ProcessStats]? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -108,5 +148,6 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         self.location = location
         self.agentAccessPaused = agentAccessPaused
         self.protectionScore = protectionScore
+        self.topProcesses = topProcesses
     }
 }

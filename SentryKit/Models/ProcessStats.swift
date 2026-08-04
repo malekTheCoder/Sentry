@@ -6,12 +6,21 @@ import Foundation
 /// way `libproc` gives CPU/memory, so this ships CPU + memory only; see
 /// `ProcessCollector`'s doc comment).
 ///
-/// Deliberately not part of `SystemSnapshot`/`HistoryStore`: this is a
-/// live, Mac-local ranked list recomputed on its own cadence
-/// (`ProcessMonitor`), not a scalar metric with a stable identity worth
-/// charting over time the way `MetricID` values are — a process's PID is
-/// meaningless across samples once it exits, so there's nothing coherent
-/// to persist or sync.
+/// Deliberately not part of `HistoryStore`: a process's PID is meaningless
+/// across samples once it exits, and cumulative per-process history isn't
+/// something this app charts over time the way `MetricID` values are — so
+/// there's nothing coherent to persist to `sample_raw`/`sample_daily` or
+/// sync to CloudKit.
+///
+/// **Is** part of `SystemSnapshot` (`SystemSnapshot.topProcesses`), unlike
+/// the paragraph above might suggest — that field exists purely so
+/// `SentryKit/Services/AlertEngine.swift` can evaluate a live "is process X
+/// pegging CPU/memory right now" rule (`AlertRule.processNameMatch`)
+/// against the *current* ranked list, the same way it reads every other
+/// live metric off a snapshot. It is a transient, current-tick view, not a
+/// persisted or synced history — `SystemSnapshot.topProcesses`'s own doc
+/// comment covers the honest-nil/no-overwrite-between-ticks semantics that
+/// make that distinction concrete.
 public struct ProcessStats: Codable, Sendable, Equatable, Identifiable {
     public var id: Int32 { pid }
     public var pid: Int32
