@@ -285,4 +285,53 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(events[0].outcome, .succeeded)
         XCTAssertEqual(events[0].sessionID, "s9")
     }
+
+    // MARK: - recentAlertFirings filters (get_alert_history, verified-bug pass)
+
+    func testRecentAlertFiringsWithNoFiltersReturnsEverything() {
+        let store = tempHistoryStore()
+        let ruleA = UUID()
+        let ruleB = UUID()
+        store.logAlertFiring(ruleID: ruleA, ruleName: "A", metric: "m", value: 1, at: Date(timeIntervalSince1970: 100), delivered: true, suppressed: false)
+        store.logAlertFiring(ruleID: ruleB, ruleName: "B", metric: "m", value: 2, at: Date(timeIntervalSince1970: 200), delivered: true, suppressed: false)
+
+        let entries = store.recentAlertFirings()
+        XCTAssertEqual(entries.count, 2, "the default call, with no filters, must behave exactly as it did before `since`/`ruleID` existed")
+    }
+
+    func testRecentAlertFiringsSinceFiltersOutOlderRows() {
+        let store = tempHistoryStore()
+        let ruleID = UUID()
+        store.logAlertFiring(ruleID: ruleID, ruleName: "Old", metric: "m", value: 1, at: Date(timeIntervalSince1970: 100), delivered: true, suppressed: false)
+        store.logAlertFiring(ruleID: ruleID, ruleName: "New", metric: "m", value: 2, at: Date(timeIntervalSince1970: 300), delivered: true, suppressed: false)
+
+        let entries = store.recentAlertFirings(since: Date(timeIntervalSince1970: 200))
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.ruleName, "New")
+    }
+
+    func testRecentAlertFiringsRuleIDFiltersToOneRule() {
+        let store = tempHistoryStore()
+        let ruleA = UUID()
+        let ruleB = UUID()
+        store.logAlertFiring(ruleID: ruleA, ruleName: "A", metric: "m", value: 1, at: Date(timeIntervalSince1970: 100), delivered: true, suppressed: false)
+        store.logAlertFiring(ruleID: ruleB, ruleName: "B", metric: "m", value: 2, at: Date(timeIntervalSince1970: 200), delivered: true, suppressed: false)
+
+        let entries = store.recentAlertFirings(ruleID: ruleA)
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.ruleID, ruleA)
+    }
+
+    func testRecentAlertFiringsCombinesSinceAndRuleIDFilters() {
+        let store = tempHistoryStore()
+        let ruleID = UUID()
+        let otherRuleID = UUID()
+        store.logAlertFiring(ruleID: ruleID, ruleName: "Too old", metric: "m", value: 1, at: Date(timeIntervalSince1970: 100), delivered: true, suppressed: false)
+        store.logAlertFiring(ruleID: ruleID, ruleName: "Right rule, recent", metric: "m", value: 2, at: Date(timeIntervalSince1970: 300), delivered: true, suppressed: false)
+        store.logAlertFiring(ruleID: otherRuleID, ruleName: "Wrong rule, recent", metric: "m", value: 3, at: Date(timeIntervalSince1970: 300), delivered: true, suppressed: false)
+
+        let entries = store.recentAlertFirings(since: Date(timeIntervalSince1970: 200), ruleID: ruleID)
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.ruleName, "Right rule, recent")
+    }
 }

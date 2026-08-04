@@ -280,12 +280,19 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         }
     }
 
-    nonisolated func getAlertHistory(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void) {
+    nonisolated func getAlertHistory(clientName: String, limit: Int, sinceSeconds: Double, ruleID: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            let summary = "limit=\(limit)"
+            let summary = "limit=\(limit), sinceSeconds=\(sinceSeconds), ruleID=\(ruleID)"
             guard let reply = self.authorizeInstrumented(.getAlertHistory, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             let clampedLimit = min(max(1, limit), 500)
-            let entries = self.historyStore.recentAlertFirings(limit: clampedLimit).map(MCPPayloads.AlertHistoryEntry.init)
+            // `0`/`""` are the wire-level "no filter" sentinels — see
+            // `SentryXPCServiceProtocol.getAlertHistory`'s doc comment for
+            // why an `@objc` protocol can't declare these as real Swift
+            // defaults.
+            let since: Date? = sinceSeconds > 0 ? Date().addingTimeInterval(-sinceSeconds) : nil
+            let ruleIDFilter = ruleID.isEmpty ? nil : UUID(uuidString: ruleID)
+            let entries = self.historyStore.recentAlertFirings(limit: clampedLimit, since: since, ruleID: ruleIDFilter)
+                .map(MCPPayloads.AlertHistoryEntry.init)
             self.encodeAndReply(entries, reply: reply)
         }
     }

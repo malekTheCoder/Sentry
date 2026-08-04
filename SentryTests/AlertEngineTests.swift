@@ -99,6 +99,57 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(highlightCount, 1, "should fire once the (fresh) window elapses")
     }
 
+    // MARK: - Sleep/wake (verified-bug: sustained conditions satisfiable by sleeping)
+
+    func testWakeClearsSustainedTimerSoAPostWakeTickCannotFireImmediately() {
+        var now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 300)
+        let engine = AlertEngine(rules: [rule], clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        // Condition becomes true just before the Mac sleeps.
+        engine.evaluate(cpuSnapshot(95))
+
+        // No ticks arrive while asleep. `now` jumps forward well past
+        // `sustainedFor`, simulating the lid being closed and reopened —
+        // exactly the scenario the bug report describes ("close the lid at
+        // 91% CPU, wake up still at 91%").
+        now = now.addingTimeInterval(600)
+        engine.handleSystemWake()
+        engine.evaluate(cpuSnapshot(95))
+
+        XCTAssertEqual(
+            highlightCount, 0,
+            "the first post-wake tick must not fire off a sustained window that was mostly sleep, not observed ticks"
+        )
+
+        // The window now has to be rebuilt entirely from post-wake ticks.
+        now = now.addingTimeInterval(301)
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 1, "should fire once a fresh, fully-observed window elapses after wake")
+    }
+
+    func testWakeDoesNotResetCooldownOrRateCapWindow() {
+        // Companion to the test above: `handleSystemWake` must only clear
+        // `conditionTrueSince`, not `lastFired`/the rate-cap window — those
+        // track *when something last happened*, a fact sleep doesn't
+        // retroactively change.
+        var now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 0, cooldown: 3600)
+        let engine = AlertEngine(rules: [rule], clock: { now })
+        var highlightCount = 0
+        engine.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 1)
+
+        now = now.addingTimeInterval(60) // well inside the 1-hour cooldown
+        engine.handleSystemWake()
+        engine.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 1, "waking must not clear the cooldown that a real firing already started")
+    }
+
     // MARK: - Cooldown
 
     func testCooldownSuppressesRepeatFiring() {
@@ -324,14 +375,196 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(highlightCount, 1)
     }
 
+    // MARK: - Persisted state (verified-bug: cooldowns/rate cap/baseline reset on relaunch)
+
+    func testBatteryHealthDropBaselinePersistsAcrossRelaunch() throws {
+        // Simulates: engine A observes a health reading (establishing a
+        // baseline), reports it via `onPersistedStateChanged`, then "quits."
+        // Engine B ("relaunch") is constructed from that reported state and
+        // must compare against the *original* baseline, not re-establish a
+        // fresh one from whatever it happens to see first — which is
+        // exactly the bug: battery health drifts ~1%/month, so a baseline
+        // that resets every relaunch can essentially never accumulate
+        // enough delta to fire again.
+        let rule = AlertRule(
+            id: AlertEngine.batteryHealthDropRuleID,
+            name: "Battery health drop",
+            metric: .batteryHealthPercent,
+            comparison: .changedBy,
+            threshold: 1,
+            sustainedFor: 0,
+            cooldown: 60,
+            actions: [.menuBarHighlight("warning")]
+        )
+        let now = Date()
+        let engineA = AlertEngine(rules: [rule], clock: { now })
+        var reported: AlertEnginePersistedState?
+        engineA.onPersistedStateChanged = { reported = $0 }
+        engineA.evaluate(batterySnapshot(health: 90)) // establishes baseline = 90
+
+        let persisted = try XCTUnwrap(reported)
+        XCTAssertEqual(persisted.batteryHealthBaselinePercent, 90)
+        XCTAssertNotNil(persisted.batteryHealthBaselineCapturedAt)
+
+        // "Relaunch": a brand-new engine seeded from what engine A reported.
+        let engineB = AlertEngine(rules: [rule], clock: { now }, persistedState: persisted)
+        var highlightCount = 0
+        engineB.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        // A drop that would have cleared the threshold against the
+        // preserved baseline (90 - 88.5 = 1.5 >= 1) but would NOT have
+        // fired against a freshly-reset baseline (which would just
+        // re-establish 88.5 as the new baseline, per
+        // `testChangedByEstablishesBaselineOnFirstObservation`).
+        engineB.evaluate(batterySnapshot(health: 88.5))
+        XCTAssertEqual(highlightCount, 1, "the baseline from before the 'relaunch' must still be in effect")
+    }
+
+    func testLastFiredCooldownPersistsAcrossRelaunch() throws {
+        // Regression guard for "a relaunch makes every rule instantly
+        // eligible again" — a zero-`sustainedFor` rule (like the shipped
+        // "Low disk") would otherwise refire immediately on every launch.
+        var now = Date()
+        let rule = highlightRule(threshold: 90, sustainedFor: 0, cooldown: 3600)
+        let engineA = AlertEngine(rules: [rule], clock: { now })
+        var reported: AlertEnginePersistedState?
+        engineA.onPersistedStateChanged = { reported = $0 }
+        engineA.evaluate(cpuSnapshot(95)) // fires once, starts the cooldown
+
+        let persisted = try XCTUnwrap(reported)
+        XCTAssertEqual(persisted.lastFiredAt[rule.id.uuidString], now)
+
+        // "Relaunch" a few seconds later — nowhere near the 1-hour cooldown.
+        now = now.addingTimeInterval(5)
+        let engineB = AlertEngine(rules: [rule], clock: { now }, persistedState: persisted)
+        var highlightCount = 0
+        engineB.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engineB.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 0, "a rule that already fired before 'relaunch' must not refire until its cooldown, restored from persisted state, actually elapses")
+    }
+
+    func testRecentDeliveryTimestampsPersistAcrossRelaunch() throws {
+        // Regression guard for "the hourly rate cap resets on relaunch":
+        // without carrying `recentDeliveryTimestamps` across, a relaunch
+        // mid-hour would silently grant every rule a fresh hour of
+        // rate-cap headroom.
+        var now = Date()
+        let rules = (0..<2).map { index in
+            AlertRule(
+                name: "Rate cap rule \(index)",
+                metric: .cpuTotalPercent,
+                comparison: .above,
+                threshold: Double(index),
+                sustainedFor: 0,
+                cooldown: 0,
+                actions: [.menuBarHighlight("warning")]
+            )
+        }
+        let engineA = AlertEngine(rules: rules, rateCapPerHour: 1, clock: { now })
+        engineA.menuBarHighlighter = { _ in } // must be wired for a firing to count as "delivered"
+        var reported: AlertEnginePersistedState?
+        engineA.onPersistedStateChanged = { reported = $0 }
+        engineA.evaluate(cpuSnapshot(95)) // uses up the one rate-cap slot
+
+        let persisted = try XCTUnwrap(reported)
+        XCTAssertEqual(persisted.recentDeliveryTimestamps.count, 1)
+
+        now = now.addingTimeInterval(5) // "relaunch" a moment later, same hour
+        let engineB = AlertEngine(rules: rules, rateCapPerHour: 1, clock: { now }, persistedState: persisted)
+        var highlightCount = 0
+        engineB.menuBarHighlighter = { _ in highlightCount += 1 }
+
+        engineB.evaluate(cpuSnapshot(95))
+        XCTAssertEqual(highlightCount, 0, "the rate-cap slot used before 'relaunch' must still count against the restored window")
+    }
+
     // MARK: - Default rules sanity
 
-    func testDefaultRulesProducesElevenRules() {
+    func testDefaultRulesProducesFourteenRules() {
         let rules = AlertEngine.defaultRules(cooldown: 1800)
-        XCTAssertEqual(rules.count, 11)
+        XCTAssertEqual(rules.count, 14)
         XCTAssertTrue(rules.contains { $0.id == AlertEngine.chargingPausedRuleID })
         XCTAssertTrue(rules.contains { $0.id == AlertEngine.slowChargingRuleID })
         XCTAssertTrue(rules.allSatisfy { $0.cooldown == 1800 })
+    }
+
+    // MARK: - New default rules (verified-bug: no defaults for memory pressure / disk-percentage-full)
+
+    /// Minimal, fully-populated `MemoryStats` for the two memory-based
+    /// default-rule tests below — every field but `swapUsedBytes`/
+    /// `pressureLevel` is required and irrelevant to what's under test.
+    private func memoryStats(swapUsedBytes: UInt64? = nil, pressureLevel: MemoryPressureLevel? = nil) -> MemoryStats {
+        MemoryStats(
+            usedBytes: 8_000_000_000,
+            appMemoryBytes: 4_000_000_000,
+            wiredBytes: 1_000_000_000,
+            compressedBytes: 1_000_000_000,
+            cachedBytes: 1_000_000_000,
+            totalBytes: 16_000_000_000,
+            swapUsedBytes: swapUsedBytes,
+            swapTotalBytes: swapUsedBytes.map { _ in 4_000_000_000 },
+            pressureLevel: pressureLevel
+        )
+    }
+
+    func testDiskAlmostFullRuleFiresAboveNinetyPercentUsed() {
+        var rules = AlertEngine.defaultRules(cooldown: 60)
+        rules.removeAll { $0.name != "Disk almost full" }
+        // The shipped rule only has a `.notification` action, so firing is
+        // observed indirectly via `historyStore` rather than a closure hook.
+        let historyStore = tempHistoryStore()
+        let engine = AlertEngine(rules: rules, historyStore: historyStore, clock: { Date() })
+
+        // 95% used, well above the 90% threshold. `DiskStats` reports
+        // free/total bytes; 5% free of a 1TB disk clears the 90%-used bar.
+        let snapshot = SystemSnapshot(
+            deviceID: "test",
+            disk: DiskStats(freeBytes: 50_000_000_000, totalBytes: 1_000_000_000_000)
+        )
+        engine.evaluate(snapshot)
+
+        let entries = historyStore.recentAlertFirings()
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.ruleName, "Disk almost full")
+    }
+
+    func testCriticalMemoryPressureRuleRequiresFiveMinutesSustained() {
+        var now = Date()
+        var rules = AlertEngine.defaultRules(cooldown: 60)
+        rules.removeAll { $0.name != "Critical memory pressure" }
+        let historyStore = tempHistoryStore()
+        let engine = AlertEngine(rules: rules, historyStore: historyStore, clock: { now })
+
+        // `.memoryPressurePercent` maps `.critical` to 100
+        // (`SystemSnapshot+MetricValue.swift`), the only pressure level
+        // that clears this rule's 90% threshold.
+        let snapshot = SystemSnapshot(deviceID: "test", memory: memoryStats(pressureLevel: .critical))
+        engine.evaluate(snapshot)
+        XCTAssertTrue(historyStore.recentAlertFirings().isEmpty, "must not fire before the 5-minute sustained window elapses")
+
+        now = now.addingTimeInterval(301)
+        engine.evaluate(snapshot)
+        XCTAssertEqual(historyStore.recentAlertFirings().count, 1)
+    }
+
+    func testHeavySwapUsageRuleFiresAboveTwoGigabytes() {
+        var now = Date()
+        var rules = AlertEngine.defaultRules(cooldown: 60)
+        rules.removeAll { $0.name != "Heavy swap usage" }
+        let historyStore = tempHistoryStore()
+        let engine = AlertEngine(rules: rules, historyStore: historyStore, clock: { now })
+
+        let snapshot = SystemSnapshot(
+            deviceID: "test",
+            memory: memoryStats(swapUsedBytes: 3 * 1024 * 1024 * 1024)
+        )
+        engine.evaluate(snapshot)
+        XCTAssertTrue(historyStore.recentAlertFirings().isEmpty, "must not fire before the 5-minute sustained window elapses")
+
+        now = now.addingTimeInterval(301)
+        engine.evaluate(snapshot)
+        XCTAssertEqual(historyStore.recentAlertFirings().count, 1)
     }
 
     func testFullyChargedRuleIsReachableWhenBatteryReportsFullAndPluggedIn() {

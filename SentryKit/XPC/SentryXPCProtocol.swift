@@ -94,7 +94,19 @@ public enum SentryXPCServiceName {
     func getMetricHistory(clientName: String, metric: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void)
     func getThermalStatus(clientName: String, reply: @escaping (Data?, String?) -> Void)
     func getResourceUsage(clientName: String, reply: @escaping (Data?, String?) -> Void)
-    func getAlertHistory(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void)
+    /// - Parameters:
+    ///   - limit: maximum rows to return, clamped 1...500 by `MCPXPCService`.
+    ///   - sinceSeconds: how far back, in seconds from now, to filter —
+    ///     mirrors `getMetricHistory`'s `sinceSeconds` shape. `0` (not a
+    ///     Swift default — `@objc` protocol requirements can't declare one;
+    ///     see `MCPToolCatalog.call`'s `.getAlertHistory` case, which is
+    ///     where the "0 means no filter" default is actually applied for a
+    ///     caller who omitted the argument) means "no time filter", the
+    ///     same "0 or omitted" convention `keepAwake`'s `durationSeconds`
+    ///     already uses below.
+    ///   - ruleID: an `AlertRule.id.uuidString` to filter to a single rule,
+    ///     or `""` (same reasoning as `sinceSeconds` above) for "every rule".
+    func getAlertHistory(clientName: String, limit: Int, sinceSeconds: Double, ruleID: String, reply: @escaping (Data?, String?) -> Void)
     func getDeviceInfo(clientName: String, reply: @escaping (Data?, String?) -> Void)
     func getSleepState(clientName: String, reply: @escaping (Data?, String?) -> Void)
 

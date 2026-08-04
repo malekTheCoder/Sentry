@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UserNotifications
 import SentryKit
 
 /// The plan §11 alert surface: a rule list with an inspector for the selected
@@ -73,6 +75,17 @@ struct AlertsPane: View {
     @State private var isConfirmingRestore = false
     @State private var historyEntries: [AlertLogEntry] = []
 
+    /// Verified-bug fix ("a denied notification permission is invisible"):
+    /// `nil` until the one-time `.task` check below completes, so the
+    /// banner never flashes on and back off during the very first frame.
+    /// `AlertEngine` itself has no notion of this — it only ever *requests*
+    /// authorization lazily (`ruleWasEnabled`/`deliverNotification`'s
+    /// `requestAuthorizationIfNeeded`) and has no UI to surface a denial
+    /// from, which is exactly the gap this pane closes: without it,
+    /// `alert_log` keeps recording `delivered: true` for a notification the
+    /// system silently dropped, and nothing on screen ever says why.
+    @State private var notificationAuthorizationStatus: UNAuthorizationStatus?
+
     var body: some View {
         VStack(spacing: 0) {
             Picker("View", selection: $mode) {
@@ -108,6 +121,36 @@ struct AlertsPane: View {
                 Divider()
             }
 
+            // Verified-bug fix: same "why isn't this firing" honesty
+            // requirement as the DND banner immediately above, for a
+            // different silent cause — macOS notification permission denied
+            // (or later revoked in System Settings) rather than the user's
+            // own DND toggle. `.red`, not `.orange`, to read as more urgent
+            // than DND: DND is the user's own on-purpose choice, this is an
+            // OS-level block the user may not know exists at all.
+            if notificationAuthorizationStatus == .denied {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(
+                        "Notifications are turned off for Sentry — open System Settings to allow them.",
+                        systemImage: "bell.slash.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.red)
+
+                    Spacer()
+
+                    Button("Open System Settings") {
+                        openNotificationSettings()
+                    }
+                    .controlSize(.small)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .contain)
+
+                Divider()
+            }
+
             switch mode {
             case .rules:
                 HSplitView {
@@ -119,6 +162,17 @@ struct AlertsPane: View {
             case .history:
                 historyColumn
             }
+        }
+        .task {
+            // One-time check, not a poller: `UNUserNotificationCenter` has
+            // no "authorization status changed" notification to observe, so
+            // this only catches a denial that was already in effect when
+            // this pane last appeared (fresh app launch, or switching back
+            // to Settings from another tab) — good enough for the honesty
+            // requirement this banner exists for, without inventing a
+            // polling timer nothing else in this pane needs.
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            notificationAuthorizationStatus = settings.authorizationStatus
         }
         .confirmationDialog(
             "Restore the default alert rules?",
@@ -230,7 +284,7 @@ struct AlertsPane: View {
 
     /// Removal (`Remove Rule`, the row's Delete key, its context menu) has
     /// always been one-way in this pane — the only recovery was `Restore
-    /// Defaults`, which rebuilds all 11 shipped rules with fresh UUIDs and
+    /// Defaults`, which rebuilds all 14 shipped rules with fresh UUIDs and
     /// discards every other edit along with it. `Add Rule` is the actual
     /// undo path: selecting the new rule immediately afterward means the
     /// user lands straight in the inspector to retune it, the same flow
@@ -328,6 +382,24 @@ struct AlertsPane: View {
             cooldown: TimeInterval(store.settings.alertCooldownMinutes * 60)
         )
         selectedRuleID = nil
+    }
+
+    /// Deep-links to Sentry's own Notifications settings screen. This file
+    /// doesn't reuse `SentryKit/Insights`' `SystemSettingsLink` (an
+    /// Insights-owned type this task's brief marks out of scope) — the URL
+    /// lives here instead, same "own the constant you need rather than reach
+    /// into a file you're not supposed to touch" call the rest of this pane
+    /// already makes for its own concerns. `x-apple.systempreferences:`
+    /// URLs are an undocumented, Apple-can-change-them-anytime scheme, so a
+    /// failed `open(_:)` is swallowed rather than surfaced with a second
+    /// banner — the banner itself, and its System-Settings-app-launches
+    /// System-Settings intent, already communicate the actionable part
+    /// ("go turn this on"); a broken deep link degrading to "the button did
+    /// nothing" is a worse failure mode than a partially-useful one, but not
+    /// one worth a second layer of error UI for a single button.
+    private func openNotificationSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     // MARK: - Right column: rule inspector

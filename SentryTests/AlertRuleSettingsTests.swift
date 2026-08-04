@@ -20,7 +20,7 @@ final class AlertRuleSettingsTests: XCTestCase {
         // A settings file written by a build from before alert rules existed.
         let settings = try decode(#"{"themeID":"terminal","alertCooldownMinutes":30}"#)
 
-        XCTAssertEqual(settings.alertRules.count, 11)
+        XCTAssertEqual(settings.alertRules.count, 14)
         XCTAssertEqual(settings.alertRules, AppSettings.defaultAlertRules)
         XCTAssertFalse(
             settings.alertRules.isEmpty,
@@ -71,6 +71,34 @@ final class AlertRuleSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.alertRules[0].quietHours?.startHour, 23)
         XCTAssertEqual(decoded.alertRules[0].onlyWhen, [.charging])
         XCTAssertEqual(decoded, settings)
+    }
+
+    // MARK: - alertPersistedState (verified-bug pass: AlertEngine persistence)
+
+    func testSettingsFileWithoutAlertPersistedStateDefaultsToEmpty() throws {
+        // A settings file written before this key existed must decode to
+        // "nothing has fired yet" — the same state such an install was
+        // already implicitly in.
+        let settings = try decode("{}")
+        XCTAssertEqual(settings.alertPersistedState, AlertEnginePersistedState())
+    }
+
+    func testAlertPersistedStateSurvivesAnEncodeDecodeRoundTrip() throws {
+        var settings = AppSettings()
+        let ruleID = settings.alertRules[0].id
+        settings.alertPersistedState = AlertEnginePersistedState(
+            lastFiredAt: [ruleID.uuidString: Date(timeIntervalSince1970: 1_700_000_000)],
+            recentDeliveryTimestamps: [Date(timeIntervalSince1970: 1_700_000_100)],
+            batteryHealthBaselinePercent: 87.5,
+            batteryHealthBaselineCapturedAt: Date(timeIntervalSince1970: 1_690_000_000)
+        )
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.alertPersistedState, settings.alertPersistedState)
+        XCTAssertEqual(decoded.alertPersistedState.batteryHealthBaselinePercent, 87.5)
+        XCTAssertEqual(decoded.alertPersistedState.lastFiredAt[ruleID.uuidString], Date(timeIntervalSince1970: 1_700_000_000))
     }
 
     // MARK: - Do Not Disturb (plan §11.3 master toggle)

@@ -10,8 +10,10 @@ import Foundation
 /// a future rule-editor UI without smuggling engine internals into the
 /// user's settings file.
 ///
-/// `AlertEngine.defaultRules(cooldown:)` builds the 11 rules from plan
-/// §11.2. Two of those — identified by `AlertEngine.chargingPausedRuleID`
+/// `AlertEngine.defaultRules(cooldown:)` builds the 14 shipped default rules
+/// (11 from plan §11.2, plus 3 added by a later verified-bug pass for
+/// metrics the plan's table never covered — see that function's doc
+/// comment). Two of those — identified by `AlertEngine.chargingPausedRuleID`
 /// and `AlertEngine.slowChargingRuleID` — are special-cased by `AlertEngine`
 /// at evaluation time (see those rules' shipped `metric`/`comparison`
 /// wiring below and `AlertEngine`'s doc comment for why).
@@ -106,7 +108,7 @@ extension AlertRule {
         case below
         /// `abs(value - threshold) < 0.0001`, for the rare rule that wants
         /// an exact/near-exact match rather than a directional threshold.
-        /// None of the 11 shipped default rules use this today.
+        /// None of the 14 shipped default rules use this today.
         case equals
 
         /// "Changed by `threshold` since a baseline." Plan §11.2 defines

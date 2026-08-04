@@ -110,7 +110,9 @@ public enum MCPToolCatalog {
 
         case .getAlertHistory:
             return schema(properties: [
-                "limit": property("integer", "Maximum number of recent firings to return (default 50, max 500).")
+                "limit": property("integer", "Maximum number of recent firings to return (default 50, max 500)."),
+                "sinceSeconds": property("number", "How far back, in seconds, to filter firings. Omit for no time filter."),
+                "ruleID": property("string", "UUID of a single alert rule to filter to. Omit for every rule.")
             ])
 
         case .keepAwake:
@@ -239,7 +241,13 @@ public enum MCPToolCatalog {
             return await read(xpcClient) { $0.getResourceUsage(clientName: clientName, reply: $1) }
         case .getAlertHistory:
             let limit = arguments["limit"]?.intValue ?? 50
-            return await read(xpcClient) { $0.getAlertHistory(clientName: clientName, limit: limit, reply: $1) }
+            // `0`/`""` are the wire-level "no filter" sentinels `getAlertHistory`
+            // documents — same "apply the actual default here, since the
+            // @objc protocol requirement itself can't" pattern this file
+            // already uses for `.getMetricHistory`'s `sinceSeconds`.
+            let sinceSeconds = arguments["sinceSeconds"]?.doubleValue ?? 0
+            let ruleID = arguments["ruleID"]?.stringValue ?? ""
+            return await read(xpcClient) { $0.getAlertHistory(clientName: clientName, limit: limit, sinceSeconds: sinceSeconds, ruleID: ruleID, reply: $1) }
         case .getDeviceInfo:
             return await read(xpcClient) { $0.getDeviceInfo(clientName: clientName, reply: $1) }
         case .getSleepState:

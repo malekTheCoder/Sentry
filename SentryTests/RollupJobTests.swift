@@ -223,4 +223,57 @@ final class RollupJobTests: XCTestCase {
         XCTAssertTrue(names.contains("idx_hourly_metric_hour"))
         XCTAssertTrue(names.contains("idx_daily_metric_day"))
     }
+
+    // MARK: - alert_log pruning (verified-bug pass: "alert_log is never pruned")
+
+    private func insertAlertLog(_ db: Database, ts: Double, ruleName: String) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO alert_log (ts, rule_id, rule_name, metric, value, delivered, suppressed)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [ts, UUID().uuidString, ruleName, "m", 1.0, 1, 0]
+        )
+    }
+
+    private func alertLogRuleNames(_ dbQueue: DatabaseQueue) throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT rule_name FROM alert_log ORDER BY ts")
+        }
+    }
+
+    func testDailyRollupPrunesAlertLogRowsOlderThanRetentionWindow() throws {
+        let (store, dbQueue) = try makeStore()
+        _ = store
+
+        // `RollupJob.alertLogRetentionDays` is 180d. One row well outside
+        // that window, one row well inside it.
+        let now = Date(timeIntervalSince1970: dayStart + 200 * 86400)
+        try dbQueue.write { db in
+            try self.insertAlertLog(db, ts: dayStart, ruleName: "Too old")
+            try self.insertAlertLog(db, ts: now.timeIntervalSince1970 - 86400, ruleName: "Recent")
+        }
+
+        let job = RollupJob(dbQueue: dbQueue)
+        job.runDailyRollup(now: now)
+
+        let remaining = try alertLogRuleNames(dbQueue)
+        XCTAssertEqual(remaining, ["Recent"], "a misconfigured, rapidly-refiring rule must not be able to grow alert_log forever")
+    }
+
+    func testDailyRollupDoesNotPruneAlertLogRowsInsideRetentionWindow() throws {
+        let (store, dbQueue) = try makeStore()
+        _ = store
+
+        let now = Date(timeIntervalSince1970: dayStart)
+        try dbQueue.write { db in
+            try self.insertAlertLog(db, ts: dayStart - 3600, ruleName: "An hour ago")
+        }
+
+        let job = RollupJob(dbQueue: dbQueue)
+        job.runDailyRollup(now: now)
+
+        let remaining = try alertLogRuleNames(dbQueue)
+        XCTAssertEqual(remaining, ["An hour ago"], "must not prune recent alert history")
+    }
 }

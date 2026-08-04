@@ -331,7 +331,7 @@ final class MCPEndpointPublisherTests: XCTestCase {
         func getMetricHistory(clientName: String, metric: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func getThermalStatus(clientName: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func getResourceUsage(clientName: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
-        func getAlertHistory(clientName: String, limit: Int, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
+        func getAlertHistory(clientName: String, limit: Int, sinceSeconds: Double, ruleID: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func getDeviceInfo(clientName: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func getSleepState(clientName: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
         func preflightCheck(clientName: String, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
