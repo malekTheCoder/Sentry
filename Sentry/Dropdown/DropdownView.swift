@@ -50,6 +50,15 @@ struct DropdownView: View {
     /// flipping the flag here is what triggers the assertion release and
     /// notice in `AppDelegate.applySettings`, not this view.
     @ObservedObject private var settingsStore: SettingsStore
+    /// The dropdown's own `ProcessMonitor` instance — see
+    /// `DropdownViewModel.processMonitor`'s doc comment for why this isn't
+    /// the same instance `DashboardView` observes. Read here as a separate
+    /// `@ObservedObject` (rather than reading `viewModel.processMonitor`
+    /// inline) for the same reason `DashboardView` observes its own
+    /// `ProcessMonitor` alongside its view model: `ProcessMonitor` publishes
+    /// independently of `DropdownViewModel`, so a view that only observes
+    /// `viewModel` would never redraw when a new process list arrives.
+    @ObservedObject private var processMonitor: ProcessMonitor
     @Environment(\.colorScheme) private var systemColorScheme
 
     private let theme: Theme
@@ -115,6 +124,7 @@ struct DropdownView: View {
         self._powerControl = ObservedObject(wrappedValue: powerControl)
         self._activityLog = ObservedObject(wrappedValue: activityLog)
         self._settingsStore = ObservedObject(wrappedValue: settingsStore)
+        self._processMonitor = ObservedObject(wrappedValue: viewModel.processMonitor)
         self.theme = theme
         self.customThemes = customThemes
         self.enabledModules = enabledModules
@@ -161,6 +171,17 @@ struct DropdownView: View {
         .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
+        // `AppDelegate` gates its own `ProcessMonitor` instance off
+        // `MainWindowController`'s `onShow`/`onHide` — this popover has no
+        // equivalent AppKit-level hook available to this file (see
+        // `DropdownViewModel.processMonitor`'s doc comment for why editing
+        // `AppDelegate` isn't an option here), so SwiftUI's own
+        // appear/disappear is the lifecycle signal instead:
+        // `NSHostingController`'s content view appears when
+        // `AppDelegate.togglePopover()` shows the popover and disappears
+        // when it closes, which is exactly "someone can currently see this."
+        .onAppear { viewModel.startProcessMonitoring() }
+        .onDisappear { viewModel.stopProcessMonitoring() }
     }
 
     /// `nil` until the content has been measured, which deliberately leaves the
@@ -186,6 +207,7 @@ struct DropdownView: View {
 
             VitalsSection(
                 vitals: vitals,
+                topProcesses: processMonitor.topProcesses,
                 isAwaitingFirstReading: viewModel.snapshot == nil,
                 isStale: isStale,
                 onOpenSettings: onOpenSettings

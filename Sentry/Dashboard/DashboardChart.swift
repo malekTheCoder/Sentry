@@ -2,6 +2,8 @@ import SwiftUI
 import Charts
 import Accessibility
 import SentryKit
+import AppKit
+import UniformTypeIdentifiers
 
 /// A full-size, axis-visible history chart for one metric's `(min, avg,
 /// max)` series — the Dashboard's counterpart to `SparklineChart`.
@@ -86,6 +88,15 @@ struct DashboardChart: View {
     /// treatment.
     var compact: Bool = false
 
+    /// Enables the "Export…" context menu — see the type's `Export` section
+    /// below. `nil` by default so every existing call site
+    /// (`BatteryOverviewCard`, `BatteryHealthTrendCard`, and the compact grid
+    /// cells in `DashboardGrid` that haven't opted in) keeps rendering
+    /// exactly as before; only a caller that actually has a `HistoryStore`
+    /// and a metric identity to hand it (`DashboardGrid`'s per-metric cards)
+    /// passes one.
+    var exportContext: ExportContext? = nil
+
     /// The raw (un-snapped) x-axis date under the pointer, or `nil` when not
     /// scrubbing. Raw on purpose — see `ChartScrubOverlay.scrubDate`; snapping
     /// happens in `reading`, which is also where "the pointer is inside a gap"
@@ -93,6 +104,25 @@ struct DashboardChart: View {
     @State private var scrubDate: Date?
 
     var body: some View {
+        // A right-click context menu, not a toolbar button, for the same
+        // reason the time-range picker (`TimeRangePickerView`) is plain text
+        // rather than a button row: this card's whole visual budget is
+        // already spent on the headline value and the plot, and a chart is
+        // exactly where a reader already expects a secondary-click menu
+        // (Preview, Numbers, and every other macOS chart-bearing surface use
+        // the same gesture for "do something with this data"). Only attached
+        // when `exportContext` is supplied — see that property's doc
+        // comment — so cards that haven't opted in show no menu at all
+        // rather than an empty one.
+        if let exportContext {
+            content.contextMenu { exportMenuItems(exportContext) }
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         if points.isEmpty {
             Group {
                 if compact {
@@ -534,6 +564,113 @@ struct DashboardChart: View {
         let fromText = MetricFormatting.value(extremes.min, unit: unit, compact: true)
         let toText = MetricFormatting.value(extremes.max, unit: unit, compact: true)
         return String(localized: "ranging from \(fromText) to \(toText)")
+    }
+
+    // MARK: - Export
+    //
+    // No export existed anywhere in the app for history data —
+    // `HistoryStore` only ever handed rows to another Swift caller. This is
+    // the UI half of that gap; `SentryKit/Persistence/HistoryExport.swift`
+    // owns the actual text formatting (and is what's unit-tested for exact
+    // output), so everything here is just "ask the store, hand the result to
+    // `HistoryExport`, ask the user where to put it."
+
+    /// What a chart needs to answer its own "Export…" menu, supplied by
+    /// whichever call site actually has a `HistoryStore` and a metric
+    /// identity — `DashboardGrid`'s per-metric cards, via `DashboardView`,
+    /// which already owns both. Deliberately re-queries `historyStore`
+    /// rather than exporting `DashboardChart.samples` as-is: `samples` may
+    /// already be downsampled to `DashboardViewModel.maxPointsPerSeries` for
+    /// on-screen plotting (see that constant's doc comment), and an export a
+    /// user might paste into a spreadsheet or feed to a script should be the
+    /// real recorded rows for the selected range, not a chart-rendering
+    /// compromise.
+    struct ExportContext {
+        let historyStore: HistoryStore
+        /// The dotted `MetricID.rawValue` `HistoryStore` indexes rows by —
+        /// also used to derive the save panel's suggested filename, so the
+        /// file a user saves is named after the same identity the query used
+        /// to fetch it.
+        let metricID: String
+        let since: Date
+        let tier: HistoryStore.Tier
+
+        init(historyStore: HistoryStore, metricID: String, since: Date, tier: HistoryStore.Tier) {
+            self.historyStore = historyStore
+            self.metricID = metricID
+            self.since = since
+            self.tier = tier
+        }
+    }
+
+    private enum ExportFormat {
+        case csv, json
+
+        var utType: UTType {
+            switch self {
+            case .csv: return .commaSeparatedText
+            case .json: return .json
+            }
+        }
+
+        var fileExtension: String {
+            switch self {
+            case .csv: return "csv"
+            case .json: return "json"
+            }
+        }
+    }
+
+    /// Two menu items rather than one save panel with a format-picker
+    /// accessory: `NSSavePanel`'s accessory-view API exists for exactly this
+    /// but needs its own `NSViewController` and a second round of state to
+    /// keep the panel's allowed types and the chosen format in sync, for a
+    /// choice that's simpler to just state twice in the menu that's already
+    /// open. Matches the two-menu-items option this feature's spec called
+    /// out explicitly.
+    @ViewBuilder
+    private func exportMenuItems(_ context: ExportContext) -> some View {
+        Button("Export as CSV…") { export(context, format: .csv) }
+        Button("Export as JSON…") { export(context, format: .json) }
+    }
+
+    /// Queries fresh rows for `context`'s exact metric/range, formats them,
+    /// and hands the result to an `NSSavePanel` — the one macOS-native way to
+    /// let the user pick where a file goes without this app inventing its
+    /// own file browser.
+    private func export(_ context: ExportContext, format: ExportFormat) {
+        let ranged = context.historyStore.samplesWithRange(
+            metric: context.metricID,
+            since: context.since,
+            tier: context.tier
+        )
+        let rows = ranged.map { HistoryExport.Sample(timestamp: $0.timestamp, value: $0.avg) }
+        let data: Data
+        switch format {
+        case .csv:
+            data = Data(HistoryExport.csv(metricID: context.metricID, unit: unit, samples: rows).utf8)
+        case .json:
+            data = HistoryExport.json(metricID: context.metricID, unit: unit, samples: rows)
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [format.utType]
+        panel.nameFieldStringValue = "\(context.metricID).\(format.fileExtension)"
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                // Same "log and drop, never crash" posture `HistoryStore`
+                // itself uses for a failed disk write (see its own doc
+                // comment) — a save-panel write failure (permissions, a
+                // volume that went away between picking the location and
+                // writing) is not something a stats app's menu action should
+                // ever turn into a crash.
+                NSLog("Sentry: failed to write history export to \(url.path): \(error.localizedDescription)")
+            }
+        }
     }
 }
 

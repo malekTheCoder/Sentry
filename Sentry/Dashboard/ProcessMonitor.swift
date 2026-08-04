@@ -6,11 +6,22 @@ import SystemMetricsKit
 /// from `StatsCoordinator`'s tiered loop (see `ProcessCollector`'s doc
 /// comment for why: per-process enumeration is pricier than any existing
 /// collector and its ranked-list result doesn't fit `SystemSnapshot`'s
-/// shape). Only runs while something is actually observing it (the
-/// Dashboard window) — `start()`/`stop()` are the Dashboard's job to call
-/// on appear/disappear, the same "don't pay for what nobody's looking at"
-/// posture `DashboardViewModel.refresh()`'s doc comment already applies to
-/// history queries.
+/// shape). Only runs while something is actually observing it —
+/// `start()`/`stop()` are each caller's own job to call on appear/disappear,
+/// the same "don't pay for what nobody's looking at" posture
+/// `DashboardViewModel.refresh()`'s doc comment already applies to history
+/// queries.
+///
+/// Two independent instances exist today, each gated by its own surface's
+/// visibility rather than sharing one: `AppDelegate` owns one for
+/// `DashboardView`'s "Top Processes"/agent-activity cards (gated to the
+/// Dashboard window being visible *and* its tab selected — see
+/// `updateProcessMonitorState()`), and `DropdownViewModel` owns a second,
+/// smaller one (`limit: 3`) for the dropdown's CPU-row process list (gated
+/// by the popover's own SwiftUI appear/disappear — see that type's doc
+/// comment for why this isn't the same instance). Neither instance knows
+/// about the other; each simply stops paying `ProcessCollector`'s
+/// enumeration cost the moment its own surface isn't visible.
 @MainActor
 public final class ProcessMonitor: ObservableObject {
     @Published public private(set) var topProcesses: [ProcessStats] = []
