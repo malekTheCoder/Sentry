@@ -155,6 +155,50 @@ public enum SentryXPCServiceName {
     /// snapshot) — the write-tool classification here is about risk
     /// (stalling the caller's turn), not about this method's reply shape.
     func waitUntilReady(clientName: String, condition: String, timeoutSeconds: Double, reply: @escaping (Data?, String?) -> Void)
+
+    // MARK: - Agent session management (headless equivalent of AIAccessPane's per-agent controls)
+
+    /// `sentryctl sessions`: a snapshot of `AgentSessionRegistry.activeSessions`
+    /// — the same active-session list `get_agent_capacity`'s `activeSessions`
+    /// field is built from — reachable without an MCP client's own call
+    /// muddying the very session list it would be asking about.
+    ///
+    /// **Deliberately not gated by `MCPAccessController.evaluate(tool:clientName:settings:)`.**
+    /// Every method above corresponds to an `MCPToolID` case — one of plan
+    /// §13's 14-tool surface an *MCP client* calls through `SentryMCP`. This
+    /// method and `revokeAgentSession` below exist for a different caller
+    /// entirely: `sentryctl`, a plain XPC client with no MCP handshake and no
+    /// tool ID of its own (see `SentryCLI/main.swift`'s header comment). There
+    /// is no per-tool toggle to check and no rate-limit budget to spend
+    /// against, so there is nothing for `MCPAccessController` to gate here —
+    /// this is read-only administrative visibility into state the GUI
+    /// (`AIAccessPane`'s "Agents" section) already shows unconditionally
+    /// whenever Sentry is running.
+    func listAgentSessions(reply: @escaping (Data?, String?) -> Void)
+
+    /// `sentryctl stop <client-name>`: the headless equivalent of
+    /// `AIAccessPane`'s per-agent "Stop" button
+    /// (`Sentry/Settings/Panes/AIAccessPane.swift`'s
+    /// `setClientRevoked(_:revoked:)`) — same mechanism, different caller.
+    /// Adds `clientName` to `AppSettings.agentGuardrails.revokedClientNames`
+    /// and lets `AppDelegate.applySettings`'s existing settings sink release
+    /// the held keep-awake assertion
+    /// (`PowerControlService.releaseAgentAssertion(ownedBy:)`) and announce
+    /// the revocation — this method does not talk to `PowerControlService`
+    /// directly, so there is exactly one place (the settings sink) that ever
+    /// performs that release, whether the flag was flipped by this call, the
+    /// GUI button, or a hand-edited `settings.json`.
+    ///
+    /// - Parameter clientName: **the client to stop, not the caller's own
+    ///   identity** — unlike every method above, there is nothing to log
+    ///   this call under, so there is no separate "who is asking" parameter.
+    ///   Self-reported, like every other client name on this boundary (see
+    ///   this protocol's doc comment): stopping "Claude Desktop" only stops
+    ///   whoever is currently claiming that name.
+    /// - Parameter reply: `true` if `clientName` matched a currently active
+    ///   session and was revoked; `false` with an explanatory message
+    ///   otherwise (no such active client, or it was already stopped).
+    func revokeAgentSession(clientName: String, reply: @escaping (Bool, String?) -> Void)
 }
 
 #endif

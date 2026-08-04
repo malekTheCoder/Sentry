@@ -184,14 +184,73 @@ public final class MCPAccessController {
 
     private let clock: () -> Date
 
-    /// Timestamps of calls actually recorded (via `recordCall`) in roughly
-    /// the last 60 seconds, pruned lazily on each check — same "no timer of
-    /// its own" pattern `AlertEngine.pruneRateCapWindow` uses for its hourly
-    /// rate cap, just windowed to a minute per plan §13.4's "calls/minute"
-    /// wording.
-    private var recentCallTimestamps: [Date] = []
+    /// Timestamps of calls actually recorded (via `recordCall`), keyed by
+    /// the caller's display `clientName`, each pruned to roughly the last 60
+    /// seconds lazily on each check — same "no timer of its own" pattern
+    /// `AlertEngine.pruneRateCapWindow` uses for its hourly rate cap, just
+    /// windowed to a minute per plan §13.4's "calls/minute" wording.
+    ///
+    /// **Per-client, not one shared window.** Before this pass every caller
+    /// drew from a single array, which meant `settings.mcpRateLimitPerMinute`
+    /// was actually a *Mac-wide* budget: one chatty or hostile MCP client
+    /// (or a bug that reconnects in a loop) could consume the whole thing
+    /// and starve every other agent — directly undermining the multi-agent
+    /// coordination the rest of this surface exists to support
+    /// (`AgentSessionRegistry`, `get_agent_capacity`, `preflight_check`'s
+    /// `another_agent_active` reason all assume several well-behaved agents
+    /// can share this Mac). Keying by `clientName` gives each caller its own
+    /// `settings.mcpRateLimitPerMinute`-sized budget, same as the plan
+    /// always described it per-agent, not shared.
+    ///
+    /// **`clientName` here is the *parsed display name*, never the raw wire
+    /// string.** `MCPXPCService.authorize(tool:clientName:argumentsSummary:)`
+    /// is called only after `sessionIdentity(fromWire:)`
+    /// (`Sentry/App/MCPXPCService.swift`) has stripped the per-connection
+    /// `AgentSessionIdentity` UUID suffix — using the wire string instead
+    /// would mean every single call from the same long-running agent looks
+    /// like a brand-new "client" with a fresh, empty budget, and the limiter
+    /// would never trigger no matter how fast that agent called. Like every
+    /// other use of a client name on this boundary, it is still
+    /// self-reported and unauthenticated (see
+    /// `SentryXPCServiceProtocol`'s doc comment) — a hostile process can
+    /// dodge its own per-client budget by rotating names, which is exactly
+    /// what `globalCeilingMultiplier` below exists to bound.
+    private var callHistoryByClient: [String: [Date]] = [:]
 
-    /// Serializes every read/write of `recentCallTimestamps`.
+    /// How many times larger the Mac-wide ceiling is than any single
+    /// client's configured `mcpRateLimitPerMinute` budget.
+    ///
+    /// **Why a global ceiling exists at all**, given the window above is now
+    /// per-client: per-client budgets stop one client from starving
+    /// *another specific* client, but they do nothing to stop a hostile
+    /// process from defeating the whole cap by simply reconnecting under a
+    /// new self-reported `clientName` on every burst (see the doc comment
+    /// above — names are unauthenticated) or from many distinct well-behaved
+    /// agents all legitimately running near their own limit at once and
+    /// collectively hammering `StatsCoordinator`/`HistoryStore` harder than
+    /// this Mac should take from an MCP surface. A second, Mac-wide cap
+    /// closes that gap without reintroducing the single-shared-window bug
+    /// this pass exists to fix.
+    ///
+    /// **Why 4x, not 1x or 20x.** It has to sit "well above any single
+    /// client's budget" (this task's brief) so that hitting it is a genuine
+    /// signal of either many simultaneous legitimate agents or one client
+    /// spoofing several names — not something one busy-but-honest agent
+    /// grazes on its own. At the same time it has to be a real ceiling, not
+    /// a formality: at the default 20/min per client, 1x (20/min total)
+    /// would defeat the entire point of a *per-client* budget by collapsing
+    /// back into a single shared window the moment two clients are both
+    /// active; 20x (400/min) is high enough that a rotating-name attacker
+    /// would barely notice it. 4x lands at 80/min by default — comfortably
+    /// enough for several agents each legitimately working near their own
+    /// cap (this is the same "generous because the failure modes are
+    /// asymmetric" reasoning `AgentSessionRegistry.staleAfter` documents for
+    /// its own threshold), while still capping the Mac-wide MCP call volume
+    /// at a small, bounded multiple of what one client is allowed — a name-
+    /// rotating attacker still cannot exceed it just by relabeling itself.
+    static let globalCeilingMultiplier = 4
+
+    /// Serializes every read/write of `callHistoryByClient`.
     ///
     /// Today every caller happens to reach this type from `MCPXPCService`'s
     /// `@MainActor` hop, so the window is de facto serialized — but nothing
@@ -213,10 +272,14 @@ public final class MCPAccessController {
     }
 
     /// Pure decision given the current settings snapshot. Never mutates
-    /// `recentCallTimestamps` on its own — see `recordCall`'s doc comment
+    /// `callHistoryByClient` on its own — see `recordCall`'s doc comment
     /// for why recording is a separate, explicit step the caller performs
     /// only once a call is genuinely going to execute.
-    public func evaluate(tool: MCPToolID, settings: AppSettings) -> Decision {
+    ///
+    /// - Parameter clientName: the caller's *parsed display name* — see
+    ///   `callHistoryByClient`'s doc comment for why the raw wire string
+    ///   must never be passed here.
+    public func evaluate(tool: MCPToolID, clientName: String, settings: AppSettings) -> Decision {
         guard settings.mcpServerEnabled else { return .denyMasterDisabled }
 
         if tool.isWrite && !settings.mcpWriteToolsEnabled {
@@ -225,7 +288,7 @@ public final class MCPAccessController {
         guard settings.mcpEnabledToolIDs.contains(tool.rawValue) else {
             return .denyToolDisabled
         }
-        guard !isRateLimited(limitPerMinute: settings.mcpRateLimitPerMinute) else {
+        guard !isRateLimited(clientName: clientName, limitPerMinute: settings.mcpRateLimitPerMinute) else {
             return .denyRateLimited
         }
         if tool.isWrite && settings.mcpConfirmationRequiredToolIDs.contains(tool.rawValue) {
@@ -234,38 +297,61 @@ public final class MCPAccessController {
         return .allow
     }
 
-    /// Whether the rate-limit window is already at (or over) capacity,
-    /// without recording anything — `evaluate` uses this to decide
-    /// `.denyRateLimited` before any confirmation dialog is even shown, so a
-    /// client hammering a rate-limited tool can't queue up a pile of pending
-    /// confirmation prompts.
-    public func isRateLimited(limitPerMinute: Int) -> Bool {
+    /// Whether `clientName`'s own rate-limit window is already at (or over)
+    /// capacity, **or** the Mac-wide `globalCeilingMultiplier` ceiling
+    /// across every client is — without recording anything. `evaluate` uses
+    /// this to decide `.denyRateLimited` before any confirmation dialog is
+    /// even shown, so a client hammering a rate-limited tool can't queue up
+    /// a pile of pending confirmation prompts.
+    public func isRateLimited(clientName: String, limitPerMinute: Int) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        pruneWindowLocked()
-        return recentCallTimestamps.count >= max(0, limitPerMinute)
+        pruneAllLocked()
+        let clampedLimit = max(0, limitPerMinute)
+        let globalCeiling = clampedLimit * Self.globalCeilingMultiplier
+        let totalCallsAcrossAllClients = callHistoryByClient.values.reduce(0) { $0 + $1.count }
+        if totalCallsAcrossAllClients >= globalCeiling {
+            return true
+        }
+        let clientCalls = callHistoryByClient[clientName]?.count ?? 0
+        return clientCalls >= clampedLimit
     }
 
     /// Records a call that is genuinely about to execute (post-confirmation,
-    /// if any was required) against the rate-limit window. Deliberately not
-    /// folded into `evaluate` itself: `evaluate` is called once to decide
-    /// whether to show a confirmation dialog, and — if the user approves —
-    /// the caller checks the *decision* again isn't needed, but it must
-    /// still call `recordCall` exactly once per call that actually reaches
-    /// `StatsCoordinator`/`PowerControlService`/`AlertEngine`. Two calls
-    /// that both got `.allow` but where the second was for a tool the user
-    /// then declined via confirmation must not both consume rate-limit
-    /// budget — only the one that truly ran should.
-    public func recordCall() {
+    /// if any was required) against `clientName`'s rate-limit window.
+    /// Deliberately not folded into `evaluate` itself: `evaluate` is called
+    /// once to decide whether to show a confirmation dialog, and — if the
+    /// user approves — the caller checks the *decision* again isn't needed,
+    /// but it must still call `recordCall` exactly once per call that
+    /// actually reaches `StatsCoordinator`/`PowerControlService`/
+    /// `AlertEngine`. Two calls that both got `.allow` but where the second
+    /// was for a tool the user then declined via confirmation must not both
+    /// consume rate-limit budget — only the one that truly ran should.
+    ///
+    /// - Parameter clientName: same "parsed display name, not the wire
+    ///   string" contract as `evaluate` — recording against the wrong key
+    ///   would silently reopen the shared-budget bug this per-client window
+    ///   exists to close.
+    public func recordCall(clientName: String) {
         lock.lock()
         defer { lock.unlock() }
-        pruneWindowLocked()
-        recentCallTimestamps.append(clock())
+        pruneAllLocked()
+        callHistoryByClient[clientName, default: []].append(clock())
     }
 
-    /// Must be called with `lock` already held.
-    private func pruneWindowLocked() {
+    /// Must be called with `lock` already held. Prunes every client's
+    /// window, not just the one about to be read/written — the global
+    /// ceiling in `isRateLimited` sums across all clients, so a stale
+    /// timestamp sitting in some *other* client's history would otherwise
+    /// silently inflate that total forever. Also drops any client whose
+    /// window has emptied out entirely, so a Mac that saw thousands of
+    /// distinct (or spoofed) client names over its uptime doesn't keep an
+    /// ever-growing dictionary of empty arrays.
+    private func pruneAllLocked() {
         let cutoff = clock().addingTimeInterval(-60)
-        recentCallTimestamps.removeAll { $0 < cutoff }
+        for key in callHistoryByClient.keys {
+            callHistoryByClient[key]?.removeAll { $0 < cutoff }
+        }
+        callHistoryByClient = callHistoryByClient.filter { !$0.value.isEmpty }
     }
 }

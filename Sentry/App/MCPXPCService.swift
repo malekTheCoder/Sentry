@@ -86,7 +86,13 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     /// Returns `.allow` if (and only if) the caller should proceed.
     private func authorize(tool: MCPToolID, clientName: String, argumentsSummary: String) -> MCPAccessController.Decision {
         let settings = settingsStore.settings
-        var decision = accessController.evaluate(tool: tool, settings: settings)
+        // `clientName` here is already the parsed display name — every live
+        // call site reaches `authorize` via `authorizeInstrumented`, which
+        // runs `sessionIdentity(fromWire:)` first (see that method's doc
+        // comment); see `MCPAccessController.callHistoryByClient`'s doc
+        // comment for why the rate limiter specifically depends on that
+        // being true rather than the raw wire string.
+        var decision = accessController.evaluate(tool: tool, clientName: clientName, settings: settings)
 
         // Conditional guardrails + termination controls (kill switch,
         // per-client revocation, battery floor, on-battery restriction,
@@ -113,7 +119,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         }
 
         if decision == .allow {
-            accessController.recordCall()
+            accessController.recordCall(clientName: clientName)
             // The durable counterpart to `activityLog` below no longer lives
             // here: `authorizeInstrumented` (end of this file) writes to
             // `historyStore.logAgentActivity` *after* the call completes, so
@@ -803,6 +809,54 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                     reply: reply
                 )
             }
+        }
+    }
+
+    // MARK: - Agent session management (see SentryXPCServiceProtocol's doc
+    // comments on why these two skip `authorize`/`MCPAccessController`
+    // entirely — they exist for `sentryctl`, not an MCP client)
+
+    nonisolated func listAgentSessions(reply: @escaping (Data?, String?) -> Void) {
+        Task { @MainActor in
+            let sessions = self.sessionRegistry.activeSessions().map { session in
+                MCPPayloads.AgentSessionInfo(
+                    clientName: session.clientName,
+                    connectedAt: session.connectedAt,
+                    lastCallAt: session.lastCallAt,
+                    recentTools: session.recentTools.map(\.rawValue),
+                    holdsKeepAwake: session.holdsKeepAwake
+                )
+            }
+            self.encodeAndReply(sessions, reply: reply)
+        }
+    }
+
+    nonisolated func revokeAgentSession(clientName: String, reply: @escaping (Bool, String?) -> Void) {
+        Task { @MainActor in
+            // Mirrors `AIAccessPane.setClientRevoked`'s own honesty check —
+            // that UI only shows a "Stop" button next to a client it already
+            // knows about, so this is the CLI's equivalent of that
+            // constraint: `sentryctl stop` must not let a typo silently
+            // no-op by "revoking" a name nothing is using.
+            guard self.sessionRegistry.activeSessions().contains(where: { $0.clientName == clientName }) else {
+                reply(false, "No active session named \"\(clientName)\". Run `sentryctl sessions` to see active clients — names are case-sensitive.")
+                return
+            }
+            var names = self.settingsStore.settings.agentGuardrails.revokedClientNames
+            guard !names.contains(clientName) else {
+                reply(false, "\"\(clientName)\" is already stopped.")
+                return
+            }
+            names.insert(clientName)
+            // Only the flag is written here — same division of labor as
+            // `AIAccessPane.setClientRevoked`: `AppDelegate.applySettings`'s
+            // settings sink is the single place that reacts to
+            // `revokedClientNames` changing by actually releasing the
+            // client's keep-awake hold and announcing the revocation, so a
+            // stop issued from `sentryctl` behaves identically to one issued
+            // from the GUI.
+            self.settingsStore.settings.agentGuardrails.revokedClientNames = names
+            reply(true, nil)
         }
     }
 
