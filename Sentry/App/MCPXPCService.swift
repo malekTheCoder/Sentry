@@ -141,6 +141,13 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         // still *present*, which is what the registry measures (see its
         // `recordCall` doc comment).
         sessionRegistry.recordCall(clientName: clientName, tool: tool)
+        // Feeds SystemSnapshot.agentActivitySummary (StatsCoordinator's
+        // doc comment on that property is the design note for this line):
+        // `coordinator` and `sessionRegistry` are both already owned by this
+        // type, so — unlike `agentAccessPaused`/`protectionScore` — no
+        // AppDelegate hook is needed at all, just this one assignment right
+        // where every call already updates the registry.
+        coordinator.agentActivitySummary = sessionRegistry.activitySummary()
 
         return decision
     }
