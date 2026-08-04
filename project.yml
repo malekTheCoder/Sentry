@@ -495,7 +495,15 @@ targets:
       properties:
         LSUIElement: true
         CFBundleDisplayName: Sentry
-        NSHumanReadableCopyright: "Malek Swilam"
+        # Both authors, per `git shortlog -sne --all` — this string is what
+        # Finder's "Get Info" shows and what the About pane
+        # (`Sentry/Settings/Panes/AboutPane.swift`) is required to match.
+        # It is duplicated, deliberately and unavoidably, in
+        # `AppCredits.copyright` (SentryKit/Models/AppCredits.swift): a
+        # generated Info.plist value cannot be computed from Swift, and Swift
+        # cannot read this file. Change both together; `AppCreditsTests`
+        # asserts the shape but cannot see this literal.
+        NSHumanReadableCopyright: "Copyright © 2026 Malek Swilam & Aniketh Bandlamudi. All rights reserved."
         # ---------------------------------------------------------------
         # Version strings — REAL BUG FIXED HERE, not a tidy-up.
         #
@@ -664,6 +672,11 @@ targets:
       path: SentryMobile/Info.plist
       properties:
         CFBundleDisplayName: Sentry
+        # Same string as the Mac app's — the two apps have the same authors,
+        # and App Store Connect reads this key for the iOS listing's
+        # copyright line. Kept in sync by hand with the macOS target above
+        # and with `AppCredits.copyright`.
+        NSHumanReadableCopyright: "Copyright © 2026 Malek Swilam & Aniketh Bandlamudi. All rights reserved."
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

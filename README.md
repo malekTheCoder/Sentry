@@ -4,7 +4,11 @@ A macOS menu bar system monitor with iPhone and Apple Watch companions,
 remote access over the local network or a VPN, sleep-prevention control from
 any of the three, and an AI-agent (MCP) integration layer.
 
-Private / proprietary — all rights reserved. Not licensed for reuse.
+By Malek Swilam & Aniketh Bandlamudi.
+
+Private / proprietary — all rights reserved. Not licensed for reuse; see
+[`LICENSE`](LICENSE). Bundled open-source dependencies are acknowledged in
+[`docs/third-party-licenses.md`](docs/third-party-licenses.md).
 
 ## What it does
 

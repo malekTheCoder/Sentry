@@ -568,6 +568,17 @@
         }
       }
     },
+    "About": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
     "Add a gradient stop.": {
       "extractionState": "manual",
       "localizations": {
@@ -3880,6 +3891,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "VRAM"
+          }
+        }
+      }
+    },
+    "Version, credits, and licenses.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version, credits, and licenses."
           }
         }
       }
