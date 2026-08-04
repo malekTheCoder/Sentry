@@ -52,6 +52,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // would reconcile against — and fight over — the first's record.
     private let powerControl = PowerControlService()
 
+    // MARK: - In-process AppIntents access (Sentry/Intents/SentryMacIntents.swift)
+    //
+    // `AppIntent`s are instantiated by the system, not by this composition
+    // root, so there is no initializer call site to inject `coordinator`/
+    // `powerControl`/`settingsStore` into the way `MCPXPCService` and
+    // friends receive them. These three internal (not private) accessors are
+    // that seam's entire surface — explicit and type-checked, rather than
+    // `Mirror`-reflecting this instance's stored properties by type from
+    // outside the file (an earlier draft did exactly that; replaced once
+    // this file was open for editing anyway, since a compiler-checked
+    // property beats a runtime type scan for the same three-line result).
+    var intentAccessiblePowerControl: PowerControlService { powerControl }
+    var intentAccessibleCoordinator: StatsCoordinator { coordinator }
+    var intentAccessibleSettingsStore: SettingsStore { settingsStore }
+
     /// The "Location Log" feature (plan-external addition; see
     /// `LocationService`'s doc comment for why this is deliberately not
     /// "Find My"). Constructed unconditionally, like `powerControl` above —
@@ -454,6 +469,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         configurePopover(theme: theme, enabledModules: settings.enabledModules)
 
+        // First-run welcome popover — see OnboardingCoordinator's doc comment.
+        // Anchored to the just-built status item, after the real popover
+        // exists so there's something for it to sit beside.
+        OnboardingCoordinator.shared.showIfNeeded(
+            anchoredTo: controller.statusItem,
+            settingsStore: settingsStore,
+            theme: theme
+        )
+
         // Apply persisted settings before anything starts polling, so a saved
         // refresh interval / retention window takes effect on the first tick
         // rather than only after the user next touches a control.
@@ -569,6 +593,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 // clears `agentAssertionOwner`, so each hold is revoked and
                 // announced at most once. See `AgentGuardrails`.
                 self.enforceAgentGuardrailRevocation(snapshot)
+                // Same trigger, a second target: a guardrail condition that
+                // would revoke Sentry's own keep-awake should also reach a
+                // coding agent's own `caffeinate -i -t 300` (Claude Code
+                // respawns this outside Sentry's control entirely — see
+                // `CaffeinateArbitrator`'s header comment). Gated by the same
+                // `shouldEnforce` check `enforce` runs internally, so this
+                // costs a live process-table read only while a guardrail
+                // condition is actually active, not on every idle tick.
+                self.enforceExternalCaffeinateArbitration(snapshot)
                 await self.widgetWriter.record(snapshot)
             }
         }
@@ -1022,6 +1055,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             )
         }
         lastKillSwitchEngaged = guardrails.killSwitchEngaged
+        // The other direction of the same flag: feeds `SystemSnapshot
+        // .agentAccessPaused` (via `StatsCoordinator`) so the Watch relay can
+        // show — and, via `WatchResumeAgentsIntent`, resume from — a pause
+        // that was engaged anywhere. See `StatsCoordinator.agentAccessPaused`
+        // and `WatchRelaySnapshot.agentAccessPaused`'s doc comments for the
+        // nil-means-old-build convention this keeps intact end to end.
+        coordinator.agentAccessPaused = guardrails.killSwitchEngaged
 
         for name in guardrails.revokedClientNames.subtracting(lastRevokedClientNames)
         where powerControl.releaseAgentAssertion(ownedBy: name) {
@@ -1075,6 +1115,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         else { return }
         powerControl.releaseAgentAssertion()
         announceAgentRevocation(reason: reason, clientName: owner)
+    }
+
+    /// The integration step `CaffeinateArbitrator`'s own doc comment asks
+    /// for — see `SentryKit/Services/CaffeinateArbitrator.swift`'s `enforce`
+    /// for why it doesn't announce its own outcomes. `sessions` is left at
+    /// its default `[]`: the live `AgentSessionRegistry` is owned by
+    /// `MCPXPCService`, not this type, so a terminated caffeinate can't be
+    /// attributed to a specific client name here — `EnforcementOutcome
+    /// .clientName` is `nil` for every match, and the notice names the
+    /// action rather than an agent. Attribution without a plumbed-through
+    /// registry reference would mean guessing, which is worse than saying
+    /// so plainly.
+    private func enforceExternalCaffeinateArbitration(_ snapshot: SystemSnapshot) {
+        let outcomes = CaffeinateArbitrator.enforce(
+            settings: settingsStore.settings.agentGuardrails,
+            context: .from(snapshot: snapshot)
+        )
+        for outcome in outcomes where outcome.terminated {
+            announceAgentRevocation(
+                reason: String(
+                    localized: "Stopped a coding agent's sleep-prevention process (\"caffeinate\", pid \(outcome.match.pid)) so this guardrail could take effect."
+                ),
+                clientName: String(localized: "Sentry Guardrails")
+            )
+        }
     }
 
     /// An auto-revocation must be visible, twice over: a user notification

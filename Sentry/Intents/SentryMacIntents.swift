@@ -26,33 +26,28 @@ import SentryKit
 /// server exists for a genuinely remote client, not for this Mac to talk to
 /// itself.
 ///
-/// **How this file reaches those live instances without editing
-/// `AppDelegate.swift`.** `AppDelegate` composes `coordinator`, `powerControl`
-/// and `settingsStore` as `private`/`private lazy` stored properties with no
-/// public accessor — by design, `AppDelegate` is this app's single
-/// composition root, and every other consumer of these services
-/// (`MCPXPCService`, `LocalCommandExecutor`, `AlertEngine`'s closures) is
-/// *constructed by* `AppDelegate` and handed its references directly through
-/// an initializer, exactly the dependency-injection shape `MCPXPCService`'s
-/// own doc comment describes. `AppIntent`s can't be constructed that way —
-/// the system instantiates them itself (via their required parameterless
-/// initializer) when Siri/Shortcuts invokes one, so there is no constructor
-/// call site for `AppDelegate` to inject anything into. Given the added
-/// constraint that `AppDelegate.swift` is off-limits to edits for this
-/// change (another workstream owns that file concurrently), there is no
-/// call site left to *add* a public accessor either. `SentryMacRuntimeServices`
-/// below is the honest way around that: `NSApp.delegate` already publicly
-/// exposes the live `AppDelegate` instance (it's what `app.delegate = delegate`
-/// in `AppDelegate.main()` sets), and `Mirror(reflecting:)` can read a class
-/// instance's stored properties — public API Swift provides specifically
-/// for runtime introspection, unaffected by `private`'s *compile-time*
-/// visibility check — to find the one child of the type we need. This is a
-/// deliberate, narrowly-scoped substitute for a same-file accessor, not a
-/// general pattern to reach for; if `AppDelegate.swift` is ever open for
-/// edits again, replacing this with a plain `internal` accessor (or an
-/// `AppDependencyManager`-registered dependency, the officially-blessed
-/// `AppIntents` mechanism for exactly this problem) is strictly simpler and
-/// should be preferred.
+/// **How this file reaches those live instances without becoming a second
+/// composition root.** `AppDelegate` composes `coordinator`, `powerControl`
+/// and `settingsStore` as `private lazy`/`private let` stored properties —
+/// by design, `AppDelegate` is this app's single composition root, and every
+/// other consumer of these services (`MCPXPCService`, `LocalCommandExecutor`,
+/// `AlertEngine`'s closures) is *constructed by* `AppDelegate` and handed its
+/// references directly through an initializer, the dependency-injection
+/// shape `MCPXPCService`'s own doc comment describes. `AppIntent`s can't be
+/// constructed that way — the system instantiates them itself (via their
+/// required parameterless initializer) when Siri/Shortcuts invokes one, so
+/// there is no constructor call site to inject anything into. `AppDelegate`
+/// exposes exactly three narrow, explicit, `internal` (not `private`)
+/// `intentAccessible*` properties for this one purpose — see their doc
+/// comment there — rather than widening `coordinator`/`powerControl`/
+/// `settingsStore` themselves, which would let anything in the app reach
+/// past the composition root instead of just this one documented seam.
+/// `SentryMacRuntimeServices` below reads `NSApp.delegate` (public API,
+/// `AppDelegate.main()` sets it) as `AppDelegate` and calls those three
+/// properties — no `Mirror`, no reflection; an earlier draft of this file
+/// used runtime type-scanning specifically to avoid touching
+/// `AppDelegate.swift` while another workstream owned it concurrently, and
+/// was replaced with this once that constraint no longer applied.
 ///
 /// **Why dialogs here are shorter than the phone's.** Every phone intent's
 /// dialog has three tiers — "couldn't reach your Mac," "sent it, but no
@@ -82,33 +77,22 @@ enum SentryMacRuntimeServices {
         }
     }
 
-    /// Finds the first stored property (plain or already-initialized `lazy`)
-    /// on the running `AppDelegate` whose value is of type `T`. Matching by
-    /// *type* rather than by property name is what keeps this resilient to
-    /// `AppDelegate` renaming its stored properties — it only breaks if
-    /// `AppDelegate` ever holds two properties of the same service type
-    /// (unlikely: `PowerControlService`'s own doc comment guarantees "exactly
-    /// one instance app-wide," and `StatsCoordinator`/`SettingsStore` are
-    /// equally singular by construction) or stops holding one at all.
-    private static func liveService<T>(_ type: T.Type) -> T? {
-        guard let delegate = NSApp.delegate else { return nil }
-        let mirror = Mirror(reflecting: delegate)
-        for child in mirror.children {
-            if let match = child.value as? T {
-                return match
-            }
-        }
-        return nil
-    }
+    /// The running `AppDelegate`, typed — `nil` only in the should-never-
+    /// happen window `ServiceError.appNotReady` documents above. `AppDelegate`
+    /// exposes exactly three `intentAccessible*` properties for this file to
+    /// use (see their doc comment there); everything else on it stays
+    /// private, unreachable from here by construction rather than by
+    /// convention.
+    private static var delegate: AppDelegate? { NSApp.delegate as? AppDelegate }
 
     static func powerControl() throws -> PowerControlService {
-        guard let service = liveService(PowerControlService.self) else { throw ServiceError.appNotReady }
-        return service
+        guard let delegate else { throw ServiceError.appNotReady }
+        return delegate.intentAccessiblePowerControl
     }
 
     static func coordinator() throws -> StatsCoordinator {
-        guard let service = liveService(StatsCoordinator.self) else { throw ServiceError.appNotReady }
-        return service
+        guard let delegate else { throw ServiceError.appNotReady }
+        return delegate.intentAccessibleCoordinator
     }
 
     /// The exact same live `SettingsStore` `AIAccessPane`'s "Pause all agent
@@ -121,8 +105,8 @@ enum SentryMacRuntimeServices {
     /// then. Mutating this instance's `@Published settings` triggers the
     /// same `AppDelegate` sink that toggle triggers, live.
     static func settingsStore() throws -> SettingsStore {
-        guard let service = liveService(SettingsStore.self) else { throw ServiceError.appNotReady }
-        return service
+        guard let delegate else { throw ServiceError.appNotReady }
+        return delegate.intentAccessibleSettingsStore
     }
 }
 
