@@ -85,6 +85,75 @@ final class LocalSyncClientTests: XCTestCase {
         XCTAssertEqual(result, sameNameDifferentDomain)
     }
 
+    // MARK: - discoveredMacs(from:) — the multi-Mac picker's list mapping
+
+    func testDiscoveredMacsMapsServiceEndpointsToEntries() {
+        let macs = LocalSyncClient.discoveredMacs(from: [service(named: "Mac A"), service(named: "Mac B")])
+        XCTAssertEqual(macs.map(\.id), ["Mac A", "Mac B"])
+    }
+
+    func testDiscoveredMacsFiltersOutNonServiceEndpoints() {
+        let macs = LocalSyncClient.discoveredMacs(from: [service(named: "Mac A"), hostPort()])
+        XCTAssertEqual(macs.map(\.id), ["Mac A"])
+    }
+
+    /// The same Mac can legitimately appear as more than one browse result
+    /// (e.g. advertised over two interfaces) — the picker should still show
+    /// it exactly once, not once per interface.
+    func testDiscoveredMacsDeduplicatesByServiceName() {
+        let macs = LocalSyncClient.discoveredMacs(
+            from: [service(named: "Mac A"), service(named: "Mac A", domain: "local2.")]
+        )
+        XCTAssertEqual(macs.map(\.id), ["Mac A"])
+    }
+
+    /// `NWBrowser.browseResults` is a `Set` — this function's stable,
+    /// alphabetical sort is what keeps the picker's row order from
+    /// reshuffling on every unrelated browse-results update.
+    func testDiscoveredMacsSortsAlphabeticallyRegardlessOfInputOrder() {
+        let macs = LocalSyncClient.discoveredMacs(from: [service(named: "Zeta"), service(named: "Alpha")])
+        XCTAssertEqual(macs.map(\.id), ["Alpha", "Zeta"])
+    }
+
+    func testDiscoveredMacsIsEmptyForNoEndpoints() {
+        XCTAssertTrue(LocalSyncClient.discoveredMacs(from: []).isEmpty)
+    }
+
+    // MARK: - hasMultipleMacs(_:) — the picker's show/hide gate
+
+    func testHasMultipleMacsIsFalseForZeroMacs() {
+        XCTAssertFalse(LocalSyncClient.hasMultipleMacs([]))
+    }
+
+    func testHasMultipleMacsIsFalseForExactlyOneMac() {
+        XCTAssertFalse(LocalSyncClient.hasMultipleMacs([DiscoveredMac(id: "Mac A", endpoint: service(named: "Mac A"))]))
+    }
+
+    func testHasMultipleMacsIsTrueForTwoOrMoreMacs() {
+        let macs = [
+            DiscoveredMac(id: "Mac A", endpoint: service(named: "Mac A")),
+            DiscoveredMac(id: "Mac B", endpoint: service(named: "Mac B")),
+        ]
+        XCTAssertTrue(LocalSyncClient.hasMultipleMacs(macs))
+    }
+
+    // MARK: - isSwitchingMac(from:to:) — the picker row's tap-to-switch logic
+
+    func testIsSwitchingMacIsFalseWhenTappingTheAlreadyConnectedMac() {
+        let mac = DiscoveredMac(id: "Mac A", endpoint: service(named: "Mac A"))
+        XCTAssertFalse(LocalSyncClient.isSwitchingMac(from: "Mac A", to: mac))
+    }
+
+    func testIsSwitchingMacIsTrueWhenTappingADifferentMac() {
+        let mac = DiscoveredMac(id: "Mac B", endpoint: service(named: "Mac B"))
+        XCTAssertTrue(LocalSyncClient.isSwitchingMac(from: "Mac A", to: mac))
+    }
+
+    func testIsSwitchingMacIsTrueWhenNothingIsConnectedYet() {
+        let mac = DiscoveredMac(id: "Mac A", endpoint: service(named: "Mac A"))
+        XCTAssertTrue(LocalSyncClient.isSwitchingMac(from: nil, to: mac))
+    }
+
     // MARK: - classifyDirectConnectFailure(_:)
 
     func testClassifyDirectConnectFailureTreatsNoErrorAsUnreachable() {

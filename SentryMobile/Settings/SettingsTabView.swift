@@ -122,6 +122,7 @@ struct SettingsTabView: View {
                 title
                 themeSection
                 deviceCard
+                macPickerSection
                 syncStatusRow
                 remoteMacSection
                 LocationLogSection(viewModel: locationLogViewModel)
@@ -420,6 +421,99 @@ struct SettingsTabView: View {
                 ? "This device is live data from a Mac reporting in over your local Wi-Fi network."
                 : "This is demo data, not a real Mac — this phone isn't currently connected to a Mac over your local network, so there is nothing real on the other end reporting in."
         )
+    }
+
+    // MARK: - Multi-Mac picker (LAN/Bonjour only)
+
+    /// Set while `AppDataSource.switchToDiscoveredMac(_:)` is in flight for
+    /// a specific row — lets that one row show a spinner instead of the
+    /// whole section blocking, since switching only affects the tapped Mac.
+    @State private var switchingMacID: String?
+
+    /// The real multi-Mac picker this pass adds. `LocalSyncClient`'s
+    /// `preferredEndpoint(among:preferring:)` (see its doc comment) already
+    /// stops a *drop* from silently reconnecting to the wrong Mac, but gave
+    /// a user with two Macs on the same network no way to see the second
+    /// one exists, let alone deliberately switch to it. This section is
+    /// that: it lists every Mac `AppDataSource.discoveredMacs` currently
+    /// reports (kept live by `LocalSyncClient.setDiscoveredMacsHandler(_:)`)
+    /// and lets a tap switch to any of them via
+    /// `AppDataSource.switchToDiscoveredMac(_:)`.
+    ///
+    /// **Gated by `hasMultipleMacs(_:)`, deliberately.** The common case is
+    /// one Mac (or zero, pre-connection) — this section renders nothing at
+    /// all then, matching the brief not to clutter that case with picker UI
+    /// it doesn't need. It only appears once there is genuinely something
+    /// to choose between.
+    ///
+    /// **LAN-only, on purpose.** This reads `AppDataSource.discoveredMacs`,
+    /// which is populated exclusively from Bonjour browse results — the
+    /// remote/TLS-PSK fallback (`remoteMacSection` below) has no discovered
+    /// list at all, just one user-entered address. Supporting a picker
+    /// across several *remote* Macs (multiple stored pairing codes) is a
+    /// bigger, separate project, out of scope here.
+    @ViewBuilder
+    private var macPickerSection: some View {
+        if LocalSyncClient.hasMultipleMacs(appDataSource.discoveredMacs) {
+            VStack(alignment: .leading, spacing: palette.spacingRow) {
+                Text("MACS ON YOUR NETWORK")
+                    .scaledFont(palette, size: 11, weight: .semibold)
+                    .kerning(0.8)
+                    .foregroundStyle(palette.textTertiary)
+                    .accessibilityAddTraits(.isHeader)
+
+                VStack(alignment: .leading, spacing: palette.spacingTight) {
+                    ForEach(appDataSource.discoveredMacs) { mac in
+                        macRow(mac)
+                    }
+                }
+
+                Text("More than one Mac answered on your local network. Tap one to connect to it instead — your choice is remembered, so this phone reconnects to it automatically next time too.")
+                    .scaledFont(palette, size: 11)
+                    .foregroundStyle(palette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(palette.spacingBlock)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard(palette)
+        }
+    }
+
+    /// One row per discovered Mac: name, a checkmark on whichever one
+    /// `AppDataSource.connectedMacIdentity` currently matches, and a
+    /// per-row spinner while a tap on a *different* row is still resolving.
+    private func macRow(_ mac: DiscoveredMac) -> some View {
+        let isSelected = mac.id == appDataSource.connectedMacIdentity
+        return Button {
+            guard LocalSyncClient.isSwitchingMac(from: appDataSource.connectedMacIdentity, to: mac) else { return }
+            switchingMacID = mac.id
+            Task {
+                await appDataSource.switchToDiscoveredMac(mac)
+                switchingMacID = nil
+            }
+        } label: {
+            HStack(spacing: palette.spacingTight) {
+                Text(mac.displayName)
+                    .scaledFont(palette, size: 12.5, weight: isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? palette.textPrimary : palette.textSecondary)
+                Spacer(minLength: 0)
+                if switchingMacID == mac.id {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if isSelected {
+                    Image(systemName: "checkmark")
+                        .scaledSystemFont(size: 12, weight: .semibold)
+                        .foregroundStyle(palette.accent)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(switchingMacID != nil)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityHint(isSelected ? "Currently connected." : "Switch to this Mac instead.")
     }
 
     // MARK: - Sync status (SyncPane's tone, mobile side)

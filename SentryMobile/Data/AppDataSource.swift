@@ -111,6 +111,23 @@ public final class AppDataSource: ObservableObject {
     /// for the Bonjour/LAN path, which has no "wrong code" concept.
     @Published public private(set) var remoteConnectFailureReason: DirectConnectFailureReason?
 
+    /// Every Mac currently visible over Bonjour on the local network, kept
+    /// live via `LocalSyncClient.setDiscoveredMacsHandler(_:)` — the
+    /// published surface `SettingsTabView`'s multi-Mac picker reads.
+    /// Empty (not just while using `MockDataSource`, but genuinely) whenever
+    /// no Bonjour browse has happened yet or nothing answers; never
+    /// populated from the remote/TLS-PSK path, which has no discovered list
+    /// at all (see `LocalSyncClient`'s top-level doc comment on why that
+    /// path is out of scope here).
+    @Published public private(set) var discoveredMacs: [DiscoveredMac] = []
+
+    /// The Bonjour service name of the Mac this phone is connected to over
+    /// the LAN path right now, or `nil` while disconnected or while
+    /// connected over the remote/direct path instead. Lets `SettingsTabView`
+    /// mark the right row in the picker as the current one — see
+    /// `LocalSyncClient.currentServiceIdentity()`.
+    @Published public private(set) var connectedMacIdentity: String?
+
     private var localClient: LocalSyncClient?
     private var resolveTask: Task<Void, Never>?
 
@@ -166,15 +183,28 @@ public final class AppDataSource: ObservableObject {
             // before falling back to demo data.
             timeout = max(timeout, 8)
         }
+        // Registered before `waitForFirstConnection` runs too, for the same
+        // reason `directConnectFailureHandler` is: a multi-Mac household's
+        // second (and third...) advertisement can show up during the very
+        // first discovery window, not only after a fallback-to-mock, and
+        // `SettingsTabView`'s picker should see it as soon as it exists.
+        await client.setDiscoveredMacsHandler { [weak self] macs in
+            Task { @MainActor in
+                guard let self, self.localClient != nil else { return }
+                self.discoveredMacs = macs
+            }
+        }
         let found = await client.waitForFirstConnection(timeout: timeout)
         if found {
             transport = client
             isUsingLocalSync = true
             isLocalSyncConnected = true
+            connectedMacIdentity = await client.currentServiceIdentity()
             await client.setConnectionStateHandler { [weak self] connected in
                 Task { @MainActor in
                     guard let self, self.localClient != nil else { return }
                     self.isLocalSyncConnected = connected
+                    self.connectedMacIdentity = connected ? await self.localClient?.currentServiceIdentity() : nil
                 }
             }
         } else {
@@ -182,7 +212,28 @@ public final class AppDataSource: ObservableObject {
             localClient = nil
             transport = MockDataSource()
             isUsingLocalSync = false
+            discoveredMacs = []
+            connectedMacIdentity = nil
         }
+    }
+
+    /// Hands a user's tap in `SettingsTabView`'s multi-Mac picker down to
+    /// `LocalSyncClient.switchTo(discovered:)` — see that method's doc
+    /// comment for what "switch" actually does (tears down the current
+    /// connection, dials the chosen one, and updates the sticky
+    /// reconnect-preference so future automatic reconnects favor this
+    /// choice too). No-ops if local sync was never resolved to a real
+    /// client (e.g. still on `MockDataSource`) — there is nothing to switch
+    /// between in that case, and `discoveredMacs` would be empty, so
+    /// `SettingsTabView`'s picker wouldn't be showing this option anyway.
+    public func switchToDiscoveredMac(_ mac: DiscoveredMac) async {
+        guard let localClient else { return }
+        await localClient.switchTo(discovered: mac)
+        // Set optimistically rather than waiting on `connectionStateHandler`
+        // to fire — the picker row should reflect the user's choice the
+        // instant they tap it, not only once the new connection finishes
+        // becoming ready a moment later.
+        connectedMacIdentity = mac.id
     }
 
     // MARK: - QR pairing (sentry://pair deep link)
@@ -287,6 +338,8 @@ public final class AppDataSource: ObservableObject {
         isUsingLocalSync = false
         isLocalSyncConnected = false
         remoteConnectFailureReason = nil
+        discoveredMacs = []
+        connectedMacIdentity = nil
         resolveTask = nil
         await resolveIfNeeded()
     }
