@@ -345,6 +345,8 @@ final class MCPEndpointPublisherTests: XCTestCase {
         func setAlertRuleEnabled(clientName: String, ruleID: String, enabled: Bool, reply: @escaping (Bool, String?) -> Void) { reply(false, "stub") }
         func createAlertRule(clientName: String, ruleJSON: Data, reply: @escaping (Bool, String?) -> Void) { reply(false, "stub") }
         func waitUntilReady(clientName: String, condition: String, timeoutSeconds: Double, reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
+        func listAgentSessions(reply: @escaping (Data?, String?) -> Void) { reply(nil, "stub") }
+        func revokeAgentSession(clientName: String, reply: @escaping (Bool, String?) -> Void) { reply(false, "stub") }
     }
 
     /// Every `SMAppService.Status` maps to exactly one honest state, and the

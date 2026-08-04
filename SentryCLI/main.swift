@@ -65,6 +65,22 @@ func printUsage() {
             Aggregated CPU/thermal/memory "cost" summary over the last
             <seconds> — meant to be called from a Claude Code `Stop` hook to
             enrich a completion notification with real resource context.
+
+        sentryctl sessions [--json]
+            Lists MCP clients that have called this Mac recently (same
+            "active" window `get_agent_capacity` uses) — client name, last
+            call, and whether it holds the keep-awake assertion. Headless
+            equivalent of Settings → AI Access → Agents.
+
+        sentryctl stop <client-name>
+            Revokes a client by its self-reported name: denies further calls
+            made under that name and releases any keep-awake hold it started
+            — same mechanism as the "Stop" button in Settings → AI Access →
+            Agents. Exit code 0 if the client was active and got stopped, 1
+            with an explanation on stderr otherwise (no such active client,
+            or it was already stopped). Client names are self-reported, not
+            verified identities — see `sentryctl sessions` for the exact,
+            case-sensitive spelling to pass.
     """
     FileHandle.standardError.write((usage + "\n").data(using: .utf8) ?? Data())
 }
@@ -196,6 +212,48 @@ func runSessionReport(sinceSeconds: Double, json: Bool) async {
         }
         print(parts.isEmpty ? "No resource data for this window." : parts.joined(separator: ", "))
     }
+}
+
+/// `sentryctl sessions` — see `SentryXPCServiceProtocol.listAgentSessions`'s
+/// doc comment for why this XPC call carries no `clientName` of its own and
+/// isn't gated by `MCPAccessController` the way every other call in this
+/// file is.
+func runSessions(json: Bool) async {
+    let (data, message) = await xpcClient.readCall { $0.listAgentSessions(reply: $1) }
+    guard let data else {
+        fail(message ?? "Sentry didn't answer. Is Sentry running?")
+    }
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    guard let sessions = try? decoder.decode([MCPPayloads.AgentSessionInfo].self, from: data) else {
+        fail("couldn't decode Sentry's response")
+    }
+    if json {
+        printJSON(sessions)
+        return
+    }
+    if sessions.isEmpty {
+        print("No active agent sessions.")
+        return
+    }
+    for session in sessions.sorted(by: { $0.lastCallAt > $1.lastCallAt }) {
+        print(AgentSessionCLI.formatSessionLine(session))
+    }
+}
+
+/// `sentryctl stop <client-name>` — revokes via
+/// `SentryXPCServiceProtocol.revokeAgentSession`, which mirrors
+/// `AIAccessPane`'s own per-agent "Stop" button exactly (see that method's
+/// doc comment). Returns whether the revocation happened, matching this
+/// CLI's exit-code convention of 0 for "did the thing", 1 otherwise.
+func runStop(clientName: String) async -> Bool {
+    let (ok, message) = await xpcClient.writeCall { $0.revokeAgentSession(clientName: clientName, reply: $1) }
+    if ok {
+        print("Stopped \"\(clientName)\" — released its keep-awake hold (if any) and denied further calls under that name.")
+    } else {
+        fail(message ?? "couldn't stop \"\(clientName)\".")
+    }
+    return ok
 }
 
 func runStatus() async {
@@ -640,6 +698,17 @@ case "session-report":
     let sinceSeconds = flagValue("since", in: arguments).flatMap(Double.init) ?? 3600
     await runSessionReport(sinceSeconds: sinceSeconds, json: arguments.contains("--json"))
     exit(0)
+
+case "sessions":
+    await runSessions(json: arguments.contains("--json"))
+    exit(0)
+
+case "stop":
+    guard let target = AgentSessionCLI.stopTargetClientName(from: arguments) else {
+        fail("missing <client-name>. Run `sentryctl sessions` to see active clients.")
+    }
+    let stopped = await runStop(clientName: target)
+    exit(stopped ? 0 : 1)
 
 case "hook":
     guard arguments.count > 1, arguments[1] == "pretooluse" else {
