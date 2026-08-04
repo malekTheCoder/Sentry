@@ -80,6 +80,19 @@ public struct AgentSessionAttribution: Equatable, Sendable {
     /// approximately how long. Same machine-wide caveat as battery drain.
     public let thermalPressureElevated: Bool
     public let thermalPressureElevatedSeconds: Double
+    /// Whether a `caffeinate` process this session's client plausibly
+    /// spawned (best-effort match — see `CaffeinateArbitrator
+    /// .matchExternalCaffeinates(in:)`) was detected holding this Mac awake
+    /// independently of Sentry's own `keep_awake` tool, and its raw argv if
+    /// so. Additive fields (agent-guardrail arbitration pass): both default
+    /// to "not detected" so every existing caller of the memberwise `init`
+    /// or `attribution(...)` factory below keeps compiling and reporting
+    /// exactly what it always has, unless it explicitly opts into passing
+    /// `CaffeinateArbitrator` results through. `nil`/`false` here says
+    /// nothing about whether one actually exists — only whether this
+    /// report was ever handed the data to know.
+    public let externalCaffeinateDetected: Bool
+    public let externalCaffeinateArguments: [String]?
 
     public init(
         sessionID: String,
@@ -91,7 +104,9 @@ public struct AgentSessionAttribution: Equatable, Sendable {
         keepAwakeSecondsHeld: Double,
         batteryPercentDrained: Double?,
         thermalPressureElevated: Bool,
-        thermalPressureElevatedSeconds: Double
+        thermalPressureElevatedSeconds: Double,
+        externalCaffeinateDetected: Bool = false,
+        externalCaffeinateArguments: [String]? = nil
     ) {
         self.sessionID = sessionID
         self.clientName = clientName
@@ -103,6 +118,8 @@ public struct AgentSessionAttribution: Equatable, Sendable {
         self.batteryPercentDrained = batteryPercentDrained
         self.thermalPressureElevated = thermalPressureElevated
         self.thermalPressureElevatedSeconds = thermalPressureElevatedSeconds
+        self.externalCaffeinateDetected = externalCaffeinateDetected
+        self.externalCaffeinateArguments = externalCaffeinateArguments
     }
 }
 
@@ -182,6 +199,15 @@ public enum AgentSessionReport {
     /// `get_session_resource_report` returns. `events` should already be
     /// scoped to the session (or, as a fallback, to the client name —
     /// `MCPXPCService.getSessionResourceReport` decides that scoping).
+    /// - Parameter externalCaffeinateMatches: Claude-spawned `caffeinate`
+    ///   processes already correlated to this session's client name (see
+    ///   `CaffeinateArbitrator.attribute(matches:sessions:)`), or `nil` when
+    ///   the caller hasn't wired that detection in — the default, so every
+    ///   existing call site of this method is unaffected. When non-empty,
+    ///   the first match's argv is what's surfaced (`AgentSessionAttribution
+    ///   .externalCaffeinateArguments`) — one representative invocation is
+    ///   enough to make the report's claim legible; this report's job is
+    ///   attribution, not a live process inventory.
     public static func attribution(
         sessionID: String,
         clientName: String,
@@ -189,13 +215,15 @@ public enum AgentSessionReport {
         awakeHolds: [AgentAwakeHold],
         batterySamples: [(timestamp: Date, value: Double)],
         thermalPressureSamples: [(timestamp: Date, value: Double)],
-        window: ClosedRange<Date>
+        window: ClosedRange<Date>,
+        externalCaffeinateMatches: [CaffeinateArbitrator.ExternalCaffeinateMatch]? = nil
     ) -> AgentSessionAttribution {
         var toolCounts: [String: Int] = [:]
         for event in events {
             toolCounts[event.tool, default: 0] += 1
         }
         let thermal = thermalElevation(samples: thermalPressureSamples, windowStart: window.lowerBound)
+        let matches = externalCaffeinateMatches ?? []
         return AgentSessionAttribution(
             sessionID: sessionID,
             clientName: clientName,
@@ -206,7 +234,9 @@ public enum AgentSessionReport {
             keepAwakeSecondsHeld: awakeSeconds(holds: awakeHolds, owner: sessionID, window: window),
             batteryPercentDrained: batteryPercentDrained(samples: batterySamples),
             thermalPressureElevated: thermal.elevated,
-            thermalPressureElevatedSeconds: thermal.seconds
+            thermalPressureElevatedSeconds: thermal.seconds,
+            externalCaffeinateDetected: !matches.isEmpty,
+            externalCaffeinateArguments: matches.first?.arguments
         )
     }
 

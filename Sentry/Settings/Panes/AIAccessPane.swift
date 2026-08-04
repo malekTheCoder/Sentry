@@ -333,6 +333,14 @@ struct AIAccessPane: View {
 
             Toggle("Release keep-awake under serious thermal pressure", isOn: $store.settings.agentGuardrails.thermalAutoRevokeEnabled)
                 .accessibilityLabel("Thermal auto-revoke guardrail")
+
+            Toggle("Enforce guardrails against agent-spawned sleep prevention", isOn: $store.settings.agentGuardrails.enforceAgainstExternalCaffeinate)
+                .accessibilityLabel("Enforce guardrails against agent-spawned sleep prevention")
+                .accessibilityValue(store.settings.agentGuardrails.enforceAgainstExternalCaffeinate ? "On" : "Off")
+            Text("Claude Code spawns its own `caffeinate` process to keep this Mac awake while it works, outside Sentry's control — the other guardrails above can't see or stop it. When this is on, Sentry also ends that process, but only at the exact moment one of the guardrails above would already be releasing Sentry's own keep-awake (battery critical, quiet hours, serious thermal pressure). This calls `kill()` on a process Sentry doesn't own; turn it off if you'd rather Sentry never do that, even then.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         } header: {
             Text("Guardrails")
         } footer: {
