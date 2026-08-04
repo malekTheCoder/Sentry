@@ -96,6 +96,42 @@ The same page's siblings cover tmux (`docs/integrations/tmux.md`), Starship
 (`starship.md`), and the streaming `sentryctl watch` command (`watch.md`).
 Start at [`docs/integrations/README.md`](../../docs/integrations/README.md).
 
+## 4. `subagentStatusLine` — a per-subagent row, honestly
+
+Claude Code's `subagentStatusLine` setting renders a custom row for each
+subagent in the agent panel, replacing the default `name · description ·
+token count` line. [`scripts/subagent-statusline.sh`](scripts/subagent-statusline.sh)
+wires it to `sentryctl session-report`, with one caveat worth stating up
+front rather than discovering later: `sentryctl` has no way today to scope
+a resource report to one specific subagent, so every visible row shows the
+same machine/session-wide number, explicitly prefixed `mac:`. The script's
+own header comment explains why, in full, and what closing that gap for
+real would require in `sentryctl` itself. Everything the script *does*
+print (CPU, temperature, throttling, keep-awake seconds, alert count) is
+real `session-report --json` output, not invented.
+
+```json
+{
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "~/.claude/subagent-statusline.sh"
+  }
+}
+```
+
+(copy the script there, or point `command` straight at this repo's copy).
+
+## Plugin bundle
+
+[`plugin/`](plugin/) packages the `PreToolUse` hook, the MCP server
+registration, and the `subagentStatusLine` script above into one Claude
+Code plugin directory, installable with `claude --plugin-dir` or
+`/plugin install` instead of hand-editing the JSON on this page. See
+[`plugin/README.md`](plugin/README.md) — it also documents a correction to
+this integration's originally-assumed binary name for the MCP server entry
+specifically (`SentryMCP`, not `sentryctl`; the two are different build
+products, and only one of them speaks MCP).
+
 ## Before any of this works: set up command-line access
 
 **Everything on this page needs one piece of setup, and this used to be a
