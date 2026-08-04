@@ -692,8 +692,19 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 self.settingsStore.settings.mediumTierRefreshInterval = seconds
             case "slow":
                 self.settingsStore.settings.slowTierRefreshInterval = seconds
+            case "process":
+                // No `AppSettings` field/`AppDelegate` sink exists for this
+                // tier (see `StatsCoordinator.processInterval`'s doc
+                // comment) — going through `settingsStore.settings` like the
+                // three cases above would silently no-op, since nothing
+                // would ever push the new value into `coordinator`. Calling
+                // `coordinator.setProcessInterval` directly is the honest
+                // equivalent for a tier with no settings-pane backing: it
+                // takes effect immediately, same as the others, but (unlike
+                // them) doesn't survive a relaunch.
+                self.coordinator.setProcessInterval(seconds)
             default:
-                reply(false, "Unknown tier '\(tier)'. Expected one of: fast, medium, slow.")
+                reply(false, "Unknown tier '\(tier)'. Expected one of: fast, medium, slow, process.")
                 return
             }
             reply(true, nil)

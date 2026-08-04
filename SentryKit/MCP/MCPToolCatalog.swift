@@ -128,8 +128,8 @@ public enum MCPToolCatalog {
         case .setRefreshInterval:
             return schema(
                 properties: [
-                    "tier": property("string", "One of: fast, medium, slow."),
-                    "seconds": property("number", "New interval in seconds for that tier.")
+                    "tier": property("string", "One of: fast, medium, slow, process. fast/medium/slow control CPU/GPU/memory/network/disk, thermal/ANE, and battery polling respectively; process controls only the process-list refresh cadence (SystemSnapshot.topProcesses and process-scoped alert responsiveness) and, unlike the other three, resets to its 8s default on Sentry's next launch instead of persisting."),
+                    "seconds": property("number", "New interval in seconds for that tier. Clamped per-tier: fast 0.5-30, medium 1-60, slow 5-60, process 2-60.")
                 ],
                 required: ["tier", "seconds"]
             )

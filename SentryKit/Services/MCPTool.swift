@@ -153,7 +153,7 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
         case .getSessionResourceReport: return String(localized: "Aggregated CPU/thermal/memory cost over a time window, framed as a session report.")
         case .keepAwake: return String(localized: "Start a sleep assertion with mode + duration.")
         case .releaseAwake: return String(localized: "Release the current sleep assertion.")
-        case .setRefreshInterval: return String(localized: "Change polling cadence for a tier.")
+        case .setRefreshInterval: return String(localized: "Change polling cadence for a tier: fast/medium/slow (core metrics), or process (process-list refresh, used by topProcesses and process-scoped alerts).")
         case .setAlertRuleEnabled: return String(localized: "Toggle an alert rule on or off.")
         case .createAlertRule: return String(localized: "Define a new alert rule.")
         case .waitUntilReady: return String(localized: "Block (capped) until a condition holds — e.g. thermal_normal, cpu_below:50 — then return what changed.")
