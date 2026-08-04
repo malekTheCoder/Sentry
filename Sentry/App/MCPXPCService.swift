@@ -532,9 +532,18 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
         }
     }
 
+    /// Forwards to the `targetClientName` overload below with `""` — "scope
+    /// to my own session", exactly this method's behavior before the CLI
+    /// session-scoping pass. Kept as its own `@objc` requirement (see the
+    /// protocol's doc comment) so nothing calling this selector specifically
+    /// has to change.
     nonisolated func getSessionResourceReport(clientName: String, sinceSeconds: Double, reply: @escaping (Data?, String?) -> Void) {
+        getSessionResourceReport(clientName: clientName, sinceSeconds: sinceSeconds, targetClientName: "", reply: reply)
+    }
+
+    nonisolated func getSessionResourceReport(clientName: String, sinceSeconds: Double, targetClientName: String, reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
-            let summary = "sinceSeconds=\(sinceSeconds)"
+            let summary = "sinceSeconds=\(sinceSeconds), targetClientName=\(targetClientName)"
             guard let reply = self.authorizeInstrumented(.getSessionResourceReport, wireClientName: clientName, argumentsSummary: summary, reply: reply) else { return }
             guard sinceSeconds > 0 else {
                 reply(nil, "sinceSeconds must be positive.")
@@ -562,30 +571,64 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 previousTimestamp = sample.timestamp
             }
 
-            // Session attribution (agent-session attribution pass): correlate
-            // the *caller's own* session — identified by the composite wire
-            // `clientName`, see `AgentSessionIdentity` — with the durable
-            // activity log, the keep-awake ledger, and battery/thermal
-            // history. Falls back to grouping by client display name when
-            // this session hasn't logged any calls in the window yet (e.g.
-            // this report is its very first call).
-            let identity = self.sessionIdentity(fromWire: clientName)
             let allEvents = self.historyStore.agentActivityEvents(since: since)
-            let sessionEvents = allEvents.filter { $0.sessionID == identity.sessionID }
-            let scopedEvents = sessionEvents.isEmpty
-                ? allEvents.filter { $0.clientName == identity.clientName }
-                : sessionEvents
             let batterySamples = self.historyStore.samples(metric: MetricID.batteryChargePercent.rawValue, since: since)
             let pressureSamples = self.historyStore.samples(metric: MetricID.thermalPressureLevel.rawValue, since: since)
-            let attribution = AgentSessionReport.attribution(
-                sessionID: identity.sessionID,
-                clientName: identity.clientName,
-                events: scopedEvents,
-                awakeHolds: self.powerControl.awakeHolds,
-                batterySamples: batterySamples,
-                thermalPressureSamples: pressureSamples,
-                window: since...now
-            )
+
+            let attribution: AgentSessionAttribution
+            if targetClientName.isEmpty {
+                // Session attribution (agent-session attribution pass):
+                // correlate the *caller's own* session — identified by the
+                // composite wire `clientName`, see `AgentSessionIdentity` —
+                // with the durable activity log, the keep-awake ledger, and
+                // battery/thermal history. Falls back to grouping by client
+                // display name when this session hasn't logged any calls in
+                // the window yet (e.g. this report is its very first call).
+                let identity = self.sessionIdentity(fromWire: clientName)
+                let sessionEvents = allEvents.filter { $0.sessionID == identity.sessionID }
+                let scopedEvents = sessionEvents.isEmpty
+                    ? allEvents.filter { $0.clientName == identity.clientName }
+                    : sessionEvents
+                attribution = AgentSessionReport.attribution(
+                    sessionID: identity.sessionID,
+                    clientName: identity.clientName,
+                    events: scopedEvents,
+                    awakeHolds: self.powerControl.awakeHolds,
+                    batterySamples: batterySamples,
+                    thermalPressureSamples: pressureSamples,
+                    window: since...now
+                )
+            } else {
+                // CLI session-scoping pass (`sentryctl session-report
+                // --client=<name>`): scope by self-reported client name
+                // rather than one connection's session ID — matching what
+                // `sentryctl sessions` actually exposes (`AgentSessionInfo`
+                // has no `sessionID` field; see `AgentSessionRegistry`'s doc
+                // comment on why the registry itself is keyed by name only).
+                // A single client name can span several real connections
+                // (several distinct `sessionID`s) within the window — e.g.
+                // the same MCP client relaunched mid-window — so keep-awake
+                // attribution sums every distinct `sessionID` observed among
+                // this name's events, not just one (see
+                // `AgentSessionReport.attribution(keepAwakeOwners:)`).
+                let scopedEvents = allEvents.filter { $0.clientName == targetClientName }
+                let owners = Array(Set(scopedEvents.map(\.sessionID)).subtracting([""]))
+                attribution = AgentSessionReport.attribution(
+                    // No single connection's session ID represents this
+                    // report — "" mirrors `AgentActivityEvent.sessionID`'s
+                    // own "unknown" convention, and `MCPPayloads
+                    // .SessionResourceReport.sessionID` is nil'd out for it
+                    // below rather than presented as if it named one session.
+                    sessionID: "",
+                    clientName: targetClientName,
+                    events: scopedEvents,
+                    awakeHolds: self.powerControl.awakeHolds,
+                    batterySamples: batterySamples,
+                    thermalPressureSamples: pressureSamples,
+                    window: since...now,
+                    keepAwakeOwners: owners
+                )
+            }
 
             let report = MCPPayloads.SessionResourceReport(
                 windowStart: since,
@@ -596,7 +639,7 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                 secondsThrottling: secondsThrottling,
                 peakMemoryPressurePercent: memPressure.max(),
                 alertsFired: firings.count,
-                sessionID: attribution.sessionID,
+                sessionID: attribution.sessionID.isEmpty ? nil : attribution.sessionID,
                 sessionClientName: attribution.clientName,
                 sessionStart: attribution.sessionStart,
                 sessionEnd: attribution.sessionEnd,

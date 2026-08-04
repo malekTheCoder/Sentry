@@ -135,14 +135,24 @@ plugin reference doc) to the bundled script:
 
 **Read `scripts/subagent-statusline.sh`'s own header comment before relying
 on this** — it explains, in more detail than fits here, the real
-limitation: `sentryctl session-report` has no way to scope its answer to
-one specific Claude Code subagent. Every visible subagent row ends up
-showing the *same* machine/session-wide number, explicitly prefixed `mac:`
-so it can't be mistaken for a per-agent figure. That's a documented gap in
-`sentryctl`, not something this script papers over — closing it for real
-means teaching `sentryctl session-report` to accept and forward a
-per-subagent identity, which is CLI work, not integration glue, and is
-out of scope for this change.
+limitation, updated by the CLI session-scoping pass: `sentryctl
+session-report` gained a `--client=<name>` flag (see `SentryCLI/main.swift`,
+backed by `MCPXPCService.getSessionResourceReport(targetClientName:)`) that
+scopes its answer to one self-reported MCP client instead of the whole Mac.
+That closes part of the original gap — you can now exclude *other* MCP
+clients' activity (Cursor, Claude Desktop, a bare `sentryctl` invocation)
+from the number this script shows — but it does not, and structurally
+cannot, scope to one specific Claude Code *subagent*: a top-level Claude
+Code session spawns exactly one MCP connection, which every subagent that
+session runs shares, so there is no identity anywhere on this boundary
+finer than "the whole session." Every visible subagent row therefore still
+ends up showing the *same* number, tagged `client:` when
+`SENTRYCTL_STATUSLINE_CLIENT` is set to narrow it, or `mac:` in the
+original whole-Mac default. That remaining part is a confirmed structural
+limitation, not something this script or `sentryctl` papers over — closing
+it for real would require Claude Code itself to mint and forward a
+distinguishable identity per subagent down to the MCP server, which is
+outside this repo.
 
 Every number the script does print — CPU average/peak, peak SoC
 temperature, seconds throttling, alerts fired, keep-awake seconds — is

@@ -208,6 +208,20 @@ public enum AgentSessionReport {
     ///   .externalCaffeinateArguments`) — one representative invocation is
     ///   enough to make the report's claim legible; this report's job is
     ///   attribution, not a live process inventory.
+    /// - Parameter keepAwakeOwners: the `AgentAwakeHold.owner` value(s) whose
+    ///   held time should count toward `keepAwakeSecondsHeld` — additive
+    ///   (CLI session-scoping pass). Defaults to `nil`, which keeps every
+    ///   existing call site's exact behavior: sum over `[sessionID]` alone,
+    ///   the single connection this attribution is for. `sentryctl
+    ///   session-report --client=<name>` scopes by self-reported client name
+    ///   rather than one connection, and a client name can span several
+    ///   connections (several real `sessionID`s) within the same window —
+    ///   see `MCPXPCService.getSessionResourceReport(targetClientName:)`,
+    ///   which passes every distinct `sessionID` seen among `events` for
+    ///   that name here instead of relying on the single-`sessionID` default.
+    ///   Holds are summed, never double-counted: each `AgentAwakeHold` has
+    ///   exactly one owner, so passing disjoint owners can only add
+    ///   non-overlapping holds together.
     public static func attribution(
         sessionID: String,
         clientName: String,
@@ -216,7 +230,8 @@ public enum AgentSessionReport {
         batterySamples: [(timestamp: Date, value: Double)],
         thermalPressureSamples: [(timestamp: Date, value: Double)],
         window: ClosedRange<Date>,
-        externalCaffeinateMatches: [CaffeinateArbitrator.ExternalCaffeinateMatch]? = nil
+        externalCaffeinateMatches: [CaffeinateArbitrator.ExternalCaffeinateMatch]? = nil,
+        keepAwakeOwners: [String]? = nil
     ) -> AgentSessionAttribution {
         var toolCounts: [String: Int] = [:]
         for event in events {
@@ -224,6 +239,10 @@ public enum AgentSessionReport {
         }
         let thermal = thermalElevation(samples: thermalPressureSamples, windowStart: window.lowerBound)
         let matches = externalCaffeinateMatches ?? []
+        let owners = keepAwakeOwners ?? [sessionID]
+        let keepAwakeSeconds = owners.reduce(0.0) { total, owner in
+            total + awakeSeconds(holds: awakeHolds, owner: owner, window: window)
+        }
         return AgentSessionAttribution(
             sessionID: sessionID,
             clientName: clientName,
@@ -231,7 +250,7 @@ public enum AgentSessionReport {
             sessionEnd: events.map(\.timestamp).max(),
             callCount: events.count,
             toolCallCounts: toolCounts,
-            keepAwakeSecondsHeld: awakeSeconds(holds: awakeHolds, owner: sessionID, window: window),
+            keepAwakeSecondsHeld: keepAwakeSeconds,
             batteryPercentDrained: batteryPercentDrained(samples: batterySamples),
             thermalPressureElevated: thermal.elevated,
             thermalPressureElevatedSeconds: thermal.seconds,

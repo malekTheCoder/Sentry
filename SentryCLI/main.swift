@@ -61,10 +61,19 @@ func printUsage() {
             line was printed, 124 when the timeout hit with nothing
             cached. See docs/integrations/ for copy-pasteable configs.
 
-        sentry session-report --since=<seconds> [--json]
+        sentry session-report --since=<seconds> [--client=<name>] [--json]
             Aggregated CPU/thermal/memory "cost" summary over the last
             <seconds> — meant to be called from a Claude Code `Stop` hook to
             enrich a completion notification with real resource context.
+            Without --client, scopes to this invocation's own session (the
+            whole-Mac-during-this-call default this command has always had).
+            With --client=<name>, scopes to one other self-reported MCP
+            client's activity instead — pass exactly the `clientName`
+            `sentryctl sessions` prints, e.g.:
+                sentryctl session-report --client="Claude Code" --since=900
+            Two clients sharing a name collapse into one report, same as
+            `sentryctl sessions` itself (client names are self-reported, not
+            authenticated — see that command's own note below).
 
         sentryctl sessions [--json]
             Lists MCP clients that have called this Mac recently (same
@@ -184,9 +193,17 @@ func runWait(condition: String, timeoutSeconds: Double) async -> MCPPayloads.Wai
     return result
 }
 
-func runSessionReport(sinceSeconds: Double, json: Bool) async {
+/// - Parameter targetClientName: `nil` scopes to this CLI invocation's own
+///   session, matching every release before the CLI session-scoping pass;
+///   a name (from `AgentSessionCLI.sessionReportTargetClientName`, sourced
+///   from `sentryctl sessions`' output) scopes to that self-reported MCP
+///   client's activity instead — see `SentryXPCServiceProtocol
+///   .getSessionResourceReport(targetClientName:)`'s doc comment for exactly
+///   what "scoped" means and its one honest limitation (client names, not
+///   individual subagents, are what this boundary can distinguish).
+func runSessionReport(sinceSeconds: Double, targetClientName: String?, json: Bool) async {
     let (data, message) = await xpcClient.readCall {
-        $0.getSessionResourceReport(clientName: clientName, sinceSeconds: sinceSeconds, reply: $1)
+        $0.getSessionResourceReport(clientName: clientName, sinceSeconds: sinceSeconds, targetClientName: targetClientName ?? "", reply: $1)
     }
     guard let data else {
         fail(message ?? "Sentry denied this request. Is Sentry running, and is the get_session_resource_report MCP tool enabled in Settings → AI Access?")
@@ -197,6 +214,13 @@ func runSessionReport(sinceSeconds: Double, json: Bool) async {
     if json {
         printJSON(report)
     } else {
+        // Only prefixed when the caller actually asked to scope this to
+        // someone else — the un-scoped default (still "cpu 82%, ...") stays
+        // exactly the line every existing script parsing this output today
+        // already expects.
+        if let targetClientName, !targetClientName.isEmpty {
+            print("[\(targetClientName)]", terminator: " ")
+        }
         var parts: [String] = []
         if let avg = report.averageCPUPercent, let peak = report.peakCPUPercent {
             parts.append("CPU avg \(Int(avg))% / peak \(Int(peak))%")
@@ -696,7 +720,8 @@ case "statusline":
 
 case "session-report":
     let sinceSeconds = flagValue("since", in: arguments).flatMap(Double.init) ?? 3600
-    await runSessionReport(sinceSeconds: sinceSeconds, json: arguments.contains("--json"))
+    let targetClientName = AgentSessionCLI.sessionReportTargetClientName(from: arguments)
+    await runSessionReport(sinceSeconds: sinceSeconds, targetClientName: targetClientName, json: arguments.contains("--json"))
     exit(0)
 
 case "sessions":

@@ -101,4 +101,49 @@ final class AgentSessionCLITests: XCTestCase {
 
         XCTAssertEqual(line, "Claude Desktop — last call 0s ago")
     }
+
+    // MARK: - sessionReportTargetClientName (CLI session-scoping pass)
+
+    func testSessionReportTargetClientNameReadsEqualsForm() {
+        XCTAssertEqual(
+            AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--client=Claude Code", "--since=900"]),
+            "Claude Code"
+        )
+    }
+
+    func testSessionReportTargetClientNameReadsSpaceForm() {
+        XCTAssertEqual(
+            AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--client", "Claude Code"]),
+            "Claude Code"
+        )
+    }
+
+    func testSessionReportTargetClientNameIsNilWhenFlagAbsent() {
+        XCTAssertNil(AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--since=900"]))
+    }
+
+    func testSessionReportTargetClientNameIsNilForEmptyEqualsValue() {
+        // `--client=""` must read as "no filter", not as a request to scope
+        // to a client literally named the empty string.
+        XCTAssertNil(AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--client="]))
+    }
+
+    func testSessionReportTargetClientNameIsNilWhenSpaceFormHasNothingAfter() {
+        XCTAssertNil(AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--client"]))
+    }
+
+    func testSessionReportTargetClientNameIsNilWhenSpaceFormIsFollowedByAnotherFlag() {
+        // `--client --json` should read as a missing value, same reasoning
+        // as `optionValue` in `SentryCLI/main.swift` — a caller who typed
+        // this meant to report "missing --client", not adopt "--json" as
+        // the client name.
+        XCTAssertNil(AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--client", "--json"]))
+    }
+
+    func testSessionReportTargetClientNamePrefersEqualsFormWhenBothPresent() {
+        XCTAssertEqual(
+            AgentSessionCLI.sessionReportTargetClientName(from: ["session-report", "--client=Cursor", "--client", "Claude Code"]),
+            "Cursor"
+        )
+    }
 }

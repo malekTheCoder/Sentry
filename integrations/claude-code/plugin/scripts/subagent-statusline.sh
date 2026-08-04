@@ -3,34 +3,55 @@
 # subagent shown in the agent panel (docs: "Subagent status lines",
 # https://code.claude.com/docs/en/statusline#subagent-status-lines).
 #
-# WHAT THIS SCRIPT ACTUALLY KNOWS, STATED PLAINLY:
+# WHAT THIS SCRIPT ACTUALLY KNOWS, STATED PLAINLY (updated for the CLI
+# session-scoping pass — read this before assuming the gap below is closed):
 #
 # Claude Code hands this script one JSON object per refresh tick containing
 # a `tasks` array — one entry per visible subagent, each with its own `id`,
 # `status`, `model`, `tokenCount`, `cwd`, etc. The obvious feature to build
-# here is "show *this* subagent's resource cost." `sentryctl` cannot do
-# that today: `sentryctl session-report` (SentryCLI/main.swift's
-# `session-report` case, backed by `MCPXPCService.getSessionResourceReport`)
-# attributes cost to *the calling XPC connection's own session* — see
-# `AgentSessionIdentity` and `SentryKit/Services/AgentSessionReport.swift` —
-# and this script's own invocation of `sentryctl` is one connection, not
-# one-per-subagent. There is no `--session-id` / `--task-id` flag to point
-# it at a specific Claude Code task, and Claude Code's `tasks[].id` has no
-# relationship to a Sentry `AgentSessionIdentity` UUID at all: subagents are
-# in-process Claude Code constructs, not separate processes that ever dial
-# Sentry's XPC service themselves.
+# here is "show *this* subagent's resource cost." `sentryctl session-report`
+# now *can* scope its answer to one self-reported MCP client via a
+# `--client=<name>` flag (`SentryCLI/main.swift`'s `session-report` case,
+# backed by `MCPXPCService.getSessionResourceReport(targetClientName:)` —
+# see `SentryKit/Services/AgentSessionReport.swift` for the attribution math
+# and `SentryKit/Services/AgentSessionIdentity.swift`/`AgentSessionRegistry
+# .swift` for why a "client" is a self-reported name, not a session UUID).
+# That flag genuinely did not exist before this pass; it does now.
 #
-# So: this script calls `sentryctl session-report` **once per tick**,
-# scoped to whatever session identity that one `sentryctl` invocation gets
-# (in practice, grouped by the `sentryctl` client name — see
-# `MCPXPCService.getSessionResourceReport`'s fallback), and paints the
-# *same* line onto every visible subagent row, tagged "mac:" so nobody
-# mistakes it for a per-agent number. That is a real, honest gap, not a
-# rounding error, and it is why this script ships as a documented
-# placeholder rather than a finished feature. Closing it for real needs
-# `sentryctl` (or a wrapper) to thread a per-subagent identity through to
-# `getSessionResourceReport`, which is CLI work out of scope for this
-# integration-glue pass — see the plugin README for the full writeup.
+# **What it does NOT do, and cannot do at this layer:** distinguish one
+# subagent task from another. Claude Code's `tasks[].id` still has no
+# relationship to any Sentry identity — a top-level Claude Code session
+# spawns exactly one `SentryMCP` process (one MCP connection, one
+# `MCPClientIdentity.sessionID`, one self-reported client name), and every
+# subagent that session runs shares that one connection: subagents are
+# in-process Claude Code constructs, not separate processes that ever dial
+# Sentry's XPC service on their own. `--client=<name>` selects *which MCP
+# client/session* to report on — useful when several different tools
+# (Claude Code, Claude Desktop, Cursor, a bare `sentryctl` invocation) are
+# all active on the same Mac and you want to exclude the others' noise —
+# but it cannot select *which subagent within one Claude Code session*,
+# because that finer identity does not exist anywhere on this boundary. This
+# is a confirmed structural limitation, not a missing flag: closing it for
+# real would require Claude Code itself to mint and forward a distinguishable
+# identity per subagent down to the MCP server, which is outside `sentryctl`
+# and outside this repo.
+#
+# So: this script still calls `sentryctl session-report` **once per tick**
+# and paints the *same* line onto every visible subagent row — that part is
+# unchanged and, per the above, unchangeable from here. What changed is
+# *which* activity that one line reflects:
+#
+#   - `SENTRYCTL_STATUSLINE_CLIENT` unset (the default): no `--client` flag
+#     is passed, so the report falls back to `sentryctl`'s own invocation
+#     scope — the exact same whole-Mac-ish number this script always showed,
+#     still tagged "mac:" for the same honesty reason as before.
+#   - `SENTRYCTL_STATUSLINE_CLIENT` set to a client name (get the exact,
+#     case-sensitive spelling from `sentryctl sessions` — typically whatever
+#     your MCP client self-reports, e.g. "Claude Code"): the report is
+#     scoped to that one client's activity via `--client`, and the line is
+#     tagged "client:" instead of "mac:" so it's never confused with the
+#     whole-Mac figure. Still one number, still repeated on every subagent
+#     row — narrower attribution, not per-agent attribution.
 #
 # WHAT IS REAL: every number below comes verbatim from
 # `sentryctl session-report --json`'s actual fields (averageCPUPercent,
@@ -48,6 +69,14 @@
 # budget concern as ../../docs/integrations/claude-code.md's main statusline.
 SINCE_SECONDS="${SENTRYCTL_STATUSLINE_SINCE:-900}"
 
+# Optional client-name scope (CLI session-scoping pass) — see the header
+# comment above for exactly what this narrows and what it still can't.
+# Unset by default: opting in requires knowing your own MCP client's exact
+# self-reported name, which this script has no way to discover on its own
+# (it's a fact about the *other* end of the connection, the MCP client, not
+# something visible from this hook's stdin payload).
+TARGET_CLIENT="${SENTRYCTL_STATUSLINE_CLIENT:-}"
+
 command -v sentryctl >/dev/null 2>&1 || exit 0
 command -v /usr/bin/python3 >/dev/null 2>&1 || exit 0
 
@@ -62,7 +91,11 @@ payload=$(cat)
 # for any task keeps Claude Code's own default `name · description · token
 # count` row, which is exactly the doc's documented fallback ("Omit a
 # task's id to keep the default rendering for that row").
-report=$(sentryctl session-report --since="$SINCE_SECONDS" --json 2>/dev/null) || exit 0
+if [ -n "$TARGET_CLIENT" ]; then
+    report=$(sentryctl session-report --since="$SINCE_SECONDS" --client="$TARGET_CLIENT" --json 2>/dev/null) || exit 0
+else
+    report=$(sentryctl session-report --since="$SINCE_SECONDS" --json 2>/dev/null) || exit 0
+fi
 [ -n "$report" ] || exit 0
 
 # Handing both blobs to python3 via the environment (rather than stdin,
@@ -72,7 +105,7 @@ report=$(sentryctl session-report --since="$SINCE_SECONDS" --json 2>/dev/null) |
 # simplest main-statusline.sh example does — that approach is fine for two
 # flat string fields; it is not fine for "build one line from up to six
 # optional numeric fields, then repeat it once per task in a JSON array."
-SENTRY_SUBAGENT_PAYLOAD="$payload" SENTRY_SUBAGENT_REPORT="$report" /usr/bin/python3 <<'PYEOF'
+SENTRY_SUBAGENT_PAYLOAD="$payload" SENTRY_SUBAGENT_REPORT="$report" SENTRY_SUBAGENT_SCOPED="$TARGET_CLIENT" /usr/bin/python3 <<'PYEOF'
 import json
 import os
 import sys
@@ -88,6 +121,7 @@ def load(env_var):
 
 payload = load("SENTRY_SUBAGENT_PAYLOAD")
 report = load("SENTRY_SUBAGENT_REPORT")
+scoped_to = os.environ.get("SENTRY_SUBAGENT_SCOPED", "")
 
 if not isinstance(payload, dict) or not isinstance(report, dict):
     sys.exit(0)
@@ -137,14 +171,17 @@ if isinstance(alerts, (int, float)) and alerts > 0:
 if not segments:
     # `session-report` answered, but every field in the window was empty
     # (fresh app launch, no samples yet) — nothing honest to show, and
-    # printing "mac: " alone would be noise, not data.
+    # printing the prefix alone would be noise, not data.
     sys.exit(0)
 
-# "mac:" prefix, not "agent:" or a per-task label — see the header comment.
-# This is the one place in the line that is doing load-bearing honesty
-# work: every subagent row gets the exact same suffix precisely because
-# there is exactly one number to show, not N of them.
-line = "mac: " + " · ".join(segments)
+# "mac:" when unscoped, "client:" when `--client=<name>` narrowed the
+# report to one self-reported MCP client — never "agent:" or a per-task
+# label, and never the client name itself repeated verbatim, because
+# *every visible row still gets the exact same line* (see the header
+# comment): there is exactly one number to show here, not N of them, no
+# matter which of the two modes produced it.
+prefix = "client: " if scoped_to else "mac: "
+line = prefix + " · ".join(segments)
 if columns > 0 and len(line) > columns:
     line = line[: max(0, columns - 1)] + "…"
 
