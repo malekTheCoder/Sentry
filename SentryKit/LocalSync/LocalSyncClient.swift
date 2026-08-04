@@ -19,23 +19,34 @@ import os.log
 /// only the Mac app runs a server). In practice only `SentryMobile`
 /// constructs one — the Mac has no reason to browse for itself.
 ///
-/// **Known simplification: first-found, not a real picker.** Bonjour
-/// browsing can surface more than one `_sentry._tcp` service on a
-/// household network with more than one Mac. A real multi-Mac experience
-/// would show a picker and let the user choose. That UI doesn't exist yet,
-/// and building it is out of scope for this pass — on its very first
-/// connection of the process, this type still connects to whichever result
-/// `NWBrowser` reports first (browse results are a `Set`, so "first" isn't
-/// even a stable notion across calls). What *is* fixed (connection-honesty
-/// review gap #5): every reconnect *after* that — a drop, a Mac going to
-/// sleep and coming back, a Wi-Fi blip — prefers dialing the *same* Mac by
-/// Bonjour service name (`preferredEndpoint(among:preferring:)` below)
-/// rather than re-running "first result wins" on every retry, which used
-/// to mean a phone could silently hop to a second Mac's advertisement mid-
-/// session with no indication anything changed. Documented here rather
+/// **First-found by default, but a real picker exists now.** On its very
+/// first connection of the process, this type still connects to whichever
+/// result `NWBrowser` reports first (browse results are a `Set`, so "first"
+/// isn't even a stable notion across calls) — that default is deliberately
+/// unchanged, since *some* Mac has to be chosen automatically before a user
+/// has ever had a chance to express a preference. What's fixed
+/// (connection-honesty review gap #5): every reconnect *after* that — a
+/// drop, a Mac going to sleep and coming back, a Wi-Fi blip — prefers
+/// dialing the *same* Mac by Bonjour service name (`preferredEndpoint(
+/// among:preferring:)` below) rather than re-running "first result wins" on
+/// every retry, which used to mean a phone could silently hop to a second
+/// Mac's advertisement mid-session with no indication anything changed. And
+/// on top of that sticky-reconnect mechanism, `setDiscoveredMacsHandler(_:)`
+/// / `discoveredMacs(from:)` / `switchTo(discovered:)` below now let a user
+/// with more than one Mac on the network actually *see* every Mac
+/// `NWBrowser` currently reports and deliberately switch to one —
+/// `AppDataSource` publishes the list and `SettingsTabView` renders the
+/// picker (only when there's genuinely more than one Mac to choose
+/// between). Switching updates the same sticky identity `preferredEndpoint`
+/// reads, so a deliberate choice sticks across future automatic reconnects
+/// too, not just the one connection made right now. Documented here rather
 /// than hidden, per this codebase's "say plainly what doesn't work"
 /// convention (see `SettingsTabView`'s doc comment for the canonical
-/// example of that discipline).
+/// example of that discipline). Explicitly still out of scope: picking
+/// between multiple *remote* (TLS-PSK) Macs — that path is a single
+/// user-entered host:port + pairing code, not a discovered list, and
+/// supporting several stored pairing codes at once is a bigger, separate
+/// project.
 ///
 /// **`send(command:)` is real; `upload(_:)` still isn't.** `send(command:)`
 /// used to throw unconditionally ("receive-only for this first pass"); it
@@ -141,6 +152,25 @@ public actor LocalSyncClient: StatsTransport {
         directConnectFailureHandler = handler
     }
 
+    /// Invoked with the full, de-duplicated, stably-ordered list of Macs
+    /// currently visible over Bonjour, every time `NWBrowser`'s result set
+    /// changes — the piece this pass adds on top of `preferredEndpoint(
+    /// among:preferring:)`. That method (see its doc comment) only ever
+    /// decides which *one* Mac to dial; it deliberately has no notion of
+    /// "show the user everything that's out there," because until now
+    /// nothing consumed that information. `AppDataSource` wires this handler
+    /// to a `@Published` property the same way it already does for
+    /// `connectionStateHandler`/`directConnectFailureHandler`, and
+    /// `SettingsTabView` reads that to show a picker — but only when more
+    /// than one Mac is actually discovered (`LocalSyncClient
+    /// .hasMultipleMacs(_:)`), so the common single-Mac household sees no
+    /// new UI at all.
+    public func setDiscoveredMacsHandler(_ handler: (@Sendable ([DiscoveredMac]) -> Void)?) {
+        discoveredMacsHandler = handler
+    }
+
+    private var discoveredMacsHandler: (@Sendable ([DiscoveredMac]) -> Void)?
+
     /// Set only while the in-flight `connect(to:parameters:isDirect:)` call
     /// is a direct (remote) attempt — read back in `handleClosed`/
     /// `handleReady` to decide whether a failure/success should update
@@ -159,6 +189,18 @@ public actor LocalSyncClient: StatsTransport {
     /// explicit host:port, not discovered by name, so "which Mac" is never
     /// ambiguous there.
     private var lastConnectedServiceIdentity: String?
+
+    /// The Bonjour service name of the Mac this client is connected to right
+    /// now, or `nil` while disconnected or connected over the direct/remote
+    /// path (which has no service name at all). Read by `AppDataSource` to
+    /// mark the right row in `SettingsTabView`'s multi-Mac picker as "this
+    /// one" — deliberately a read of live state rather than reusing
+    /// `lastConnectedServiceIdentity` directly, since that field stays set
+    /// across a drop (that's the point of it) whereas this answers "which
+    /// Mac, if any, is actually live right now."
+    public func currentServiceIdentity() async -> String? {
+        isReady && !connectionIsDirect ? lastConnectedServiceIdentity : nil
+    }
 
     /// Wall-clock time of the most recently decoded snapshot, or nil —
     /// lets `AppDataSource.devices()` report an honest `lastSeen` instead
@@ -224,7 +266,10 @@ public actor LocalSyncClient: StatsTransport {
         browser.browseResultsChangedHandler = { [weak self] results, _ in
             guard let self else { return }
             let endpoints = results.map(\.endpoint)
-            Task { await self.connectToPreferredBrowseResult(endpoints) }
+            Task {
+                await self.publishDiscoveredMacs(endpoints)
+                await self.connectToPreferredBrowseResult(endpoints)
+            }
         }
         browser.stateUpdateHandler = { [weak self] state in
             if case .failed(let error) = state {
@@ -373,6 +418,47 @@ public actor LocalSyncClient: StatsTransport {
         connect(to: endpoint, parameters: Self.lanParameters())
     }
 
+    /// Maps the browser's raw endpoints through `discoveredMacs(from:)` and
+    /// hands the result to `discoveredMacsHandler`, if one is set. A thin
+    /// actor-isolated wrapper around a pure function purely so the mapping
+    /// itself stays testable without a live `NWBrowser` — see
+    /// `LocalSyncClientTests`.
+    private func publishDiscoveredMacs(_ endpoints: [NWEndpoint]) {
+        discoveredMacsHandler?(Self.discoveredMacs(from: endpoints))
+    }
+
+    /// Explicitly connects to a Mac the user picked from
+    /// `SettingsTabView`'s multi-Mac picker, rather than whichever endpoint
+    /// `connectToPreferredBrowseResult`/`retryConnectFromBrowserResults`
+    /// would otherwise choose. Two things happen, matching this type's
+    /// existing "sticky reconnect" contract (`preferredEndpoint(among:
+    /// preferring:)`'s doc comment):
+    ///
+    /// 1. `lastConnectedServiceIdentity` is updated to the chosen Mac
+    ///    *before* dialing it, so a drop five minutes from now reconnects to
+    ///    the Mac the user deliberately picked, not silently back to
+    ///    whichever one this client happened to be talking to before — the
+    ///    same "don't silently switch Macs" principle `preferredEndpoint`
+    ///    exists for, just applied to a deliberate user choice instead of an
+    ///    automatic first-connect.
+    /// 2. Any existing connection is torn down first. `connect(to:
+    ///    parameters:isDirect:)` is guarded by `!isConnecting, !isReady`
+    ///    specifically to stop two dial attempts from racing each other, but
+    ///    that guard would also block this deliberate switch while already
+    ///    connected to a *different* Mac — so this resets that state
+    ///    up front, the one place in this type allowed to bypass the guard,
+    ///    because a user-initiated switch is exactly the case where "already
+    ///    connected" shouldn't win.
+    public func switchTo(discovered mac: DiscoveredMac) {
+        lastConnectedServiceIdentity = mac.id
+        connection?.cancel()
+        connection = nil
+        isReady = false
+        isConnecting = false
+        connectionStateHandler?(false)
+        connect(to: mac.endpoint, parameters: Self.lanParameters())
+    }
+
     private func handleReady(_ connection: NWConnection) {
         guard connection === self.connection else { return }
         isConnecting = false
@@ -461,6 +547,59 @@ public actor LocalSyncClient: StatsTransport {
             return match
         }
         return endpoints.first
+    }
+
+    /// Maps raw browse-result endpoints to the list `SettingsTabView`'s
+    /// multi-Mac picker actually renders — the real feature this pass adds
+    /// on top of `preferredEndpoint(among:preferring:)`'s "prefer one"
+    /// logic. Three things this does that a bare `endpoints.map(...)`
+    /// wouldn't:
+    ///
+    /// 1. Drops any endpoint `serviceIdentity(for:)` can't name (a direct/
+    ///    remote `.hostPort` dial never reaches this function in practice,
+    ///    but the filter keeps the mapping honest regardless of caller).
+    /// 2. De-duplicates by service name. A single Mac can legitimately
+    ///    appear as more than one `NWBrowser.Result` — e.g. advertised over
+    ///    both Wi-Fi and a wired interface — and a picker listing "Malek's
+    ///    MacBook Pro" twice would look like a bug, not two real Macs.
+    /// 3. Sorts by name. `NWBrowser.browseResults` is a `Set` (see this
+    ///    type's top-level doc comment on why "first" isn't a stable
+    ///    notion) — left unsorted, the picker's row order would reshuffle
+    ///    on every unrelated browse-results update, which reads as broken
+    ///    even though nothing about the underlying Macs changed.
+    ///
+    /// A pure function, deliberately free of any `Network.framework` I/O or
+    /// actor isolation, so `LocalSyncClientTests` can exercise it with
+    /// fabricated `NWEndpoint.service` values the same way it already does
+    /// for `preferredEndpoint(among:preferring:)`.
+    public static func discoveredMacs(from endpoints: [NWEndpoint]) -> [DiscoveredMac] {
+        var seenNames = Set<String>()
+        var macs: [DiscoveredMac] = []
+        for endpoint in endpoints {
+            guard let name = serviceIdentity(for: endpoint), seenNames.insert(name).inserted else { continue }
+            macs.append(DiscoveredMac(id: name, endpoint: endpoint))
+        }
+        return macs.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+    }
+
+    /// The picker-gating rule `SettingsTabView` uses to decide whether to
+    /// show any multi-Mac UI at all: only when there is genuinely something
+    /// to choose between. The common case — one Mac on the household
+    /// network, or none yet discovered — renders no picker at all, matching
+    /// this pass's brief not to clutter that case with UI it doesn't need.
+    public static func hasMultipleMacs(_ macs: [DiscoveredMac]) -> Bool {
+        macs.count > 1
+    }
+
+    /// Whether tapping `mac` in the picker is a real switch (a different Mac
+    /// than the one currently connected) as opposed to re-tapping the row
+    /// that's already marked selected. `SettingsTabView` uses this purely to
+    /// skip the round trip through `AppDataSource.switchToDiscoveredMac(_:)`
+    /// for a no-op tap; `switchTo(discovered:)` itself is idempotent either
+    /// way, so this is an optimization/clarity helper, not a correctness
+    /// requirement.
+    public static func isSwitchingMac(from currentIdentity: String?, to mac: DiscoveredMac) -> Bool {
+        currentIdentity != mac.id
     }
 
     /// Classifies why a *direct* (remote, TLS-PSK) connection attempt
@@ -678,6 +817,45 @@ public actor LocalSyncClient: StatsTransport {
             "Uploading is not supported over the local-network transport — this transport only receives snapshots, it has no shared store to upload into."
         )
     }
+}
+
+/// One Mac currently visible over Bonjour, as surfaced to
+/// `SettingsTabView`'s multi-Mac picker via `LocalSyncClient
+/// .setDiscoveredMacsHandler(_:)` and `AppDataSource.discoveredMacs`. LAN/
+/// Bonjour-scoped only — see `LocalSyncClient.discoveredMacs(from:)`'s doc
+/// comment for how the list is built, and this type's top-level doc comment
+/// for why the remote (TLS-PSK) path is explicitly out of scope for any of
+/// this: that path is dialed by a single user-entered host:port, not
+/// discovered, so there is nothing to pick between there.
+public struct DiscoveredMac: Identifiable, Equatable, Sendable {
+    /// The Bonjour service name, doubling as this list's stable identity —
+    /// the same string `LocalSyncClient.serviceIdentity(for:)` extracts and
+    /// `preferredEndpoint(among:preferring:)` matches on, so "the Mac the
+    /// picker shows as selected" and "the Mac a reconnect prefers" are
+    /// always the same notion of identity.
+    public let id: String
+
+    /// The endpoint this entry resolves to right now — passed back to
+    /// `LocalSyncClient.switchTo(discovered:)` to actually dial it. Not
+    /// `Equatable`-compared beyond what `NWEndpoint`'s own conformance does;
+    /// `DiscoveredMac`'s `Equatable` conformance (needed for SwiftUI diffing
+    /// in the picker list) is otherwise driven entirely by `id`, since two
+    /// browse results for the same Mac can differ in interface/domain while
+    /// still meaning "the same Mac" for display purposes.
+    public let endpoint: NWEndpoint
+
+    public init(id: String, endpoint: NWEndpoint) {
+        self.id = id
+        self.endpoint = endpoint
+    }
+
+    /// What the picker actually renders. Just `id` today — Bonjour's
+    /// advertised name (e.g. "Malek's MacBook Pro") already reads as a
+    /// display name with no further formatting needed — but kept as a
+    /// separate computed property rather than having call sites read `id`
+    /// directly, so a future change to how names are presented has one
+    /// place to change.
+    public var displayName: String { id }
 }
 
 /// Why a *direct* (remote, TLS-PSK) connection attempt failed — see
