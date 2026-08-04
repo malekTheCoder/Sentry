@@ -3,7 +3,7 @@ import SentryKit
 
 /// The settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, fans, aiAccess, sync, location, advanced
+    case general, modules, menuBar, theme, alerts, fans, aiAccess, sync, location, advanced, about
 
     var id: String { rawValue }
 
@@ -19,6 +19,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .sync: return String(localized: "Sync")
         case .location: return String(localized: "Location Log")
         case .advanced: return String(localized: "Advanced")
+        case .about: return String(localized: "About")
         }
     }
 
@@ -34,6 +35,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .sync: return "arrow.triangle.2.circlepath.icloud"
         case .location: return "location"
         case .advanced: return "wrench.and.screwdriver"
+        case .about: return "info.circle"
         }
     }
 
@@ -51,6 +53,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .sync: return String(localized: "iPhone companion and device sync.")
         case .location: return String(localized: "Opt-in last-known-location log for this Mac — not Find My.")
         case .advanced: return String(localized: "Diagnostics and debugging.")
+        case .about: return String(localized: "Version, credits, and licenses.")
         }
     }
 }
@@ -176,7 +179,7 @@ struct SettingsView: View {
                 groups[0].append(pane)
             case .alerts, .fans, .aiAccess, .sync, .location:
                 groups[1].append(pane)
-            case .advanced:
+            case .advanced, .about:
                 groups[2].append(pane)
             }
         }
@@ -335,6 +338,8 @@ struct SettingsView: View {
             LocationPane(store: store, locationService: locationService).formStyle(.grouped)
         case .advanced:
             AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow).formStyle(.grouped)
+        case .about:
+            AboutPane().formStyle(.grouped)
         }
     }
 }

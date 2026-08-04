@@ -78,6 +78,11 @@ struct SettingsTabView: View {
 
     @State private var device: Device?
 
+    /// Drives the About sheet (`AboutView`). A sheet rather than a pushed
+    /// screen because this tab has no `NavigationStack` — see `AboutView`'s
+    /// doc comment.
+    @State private var showsAbout = false
+
     /// Drives `locationLogSection` below — see `LocationLogViewModel`'s doc
     /// comment for why this follows `AppDataSource.shared`'s snapshot stream
     /// independently of `DashboardViewModel` rather than sharing that view
@@ -104,10 +109,18 @@ struct SettingsTabView: View {
                 LocationLogSection(viewModel: locationLogViewModel)
                 notificationsSection
                 widgetsSection
+                aboutRow
             }
             .padding(palette.spacing * 2)
         }
         .themedScreenBackground(palette)
+        .sheet(isPresented: $showsAbout) {
+            // The palette is re-injected explicitly: a sheet is presented
+            // from a separate window scene, and relying on it inheriting
+            // `\.themePalette` would leave the sheet on the environment's
+            // default theme if that ever changes.
+            AboutView().environment(\.themePalette, palette)
+        }
         .task {
             device = await appDataSource.devices().first
         }
@@ -337,5 +350,39 @@ struct SettingsTabView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("Add the widget from your home screen. It shows the most recent data this app cached — there are no in-app widget options to change yet.")
+    }
+}
+
+// MARK: - About row
+
+extension SettingsTabView {
+    /// Last row on the tab: version, credits, license acknowledgements and
+    /// the privacy policy link, in `AboutView`. Bottom of the list on
+    /// purpose — it is a reference surface, not something a user opens
+    /// Settings to change.
+    fileprivate var aboutRow: some View {
+        Button {
+            showsAbout = true
+        } label: {
+            HStack(spacing: palette.spacingTight) {
+                Text("About Sentry")
+                    .font(palette.font(size: 12.5))
+                    .foregroundStyle(palette.textPrimary)
+                Spacer(minLength: 0)
+                Text(AppCredits.versionSummary())
+                    .font(palette.font(size: 11))
+                    .foregroundStyle(palette.textTertiary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(palette.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(palette.spacingBlock)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard(palette)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Version, credits, privacy policy, and third-party licenses.")
     }
 }
