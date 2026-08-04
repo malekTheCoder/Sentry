@@ -53,15 +53,22 @@ final class SleepControlCardFormattingTests: XCTestCase {
 
     // MARK: trigger mapping
 
+    /// Shared no-op arguments for the two new conditional triggers, so the
+    /// pre-existing tests below (battery/CPU/process/fixed/indefinite) don't
+    /// need to care about download timeouts or schedules they aren't
+    /// exercising.
+    private let noDownloadTimeout: TimeInterval = 8
+    private let noSchedule = KeepAwakeSchedule.weeknights
+
     func testFixedTriggersCarryADurationAndNoCondition() {
         let option = SleepTriggerOption.fixed(30 * 60)
         XCTAssertEqual(option.duration, 1800)
-        XCTAssertNil(option.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude"))
+        XCTAssertNil(option.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude", downloadIdleTimeout: noDownloadTimeout, schedule: noSchedule))
     }
 
     func testIndefiniteTriggerCarriesNeitherDurationNorCondition() {
         XCTAssertNil(SleepTriggerOption.indefinite.duration)
-        XCTAssertNil(SleepTriggerOption.indefinite.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude"))
+        XCTAssertNil(SleepTriggerOption.indefinite.releaseCondition(batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude", downloadIdleTimeout: noDownloadTimeout, schedule: noSchedule))
     }
 
     /// Conditional triggers must stay open-ended: handing a duration to
@@ -71,11 +78,11 @@ final class SleepControlCardFormattingTests: XCTestCase {
         XCTAssertNil(SleepTriggerOption.batteryBelow.duration)
         XCTAssertNil(SleepTriggerOption.cpuAbove.duration)
         XCTAssertEqual(
-            SleepTriggerOption.batteryBelow.releaseCondition(batteryThreshold: 15, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude"),
+            SleepTriggerOption.batteryBelow.releaseCondition(batteryThreshold: 15, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude", downloadIdleTimeout: noDownloadTimeout, schedule: noSchedule),
             .batteryBelowPercent(15)
         )
         XCTAssertEqual(
-            SleepTriggerOption.cpuAbove.releaseCondition(batteryThreshold: 20, cpuThreshold: 70, cpuSustainedFor: 300, processName: "claude"),
+            SleepTriggerOption.cpuAbove.releaseCondition(batteryThreshold: 20, cpuThreshold: 70, cpuSustainedFor: 300, processName: "claude", downloadIdleTimeout: noDownloadTimeout, schedule: noSchedule),
             .cpuAbovePercent(70, for: 300)
         )
     }
@@ -84,22 +91,45 @@ final class SleepControlCardFormattingTests: XCTestCase {
         XCTAssertNil(SleepTriggerOption.processRunning.duration)
         XCTAssertEqual(
             SleepTriggerOption.processRunning.releaseCondition(
-                batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "xcodebuild"
+                batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "xcodebuild",
+                downloadIdleTimeout: noDownloadTimeout, schedule: noSchedule
             ),
             .whileProcessRunning(name: "xcodebuild")
         )
         XCTAssertTrue(
             SleepTriggerOption.processRunning
-                .assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "xcodebuild")
+                .assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "xcodebuild", schedule: noSchedule)
                 .contains("xcodebuild"),
             "process reason should name the watched process"
+        )
+    }
+
+    func testDownloadActiveTriggerMapsToWhileDownloadActive() {
+        XCTAssertNil(SleepTriggerOption.downloadActive.duration)
+        XCTAssertEqual(
+            SleepTriggerOption.downloadActive.releaseCondition(
+                batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude",
+                downloadIdleTimeout: 8, schedule: noSchedule
+            ),
+            .whileDownloadActive(idleTimeout: 8)
+        )
+    }
+
+    func testScheduledWindowTriggerMapsToScheduledWindowUsingTheChosenPreset() {
+        XCTAssertNil(SleepTriggerOption.scheduledWindow.duration)
+        XCTAssertEqual(
+            SleepTriggerOption.scheduledWindow.releaseCondition(
+                batteryThreshold: 20, cpuThreshold: 80, cpuSustainedFor: 300, processName: "claude",
+                downloadIdleTimeout: noDownloadTimeout, schedule: .workHours
+            ),
+            .scheduledWindow(weekdays: [2, 3, 4, 5, 6], startMinute: 9 * 60, endMinute: 17 * 60)
         )
     }
 
     func testMenuOrderMatchesPlanSection103() {
         XCTAssertEqual(
             SleepTriggerOption.allOptions.map(\.id),
-            ["indefinite", "fixed-900", "fixed-1800", "fixed-3600", "fixed-7200", "fixed-14400", "fixed-28800", "battery", "cpu", "process"]
+            ["indefinite", "fixed-900", "fixed-1800", "fixed-3600", "fixed-7200", "fixed-14400", "fixed-28800", "battery", "cpu", "process", "download", "schedule"]
         )
     }
 
@@ -109,13 +139,36 @@ final class SleepControlCardFormattingTests: XCTestCase {
     /// to name the actual threshold.
     func testAssertionReasonNamesTheChosenThreshold() {
         XCTAssertTrue(
-            SleepTriggerOption.batteryBelow.assertionReason(batteryThreshold: 25, cpuThreshold: 80, processName: "claude").contains("25%"),
+            SleepTriggerOption.batteryBelow.assertionReason(batteryThreshold: 25, cpuThreshold: 80, processName: "claude", schedule: noSchedule).contains("25%"),
             "battery reason should name its threshold"
         )
         XCTAssertTrue(
-            SleepTriggerOption.cpuAbove.assertionReason(batteryThreshold: 20, cpuThreshold: 65, processName: "claude").contains("65%"),
+            SleepTriggerOption.cpuAbove.assertionReason(batteryThreshold: 20, cpuThreshold: 65, processName: "claude", schedule: noSchedule).contains("65%"),
             "CPU reason should name its threshold"
         )
+    }
+
+    func testDownloadAndScheduleAssertionReasonsAreDescriptive() {
+        XCTAssertTrue(
+            SleepTriggerOption.downloadActive.assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: noSchedule).contains("download"),
+            "download reason should mention what it's watching"
+        )
+        XCTAssertTrue(
+            SleepTriggerOption.scheduledWindow.assertionReason(batteryThreshold: 20, cpuThreshold: 80, processName: "claude", schedule: .workHours).contains(KeepAwakeSchedule.workHours.label),
+            "schedule reason should name the chosen preset"
+        )
+    }
+
+    // MARK: KeepAwakeSchedule presets
+
+    func testEveryKeepAwakeSchedulePresetHasADistinctLabel() {
+        let labels = Set(KeepAwakeSchedule.presets.map(\.label))
+        XCTAssertEqual(labels.count, KeepAwakeSchedule.presets.count)
+    }
+
+    func testWeekendPresetCoversTheFullDayViaEndMinute1440() {
+        XCTAssertEqual(KeepAwakeSchedule.weekend.startMinute, 0)
+        XCTAssertEqual(KeepAwakeSchedule.weekend.endMinute, 1440)
     }
 
     // MARK: mode labels

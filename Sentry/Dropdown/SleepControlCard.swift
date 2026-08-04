@@ -20,8 +20,10 @@ import SentryKit
 /// hides *what will happen* — only *how to change it*.
 ///
 /// **Scope, and what's deliberately missing.** Plan §10.3 lists six trigger
-/// kinds. Four are here (indefinite, fixed presets, battery threshold,
-/// sustained-CPU threshold). Two are not:
+/// kinds; a later competitive pass against Amphetamine added two more
+/// (download-active, scheduled). Six of those eight are here (indefinite,
+/// fixed presets, battery threshold, sustained-CPU threshold, process
+/// running, download active, scheduled window — see below). Two are not:
 ///
 /// - *Until a specific time* needs a `DatePicker`, and
 /// - *While a specific app is running* needs a running-app browser.
@@ -32,6 +34,24 @@ import SentryKit
 /// is fully handled by `PowerControlService`'s `NSWorkspace` termination
 /// observer, and "until a time" is just a fixed duration computed from `Date`.
 /// Neither needs service-layer work to land later — only UI.
+///
+/// **Why the scheduled trigger is preset-only, not a free-form day/time
+/// picker.** `ReleaseCondition.scheduledWindow` can express any weekday set
+/// plus any minute-of-day window, but this card exposes only a handful of
+/// named `KeepAwakeSchedule` presets through the same `Menu`-of-`Button`s
+/// idiom `pickers` already uses for `trigger` and `mode` (see `optionMenu`).
+/// A real weekday multi-select plus two time pickers is exactly the kind of
+/// "roughly double this card's height" control the paragraph above already
+/// ruled out for the two deferred triggers — free-form scheduling belongs in
+/// the Settings window for the same reason. The presets cover the common
+/// cases (every night, weeknights, work hours, weekends) without adding a
+/// new visual idiom to this surface.
+///
+/// **Why the download-active trigger has no threshold row.** Its idle-timeout
+/// is fixed at `downloadIdleTimeout` rather than exposed, the same call
+/// `cpuSustainedWindow` below already makes for `.cpuAbove`: a user-tunable
+/// "how many idle seconds counts as still downloading" invites values (0s)
+/// that quietly defeat the heuristic.
 ///
 /// **Why the card re-reads `powerControl.state` instead of mirroring it.**
 /// The service is the single source of truth and can end an assertion without
@@ -55,6 +75,11 @@ struct SleepControlCard: View {
     /// the canonical "hold the Mac awake until it's done" workload.
     @State private var processName: String = "claude"
 
+    /// `.scheduledWindow`'s selection — one of `KeepAwakeSchedule`'s named
+    /// presets. See the type doc comment for why this is preset-only rather
+    /// than a free-form weekday/time picker.
+    @State private var schedule: KeepAwakeSchedule = .weeknights
+
     /// Whether the trigger/mode pickers are disclosed. Local and not
     /// persisted: it's a "I'm about to change something" state, not a
     /// preference, and re-opening the popover should show the calm form.
@@ -71,6 +96,16 @@ struct SleepControlCard: View {
     /// user-tunable "how long" control invites values (0s, 1s) that quietly
     /// defeat it.
     private static let cpuSustainedWindow: TimeInterval = 5 * 60
+
+    /// `.whileDownloadActive`'s idle timeout — how many seconds without a
+    /// write to `~/Downloads` before the heuristic considers a download
+    /// finished. Fixed, not exposed — see the type doc comment above for why
+    /// — and chosen from the middle of `ReleaseCondition
+    /// .whileDownloadActive`'s documented 5–10s range: long enough to ride
+    /// out the brief pause between chunks a slow or throttled transfer can
+    /// have, short enough that the hold doesn't outlive the download by very
+    /// much once it genuinely finishes.
+    private static let downloadIdleTimeout: TimeInterval = 8
 
     private var activeState: (mode: AwakeMode, expiresAt: Date?, reason: String)? {
         guard case .active(let mode, let expiresAt, let reason) = powerControl.state else { return nil }
@@ -158,7 +193,8 @@ struct SleepControlCard: View {
         let triggerText = trigger.menuLabel(
             batteryThreshold: batteryThreshold,
             cpuThreshold: cpuThreshold,
-            processName: processName
+            processName: processName,
+            schedule: schedule
         )
         return "\(triggerText) · \(mode.shortLabel)"
     }
@@ -170,7 +206,8 @@ struct SleepControlCard: View {
                 selection: trigger.menuLabel(
                     batteryThreshold: batteryThreshold,
                     cpuThreshold: cpuThreshold,
-                    processName: processName
+                    processName: processName,
+                    schedule: schedule
                 )
             ) {
                 ForEach(SleepTriggerOption.allOptions) { option in
@@ -194,8 +231,10 @@ struct SleepControlCard: View {
         .transition(.opacity)
     }
 
-    /// Only the two conditional triggers carry a tunable threshold, so the
-    /// stepper appears with them rather than sitting permanently disabled.
+    /// Only the conditional triggers with something for the user to tune
+    /// show an extra row here — `.downloadActive`'s idle timeout is fixed
+    /// (see `downloadIdleTimeout`'s doc comment), so it joins `.indefinite`
+    /// and `.fixed` in showing nothing.
     @ViewBuilder
     private var thresholdStepper: some View {
         switch trigger {
@@ -205,8 +244,21 @@ struct SleepControlCard: View {
             percentStepper(String(localized: "CPU floor"), value: $cpuThreshold, range: 10...100)
         case .processRunning:
             processNameRow
-        case .indefinite, .fixed:
+        case .scheduledWindow:
+            scheduleRow
+        case .indefinite, .fixed, .downloadActive:
             EmptyView()
+        }
+    }
+
+    /// `.scheduledWindow`'s preset picker — the same `optionMenu` idiom the
+    /// `mode` row uses, chosen over a bespoke weekday/time control per the
+    /// type doc comment's "preset-only" rationale.
+    private var scheduleRow: some View {
+        optionMenu(title: String(localized: "Schedule"), selection: schedule.label) {
+            ForEach(KeepAwakeSchedule.presets) { preset in
+                Button(preset.label) { schedule = preset }
+            }
         }
     }
 
@@ -462,14 +514,17 @@ struct SleepControlCard: View {
         let reason = trigger.assertionReason(
             batteryThreshold: batteryThreshold,
             cpuThreshold: cpuThreshold,
-            processName: processName
+            processName: processName,
+            schedule: schedule
         )
         do {
             if let condition = trigger.releaseCondition(
                 batteryThreshold: batteryThreshold,
                 cpuThreshold: cpuThreshold,
                 cpuSustainedFor: Self.cpuSustainedWindow,
-                processName: processName
+                processName: processName,
+                downloadIdleTimeout: Self.downloadIdleTimeout,
+                schedule: schedule
             ) {
                 try powerControl.startConditionalAssertion(mode: mode, condition: condition, reason: reason)
             } else {
@@ -607,6 +662,12 @@ enum SleepTriggerOption: Hashable, Identifiable {
     case batteryBelow
     case cpuAbove
     case processRunning
+    /// Amphetamine-parity trigger added by the competitive review — see
+    /// `ReleaseCondition.whileDownloadActive`'s doc comment.
+    case downloadActive
+    /// Amphetamine-parity trigger added by the competitive review — see
+    /// `ReleaseCondition.scheduledWindow`'s doc comment.
+    case scheduledWindow
 
     static let allOptions: [SleepTriggerOption] = [
         .indefinite,
@@ -618,7 +679,9 @@ enum SleepTriggerOption: Hashable, Identifiable {
         .fixed(8 * 60 * 60),
         .batteryBelow,
         .cpuAbove,
-        .processRunning
+        .processRunning,
+        .downloadActive,
+        .scheduledWindow
     ]
 
     var id: String {
@@ -628,6 +691,8 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .batteryBelow: return "battery"
         case .cpuAbove: return "cpu"
         case .processRunning: return "process"
+        case .downloadActive: return "download"
+        case .scheduledWindow: return "schedule"
         }
     }
 
@@ -643,7 +708,9 @@ enum SleepTriggerOption: Hashable, Identifiable {
         batteryThreshold: Double,
         cpuThreshold: Double,
         cpuSustainedFor: TimeInterval,
-        processName: String
+        processName: String,
+        downloadIdleTimeout: TimeInterval,
+        schedule: KeepAwakeSchedule
     ) -> ReleaseCondition? {
         switch self {
         case .indefinite, .fixed:
@@ -654,6 +721,14 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return .cpuAbovePercent(cpuThreshold, for: cpuSustainedFor)
         case .processRunning:
             return .whileProcessRunning(name: processName)
+        case .downloadActive:
+            return .whileDownloadActive(idleTimeout: downloadIdleTimeout)
+        case .scheduledWindow:
+            return .scheduledWindow(
+                weekdays: schedule.weekdays,
+                startMinute: schedule.startMinute,
+                endMinute: schedule.endMinute
+            )
         }
     }
 
@@ -666,14 +741,16 @@ enum SleepTriggerOption: Hashable, Identifiable {
         case .batteryBelow: return String(localized: "Until battery is low")
         case .cpuAbove: return String(localized: "While CPU is busy")
         case .processRunning: return String(localized: "While a process runs")
+        case .downloadActive: return String(localized: "While a download is active")
+        case .scheduledWindow: return String(localized: "On a schedule")
         }
     }
 
     /// Collapsed label for the closed menu, where the chosen threshold has to
     /// be visible without opening anything.
-    func menuLabel(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
+    func menuLabel(batteryThreshold: Double, cpuThreshold: Double, processName: String, schedule: KeepAwakeSchedule) -> String {
         switch self {
-        case .indefinite, .fixed:
+        case .indefinite, .fixed, .downloadActive:
             return pickerLabel
         case .batteryBelow:
             return String(localized: "Battery < \(MetricFormatting.percent(batteryThreshold))")
@@ -685,6 +762,11 @@ enum SleepTriggerOption: Hashable, Identifiable {
             // English "process" being glued into a translated sentence.
             let name = processName.isEmpty ? String(localized: "process") : processName
             return String(localized: "While \(name) runs")
+        case .scheduledWindow:
+            // `schedule.label` already reads as a summary ("Weeknights, 10
+            // PM–7 AM"), so there's nothing to compose here beyond it — same
+            // shape as `.downloadActive` falling back to `pickerLabel`.
+            return schedule.label
         }
     }
 
@@ -702,7 +784,7 @@ enum SleepTriggerOption: Hashable, Identifiable {
     /// the same trade Apple's own daemons make. If the card ever needs a
     /// localized caption, derive it separately at display time rather than
     /// localizing what gets persisted into the assertion.
-    func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String) -> String {
+    func assertionReason(batteryThreshold: Double, cpuThreshold: Double, processName: String, schedule: KeepAwakeSchedule) -> String {
         switch self {
         case .indefinite:
             return "Sentry — keep awake until turned off"
@@ -714,8 +796,70 @@ enum SleepTriggerOption: Hashable, Identifiable {
             return "Sentry — keep awake while CPU stays above \(MetricFormatting.percent(cpuThreshold))"
         case .processRunning:
             return "Sentry — keep awake while \(processName) is running"
+        case .downloadActive:
+            return "Sentry — keep awake while a download is active"
+        case .scheduledWindow:
+            return "Sentry — keep awake on schedule (\(schedule.label))"
         }
     }
+}
+
+/// A named `.scheduledWindow` preset — see `SleepControlCard`'s type doc
+/// comment ("Why the scheduled trigger is preset-only") for why this card
+/// offers a fixed menu of these rather than a free-form weekday/time picker.
+/// `weekdays` uses `Calendar.Component.weekday`'s 1...7 (Sunday = 1)
+/// convention, matching `ReleaseCondition.scheduledWindow` exactly so these
+/// values pass straight through with no translation step.
+struct KeepAwakeSchedule: Hashable, Identifiable {
+    var id: String { label }
+    let label: String
+    let weekdays: Set<Int>
+    let startMinute: Int
+    let endMinute: Int
+
+    /// Every night, 22:00–07:00 — crosses midnight (`ReleaseCondition
+    /// .scheduledWindow`'s `startMinute > endMinute` case).
+    static let everyNight = KeepAwakeSchedule(
+        label: String(localized: "Every night, 10 PM–7 AM"),
+        weekdays: Set(1...7),
+        startMinute: 22 * 60,
+        endMinute: 7 * 60
+    )
+
+    /// Sunday through Thursday nights, 22:00–07:00 — the "school night"
+    /// schedule. Encoded as weekdays 1...5 (Sun–Thu) because a midnight-
+    /// crossing window belongs to the day it *starts* on (see
+    /// `PowerControlService.isWithinScheduledWindow`'s doc comment): a
+    /// Thursday-night window's early-morning tail lands on Friday morning,
+    /// which is exactly the boundary that should stop a "weeknight" schedule
+    /// before Saturday.
+    static let weeknights = KeepAwakeSchedule(
+        label: String(localized: "Weeknights, 10 PM–7 AM"),
+        weekdays: [1, 2, 3, 4, 5],
+        startMinute: 22 * 60,
+        endMinute: 7 * 60
+    )
+
+    /// Weekdays, 09:00–17:00 — same-day window, no midnight crossing.
+    static let workHours = KeepAwakeSchedule(
+        label: String(localized: "Weekdays, 9 AM–5 PM"),
+        weekdays: [2, 3, 4, 5, 6],
+        startMinute: 9 * 60,
+        endMinute: 17 * 60
+    )
+
+    /// Saturday and Sunday, all day. `endMinute: 1440` is the documented
+    /// "through the end of the day" value (`ReleaseCondition
+    /// .scheduledWindow`'s doc comment) — there's no natural minute-1439
+    /// boundary to name for an all-day window.
+    static let weekend = KeepAwakeSchedule(
+        label: String(localized: "Weekends, all day"),
+        weekdays: [1, 7],
+        startMinute: 0,
+        endMinute: 1440
+    )
+
+    static let presets: [KeepAwakeSchedule] = [.everyNight, .weeknights, .workHours, .weekend]
 }
 
 // MARK: - Formatting
