@@ -397,6 +397,50 @@ public final class StatsCoordinator: @unchecked Sendable {
     }
     private var protectionScoreStorage: Int?
 
+    /// A Mac-wide rollup of `AgentSessionRegistry`'s active sessions, pushed
+    /// down by the composition root — same "assign, don't poll" shape as
+    /// `agentAccessPaused`/`protectionScore` immediately above, and for the
+    /// identical actor-mismatch reason: `AgentSessionRegistry` is
+    /// `@MainActor`-isolated (owned by `MCPXPCService`), while every provider
+    /// closure `tick(tier:)` calls runs off this coordinator's background
+    /// queue.
+    ///
+    /// Feeds `SystemSnapshot.agentActivitySummary`, which is what lets the
+    /// Watch (`WatchRelaySnapshot.agentToolCallCount`/`.agentLastActivityAt`/
+    /// `.agentRecentToolNames`) finally render real agent-activity numbers
+    /// instead of the permanent "not reported" state those fields' doc
+    /// comments describe.
+    ///
+    /// **Wired end-to-end and, as of this branch, never actually assigned —
+    /// the same honest, deliberately-incomplete state `agentAccessPaused` and
+    /// `protectionScore` are in above.** Unlike those two, the hook this
+    /// property needs does not live in `AppDelegate` at all:
+    /// `MCPXPCService` (`Sentry/App/MCPXPCService.swift`) already holds both
+    /// `coordinator` and `sessionRegistry` as its own instance properties, and
+    /// every MCP call already funnels through one method,
+    /// `authorize(tool:clientName:argumentsSummary:)`, which already calls
+    /// `sessionRegistry.recordCall(clientName:tool:)` right before it returns
+    /// a decision (`Sentry/App/MCPXPCService.swift:143`). The one line this
+    /// branch cannot add, immediately after that call:
+    ///
+    /// ```swift
+    /// coordinator.agentActivitySummary = sessionRegistry.activitySummary()
+    /// ```
+    ///
+    /// `MCPXPCService.swift` is explicitly read-only to this branch (owned by
+    /// other agents working in parallel on this codebase), the same
+    /// off-limits reasoning `agentAccessPaused`'s doc comment gives for
+    /// `AppDelegate.swift` — so this is documented rather than applied. Until
+    /// that one line lands, `SystemSnapshot.agentActivitySummary` stays `nil`
+    /// for every real Mac, and every consumer down the chain already renders
+    /// that `nil` as "not reported" (see `AgentActivityPage`'s `nil`-vs-`0`
+    /// discipline) rather than guessing.
+    public var agentActivitySummary: AgentActivitySummary? {
+        get { queue.sync { agentActivitySummaryStorage } }
+        set { queue.async { [weak self] in self?.agentActivitySummaryStorage = newValue } }
+    }
+    private var agentActivitySummaryStorage: AgentActivitySummary?
+
     /// Derived from the most recent `BatteryStats.isPluggedIn`, per the
     /// task's guidance to read our own last-known snapshot rather than
     /// re-deriving power-source state elsewhere (that would violate P1 —
@@ -746,7 +790,8 @@ public final class StatsCoordinator: @unchecked Sendable {
             location: locationStorage,
             agentAccessPaused: agentAccessPausedStorage,
             protectionScore: protectionScoreStorage,
-            topProcesses: latest.topProcesses
+            topProcesses: latest.topProcesses,
+            agentActivitySummary: agentActivitySummaryStorage
         )
     }
 }

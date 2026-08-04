@@ -288,7 +288,8 @@ final class WatchRelayPolicyTests: XCTestCase {
         throttling: Bool? = false,
         awakeIsActive: Bool? = false,
         awakeExpiresAt: Date? = nil,
-        agentAccessPaused: Bool? = false
+        agentAccessPaused: Bool? = false,
+        agentToolCallCount: Int? = nil
     ) -> WatchRelaySnapshot {
         WatchRelaySnapshot(
             deviceName: "Test Mac",
@@ -307,6 +308,7 @@ final class WatchRelayPolicyTests: XCTestCase {
             isThrottling: throttling,
             awakeIsActive: awakeIsActive,
             awakeExpiresAt: awakeExpiresAt,
+            agentToolCallCount: agentToolCallCount,
             agentAccessPaused: agentAccessPaused
         )
     }
@@ -370,6 +372,37 @@ final class WatchRelayPolicyTests: XCTestCase {
         XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(awakeIsActive: true)))
         XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(battery: 51)))
         XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(agentAccessPaused: true)))
+    }
+
+    /// `agentToolCallCount` going from unreported to reported at all — e.g.
+    /// the composition-root hook on `StatsCoordinator.agentActivitySummary`
+    /// landing, or the very first tool call of a run — is the one agent-
+    /// activity transition worth an early relay: a user who just triggered
+    /// the first call on a freshly-hooked-up Mac shouldn't wait out the
+    /// heartbeat for `AgentActivityPage` to leave its "not reported" state.
+    func testAgentToolCallCountBecomingReportedIsSignificant() {
+        let base = snapshot(agentToolCallCount: nil)
+        XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(agentToolCallCount: 0)))
+    }
+
+    /// The reverse transition — a relaunch that hasn't seen a call yet —
+    /// is equally rare and equally worth an early relay.
+    func testAgentToolCallCountBecomingUnreportedIsSignificant() {
+        let base = snapshot(agentToolCallCount: 5)
+        XCTAssertTrue(WatchRelayPolicy.isSignificantChange(from: base, to: snapshot(agentToolCallCount: nil)))
+    }
+
+    /// **The load-bearing negative for this field.** Once reported, the
+    /// count itself must NOT be compared by value — tool calls arrive in
+    /// bursts of dozens per minute from a chatty MCP client, and comparing
+    /// the raw count would relay on every single call, collapsing the policy
+    /// to "always relay" for exactly the reason
+    /// `testTheContinuousMetricsDoNotTriggerARelayOfTheirOwn` guards against
+    /// for CPU/memory/disk.
+    func testAgentToolCallCountChangingValueOnceReportedIsNotSignificant() {
+        let base = snapshot(agentToolCallCount: 1)
+        let busy = snapshot(agentToolCallCount: 47)
+        XCTAssertFalse(WatchRelayPolicy.isSignificantChange(from: base, to: busy))
     }
 
     /// **The load-bearing assertion of this whole file.** The redesigned

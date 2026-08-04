@@ -56,10 +56,15 @@ public enum SnapshotDebugFormatter {
     /// (added alongside process-scoped alert rules — see
     /// `SystemSnapshot.topProcesses`'s doc comment) is appended last,
     /// after `location`, for the same "added after the plan was written"
-    /// reasoning.
+    /// reasoning, with `agentActivitySummary` appended after that for the
+    /// identical reason — it is a genuine struct with named fields
+    /// (`toolCallCount`, `lastActivityAt`, `recentToolNames`), the same shape
+    /// `battery`/`cpu`/etc. already get their own section for, not a scalar
+    /// that belongs lumped into "Snapshot" the way `agentAccessPaused`/
+    /// `protectionScore` are below.
     private static let subStructKeys = [
         "battery", "cpu", "gpu", "ane", "memory", "disk", "network", "thermal", "sleepAssertion", "location",
-        "topProcesses",
+        "topProcesses", "agentActivitySummary",
     ]
 
     /// One `Section` per `SystemSnapshot` sub-struct, plus a leading
@@ -166,6 +171,7 @@ public enum SnapshotDebugFormatter {
         case "sleepAssertion": return "Sleep Assertion"
         case "location": return "Location"
         case "topProcesses": return "Top Processes"
+        case "agentActivitySummary": return "Agent Activity"
         default: return key.prefix(1).uppercased() + key.dropFirst()
         }
     }

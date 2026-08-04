@@ -113,6 +113,39 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
     /// silently guessed around.
     public var topProcesses: [ProcessStats]?
 
+    /// A Mac-wide rollup of what `AgentSessionRegistry`
+    /// (`SentryKit/Services/AgentSessionRegistry.swift`) is currently
+    /// tracking — how many tool calls, from whom, and when — computed across
+    /// every active session, not just one. This is what finally lets
+    /// `WatchRelaySnapshot.agentToolCallCount`/`.agentLastActivityAt`/
+    /// `.agentRecentToolNames` (`SentryKit/Watch/WatchRelaySnapshot.swift`)
+    /// carry a real reading instead of the permanent `nil` their doc comment
+    /// describes: this field is the piece of `SystemSnapshot` that was
+    /// missing to close that gap.
+    ///
+    /// **Pushed in, not computed here — same "composition root assigns
+    /// `StatsCoordinator`'s property whenever the source changes" shape as
+    /// `agentAccessPaused` and `protectionScore` above.** `AgentSessionRegistry`
+    /// is `@MainActor`-isolated and owned by `MCPXPCService`
+    /// (`Sentry/App/MCPXPCService.swift`), while `StatsCoordinator.buildSnapshot()`
+    /// runs off a background queue — the same actor/queue mismatch those two
+    /// fields' doc comments describe, solved the same way: whoever observes
+    /// the registry assigns `StatsCoordinator.agentActivitySummary` on the
+    /// main actor, and the coordinator just reads back whatever was last
+    /// assigned when it builds a snapshot. See `StatsCoordinator
+    /// .agentActivitySummary`'s doc comment for the one-line composition-root
+    /// hook this still needs — not added by this branch, for the identical
+    /// reason `agentAccessPaused`'s hook wasn't: it lives in
+    /// `Sentry/App/AppDelegate.swift`, off-limits here.
+    ///
+    /// `nil` means "not measured this run" — the same honest-nil convention
+    /// `agentAccessPaused` establishes immediately above (predates the hook,
+    /// or the hook hasn't fired yet because no MCP call has landed since
+    /// launch). Never a fabricated zero-valued summary: a Mac that has not
+    /// wired the hook yet must not claim "no agent activity" any more than
+    /// `protectionScore` may claim "0" for a score never computed.
+    public var agentActivitySummary: AgentActivitySummary?
+
     public init(
         id: UUID = UUID(),
         timestamp: Date = Date(),
@@ -130,7 +163,8 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         location: MacLocation? = nil,
         agentAccessPaused: Bool? = nil,
         protectionScore: Int? = nil,
-        topProcesses: [ProcessStats]? = nil
+        topProcesses: [ProcessStats]? = nil,
+        agentActivitySummary: AgentActivitySummary? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -149,5 +183,54 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         self.agentAccessPaused = agentAccessPaused
         self.protectionScore = protectionScore
         self.topProcesses = topProcesses
+        self.agentActivitySummary = agentActivitySummary
+    }
+}
+
+/// A Mac-wide aggregate over every session `AgentSessionRegistry` currently
+/// considers active — see `SystemSnapshot.agentActivitySummary`'s doc
+/// comment for why this rides along on the snapshot rather than being
+/// queried directly, and `AgentSessionRegistry.activeSessions(asOf:)` for
+/// what "active" means (pruned lazily, `staleAfter`-windowed).
+///
+/// **Genuinely Mac-wide, not one session's view.** The Watch page this feeds
+/// (`SentryWatch/Pages/AgentActivityPage.swift`) asks "has anything talked to
+/// my Mac," not "what is client X doing" — the same framing
+/// `AgentSessionRegistry`'s own doc comment uses for `otherActiveSessions`
+/// existing beside `activeSessions`. A summary scoped to one arbitrarily
+/// chosen session would silently under-report the moment a second agent
+/// connects, which is exactly the scenario (two agents active at once) this
+/// registry exists to make visible.
+public struct AgentActivitySummary: Codable, Sendable, Equatable {
+    /// Sum of every active session's tool-call activity, not a single
+    /// session's count. `AgentSessionRegistry.Session` doesn't itself carry a
+    /// per-session call count (only the deduplicated `recentTools` list), so
+    /// this is populated by whoever builds the summary counting calls as they
+    /// arrive — see `StatsCoordinator.agentActivitySummary`'s doc comment for
+    /// where that counting happens. Monotonically non-decreasing within a
+    /// run; never reset just because a session went stale, since "50 calls
+    /// happened this session" stays true after the calling agent goes idle.
+    public var toolCallCount: Int
+
+    /// The latest `lastCallAt` across every active session — i.e. `max(over:
+    /// activeSessions.map(\.lastCallAt))`. `nil` only when there are no
+    /// active sessions to take a max over, which is the ordinary, healthy
+    /// state for a Mac nobody's agent is currently using.
+    public var lastActivityAt: Date?
+
+    /// Tool names, most recent first, merged and deduplicated across every
+    /// active session rather than one session's `recentTools` — two agents
+    /// calling different tools at the same moment should both show up here,
+    /// not just whichever session happened to be enumerated first. Capped at
+    /// `AgentSessionRegistry.recentToolsLimit` for the same reason a single
+    /// session's list is: this rides a size-constrained `WCSession` payload
+    /// by the time it reaches the Watch
+    /// (`WatchRelaySnapshot.agentRecentToolNames`'s doc comment).
+    public var recentToolNames: [String]
+
+    public init(toolCallCount: Int, lastActivityAt: Date?, recentToolNames: [String]) {
+        self.toolCallCount = toolCallCount
+        self.lastActivityAt = lastActivityAt
+        self.recentToolNames = recentToolNames
     }
 }

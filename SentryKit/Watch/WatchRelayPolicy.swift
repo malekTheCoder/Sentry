@@ -128,10 +128,25 @@ public enum WatchRelayPolicy {
     /// tells the user their Mac will sleep sooner than it will *after* the
     /// heartbeat lands.
     ///
-    /// **The agent-activity fields are not members** and should not become
-    /// members if they are ever populated: tool calls arrive in bursts of
-    /// dozens per minute from a chatty MCP client, which is the single
-    /// chattiest thing that could possibly be wired into this test.
+    /// **`agentToolCallCount`/`agentLastActivityAt`/`agentRecentToolNames`
+    /// are not compared by value, and should not be** now that
+    /// `SystemSnapshot.agentActivitySummary` actually populates them: tool
+    /// calls arrive in bursts of dozens per minute from a chatty MCP client,
+    /// which is the single chattiest thing that could possibly be wired into
+    /// this test — comparing `agentToolCallCount` directly would relay on
+    /// every single tool call, every time, defeating the entire point of a
+    /// "significant change" test. What *is* a member is coarser: whether the
+    /// summary is reported at all. `nil` -> non-`nil` (the composition-root
+    /// hook on `StatsCoordinator.agentActivitySummary` finally landing, or
+    /// this being the first tool call of a run) and non-`nil` -> `nil`
+    /// (a relaunch that hasn't seen a call yet) are each a handful of
+    /// occurrences over the life of a run, not a burst — the same "discrete,
+    /// rare transition" shape `awakeIsActive` and `agentAccessPaused` are
+    /// members for, applied to "do we have a reading at all" instead of to
+    /// the reading's value. A user who just triggered the very first agent
+    /// call on a freshly-hooked-up Mac should not wait up to
+    /// `minimumRelayInterval` for `AgentActivityPage` to leave its permanent
+    /// "not reported" state.
     ///
     /// **`agentAccessPaused` is a member, for the same reason
     /// `awakeIsActive` is.** It is a discrete, user-initiated transition —
@@ -152,6 +167,7 @@ public enum WatchRelayPolicy {
         if previous.memoryPressure != next.memoryPressure { return true }
         if previous.awakeIsActive != next.awakeIsActive { return true }
         if previous.agentAccessPaused != next.agentAccessPaused { return true }
+        if (previous.agentToolCallCount == nil) != (next.agentToolCallCount == nil) { return true }
         if Int(previous.batteryPercent.rounded()) != Int(next.batteryPercent.rounded()) { return true }
         return false
     }

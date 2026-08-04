@@ -126,16 +126,20 @@ final class WatchRelayManager: NSObject {
             awakeIsActive: Self.awakeIsActive(snapshot.sleepAssertion),
             awakeExpiresAt: Self.awakeExpiresAt(snapshot.sleepAssertion),
             awakeModeLabel: Self.awakeModeLabel(snapshot.sleepAssertion),
+            // `SystemSnapshot.agentActivitySummary` is what closes the gap
+            // `WatchRelaySnapshot`'s doc comment used to describe as
+            // permanent — see that type's field comments for the
+            // nil-means-not-reported convention this keeps intact end to
+            // end. Until the Mac-side hook documented on
+            // `StatsCoordinator.agentActivitySummary` lands, `snapshot
+            // .agentActivitySummary` is `nil` for every real Mac, so these
+            // three still read as "not reported" on the watch — the same
+            // honest empty state as before, now driven by the summary's
+            // absence rather than by this call site never asking.
+            agentToolCallCount: snapshot.agentActivitySummary?.toolCallCount,
+            agentLastActivityAt: snapshot.agentActivitySummary?.lastActivityAt,
+            agentRecentToolNames: snapshot.agentActivitySummary?.recentToolNames,
             agentAccessPaused: snapshot.agentAccessPaused
-            // `agentToolCallCount`/`agentLastActivityAt`/
-            // `agentRecentToolNames` are deliberately not passed: nothing in
-            // a `SystemSnapshot` carries agent activity, so there is nothing
-            // here to read. See those fields' doc comment in
-            // `WatchRelaySnapshot` for what would have to change on the Mac
-            // for that to stop being true — leaving the arguments off is the
-            // honest expression of "this phone has nothing to say about it,"
-            // and it is why the watch shows an empty state there rather than
-            // a zero.
         )
 
         let now = Date()
