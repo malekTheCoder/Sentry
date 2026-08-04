@@ -47,6 +47,28 @@ final class MainWindowState: ObservableObject {
     @Published var theme: Theme = .defaultTheme
 }
 
+/// The pure rule behind `AppDelegate.updateProcessMonitorState()`: whether
+/// `ProcessMonitor` — the app's most expensive collector, per-process
+/// enumeration on a 5s timer — should be running right now.
+///
+/// Pulled out as a free function, rather than left inline in
+/// `AppDelegate`, purely so it's independently testable without spinning up
+/// the composition root — same reasoning `DashboardViewModel.downsample`'s
+/// doc comment gives for keeping that logic static.
+///
+/// Two conditions, both required, neither sufficient alone:
+///   - `windowVisible`: the existing outer bound (`MainWindowController`'s
+///     `onShow`/`onHide`) — the monitor must never run with the window
+///     closed, regardless of tab.
+///   - `selectedTab == .dashboard`: the narrower gate this task adds.
+///     `MainWindowView` keeps Dashboard/Insights/Settings all alive at once
+///     via `.opacity` (see its doc comment) so sitting on Insights or
+///     Settings previously still paid for full process enumeration every
+///     5s for a card that wasn't even being drawn.
+func processMonitorShouldRun(windowVisible: Bool, selectedTab: MainTab) -> Bool {
+    windowVisible && selectedTab == .dashboard
+}
+
 // MARK: - Root view
 
 /// Sentry's one window: Dashboard and Settings behind a floating glass

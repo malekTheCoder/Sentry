@@ -100,6 +100,41 @@ enum TimeRangePicker: String, CaseIterable, Identifiable, Sendable {
         case .daily: return 86400
         }
     }
+
+    /// How often `DashboardViewModel` should re-query `HistoryStore` while
+    /// the Dashboard window is open and this range is selected — see
+    /// `DashboardViewModel.startAutoRefresh()`.
+    ///
+    /// Tied to each tier's own row cadence (`expectedRowInterval`'s
+    /// underlying tier), not one constant for every range: `.day` reads
+    /// `.raw` rows that land every `globalRefreshInterval` (3s default), so
+    /// there's fresh data to show far more often than a `.halfYear` chart's
+    /// `.daily` rollup, which only gains a new row once every 24h. Refreshing
+    /// `.halfYear` every 10s like `.day` would be 8,640 wasted GRDB reads a
+    /// day for a chart that cannot change until the next midnight rollup;
+    /// refreshing `.day` only every 15 minutes like `.halfYear` would bring
+    /// back the exact staleness this fix exists to remove.
+    ///
+    /// Deliberately *not* matched exactly to the tier's row cadence (e.g. 3s
+    /// for `.day`): that would mean a genuine GRDB read on every tick for
+    /// however many enabled-module metrics the grid shows, which is the same
+    /// "always-on cost" `DashboardViewModel.refresh()`'s doc comment already
+    /// warns a per-tick call would be. A `.day` chart refreshing every 30s
+    /// still catches new data within one visible "tick" of a fast-moving
+    /// line, at a small fraction of the query volume.
+    ///
+    /// `.week`/`.month`/`.quarter` share `.hourly`'s tier (`queryWindow`
+    /// above) and therefore share a cadence: 2 minutes is frequent enough to
+    /// notice a new hourly rollup shortly after `RollupJob` writes it,
+    /// without three ranges each running their own independent poll loop's
+    /// worth of near-identical queries.
+    var autoRefreshInterval: TimeInterval {
+        switch queryWindow().tier {
+        case .raw: return 30
+        case .hourly: return 120
+        case .daily: return 900
+        }
+    }
 }
 
 // MARK: - Text range switcher

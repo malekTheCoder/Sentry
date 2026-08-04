@@ -109,6 +109,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// glass switcher and by the dropdown's Dashboard/Settings actions.
     private let mainWindowState = MainWindowState()
 
+    /// Mirrors whether `mainWindowController`'s window is currently on
+    /// screen — `onShow`/`onHide` are the only two places that flip it.
+    /// `MainWindowController` has no publisher of its own for this (it
+    /// reports visibility only via those two closures), so this is the
+    /// simplest way to let `updateProcessMonitorState()` combine "window
+    /// visible" with "Dashboard tab selected" without restructuring the
+    /// controller just to expose a `$isVisible` publisher for one caller.
+    private var isMainWindowVisible = false
+
+    /// Narrows `ProcessMonitor.start()`/`stop()` (wired to window
+    /// visibility via `onShow`/`onHide` above) to the Dashboard tab
+    /// specifically. `MainWindowView` keeps all three tabs alive at once
+    /// via `.opacity` (so switching tabs never rebuilds a tree — see its
+    /// doc comment), which means being window-visible is not the same as
+    /// being *Dashboard*-visible: sitting in Settings or Insights kept
+    /// paying for `ProcessCollector`'s full per-process enumeration, the
+    /// app's most expensive collector, every 5 seconds for a card nobody
+    /// was looking at.
+    ///
+    /// Additive on top of the existing window-visibility gate, not a
+    /// replacement for it: `isMainWindowVisible` remains the outer bound
+    /// (the monitor is always stopped when the window itself is hidden,
+    /// regardless of which tab was last selected), and this just adds "and
+    /// also the Dashboard tab" as a second, narrower condition.
+    private func updateProcessMonitorState() {
+        if processMonitorShouldRun(windowVisible: isMainWindowVisible, selectedTab: mainWindowState.tab) {
+            processMonitor.start()
+        } else {
+            processMonitor.stop()
+        }
+    }
+
     /// Sentry's single window: Dashboard and Settings behind the glass nav
     /// switcher (`MainWindowView`), replacing the separate settings and
     /// history windows. Same lazy-singleton pattern those two had.
@@ -154,10 +186,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         },
         onShow: { [weak self] in
             self?.dashboardViewModel.refresh()
-            self?.processMonitor.start()
+            // Keeps every chart below the header live for as long as the
+            // window stays open — see `DashboardViewModel.startAutoRefresh`'s
+            // doc comment for why the charts were frozen at open-time before
+            // this. Started here (window-visibility scope), narrowed to the
+            // Dashboard tab specifically by `updateProcessMonitorState`'s
+            // sibling gating below — auto-refresh itself isn't tab-gated
+            // because unlike `ProcessMonitor`'s per-process enumeration, a
+            // `HistoryStore` query is cheap enough that keeping it current
+            // while the user is on Insights/Settings (so it's instantly
+            // fresh switching back) isn't worth extra bookkeeping.
+            self?.dashboardViewModel.startAutoRefresh()
+            self?.isMainWindowVisible = true
+            self?.updateProcessMonitorState()
         },
         onHide: { [weak self] in
-            self?.processMonitor.stop()
+            self?.isMainWindowVisible = false
+            self?.updateProcessMonitorState()
+            self?.dashboardViewModel.stopAutoRefresh()
             // A refresh in flight for a window the user just closed is pure
             // waste — see `InsightsViewModel.cancelRefresh`'s doc comment.
             self?.insightsViewModel.cancelRefresh()
@@ -550,6 +596,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         locationService.$lastLocation
             .sink { [weak self] location in
                 self?.coordinator.location = location
+            }
+            .store(in: &cancellables)
+
+        // Tab-gates `ProcessMonitor` (see `updateProcessMonitorState`'s doc
+        // comment) — the nav switcher writes `mainWindowState.tab` on every
+        // click, and that's the only way the Dashboard tab is deselected
+        // while the window stays open, so it needs its own subscription
+        // alongside the `onShow`/`onHide` window-visibility calls above.
+        // `sink`, matching every other subscription in this method, for the
+        // same "never drop an emission" reasoning documented on the
+        // settings sink below — though here it mainly matters for not
+        // missing a rapid double-click between tabs.
+        mainWindowState.$tab
+            .sink { [weak self] _ in
+                self?.updateProcessMonitorState()
             }
             .store(in: &cancellables)
 

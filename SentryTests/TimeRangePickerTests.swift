@@ -55,4 +55,40 @@ final class TimeRangePickerTests: XCTestCase {
             XCTAssertFalse(range.accessibilityLabel.isEmpty)
         }
     }
+
+    // MARK: - autoRefreshInterval (DashboardViewModel.startAutoRefresh's cadence)
+
+    /// `.day` reads `.raw` rows, which land as often as every few seconds —
+    /// the fastest-moving tier, so it gets the shortest auto-refresh
+    /// interval, but still nowhere near per-tick (see the property's doc
+    /// comment for why 3s-cadence polling would be its own always-on-cost
+    /// bug).
+    func testDayRefreshesEveryThirtySeconds() {
+        XCTAssertEqual(TimeRangePicker.day.autoRefreshInterval, 30)
+    }
+
+    /// `.week`/`.month`/`.quarter` all read `.hourly` rollups (see
+    /// `queryWindow`), so they share one cadence — there's no reason for
+    /// three independent poll loops to query the same tier at three
+    /// different rates.
+    func testHourlyTierRangesShareATwoMinuteCadence() {
+        for range: TimeRangePicker in [.week, .month, .quarter] {
+            XCTAssertEqual(range.autoRefreshInterval, 120, "\(range) reads the hourly tier and should share its cadence")
+        }
+    }
+
+    /// `.halfYear` reads `.daily` rollups, which only gain a new row once a
+    /// day — refreshing far more often than that buys nothing.
+    func testHalfYearRefreshesEveryFifteenMinutes() {
+        XCTAssertEqual(TimeRangePicker.halfYear.autoRefreshInterval, 900)
+    }
+
+    /// The core claim this task's fix rests on: cheaper (faster-changing)
+    /// ranges refresh more often than expensive (slow-changing) ones, never
+    /// the reverse. `.day` (raw) < the hourly-tier trio < `.halfYear`
+    /// (daily).
+    func testCadenceIncreasesMonotonicallyFromDayToHalfYear() {
+        XCTAssertLessThan(TimeRangePicker.day.autoRefreshInterval, TimeRangePicker.week.autoRefreshInterval)
+        XCTAssertLessThan(TimeRangePicker.week.autoRefreshInterval, TimeRangePicker.halfYear.autoRefreshInterval)
+    }
 }
