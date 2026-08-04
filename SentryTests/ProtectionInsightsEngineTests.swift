@@ -1059,4 +1059,126 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         // leaked into security, this would floor at 76, not 0.
         XCTAssertEqual(score.securitySubscore, 0)
     }
+
+    // MARK: - TCC (privacy permission) review
+
+    func testTCCPermissionRulesAreMutuallyExclusiveOnReadability() {
+        let awarenessRule = TCCPermissionAwarenessRule()
+        let unknownRule = TCCAccessUnknownRule()
+
+        // Readable: the awareness rule fires, the unknown rule stays silent.
+        let readable = InsightContext(
+            now: now,
+            posture: SecurityPosture(tccPermissionCounts: TCCPermissionCounts(
+                accessibility: 3, screenRecording: 1, fullDiskAccess: 2, camera: 0, microphone: 1
+            ))
+        )
+        let awarenessInsight = awarenessRule.evaluate(readable)
+        XCTAssertNotNil(awarenessInsight)
+        XCTAssertEqual(awarenessInsight?.severity, .advice)
+        XCTAssertEqual(awarenessInsight?.scoreImpact, InsightWeight.none)
+        XCTAssertFalse(awarenessInsight?.evidence.isEmpty ?? true)
+        XCTAssertNil(unknownRule.evaluate(readable))
+
+        // Unreadable (the expected case without Full Disk Access): the
+        // unknown rule fires instead, and it is never scored either.
+        let unreadable = InsightContext(now: now, posture: SecurityPosture(tccPermissionCounts: nil))
+        XCTAssertNil(awarenessRule.evaluate(unreadable))
+        let unknownInsight = unknownRule.evaluate(unreadable)
+        XCTAssertNotNil(unknownInsight)
+        XCTAssertEqual(unknownInsight?.severity, .advice)
+        XCTAssertEqual(unknownInsight?.scoreImpact, InsightWeight.none)
+        XCTAssertFalse(unknownInsight?.evidence.isEmpty ?? true)
+    }
+
+    func testTCCPermissionAwarenessRuleFiresEvenWhenEveryCountIsZero() {
+        // A genuinely readable database where nothing is granted is a real,
+        // honest zero — not the same as "couldn't tell" — so this still
+        // fires rather than staying silent or being confused with unknown.
+        let allZero = InsightContext(
+            now: now,
+            posture: SecurityPosture(tccPermissionCounts: TCCPermissionCounts(
+                accessibility: 0, screenRecording: 0, fullDiskAccess: 0, camera: 0, microphone: 0
+            ))
+        )
+        let insight = TCCPermissionAwarenessRule().evaluate(allZero)
+        XCTAssertNotNil(insight)
+        XCTAssertFalse(insight?.evidence.isEmpty ?? true)
+    }
+
+    func testTCCPermissionCountsParsing() {
+        // The failure path: the collector's runner hands back `nil` for any
+        // non-zero exit, launch failure, or timeout — including sqlite3
+        // failing to open TCC.db without Full Disk Access.
+        XCTAssertNil(SecurityPostureParser.tccPermissionCounts(nil))
+
+        // The "readable, but nothing granted" path: the process ran, exited
+        // zero, and printed nothing — a real all-zero result, not unknown.
+        let allZero = SecurityPostureParser.tccPermissionCounts("")
+        XCTAssertEqual(allZero, TCCPermissionCounts(accessibility: 0, screenRecording: 0, fullDiskAccess: 0, camera: 0, microphone: 0))
+
+        // The populated path: sqlite3's default pipe-separated list output,
+        // one row per service that has at least one granted client. A
+        // service absent from the output (Camera here) is a real zero.
+        let populated = """
+        kTCCServiceAccessibility|3
+        kTCCServiceScreenCapture|1
+        kTCCServiceSystemPolicyAllFiles|2
+        kTCCServiceMicrophone|4
+        """
+        XCTAssertEqual(
+            SecurityPostureParser.tccPermissionCounts(populated),
+            TCCPermissionCounts(accessibility: 3, screenRecording: 1, fullDiskAccess: 2, camera: 0, microphone: 4)
+        )
+
+        // Garbage input parses to all zeros rather than crashing or
+        // fabricating a count — every line is simply skipped.
+        XCTAssertEqual(
+            SecurityPostureParser.tccPermissionCounts("not sqlite output at all"),
+            TCCPermissionCounts(accessibility: 0, screenRecording: 0, fullDiskAccess: 0, camera: 0, microphone: 0)
+        )
+    }
+
+    // MARK: - Login items / persistent background processes
+
+    func testLoginItemsBloatRuleBoundary() {
+        let rule = LoginItemsBloatRule()
+        let threshold = LoginItemsBloatRule.advisoryThreshold
+
+        // One under the threshold: silent.
+        let underThreshold = InsightContext(
+            now: now,
+            posture: SecurityPosture(loginItemCounts: LoginItemCounts(userAgents: threshold - 1, systemAgents: 0, systemDaemons: 0))
+        )
+        XCTAssertNil(rule.evaluate(underThreshold))
+
+        // Exactly at the threshold, split across all three locations: fires.
+        let atThreshold = InsightContext(
+            now: now,
+            posture: SecurityPosture(loginItemCounts: LoginItemCounts(
+                userAgents: threshold - 10, systemAgents: 5, systemDaemons: 5
+            ))
+        )
+        let insight = rule.evaluate(atThreshold)
+        XCTAssertNotNil(insight)
+        XCTAssertEqual(insight?.severity, .advice)
+        XCTAssertEqual(insight?.scoreImpact, InsightWeight.minorHardware)
+        XCTAssertEqual(insight?.evidence.count, 3)
+
+        // Nothing readable: silent rather than assuming a normal count.
+        let unreadable = InsightContext(now: now, posture: SecurityPosture(loginItemCounts: nil))
+        XCTAssertNil(rule.evaluate(unreadable))
+
+        // Well under, across all three locations: silent.
+        let quiet = InsightContext(
+            now: now,
+            posture: SecurityPosture(loginItemCounts: LoginItemCounts(userAgents: 6, systemAgents: 4, systemDaemons: 2))
+        )
+        XCTAssertNil(rule.evaluate(quiet))
+    }
+
+    func testLoginItemCountsTotalSumsAllThreeLocations() {
+        let counts = LoginItemCounts(userAgents: 10, systemAgents: 20, systemDaemons: 30)
+        XCTAssertEqual(counts.total, 60)
+    }
 }

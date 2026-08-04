@@ -246,6 +246,10 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
         /// `diskutil info -plist` is a read-only query; nothing here touches
         /// `eraseDisk`, `partitionDisk`, or any other mutating verb.
         static let diskutil = "/usr/sbin/diskutil"
+        /// Always invoked with `-readonly` against TCC.db. Never used to
+        /// write anywhere — there is no code path in this file that opens
+        /// `sqlite3` without that flag.
+        static let sqlite3 = "/usr/bin/sqlite3"
     }
 
     private enum Domain {
@@ -304,6 +308,11 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
         )
         let kernelPanicCount = recentKernelPanicCount(now: now)
 
+        let tccCounts = SecurityPostureParser.tccPermissionCounts(
+            run(Tool.sqlite3, ["-readonly", Self.tccDatabasePath, SecurityPostureParser.tccPermissionQuery])
+        )
+        let loginItems = collectLoginItemCounts()
+
         var notes = [
             String(localized: "Sharing services are inferred from listening TCP sockets, not from launchd — reading a Sharing service's enabled state needs privileges Sentry does not request."),
             String(localized: "Only sockets bound to a network-reachable address are counted; a service listening on the loopback interface alone is not treated as reachable.")
@@ -320,6 +329,12 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
         }
         if kernelPanicCount == nil {
             notes.append(String(localized: "The kernel panic log directory could not be listed, so recent panic history is unknown rather than assumed clean."))
+        }
+        if tccCounts == nil {
+            notes.append(String(localized: "TCC.db — this Mac's privacy-permission database — could not be read, so per-app Accessibility/Screen Recording/Full Disk Access/Camera/Microphone counts are unknown rather than assumed clean. Reading it requires Full Disk Access, which Sentry does not request by default."))
+        }
+        if loginItems == nil {
+            notes.append(String(localized: "One of the LaunchAgents/LaunchDaemons directories could not be listed, so the persistent background item count is unknown."))
         }
 
         return SecurityPosture(
@@ -351,9 +366,20 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
             timeMachineLastBackupAt: timeMachineLastBackup,
             driveSMARTStatus: smartStatus,
             recentKernelPanicCount: kernelPanicCount,
+            tccPermissionCounts: tccCounts,
+            loginItemCounts: loginItems,
             notes: notes
         )
     }
+
+    /// `~/Library/Application Support/com.apple.TCC/TCC.db` — the per-user
+    /// privacy database. There is also a system-wide one at
+    /// `/Library/Application Support/com.apple.TCC/TCC.db`, but that path
+    /// requires root to even `stat`, let alone open, so it is not attempted
+    /// here; the per-user database already covers every permission grant a
+    /// normal (non-managed, non-MDM) user makes through the Privacy &
+    /// Security prompts this feature cares about.
+    private static let tccDatabasePath = NSHomeDirectory() + "/Library/Application Support/com.apple.TCC/TCC.db"
 
     /// Lists `/Library/Logs/DiagnosticReports` and hands the filenames and
     /// modification dates to `SecurityPostureParser.kernelPanicCount` for
@@ -393,5 +419,60 @@ public final class SecurityPostureCollector: SecurityPostureProviding, @unchecke
         // here.
         let windowStart = now.addingTimeInterval(-Double(KernelPanicHistoryRule.windowDays) * 86_400)
         return SecurityPostureParser.kernelPanicCount(entries: entries, windowStart: windowStart)
+    }
+
+    /// `.plist` counts in `~/Library/LaunchAgents`, `/Library/LaunchAgents`,
+    /// and `/Library/LaunchDaemons`.
+    ///
+    /// **Foundation directory listings only — no `launchctl`, no root.**
+    /// Unlike the Sharing-service probes above, listing what's *in* these
+    /// three directories needs no elevated privilege at all: `FileManager`
+    /// can enumerate `/Library/LaunchDaemons`'s filenames as an ordinary
+    /// user even though the plists themselves are root-owned, because
+    /// directory listing and file reading are different permission checks.
+    /// This deliberately stops at the filename: nothing here opens a single
+    /// plist to read what it launches, which would need root for the
+    /// LaunchDaemons case and would tempt a per-item allowlist this codebase
+    /// avoids (see `LoginItemsBloatRule`'s doc comment).
+    ///
+    /// **`SMAppService` was considered and left out.** Newer macOS versions
+    /// (`ServiceManagement.SMAppService`, 13+) let an app query and manage
+    /// *its own* registered helpers and login items, but there is no public
+    /// API to enumerate every login item registered by every app on the
+    /// system the way System Settings' Login Items pane does — that list is
+    /// assembled by `System Settings` itself from private state. So this
+    /// probe is deliberately limited to what `FileManager` can honestly see:
+    /// the three standard LaunchAgents/LaunchDaemons directories.
+    ///
+    /// Returns `nil` only if one of the three listings itself fails (not
+    /// expected in practice) — all three succeed or the whole reading is
+    /// treated as unknown, the same "succeed together or fail together"
+    /// choice `TCCPermissionCounts` makes for its five fields.
+    private func collectLoginItemCounts() -> LoginItemCounts? {
+        func plistCount(at path: String) -> Int? {
+            let directory = URL(fileURLWithPath: path)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                // Doesn't exist: a real, legitimate zero — the same
+                // reasoning `recentKernelPanicCount` uses for a Mac that has
+                // never panicked and so never created its log directory.
+                return 0
+            }
+            guard let contents = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) else {
+                return nil
+            }
+            return contents.filter { $0.pathExtension.lowercased() == "plist" }.count
+        }
+
+        guard let userAgents = plistCount(at: NSHomeDirectory() + "/Library/LaunchAgents"),
+              let systemAgents = plistCount(at: "/Library/LaunchAgents"),
+              let systemDaemons = plistCount(at: "/Library/LaunchDaemons")
+        else { return nil }
+
+        return LoginItemCounts(userAgents: userAgents, systemAgents: systemAgents, systemDaemons: systemDaemons)
     }
 }

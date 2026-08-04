@@ -122,6 +122,7 @@ public struct ProtectionInsightsEngine: Sendable {
         KeepAwakeHeldRule(),
         UnderpoweredAdapterRule(),
         RisingThermalBaselineRule(),
+        LoginItemsBloatRule(),
 
         // Backup
         TimeMachineNoBackupDestinationRule(),
@@ -155,6 +156,10 @@ public struct ProtectionInsightsEngine: Sendable {
         OutdatedMacOSVersionRule(),
         PostureUnknownRule(),
         HardenedBaselineRule(),
+
+        // Privacy (TCC) permission review
+        TCCPermissionAwarenessRule(),
+        TCCAccessUnknownRule(),
 
         // Sentry's own posture
         RemoteMCPAccessRule(),

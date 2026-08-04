@@ -838,6 +838,119 @@ public struct LocalMCPWriteToolsRule: ProtectionInsightRule, Sendable {
     }
 }
 
+// MARK: - Privacy (TCC) permission review
+
+/// Visibility into which apps hold sensitive TCC permissions —
+/// Accessibility, Screen Recording, Full Disk Access, Camera, Microphone —
+/// reported as counts, never as a judgement about any specific app.
+///
+/// **This is a visibility feature, not a verdict.** Holding Accessibility or
+/// Full Disk Access is completely ordinary for a long list of legitimate
+/// software — window managers, backup tools, remote-control apps, and
+/// Sentry's own future needs, to name a few. Naming or flagging a specific
+/// app here would need this codebase to maintain a list of which apps
+/// "deserve" which permission, which is exactly the guessing this codebase
+/// avoids everywhere else (see `SecurityPostureParser`'s doc comment on
+/// unrecognised command output). What is knowable and worth surfacing
+/// without guessing is the count — "N apps can see your screen; go look" —
+/// which is the same category as a bank statement transaction list: neutral
+/// until you actually look at it.
+///
+/// **Costs nothing on the score, deliberately.** A nonzero permission count
+/// is not the same class of fact as FileVault being off — it doesn't mean
+/// something is wrong, so `scoreImpact` is `InsightWeight.none`, matching
+/// the same choice `CycleBurnRateRule` and `MemoryCompressionRule` make for
+/// their own pure-awareness findings.
+public struct TCCPermissionAwarenessRule: ProtectionInsightRule, Sendable {
+    public let id = "privacy.tcc-permission-review"
+    public let category: InsightCategory = .privacy
+    public init() {}
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard let counts = context.posture.tccPermissionCounts else { return nil }
+
+        let accessibilityText = "\(counts.accessibility)"
+        let screenRecordingText = "\(counts.screenRecording)"
+        let fullDiskAccessText = "\(counts.fullDiskAccess)"
+        let cameraText = "\(counts.camera)"
+        let microphoneText = "\(counts.microphone)"
+
+        let evidence = [
+            String(localized: "\(accessibilityText) apps currently hold Accessibility access on this Mac."),
+            String(localized: "\(screenRecordingText) apps currently hold Screen Recording access."),
+            String(localized: "\(fullDiskAccessText) apps currently hold Full Disk Access."),
+            String(localized: "\(cameraText) apps currently hold Camera access."),
+            String(localized: "\(microphoneText) apps currently hold Microphone access.")
+        ]
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "Review which apps can see, hear, or control this Mac"),
+            summary: String(localized: "Accessibility: \(accessibilityText) · Screen Recording: \(screenRecordingText) · Full Disk Access: \(fullDiskAccessText) · Camera: \(cameraText) · Microphone: \(microphoneText)."),
+            detail: String(localized: "These five permissions are the ones macOS gates behind an explicit prompt because of what they let an app do once granted: Accessibility can observe and control input system-wide, Screen Recording can see everything on screen, Full Disk Access can read any file, and Camera and Microphone are what they say. None of these counts is inherently a problem — most Macs accumulate a handful of legitimate grants over time, including to apps exactly like this one. This finding exists so that accumulation stays visible instead of invisible, not to accuse any specific app of anything."),
+            recommendation: String(localized: "Open Privacy & Security and skim each of these five lists. Anything you don't recognise, or don't use anymore, is safe to revoke — the app will simply ask again if it's still needed."),
+            category: category,
+            severity: .advice,
+            evidence: evidence,
+            action: InsightAction(
+                label: String(localized: "Open Privacy & Security"),
+                target: .systemSettings(urlString: SystemSettingsLink.privacyAndSecurity),
+                fallbackDescription: String(localized: "System Settings ▸ Privacy & Security")
+            ),
+            confidence: 1.0,
+            scoreImpact: InsightWeight.none
+        )
+    }
+}
+
+/// The honest-unknown counterpart to `TCCPermissionAwarenessRule`.
+///
+/// **Verified empirically, not assumed.** Reading another app's TCC grants
+/// needs Full Disk Access. This was tested directly against this feature's
+/// own development machine: a read-only `sqlite3` open of the very
+/// `TCC.db` this user owns, run as that same user, fails with "authorization
+/// denied" — not a POSIX permissions error (the file itself is
+/// world-readable), but a macOS-level protection that sits below the
+/// filesystem's own rules. Sentry does not request Full Disk Access by
+/// default, so on almost every install this rule is the one that fires, and
+/// `TCCPermissionAwarenessRule` stays silent.
+///
+/// **Advice, not a manufactured pass — mirrors `PostureUnknownRule`'s
+/// convention exactly.** An inconclusive read is not scored in either
+/// direction, and it is shown rather than swallowed, for the same reason
+/// every other unknown in this feature is shown: a clean-looking report
+/// that quietly omitted the one thing it couldn't check would be a worse
+/// failure than admitting the gap.
+public struct TCCAccessUnknownRule: ProtectionInsightRule, Sendable {
+    public let id = "privacy.tcc-access-unknown"
+    public let category: InsightCategory = .privacy
+    public init() {}
+
+    public func evaluate(_ context: InsightContext) -> ProtectionInsight? {
+        guard context.posture.tccPermissionCounts == nil else { return nil }
+
+        return ProtectionInsight(
+            id: id,
+            title: String(localized: "Privacy-permission review is inconclusive"),
+            summary: String(localized: "Sentry can't see which apps hold Accessibility, Screen Recording, Full Disk Access, Camera, or Microphone access without Full Disk Access of its own."),
+            detail: String(localized: "macOS's privacy database, TCC.db, records every sensitive permission grant on this Mac — which is exactly why reading it is itself gated behind Full Disk Access, a permission Sentry does not request by default. This is not the same as a clean result: it means the question genuinely wasn't answered, not that nothing was found."),
+            recommendation: String(localized: "If you'd like this reviewed automatically, grant Sentry Full Disk Access in System Settings ▸ Privacy & Security ▸ Full Disk Access. Otherwise, the five permission lists — Accessibility, Screen Recording, Full Disk Access, Camera, Microphone — are each one tap away in the same settings pane."),
+            category: category,
+            severity: .advice,
+            evidence: [
+                String(localized: "A read-only attempt to query TCC.db did not succeed — the database exists but could not be opened without Full Disk Access.")
+            ],
+            action: InsightAction(
+                label: String(localized: "Open Privacy & Security"),
+                target: .systemSettings(urlString: SystemSettingsLink.privacyAndSecurity),
+                fallbackDescription: String(localized: "System Settings ▸ Privacy & Security ▸ Full Disk Access")
+            ),
+            confidence: 1.0,
+            scoreImpact: InsightWeight.none
+        )
+    }
+}
+
 // MARK: - Honesty and positive findings
 
 /// The rule that exists specifically so unknowns cannot vanish into a
