@@ -187,6 +187,48 @@ final class ThemeContrastTests: XCTestCase {
         )
     }
 
+    /// The fix for the DEFAULT theme's verified AA failures on
+    /// `textTertiary`, `warning`, and `danger`: a prior code review measured
+    /// `textTertiary` light at 2.81:1, `warning` light on `surfaceElevated`
+    /// at ~2.82:1, and `danger` light on `surfaceElevated` at ~3.67:1, all
+    /// below the 4.5:1 text bar that applies to them (see the doc comments
+    /// on `Theme.notion` and `ThemeColorToken.isTextToken` for why 4.5:1,
+    /// not 1.4.11's 3:1, is the correct requirement — real call sites render
+    /// all three as literal text). This asserts the fix holds: worst-case
+    /// across every audited backdrop, in both appearances, these three
+    /// tokens now clear `.textAA`.
+    func testNotionDefaultThemeTertiaryWarningAndDangerNowClearTextAA() {
+        for token in [ThemeColorToken.textTertiary, .warning, .danger] {
+            for appearance in ThemeAppearance.allCases {
+                let color = Theme.notion[token]
+                guard let fg = color.rgba(for: appearance) else {
+                    return XCTFail("\(token.rawValue) failed to parse for \(appearance.rawValue)")
+                }
+                for backdropToken in ThemeContrastAudit.auditedBackdrops {
+                    guard let bg = Theme.notion[backdropToken].rgba(for: appearance) else {
+                        return XCTFail("\(backdropToken.rawValue) failed to parse for \(appearance.rawValue)")
+                    }
+                    let composited = ThemeContrast.flatten(fg, onto: bg)
+                    let measured = ThemeContrast.ratio(composited, bg)
+                    XCTAssertGreaterThanOrEqual(
+                        measured,
+                        ContrastRequirement.textAA.minimumRatio,
+                        "\(token.rawValue) on \(backdropToken.rawValue) in \(appearance.rawValue) measured \(measured), still below AA"
+                    )
+                }
+            }
+        }
+
+        // Same assertion via the real audit path, not just the raw math
+        // above — this is what the editor and `testPrimaryTextPassesAAInEveryPreset`
+        // actually consult.
+        let audit = Theme.notion.contrastAudit
+        for token in [ThemeColorToken.textTertiary, .warning, .danger] {
+            let failures = audit.failures(for: token).filter { $0.requirement == .textAA }
+            XCTAssertTrue(failures.isEmpty, "\(token.rawValue): " + failures.map(\.summary).joined(separator: " | "))
+        }
+    }
+
     func testAuditCoversBothAppearancesAndEverySurface() {
         let audit = Theme.notion.contrastAudit
         for appearance in ThemeAppearance.allCases {
