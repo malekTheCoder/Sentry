@@ -136,8 +136,12 @@ public enum SentryXPCServiceName {
     func keepAwake(clientName: String, mode: String, durationSeconds: Double, reason: String, reply: @escaping (Bool, String?) -> Void)
     func releaseAwake(clientName: String, reply: @escaping (Bool, String?) -> Void)
     /// - Parameters:
-    ///   - tier: `"fast"`, `"medium"`, or `"slow"` — matches
-    ///     `StatsCoordinator.Tier`'s cases.
+    ///   - tier: `"fast"`, `"medium"`, `"slow"`, or `"process"` — matches
+    ///     `StatsCoordinator.Tier`'s cases. `"process"` retunes the cadence
+    ///     behind `SystemSnapshot.topProcesses`/process-scoped alerts (see
+    ///     `StatsCoordinator.setProcessInterval(_:)`) and, unlike the other
+    ///     three, is not persisted to `AppSettings` — it reverts to its
+    ///     8s default on the next launch.
     func setRefreshInterval(clientName: String, tier: String, seconds: Double, reply: @escaping (Bool, String?) -> Void)
     func setAlertRuleEnabled(clientName: String, ruleID: String, enabled: Bool, reply: @escaping (Bool, String?) -> Void)
     /// - Parameter ruleJSON: a JSON-encoded `AlertRule` (minus `id`, which

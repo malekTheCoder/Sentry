@@ -153,15 +153,25 @@ public final class StatsCoordinator: @unchecked Sendable {
 
     /// Base interval for the `.process` tier — see that tier's doc comment
     /// for why 8s and why it's a separate tier from `.fast`/`.medium`/`.slow`
-    /// rather than reusing one of them. `let`, not `var` like
-    /// `fastInterval`/`mediumInterval`/`slowInterval`: those three are
-    /// user-adjustable via `AppSettings`/`GeneralPane` (FR-2), and wiring a
-    /// fourth settings-pane slider for this tier is out of scope for the
-    /// alerting feature this exists to support — nothing currently reads or
-    /// writes this after construction. `effectiveInterval(for:)`'s adaptive
-    /// throttling still applies on top of it exactly as it does for the
-    /// other three tiers' base intervals.
-    private let processInterval: TimeInterval
+    /// rather than reusing one of them. `var`, like
+    /// `fastInterval`/`mediumInterval`/`slowInterval`, now that
+    /// `setProcessInterval(_:)` exists below: this is *not* wired into
+    /// `AppSettings`/`GeneralPane` the way those three are (there's still no
+    /// fourth settings-pane slider — that remains out of scope), but the MCP
+    /// surface (`set_refresh_interval` with `tier: "process"`,
+    /// `SentryXPCProtocol.setRefreshInterval`) needs a way to retune the
+    /// process-enumeration cadence that specifically feeds
+    /// `SystemSnapshot.topProcesses` and process-scoped alert
+    /// responsiveness, independent of `.fast`/`.medium`/`.slow`. See
+    /// `MCPXPCService.setRefreshInterval`'s doc comment for why this one
+    /// tier is set directly on the coordinator instead of through
+    /// `settingsStore.settings` like the other three (in short: no
+    /// `AppSettings` field/`AppDelegate` sink exists for it, so going through
+    /// settings would silently no-op — this stays in-memory-only and does
+    /// not survive a relaunch, unlike fast/medium/slow). `effectiveInterval(for:)`'s
+    /// adaptive throttling still applies on top of it exactly as it does for
+    /// the other three tiers' base intervals.
+    private var processInterval: TimeInterval
 
     /// Optional dependency slot for ANE stats. No `ANECollector` type exists
     /// yet anywhere in the codebase. Settable post-init (unlike the other
@@ -264,6 +274,35 @@ public final class StatsCoordinator: @unchecked Sendable {
         queue.async { [weak self] in
             guard let self else { return }
             self.slowInterval = min(max(slow, 5), Self.maxInterval)
+        }
+    }
+
+    /// Sets the `.process` tier's base interval independently of
+    /// `fast`/`medium`/`slow` (MCP's `set_refresh_interval` with
+    /// `tier: "process"` — see `MCPXPCService.setRefreshInterval`). See
+    /// `setBaseInterval`'s doc comment for the general "independently
+    /// adjustable tiers" rationale; this setter exists specifically to close
+    /// the gap where an agent could retune fast/medium/slow remotely but had
+    /// no way to touch the cadence behind `SystemSnapshot.topProcesses` and
+    /// process-scoped alert responsiveness.
+    ///
+    /// Clamped to 2...60: the floor is higher than `.fast`'s 0.5s floor
+    /// because `ProcessCollector`'s own doc comment
+    /// (`SystemMetricsKit/Collectors/ProcessCollector.swift`) calls
+    /// per-process enumeration "meaningfully more expensive" than any other
+    /// single collector's per-tick cost — the `.process` tier's whole reason
+    /// for existing (see that tier's doc comment above) is to keep that
+    /// expensive work off the fast tier's aggressive cadence, so a floor
+    /// letting an agent dial it right back down to `.fast`-tier speeds would
+    /// defeat the point. The ceiling matches `setSlowInterval`'s: 60 is
+    /// `effectiveInterval(for:)`'s hard `maxInterval` cap applied after this
+    /// base value regardless of tier, so a wider clamp here would advertise a
+    /// range this coordinator silently truncates the moment a tick actually
+    /// runs.
+    public func setProcessInterval(_ process: TimeInterval) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.processInterval = min(max(process, 2), Self.maxInterval)
         }
     }
 

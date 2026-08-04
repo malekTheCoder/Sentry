@@ -125,4 +125,43 @@ final class PerTierRefreshIntervalTests: XCTestCase {
         XCTAssertEqual(coordinator.currentBaseInterval(for: .medium), 5)
         XCTAssertEqual(coordinator.currentBaseInterval(for: .slow), 30)
     }
+
+    // MARK: - Process tier (MCP's set_refresh_interval "process" case)
+
+    func testProcessIntervalClampsTo2And60() {
+        // See `setProcessInterval`'s doc comment: the floor is above
+        // `.fast`'s 0.5s because process enumeration is meaningfully more
+        // expensive than any other single collector's per-tick cost, and the
+        // ceiling matches every other tier's — `effectiveInterval(for:)`
+        // truncates to 60s regardless of tier.
+        let coordinator = makeCoordinator()
+
+        coordinator.setProcessInterval(0.1)
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .process), 2)
+
+        coordinator.setProcessInterval(9999)
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .process), 60)
+    }
+
+    func testSetProcessIntervalDoesNotMoveOtherTiers() {
+        // Same independence guarantee `testSetBaseIntervalNoLongerMovesMediumOrSlowTiers`
+        // pins for fast/medium/slow — the `.process` tier's setter must not
+        // regress it.
+        let coordinator = makeCoordinator()
+        coordinator.setBaseInterval(2)
+        coordinator.setMediumInterval(11)
+        coordinator.setSlowInterval(45)
+
+        coordinator.setProcessInterval(20)
+
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .process), 20)
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .fast), 2)
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .medium), 11)
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .slow), 45)
+    }
+
+    func testProcessIntervalDefaultsToEightSecondsBeforeAnySetterIsCalled() {
+        let coordinator = makeCoordinator()
+        XCTAssertEqual(coordinator.currentBaseInterval(for: .process), 8)
+    }
 }
