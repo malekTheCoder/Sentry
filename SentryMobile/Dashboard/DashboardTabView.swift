@@ -38,7 +38,7 @@ struct DashboardTabView: View {
 
                 VStack(alignment: .leading, spacing: palette.spacingRow) {
                     Text("VITALS")
-                        .font(palette.font(size: 11, weight: .semibold))
+                        .scaledFont(palette, size: 11, weight: .semibold)
                         .kerning(0.8)
                         .foregroundStyle(palette.textTertiary)
                         .accessibilityAddTraits(.isHeader)
@@ -94,7 +94,7 @@ struct DashboardTabView: View {
                 .tint(palette.textPrimary)
             } else {
                 Text(viewModel.selectedDevice?.deviceName ?? "Mac")
-                    .font(palette.font(size: 28, weight: .bold))
+                    .scaledFont(palette, size: 28, weight: .bold)
                     .foregroundStyle(palette.textPrimary)
             }
             connectionLine
@@ -113,7 +113,7 @@ struct DashboardTabView: View {
                     .frame(width: 6, height: 6)
                     .accessibilityHidden(true)
                 Text(state.sentence)
-                    .font(palette.font(size: 12))
+                    .scaledFont(palette, size: 12)
                     .foregroundStyle(palette.textSecondary)
             }
             .accessibilityElement(children: .combine)

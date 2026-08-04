@@ -117,7 +117,7 @@ struct SettingsTabView: View {
 
     private var title: some View {
         Text("Settings")
-            .font(palette.font(size: 20, weight: .semibold))
+            .scaledFont(palette, size: 20, weight: .semibold)
             .foregroundStyle(palette.textPrimary)
     }
 
@@ -131,7 +131,7 @@ struct SettingsTabView: View {
     private var remoteMacSection: some View {
         VStack(alignment: .leading, spacing: palette.spacingRow) {
             Text("REMOTE MAC")
-                .font(palette.font(size: 11, weight: .semibold))
+                .scaledFont(palette, size: 11, weight: .semibold)
                 .kerning(0.8)
                 .foregroundStyle(palette.textTertiary)
                 .accessibilityAddTraits(.isHeader)
@@ -150,7 +150,7 @@ struct SettingsTabView: View {
             .textFieldStyle(.roundedBorder)
 
             Text("Lets this phone reach your Mac when it isn't on the same Wi-Fi. Fastest way: enable Remote Access on the Mac (Settings ▸ Sync) and scan the QR code it shows with this phone's Camera app — these fields fill themselves. Or enter the Mac's address, port, and pairing code by hand. The connection is encrypted and takes effect the next time the app connects — leave the address empty to use local discovery only.")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -164,7 +164,7 @@ struct SettingsTabView: View {
     private var themeSection: some View {
         VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
             Text("THEME")
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: palette.spacing) {
@@ -175,7 +175,7 @@ struct SettingsTabView: View {
                 .padding(.vertical, 2)
             }
             Text("The same presets as the Mac app (SentryKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }
     }
@@ -226,7 +226,7 @@ struct SettingsTabView: View {
     private var deviceCard: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(displayedDevice.deviceName)
-                .font(palette.font(size: 12.5, weight: .medium))
+                .scaledFont(palette, size: 12.5, weight: .medium)
                 .foregroundStyle(palette.textPrimary)
             // The meta line's second half distinguishes a real local-network
             // connection from `MockDataSource`'s demo data — `syncStatusRow`
@@ -235,7 +235,7 @@ struct SettingsTabView: View {
             // this is the one place on this tab that actually reflects
             // `AppDataSource.isUsingLocalSync`.
             Text("\(displayedDevice.model) · \(appDataSource.isUsingLocalSync ? "Live on your local network" : "Demo device, not synced")")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }
         .padding(palette.spacing * 1.6)
@@ -265,10 +265,10 @@ struct SettingsTabView: View {
     private var syncStatusRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "circle")
-                .font(.system(size: 9))
+                .scaledSystemFont(size: 9)
                 .foregroundStyle(palette.textTertiary)
             Text("iCloud sync isn't available in this build yet.")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)
@@ -293,17 +293,17 @@ struct SettingsTabView: View {
     private var notificationsSection: some View {
         VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
             Text("NOTIFICATION CATEGORIES")
-                .font(palette.font(size: 10, weight: .semibold))
+                .scaledFont(palette, size: 10, weight: .semibold)
                 .foregroundStyle(palette.textTertiary)
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Self.notificationCategoryNames, id: \.self) { name in
                     Text(name)
-                        .font(palette.font(size: 11.5))
+                        .scaledFont(palette, size: 11.5)
                         .foregroundStyle(palette.textSecondary)
                 }
             }
             Text("These mirror the Mac app's alert rules (AlertRule/AlertAction, SentryKit/Services/AlertRule.swift) — shown for reference, not as working preferences. Notifications require a live sync connection this build doesn't have, so there's nothing here to turn on or off yet.")
-                .font(palette.font(size: 10.5))
+                .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }
     }
@@ -329,10 +329,10 @@ struct SettingsTabView: View {
     private var widgetsSection: some View {
         HStack(spacing: 6) {
             Image(systemName: "circle")
-                .font(.system(size: 9))
+                .scaledSystemFont(size: 9)
                 .foregroundStyle(palette.textTertiary)
             Text("Widgets show the Dashboard's latest reading — nothing to configure here yet.")
-                .font(palette.font(size: 11))
+                .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
         }
         .accessibilityElement(children: .combine)

@@ -21,6 +21,24 @@ struct HistoryRangeSelector: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        // The one clamp in this app, and it is a property of the control, not
+        // a layout convenience. `UISegmentedControl` divides its width equally
+        // among its segments and neither wraps nor scrolls; with five segments
+        // on a phone that is roughly 60pt each. Past `.accessibility1` the
+        // labels stop fitting and UIKit truncates them, at which point "30d"
+        // and "90d" both render as an ellipsis and the control becomes
+        // ambiguous — the exact failure `PerMetricHistoryBrowser`'s doc
+        // comment documents for its own former segmented picker, and the
+        // reason that one became a scrolling chip row.
+        //
+        // The same escape isn't available here: unlike the module picker's
+        // nine long names, these are five two-to-three-character labels that
+        // are *already* as short as they can be, so there is nothing left to
+        // shorten and no truncation-free shape a segmented control can take.
+        // Everything around this control scales normally; the range labels
+        // stop growing at `.accessibility1` and stay legible rather than
+        // growing into an ellipsis.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
     }
 
     /// Display-only override of `HistoryRange.label`, confined to this view.

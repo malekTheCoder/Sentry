@@ -33,9 +33,9 @@ struct CycleCountSection: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        AdaptiveStack(spacing: 6) {
             Text(cycleCaption)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .scaledSystemFont(size: 11, weight: .regular, design: .monospaced, monospacedDigit: true)
                 .foregroundStyle(palette.textTertiary)
             trendLabel
         }
