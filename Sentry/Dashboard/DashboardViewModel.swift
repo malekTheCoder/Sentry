@@ -191,6 +191,13 @@ final class DashboardViewModel: ObservableObject {
 
     private let historyStore: HistoryStore
 
+    /// Drives periodic re-querying while the Dashboard window is visible —
+    /// see `startAutoRefresh()`. `nil` whenever auto-refresh isn't running
+    /// (window hidden, or never started), which doubles as the guard
+    /// `startAutoRefresh()` uses to avoid stacking a second loop on top of
+    /// an existing one.
+    private var autoRefreshTask: Task<Void, Never>?
+
     /// - Parameters:
     ///   - historyStore: shared with `AppDelegate`'s single instance — this
     ///     view model never opens its own database connection.
@@ -242,6 +249,29 @@ final class DashboardViewModel: ObservableObject {
     /// tick (see the type doc comment).
     ///
     /// - Parameter now: injectable for tests; defaults to the wall clock.
+    ///
+    /// **Deliberately still synchronous, on the main actor, despite being
+    /// the known window-open hitch and per-tap lag:** `HistoryStore`'s
+    /// `dbQueue.read` calls are individually thread-safe (GRDB's
+    /// `DatabaseQueue` serializes its own access internally, and
+    /// `HistoryStore` is `@unchecked Sendable` on that basis), so moving the
+    /// 13 queries below onto a background `Task` is possible in isolation.
+    /// What isn't clean is the rest of what this method does with the
+    /// results: every one of `series`/`expectedCadence`/`agentActivity`/
+    /// `agentSessions`/`anomalies` gets fully replaced in one pass, read by
+    /// `timeRange`'s `didSet` (itself synchronous) and now by
+    /// `startAutoRefresh()`'s loop above — an async `refresh()` would let a
+    /// slow query for a range the user has since tapped away from resolve
+    /// *after* a newer, faster one and clobber it with stale data, exactly
+    /// the bug this task is fixing at the window-freshness level. Avoiding
+    /// that needs a generation counter or task-cancellation scheme around
+    /// every call site, plus rewriting every test below from the
+    /// call-then-assert shape they all currently use (`refresh(); assert on
+    /// series`) into an async/expectation shape — a real refactor, not a
+    /// clean lift, and out of scope for what this task asked for. Left
+    /// synchronous; the auto-refresh cadence in `TimeRangePicker
+    /// .autoRefreshInterval` is deliberately conservative (30s–15min, never
+    /// per-tick) partly *because* each call still pays this full cost.
     func refresh(now: Date = Date()) {
         let (since, tier) = timeRange.queryWindow(now: now)
         let rowInterval = timeRange.expectedRowInterval(samplingInterval: samplingInterval)
@@ -267,6 +297,72 @@ final class DashboardViewModel: ObservableObject {
         agentActivity = Self.summarize(agentEvents)
         agentSessions = AgentSessionReport.sessions(from: agentEvents, awakeHolds: awakeHoldsProvider(), now: now)
         anomalies = refreshAnomalies(now: now)
+    }
+
+    // MARK: - Auto-refresh while the window is open
+
+    /// Keeps `series`/`agentActivity`/`anomalies` live while the Dashboard
+    /// window is on screen, by calling `refresh()` on a loop cadenced to the
+    /// current `timeRange` (see `TimeRangePicker.autoRefreshInterval`).
+    ///
+    /// **Why this exists:** before this, `refresh()` only ran once per
+    /// window show (`AppDelegate`'s `onShow`) and once more on
+    /// `didSet`/first appearance — everything below the header's own live
+    /// 10s `TimelineView` was a frozen snapshot from whenever the window
+    /// opened. Leave the window open across an hour and the charts silently
+    /// stop matching reality while the header's "updated Ns ago" caption
+    /// keeps implying they're live.
+    ///
+    /// **Why a `Task` loop instead of a second `TimelineView`:** this type
+    /// has no view of its own to attach one to — `DashboardView`'s header
+    /// already owns the one `TimelineView` this window has, purely to age
+    /// its caption text (see that view's doc comment), and duplicating that
+    /// machinery here just to call a side-effecting method on a timer would
+    /// mean two different mechanisms driving "is this window still alive"
+    /// for no benefit. A plain cancellable `Task` sleeping in a loop is the
+    /// same idiom `InsightsViewModel` already uses for its own
+    /// window-scoped background work (see `cancelRefresh`'s doc comment) —
+    /// following that precedent instead of inventing a second one.
+    ///
+    /// **Lifecycle — tied to window visibility, not a fire-and-forget
+    /// timer:** `AppDelegate`'s `MainWindowController.onShow`/`onHide` are
+    /// the single existing place window visibility already gates work
+    /// (`ProcessMonitor.start`/`stop` uses the same hooks) — this just adds
+    /// `startAutoRefresh()`/`stopAutoRefresh()` calls alongside the existing
+    /// `refresh()`/`processMonitor.stop()` calls there, rather than starting
+    /// a `Timer` at construction time that would run for the app's entire
+    /// life whether or not the window is even open.
+    ///
+    /// Cancels and restarts idempotently: calling this while a loop is
+    /// already running (e.g. a redundant `onShow`) replaces it rather than
+    /// stacking a second one, so there's never more than one outstanding
+    /// sleep at a time.
+    func startAutoRefresh() {
+        stopAutoRefresh()
+        autoRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                // Re-read `timeRange` on every iteration, not just at loop
+                // start — the interval must follow the *current* selection.
+                // Without this, switching from `.day` (30s cadence) to
+                // `.halfYear` mid-loop would keep polling every 30s until
+                // the in-flight sleep happens to finish, undermining the
+                // whole point of a range-dependent cadence.
+                let interval = self.timeRange.autoRefreshInterval
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                if Task.isCancelled { return }
+                self.refresh()
+            }
+        }
+    }
+
+    /// Stops the loop `startAutoRefresh()` started, if any. Safe to call
+    /// when no loop is running (e.g. `onHide` firing for a window that was
+    /// never shown) — `Task.cancel()` on `nil` is simply a no-op via the
+    /// optional chain.
+    func stopAutoRefresh() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = nil
     }
 
     /// Plan §17 Phase 8: "anomaly detection / baselining." Independent of
