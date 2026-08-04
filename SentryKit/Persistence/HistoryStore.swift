@@ -38,6 +38,72 @@ public final class HistoryStore: @unchecked Sendable {
     private let flushInterval: TimeInterval
     private let flushThreshold: Int
 
+    // MARK: - Write dedup (write-amplification fix)
+
+    /// Last value+timestamp actually written per metric ID, kept in memory so
+    /// `record(_:)` can decide "is this a real change?" without a database
+    /// round trip on every tick — see `shouldWrite(metric:value:ts:)`.
+    ///
+    /// Confined to `queue`, same as `buffer`; only ever read/written from
+    /// inside a block already dispatched onto it.
+    private var lastWritten: [String: (value: Double, ts: Double)] = [:]
+
+    /// Absolute tolerance for "did this metric's value actually change?".
+    ///
+    /// `StatsCoordinator.tick(tier:)` (`SentryKit/Services/StatsCoordinator.swift`)
+    /// publishes the full merged `SystemSnapshot` on *every* tier's tick, so a
+    /// medium/slow-tier field (thermal, ANE, battery, ...) arrives on a fast
+    /// tick as the exact same `Double` bits it had last time — no
+    /// recomputation happened, it's a straight struct copy. Exact equality
+    /// would already catch that case. This tiny epsilon exists only for the
+    /// rarer case of a value that *is* freshly recomputed each tick (e.g. a
+    /// percentage derived from a fresh counter division) landing a
+    /// floating-point ULP away from its previous value despite being the same
+    /// underlying reading — without it, that kind of harmless FP noise would
+    /// defeat the dedup entirely. It is not a "close enough" fudge factor:
+    /// 1e-6 is far smaller than any real change in any metric this file
+    /// flattens (percentages, bytes, MHz, watts, ...), so a genuine change
+    /// always clears it.
+    private static let changeEpsilon: Double = 1e-6
+
+    /// Minimum time a metric's value must have been sitting unwritten before
+    /// a heartbeat row is forced, even with no change.
+    ///
+    /// **Why 60s, not "dedupe forever":** `ChartScrubbing`
+    /// (`SentryKit/History/ChartScrubbing.swift`) needs *some* row for a flat
+    /// metric every so often, or a chart can't tell "still 0%, still being
+    /// measured" from "Mac asleep, nothing measured at all" — see that file's
+    /// gap-detection doc comments. A pure change-only write policy would
+    /// leave a genuinely flat metric (e.g. `thermal.is_throttling` sitting at
+    /// 0) with exactly one row ever, which `ChartScrubbing.gaps` would then
+    /// read as one unbroken gap from that row to "now."
+    ///
+    /// **Why this doesn't fight `ChartScrubbing`'s gap math:** gap detection
+    /// is per-metric and self-calibrating, not a single global assumption.
+    /// `ChartScrubbing.medianSpacing`/`effectiveCadence` compute the expected
+    /// row spacing *from that metric's own observed timestamps* and use it as
+    /// a floor over the declared per-tier cadence (see that file's doc
+    /// comment: "covering the case where rows are genuinely sparser than the
+    /// tier implies... a metric a module only reports occasionally" — this is
+    /// exactly that case). A flat metric heartbeating every 60s ends up with
+    /// a median spacing of ~60s, so its own gap threshold
+    /// (`gapCadenceMultiplier` × 60s = 150s) rises to match — the chart never
+    /// mistakes a 60s heartbeat cadence for a gap. A changing metric's median
+    /// spacing is unaffected, since every real change still writes
+    /// immediately regardless of the heartbeat.
+    ///
+    /// **Why 60s specifically:** it matches `StatsCoordinator.maxInterval`
+    /// (`SentryKit/Services/StatsCoordinator.swift`), the hard ceiling every
+    /// tier's *effective* (adaptively-throttled) interval is already clamped
+    /// to. Heartbeating any slower than that would mean a flat metric on the
+    /// slow tier gets *fewer* history rows than its own coordinator tier
+    /// already ticks at, which defeats the "still being measured" promise
+    /// above. Heartbeating meaningfully faster would eat back into the exact
+    /// write volume this fix exists to cut, for metrics that are flat for
+    /// long stretches (battery health percent, cycle count, thermal pressure
+    /// level, ...) — those are the common case this fix targets.
+    private static let heartbeatInterval: TimeInterval = 60
+
     /// - Parameters:
     ///   - databaseURL: override for tests; defaults to the real on-disk
     ///     location under Application Support.
@@ -110,6 +176,17 @@ public final class HistoryStore: @unchecked Sendable {
     /// Flattens every populated numeric field on `snapshot` into buffered
     /// `sample_raw` rows. Cheap and synchronous-looking to the caller — the
     /// actual disk write happens later, in a batch, off this call stack.
+    ///
+    /// **Write-amplification fix:** `StatsCoordinator.tick(tier:)` publishes
+    /// the full merged snapshot on every tier's tick (fast/medium/slow
+    /// alike), so most of the ~35 pairs `metricPairs(for:)` returns here
+    /// haven't actually been re-measured since the last call — they're a
+    /// straight copy of whatever the owning tier last produced. Writing all
+    /// of them, every call, at the fast tier's cadence is what produced the
+    /// ~1.7M raw rows/day this fix addresses (see the file-level `git log`
+    /// message / task notes for the numbers). `shouldWrite(metric:value:ts:)`
+    /// filters each pair down to "changed" or "heartbeat due" before it ever
+    /// reaches `buffer`.
     public func record(_ snapshot: SystemSnapshot) {
         let ts = snapshot.timestamp.timeIntervalSince1970
         let pairs = Self.metricPairs(for: snapshot)
@@ -118,12 +195,41 @@ public final class HistoryStore: @unchecked Sendable {
         queue.async { [weak self] in
             guard let self else { return }
             for (metric, value) in pairs {
+                guard self.shouldWrite(metric: metric, value: value, ts: ts) else { continue }
                 self.buffer.append((ts: ts, metric: metric, value: value))
             }
             if self.buffer.count >= self.flushThreshold {
                 self.flushLocked()
             }
         }
+    }
+
+    /// The dedup decision itself, isolated from buffering/flushing so it can
+    /// be unit tested as pure logic (`HistoryStoreDedupTests`) without a
+    /// database. Must only be called while already on `queue` — reads/writes
+    /// `lastWritten`.
+    ///
+    /// **Also updates `lastWritten`** for `metric` when it returns `true` —
+    /// this is deliberately a "decide and record the decision" method, not a
+    /// read-only predicate, because every real call site (`record(_:)`)
+    /// immediately does that update anyway on a write, and splitting it into
+    /// two calls would just be two more chances for the cache to drift out
+    /// of sync with what actually got buffered. A `false` result leaves
+    /// `lastWritten` untouched, since nothing changed.
+    ///
+    /// - Returns: `true` when this sample should actually be persisted:
+    ///   either the value moved by more than `changeEpsilon`, or it's been at
+    ///   least `heartbeatInterval` since this metric's last written sample
+    ///   (or this is the metric's very first sample ever, which always
+    ///   writes — there is nothing to dedup against yet).
+    func shouldWrite(metric: String, value: Double, ts: Double) -> Bool {
+        if let previous = lastWritten[metric],
+           abs(value - previous.value) <= Self.changeEpsilon,
+           (ts - previous.ts) < Self.heartbeatInterval {
+            return false
+        }
+        lastWritten[metric] = (value: value, ts: ts)
+        return true
     }
 
     /// Forces an immediate write of whatever is currently buffered. Safe to

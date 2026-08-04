@@ -334,4 +334,144 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries.first?.ruleName, "Right rule, recent")
     }
+
+    // MARK: - Write-amplification fix: shouldWrite decision logic
+
+    /// `shouldWrite(metric:value:ts:)` is the pure decision `record(_:)`
+    /// filters every metric pair through. These exercise it directly (no
+    /// database, no snapshot) against fabricated in-memory scenarios — see
+    /// `HistoryStore.shouldWrite`'s doc comment for the "changed OR heartbeat
+    /// due" rule this pins.
+    func testShouldWriteFirstSampleForAMetricAlwaysWrites() {
+        let store = tempHistoryStore()
+        XCTAssertTrue(store.shouldWrite(metric: "cpu.total_percent", value: 12.0, ts: 1_700_000_000))
+    }
+
+    func testShouldWriteSameValueWithinHeartbeatWindowSkips() {
+        let store = tempHistoryStore()
+        XCTAssertTrue(store.shouldWrite(metric: "thermal.is_throttling", value: 0.0, ts: 1_700_000_000))
+        // 59s later, same value: still inside the 60s heartbeat window.
+        XCTAssertFalse(store.shouldWrite(metric: "thermal.is_throttling", value: 0.0, ts: 1_700_000_059))
+    }
+
+    func testShouldWriteSameValuePastHeartbeatWindowWrites() {
+        let store = tempHistoryStore()
+        XCTAssertTrue(store.shouldWrite(metric: "thermal.is_throttling", value: 0.0, ts: 1_700_000_000))
+        // Exactly 60s later, same value: heartbeat is due.
+        XCTAssertTrue(store.shouldWrite(metric: "thermal.is_throttling", value: 0.0, ts: 1_700_000_060))
+    }
+
+    func testShouldWriteChangedValueAlwaysWritesEvenSecondsLater() {
+        let store = tempHistoryStore()
+        XCTAssertTrue(store.shouldWrite(metric: "cpu.total_percent", value: 12.0, ts: 1_700_000_000))
+        // 1s later but the value moved: write regardless of the heartbeat.
+        XCTAssertTrue(store.shouldWrite(metric: "cpu.total_percent", value: 13.0, ts: 1_700_000_001))
+    }
+
+    func testShouldWriteToleratesFloatingPointNoiseAsUnchanged() {
+        // A value that moved by less than `changeEpsilon` (1e-6) is treated
+        // as the same reading, not a real change — see the doc comment on
+        // `HistoryStore.changeEpsilon` for why this is needed even though
+        // most repeated-tier writes are exact bit-for-bit copies.
+        let store = tempHistoryStore()
+        XCTAssertTrue(store.shouldWrite(metric: "cpu.total_percent", value: 42.123456, ts: 1_700_000_000))
+        XCTAssertFalse(store.shouldWrite(metric: "cpu.total_percent", value: 42.1234561, ts: 1_700_000_001))
+    }
+
+    func testShouldWriteTracksEachMetricIndependently() {
+        // One metric heartbeating due doesn't affect another metric's own
+        // independent last-written state.
+        let store = tempHistoryStore()
+        XCTAssertTrue(store.shouldWrite(metric: "cpu.total_percent", value: 10.0, ts: 1_700_000_000))
+        XCTAssertTrue(store.shouldWrite(metric: "memory.used_bytes", value: 999.0, ts: 1_700_000_000))
+        XCTAssertFalse(store.shouldWrite(metric: "cpu.total_percent", value: 10.0, ts: 1_700_000_010))
+        XCTAssertFalse(store.shouldWrite(metric: "memory.used_bytes", value: 999.0, ts: 1_700_000_010))
+    }
+
+    // MARK: - Write-amplification fix: integration, real row counts via record(_:)
+
+    /// A flat metric (thermal, unchanging across 10 fast-tier-style ticks 3s
+    /// apart) should land far fewer than 10 rows — proof the dedup actually
+    /// reduces what hits `sample_raw`, not just that the pure decision
+    /// function returns the right booleans in isolation.
+    func testRecordDedupsFlatMetricAcrossRepeatedTicks() throws {
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        // 10 ticks, 3s apart (StatsCoordinator's fast-tier default cadence),
+        // all reporting the exact same flat thermal reading.
+        for tick in 0..<10 {
+            let snapshot = SystemSnapshot(
+                timestamp: base.addingTimeInterval(Double(tick) * 3),
+                deviceID: "test",
+                thermal: ThermalStats(pressureLevel: .nominal, isThrottling: false)
+            )
+            store.record(snapshot)
+        }
+        store.flush()
+
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sample_raw WHERE metric = 'thermal.is_throttling'") ?? 0
+        }
+        // First tick always writes; the next 9 (all within the 60s
+        // heartbeat window, unchanged) must all be skipped.
+        XCTAssertEqual(rowCount, 1)
+
+        let samples = store.samples(metric: "thermal.is_throttling", since: base.addingTimeInterval(-1), tier: .raw)
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples[0].value, 0.0)
+    }
+
+    /// A changing metric (CPU percent moving every tick) must still get one
+    /// row per tick — the dedup must never eat a real change.
+    func testRecordWritesEveryRowForAChangingMetric() throws {
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        for tick in 0..<10 {
+            let snapshot = SystemSnapshot(
+                timestamp: base.addingTimeInterval(Double(tick) * 3),
+                deviceID: "test",
+                cpu: CPUStats(totalPercent: Double(tick) * 5.0)
+            )
+            store.record(snapshot)
+        }
+        store.flush()
+
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sample_raw WHERE metric = 'cpu.total_percent'") ?? 0
+        }
+        XCTAssertEqual(rowCount, 10)
+    }
+
+    /// A flat metric that genuinely persists past the 60s heartbeat window
+    /// still gets an occasional row — proving the dedup doesn't silently
+    /// stop reporting a metric forever, which would leave `ChartScrubbing`
+    /// reading a permanently flat metric as one giant gap.
+    func testRecordWritesHeartbeatRowAfterWindowElapses() throws {
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let first = SystemSnapshot(
+            timestamp: base,
+            deviceID: "test",
+            thermal: ThermalStats(pressureLevel: .nominal, isThrottling: false)
+        )
+        let secondAfterHeartbeat = SystemSnapshot(
+            timestamp: base.addingTimeInterval(61),
+            deviceID: "test",
+            thermal: ThermalStats(pressureLevel: .nominal, isThrottling: false)
+        )
+        store.record(first)
+        store.record(secondAfterHeartbeat)
+        store.flush()
+
+        let rowCount = try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM sample_raw WHERE metric = 'thermal.is_throttling'") ?? 0
+        }
+        XCTAssertEqual(rowCount, 2)
+    }
 }
