@@ -84,6 +84,11 @@ struct ProtectionScoreCard: View {
     let isRefreshing: Bool
     /// When the security half was actually read.
     let postureCollectedAt: Date
+    /// How many findings the user has snoozed or dismissed. They are absent
+    /// from the points *and* from the verdict, which is the auditable
+    /// behaviour — but it means the number can only ever look better than
+    /// the machine is, so the hero has to say so.
+    var suppressedCount: Int = 0
 
     /// Subscore bars read best as a compact ledger; unbounded they stretch
     /// across the whole window and the bar becomes a highway.
@@ -200,6 +205,14 @@ struct ProtectionScoreCard: View {
                 qualifier(
                     symbol: "questionmark.circle",
                     text: String(localized: "Not scored, for lack of data on this Mac: \(unscoredText).")
+                )
+            }
+            if suppressedCount > 0 {
+                qualifier(
+                    symbol: "eye.slash",
+                    text: suppressedCount == 1
+                        ? String(localized: "1 finding is hidden by you, and isn't counted in this score.")
+                        : String(localized: "\(suppressedCount) findings are hidden by you, and aren't counted in this score.")
                 )
             }
             qualifier(

@@ -126,7 +126,14 @@ struct InsightsView: View {
             ProtectionScoreCard(
                 score: report.score,
                 isRefreshing: viewModel.isRefreshing,
-                postureCollectedAt: report.postureCollectedAt
+                postureCollectedAt: report.postureCollectedAt,
+                // The hero's qualifier list is documented as "every reason the
+                // number might be less than it appears". Findings the user
+                // hid are the largest such reason — they are subtracted from
+                // neither the points nor the verdict — so the count belongs
+                // there rather than only in the collapsed section at the foot
+                // of the page.
+                suppressedCount: report.suppressed.count
             )
             .padding(.bottom, palette.spacingSection)
 
