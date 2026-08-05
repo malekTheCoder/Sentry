@@ -67,6 +67,21 @@ public enum SnapshotDebugFormatter {
         "topProcesses", "agentActivitySummary",
     ]
 
+    /// Top-level fields that are deliberately *not* shown.
+    ///
+    /// `themePalette` is presentation plumbing, not telemetry: it carries the
+    /// fifteen hex values the Watch renders in (`RelayedPalette`) so a theme
+    /// the user forked on this Mac can reach the wrist. Nothing about it
+    /// helps answer the questions this window exists for — is the coordinator
+    /// ticking, did a composition-root hook get wired — and `Mirror` would
+    /// otherwise dump the whole struct into the "Snapshot" section, burying
+    /// the scalars that do matter.
+    ///
+    /// A named exclusion list rather than a `guard label != "themePalette"`
+    /// inline, so the next field like it has an obvious home and the reason
+    /// is written down once.
+    private static let excludedTopLevelKeys: Set<String> = ["themePalette"]
+
     /// One `Section` per `SystemSnapshot` sub-struct, plus a leading
     /// "Snapshot" section for the top-level fields (`id`, `timestamp`,
     /// `deviceID`, `schemaVersion`, `agentAccessPaused`, `protectionScore`)
@@ -84,6 +99,7 @@ public enum SnapshotDebugFormatter {
 
         for child in topMirror.children {
             guard let label = child.label else { continue }
+            if excludedTopLevelKeys.contains(label) { continue }
             if subStructKeys.contains(label) {
                 subStructValues[label] = child.value
             } else {

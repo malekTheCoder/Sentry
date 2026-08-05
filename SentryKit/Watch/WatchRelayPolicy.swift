@@ -184,6 +184,11 @@ public enum WatchRelayPolicy {
         // glance at the wrist would otherwise show the wrong half of the
         // user's theme.
         if previous.themeAppearance != next.themeAppearance { return true }
+        // Covers the case `themeID` cannot: editing a *custom* theme's
+        // colours changes no id at all, so without this the wrist would keep
+        // the old palette until the next heartbeat. Same rarity argument —
+        // nothing moves this value except a person in the theme editor.
+        if previous.themePalette != next.themePalette { return true }
         if Int(previous.batteryPercent.rounded()) != Int(next.batteryPercent.rounded()) { return true }
         return false
     }

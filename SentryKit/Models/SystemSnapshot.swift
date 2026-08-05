@@ -48,6 +48,20 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
     /// every agent tool call.
     public var agentAccessPaused: Bool?
 
+    /// The colours of whichever `Theme` the Mac is currently rendering,
+    /// already resolved for its appearance.
+    ///
+    /// Rides along for the Watch's benefit, on the same "app state, not a
+    /// metric" precedent as `agentAccessPaused` directly above. It is what
+    /// lets the wrist render a theme the user *forked or imported on this
+    /// Mac* — `AppSettings.customThemes` exists nowhere else, so an id would
+    /// resolve to nothing downstream. See `RelayedPalette`.
+    ///
+    /// `nil` means the composition root has not pushed one (or this Mac
+    /// predates the field), and the phone falls back to relaying its own
+    /// theme rather than guessing.
+    public var themePalette: RelayedPalette?
+
     /// The most recent `ProtectionScore.value` this Mac has computed
     /// (`SentryKit/Insights/ProtectionScore.swift`), 0...100.
     ///
@@ -162,6 +176,7 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         sleepAssertion: SleepAssertionState? = nil,
         location: MacLocation? = nil,
         agentAccessPaused: Bool? = nil,
+        themePalette: RelayedPalette? = nil,
         protectionScore: Int? = nil,
         topProcesses: [ProcessStats]? = nil,
         agentActivitySummary: AgentActivitySummary? = nil
@@ -181,6 +196,7 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         self.sleepAssertion = sleepAssertion
         self.location = location
         self.agentAccessPaused = agentAccessPaused
+        self.themePalette = themePalette
         self.protectionScore = protectionScore
         self.topProcesses = topProcesses
         self.agentActivitySummary = agentActivitySummary

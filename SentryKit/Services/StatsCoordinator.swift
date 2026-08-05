@@ -406,6 +406,22 @@ public final class StatsCoordinator: @unchecked Sendable {
         get { queue.sync { agentAccessPausedStorage } }
         set { queue.async { [weak self] in self?.agentAccessPausedStorage = newValue } }
     }
+
+    /// The colours of the theme the Mac is currently rendering, pushed from
+    /// the composition root for the Watch's benefit.
+    ///
+    /// Same shape and same reason as `agentAccessPaused` immediately above:
+    /// `SettingsStore.settings` is read from the main actor, every provider
+    /// closure here runs off a background queue, so this is pushed rather
+    /// than pulled. Feeds `SystemSnapshot.themePalette`, which is what lets
+    /// the watch render a theme the user forked or imported *on this Mac* —
+    /// see `RelayedPalette`.
+    public var themePalette: RelayedPalette? {
+        get { queue.sync { themePaletteStorage } }
+        set { queue.sync { themePaletteStorage = newValue } }
+    }
+
+    private var themePaletteStorage: RelayedPalette?
     private var agentAccessPausedStorage: Bool?
 
     /// The most recently computed `ProtectionScore.overall`, pushed down by
@@ -828,6 +844,7 @@ public final class StatsCoordinator: @unchecked Sendable {
             sleepAssertion: sleepAssertionStateStorage,
             location: locationStorage,
             agentAccessPaused: agentAccessPausedStorage,
+            themePalette: themePaletteStorage,
             protectionScore: protectionScoreStorage,
             topProcesses: latest.topProcesses,
             agentActivitySummary: agentActivitySummaryStorage

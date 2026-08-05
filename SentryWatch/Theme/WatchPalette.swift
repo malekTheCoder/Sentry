@@ -44,30 +44,37 @@ struct WatchPalette {
 
     let theme: Theme
 
+    /// The colours the sender resolved, when it sent any. Takes precedence
+    /// over `theme` — see `RelayedPalette`, and `color(_:relayed:fallback:)`
+    /// below for how the two combine.
+    let relayed: RelayedPalette?
+
     /// Which half of `theme`'s light/dark pair to resolve. Supplied by the
     /// phone rather than inferred — see this type's doc comment.
     let appearance: ThemeAppearance
 
-    init(theme: Theme, appearance: ThemeAppearance = .dark) {
+    init(theme: Theme, appearance: ThemeAppearance = .dark, relayed: RelayedPalette? = nil) {
         self.theme = theme
         self.appearance = appearance
+        self.relayed = relayed
     }
 
     init(snapshot: WatchRelaySnapshot?) {
         self.theme = snapshot?.resolvedTheme ?? .defaultTheme
         self.appearance = snapshot?.resolvedAppearance ?? .dark
+        self.relayed = snapshot?.themePalette
     }
 
     // MARK: Canvas
 
     /// The theme's own background — the page colour the Mac window and the
     /// phone dashboard draw, verbatim.
-    var background: Color { color(theme.background, fallback: appearance == .dark ? 0.0 : 1.0) }
+    var background: Color { color(theme.background, relayed: relayed?.bg, fallback: appearance == .dark ? 0.0 : 1.0) }
 
     /// Cards and wells: the theme's own surface.
-    var surface: Color { color(theme.surface, fallback: appearance == .dark ? 0.08 : 0.96) }
+    var surface: Color { color(theme.surface, relayed: relayed?.sf, fallback: appearance == .dark ? 0.08 : 0.96) }
 
-    var surfaceElevated: Color { color(theme.surfaceElevated, fallback: appearance == .dark ? 0.14 : 0.92) }
+    var surfaceElevated: Color { color(theme.surfaceElevated, relayed: relayed?.se, fallback: appearance == .dark ? 0.14 : 0.92) }
 
     /// Hairlines and unfilled gauge tracks.
     ///
@@ -78,22 +85,22 @@ struct WatchPalette {
     /// what the Mac's charts and the phone's battery bar draw, and lifting it
     /// here would make the watch the one surface where the theme looks
     /// heavier than everywhere else.
-    var separator: Color { color(theme.separator, fallback: appearance == .dark ? 0.2 : 0.85) }
+    var separator: Color { color(theme.separator, relayed: relayed?.sp, fallback: appearance == .dark ? 0.2 : 0.85) }
 
     // MARK: Text
 
-    var textPrimary: Color { color(theme.textPrimary, fallback: appearance == .dark ? 0.9 : 0.1) }
-    var textSecondary: Color { color(theme.textSecondary, fallback: appearance == .dark ? 0.6 : 0.4) }
+    var textPrimary: Color { color(theme.textPrimary, relayed: relayed?.t1, fallback: appearance == .dark ? 0.9 : 0.1) }
+    var textSecondary: Color { color(theme.textSecondary, relayed: relayed?.t2, fallback: appearance == .dark ? 0.6 : 0.4) }
 
     /// The dimmest tier, for units and inert labels.
-    var textTertiary: Color { color(theme.textTertiary, fallback: appearance == .dark ? 0.4 : 0.6) }
+    var textTertiary: Color { color(theme.textTertiary, relayed: relayed?.t3, fallback: appearance == .dark ? 0.4 : 0.6) }
 
     // MARK: Semantic
 
-    var accent: Color { color(theme.accent, fallback: 0.5) }
-    var success: Color { color(theme.success, fallback: 0.5) }
-    var warning: Color { color(theme.warning, fallback: 0.5) }
-    var danger: Color { color(theme.danger, fallback: 0.5) }
+    var accent: Color { color(theme.accent, relayed: relayed?.ac, fallback: 0.5) }
+    var success: Color { color(theme.success, relayed: relayed?.ok, fallback: 0.5) }
+    var warning: Color { color(theme.warning, relayed: relayed?.wn, fallback: 0.5) }
+    var danger: Color { color(theme.danger, relayed: relayed?.dg, fallback: 0.5) }
 
     /// The colour the Mac's own charts draw this metric in, contrast-repaired
     /// for the card it sits on — **unless that colour is one this theme also
@@ -125,8 +132,17 @@ struct WatchPalette {
     /// separate get their real palette; themes that overload one lose only
     /// the overloaded entry.
     func metricColor(_ metric: MetricID) -> Color {
-        guard let token = theme.metricColor(for: metric),
-              let value = token.rgba(for: appearance) else { return accent }
+        let relayedHex: String? = {
+            switch metric {
+            case .cpuTotalPercent: return relayed?.cpu
+            case .memoryUsedBytes: return relayed?.mem
+            case .diskReadBytesPerSec: return relayed?.dsk
+            case .batteryChargePercent: return relayed?.bat
+            default: return nil
+            }
+        }()
+        guard let value = relayedHex.flatMap(ThemeColor.components(fromHex:))
+            ?? theme.metricColor(for: metric)?.rgba(for: appearance) else { return accent }
         if collidesWithSeverityVocabulary(value) { return accent }
         return Color(.sRGB, red: value.red, green: value.green, blue: value.blue, opacity: value.alpha)
     }
@@ -143,8 +159,17 @@ struct WatchPalette {
     /// `WatchPaletteFidelityTests`), loose enough to catch the exact aliasing
     /// `nocturneMetricColors` does.
     private func collidesWithSeverityVocabulary(_ candidate: ThemeColor.RGBA) -> Bool {
-        [theme.warning, theme.danger]
-            .compactMap { $0.rgba(for: appearance) }
+        let severities: [ThemeColor.RGBA] = {
+            // Compare against whichever pair is actually on screen: a relayed
+            // custom theme's warning/danger, not the fallback preset's.
+            if let relayed,
+               let warning = ThemeColor.components(fromHex: relayed.wn),
+               let danger = ThemeColor.components(fromHex: relayed.dg) {
+                return [warning, danger]
+            }
+            return [theme.warning, theme.danger].compactMap { $0.rgba(for: appearance) }
+        }()
+        return severities
             .contains { severity in
                 abs(severity.red - candidate.red)
                     + abs(severity.green - candidate.green)
@@ -181,8 +206,11 @@ struct WatchPalette {
     /// The only thing still handled here is a hex that does not parse at all,
     /// which is a malformed theme rather than a design decision: that returns
     /// a flat grey, obviously wrong to the eye and never invisible.
-    private func color(_ token: ThemeColor, fallback: Double) -> Color {
-        guard let rgba = token.rgba(for: appearance) else {
+    private func color(_ token: ThemeColor, relayed hex: String?, fallback: Double) -> Color {
+        // The relayed hex is already resolved for the right appearance by the
+        // sender, so it is used as-is when present; `token` is the fallback
+        // for a phone that predates `RelayedPalette` and sent only an id.
+        guard let rgba = hex.flatMap(ThemeColor.components(fromHex:)) ?? token.rgba(for: appearance) else {
             return Color(.sRGB, red: fallback, green: fallback, blue: fallback, opacity: 1)
         }
         return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)

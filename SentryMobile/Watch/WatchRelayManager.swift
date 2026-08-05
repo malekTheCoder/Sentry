@@ -100,6 +100,18 @@ final class WatchRelayManager: NSObject {
         }
     }
 
+    /// This phone's own theme, flattened — the fallback when the Mac did not
+    /// send a palette. Reads the same `UserDefaults` key `RootTabView` binds
+    /// its `@AppStorage` to, for the reason `themeID` above documents: this
+    /// is an actor with no SwiftUI environment to read from.
+    private static func phonePalette() -> RelayedPalette? {
+        let id = UserDefaults.standard.string(forKey: "selectedThemeID") ?? Theme.oneDark.id
+        guard let theme = Theme.builtInPresets.first(where: { $0.id == id }) else { return nil }
+        let appearance = UserDefaults.standard.string(forKey: WatchRelayAppearance.defaultsKey)
+            .flatMap(ThemeAppearance.init(rawValue:)) ?? .dark
+        return RelayedPalette(theme: theme, appearance: appearance)
+    }
+
     private func consider(_ snapshot: SystemSnapshot) async {
         if deviceNameCache == nil {
             deviceNameCache = await AppDataSource.shared.devices()
@@ -153,7 +165,16 @@ final class WatchRelayManager: NSObject {
             // `WatchRelaySnapshot.themeAppearance` for why the watch cannot
             // work this out for itself. Absent until this phone has drawn a
             // frame, which the watch treats as `.dark`.
-            themeAppearance: UserDefaults.standard.string(forKey: WatchRelayAppearance.defaultsKey)
+            themeAppearance: UserDefaults.standard.string(forKey: WatchRelayAppearance.defaultsKey),
+            // **The Mac's own palette wins when it sent one.** It is the
+            // device the user is looking at in the screenshots, it is the
+            // only one that can have custom themes at all
+            // (`AppSettings.customThemes`), and relaying its resolved
+            // colours is what lets those reach the wrist — an id could not.
+            // Falls back to flattening this phone's own selected theme, so a
+            // Mac that predates the field still produces a themed watch
+            // rather than a default-coloured one.
+            themePalette: snapshot.themePalette ?? Self.phonePalette()
         )
 
         let now = Date()

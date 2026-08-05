@@ -936,6 +936,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItemController?.apply(layout: settings.menuBarLayout)
         statusItemController?.apply(theme: theme)
 
+        // The Watch's copy of the same decision. `theme` above is already
+        // resolved through `settings.customThemes`, so a theme the user
+        // forked in the editor or imported from a `.sentrytheme` file is
+        // carried here exactly like a built-in one — which is the whole
+        // point, since a custom theme's *id* resolves to nothing on any
+        // other device. Flattened to `RelayedPalette` (see that type) and
+        // pushed into the coordinator, which puts it on
+        // `SystemSnapshot.themePalette` for the phone to relay onward.
+        //
+        // The appearance is resolved here, on the Mac, for the same reason
+        // the colours are: this is where `NSApp.effectiveAppearance` means
+        // something. A theme with a light/dark pair therefore reaches the
+        // wrist already showing the half this Mac is showing.
+        coordinator.themePalette = RelayedPalette(
+            theme: theme,
+            appearance: NSApp.effectiveAppearance.sentryIsDark ? .dark : .light
+        )
+
         // Dashboard reads both live off the view model rather than a value
         // captured once at window construction — without this, a theme
         // change or a Modules-pane edit would never reach an already-built
