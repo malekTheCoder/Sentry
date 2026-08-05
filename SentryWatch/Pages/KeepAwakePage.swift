@@ -61,14 +61,25 @@ import SwiftUI
 /// only hardcoded dimension is that `minHeight` floor, which is a *lower*
 /// bound on the tap target — see `controlMinHeight`.
 ///
-/// **Colours are system semantics, not `palette.*`.** The Mac and iPhone apps
-/// resolve a themeable `ThemePalette`; the Watch app does not — `ContentView`
-/// and `FreshnessBadge` both use SwiftUI's semantic colours directly, and
-/// `FreshnessBadge`'s doc comment spells out why (the palette lives in the
-/// app targets, and these particular meanings are fixed, not user-themeable).
-/// This page follows that existing convention rather than inventing a
-/// watch-side theme token set.
+/// **Colours come from the relayed theme.** This page used to say the
+/// opposite — that the Watch app deliberately used SwiftUI's semantic
+/// colours because no palette existed on this platform. One now does:
+/// `WatchPalette` resolves whichever `Theme` the phone relayed
+/// (`WatchRelaySnapshot.themeID`) against the watch's black canvas, and the
+/// shell injects it into the environment. So `.red` on the end button is now
+/// `palette.danger`, and a user who runs Dracula on their Mac gets Dracula's
+/// red here rather than the system's. The three semantic meanings this page
+/// needs — accent for the active hold, danger for the release control,
+/// secondary text for qualifiers — are the same as before; only their source
+/// changed.
+///
+/// **Layout comes from `WatchLayout`.** The margins and the bottom clearance
+/// that keeps "End Now" clear of the paging dots are the shell's job
+/// (`PageChrome`), not this page's. That is why the old per-page bottom
+/// padding is gone rather than merely retuned.
 struct KeepAwakePage: View {
+
+    @Environment(\.palette) private var palette
 
     /// Read so `extendRow` can choose between a side-by-side and a stacked
     /// pair of extend buttons — see its doc comment for why that decision is
@@ -154,33 +165,52 @@ struct KeepAwakePage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
                 if isActive {
                     activeBody
                 } else {
-                    header
                     inactiveBody
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.hidden)
         .navigationTitle("Keep Awake")
     }
 
     // MARK: - Header
 
-    /// Rendered only in the **inactive** state now. When a hold is running,
-    /// the same words are folded into `activeStatus` as a caption above the
-    /// countdown — see `activeBody` for why that row had to go.
-    private var header: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "moon.zzz")
-                .foregroundStyle(Color.secondary)
-            Text("Keep Mac awake")
-                .font(.headline)
-                .minimumScaleFactor(0.8)
+    /// The inactive state's status card: what the Mac is doing right now, and
+    /// what a tap below will change.
+    ///
+    /// Folded into a `WatchCard` with the explanatory sentence it used to sit
+    /// above as a bare `.headline` row. Two lines of chrome to say "your Mac
+    /// sleeps normally" was the most expensive thing on this page and the
+    /// least informative; as a card it reads as the page's *state* — the
+    /// counterpart to `activeStatus` on the other branch — rather than as a
+    /// title.
+    private var inactiveStatus: some View {
+        // One line, not two. The explanatory subtitle this carried
+        // ("Nothing is holding it awake") wrapped to two lines at 42mm and
+        // said the same thing as the `KEEP AWAKE FOR` heading immediately
+        // below it — so it cost roughly 30pt, which is most of a duration
+        // button, to restate the page's own premise. The status is the fact;
+        // the heading is the offer.
+        WatchCard {
+            HStack(spacing: 8) {
+                Image(systemName: "moon.zzz")
+                    .font(.system(size: 16))
+                    .foregroundStyle(palette.textSecondary)
+                Text("Sleeping normally")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(palette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+            }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("Your Mac is sleeping normally. Nothing is holding it awake.")
     }
 
     // MARK: - Inactive
@@ -190,21 +220,24 @@ struct KeepAwakePage: View {
     /// looking at, and a control whose consequences are invisible should at
     /// least name them.
     private var inactiveBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Your Mac sleeps normally right now.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
+            inactiveStatus
 
-            ForEach(Self.offeredDurations, id: \.minutes) { duration in
-                Button {
-                    onKeepAwake(duration.minutes)
-                } label: {
-                    Text(duration.label)
-                        .frame(maxWidth: .infinity, minHeight: Self.controlMinHeight)
+            SectionHeading(text: "Keep awake for")
+
+            VStack(spacing: 5) {
+                ForEach(Self.offeredDurations, id: \.minutes) { duration in
+                    Button {
+                        onKeepAwake(duration.minutes)
+                    } label: {
+                        Text(duration.label)
+                            .frame(maxWidth: .infinity, minHeight: Self.controlMinHeight)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .buttonStyle(WatchActionButtonStyle(tint: palette.accent))
+                    .accessibilityHint("Asks your Mac to stay awake")
                 }
-                .buttonStyle(.bordered)
-                .accessibilityHint("Asks your Mac to stay awake")
             }
         }
     }
@@ -244,9 +277,18 @@ struct KeepAwakePage: View {
     /// the face; that case still scrolls, and that is the honest outcome
     /// rather than shrinking tap targets below 44pt to force a fit.
     private var activeBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            activeStatus
-            countdown
+        VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
+            // Status and countdown share one card: they are two halves of a
+            // single statement ("something is holding this Mac awake, and it
+            // ends in 41 minutes"), and pairing them means the accent-tinted
+            // surface reads as the live-hold indicator that it is.
+            WatchCard {
+                VStack(alignment: .leading, spacing: 3) {
+                    activeStatus
+                    countdown
+                }
+            }
+
             if expiresAt != nil {
                 extendRow
             }
@@ -274,10 +316,10 @@ struct KeepAwakePage: View {
     private var activeStatus: some View {
         HStack(spacing: 4) {
             Image(systemName: "moon.zzz.fill")
-                .foregroundStyle(Color.accentColor)
-            Text("Keeping awake")
-                + Text("  ·  ").foregroundStyle(.secondary)
-                + Text(modeLabel ?? "Mode not reported").foregroundStyle(.secondary)
+                .foregroundStyle(palette.accent)
+            Text("Keeping awake").foregroundStyle(palette.textPrimary)
+                + Text("  ·  ").foregroundStyle(palette.textTertiary)
+                + Text(modeLabel ?? "Mode not reported").foregroundStyle(palette.textSecondary)
         }
         .font(.caption2)
         .lineLimit(1)
@@ -355,13 +397,13 @@ struct KeepAwakePage: View {
             } else {
                 Text("This hold's time is up. Waiting for your Mac to confirm it ended.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else {
             Text("No countdown — ends when turned off.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -377,8 +419,17 @@ struct KeepAwakePage: View {
     /// `countdown` — which is precisely the already-expired failure that
     /// property's doc comment exists to warn about.
     private func timerText(deadline: Date) -> some View {
+        // `.title3`, down from `.title2`. At `.title2` a five-character
+        // monospaced countdown is wide enough that `ViewThatFits` below
+        // always picked its *stacked* candidate, putting "remaining" on a
+        // line of its own — which cost about 16pt and pushed "End Now", the
+        // one destructive control on this page, half under the paging dots at
+        // 42mm. One step down puts the word back on the timer's baseline and
+        // the button back on screen, and the countdown is still comfortably
+        // the largest thing here.
         Text(deadline, style: .timer)
-            .font(.system(.title2, design: .monospaced, weight: .semibold))
+            .font(.system(.title3, design: .monospaced, weight: .semibold))
+            .foregroundStyle(palette.textPrimary)
             .minimumScaleFactor(0.6)
             .lineLimit(1)
     }
@@ -386,7 +437,7 @@ struct KeepAwakePage: View {
     private var remainingCaption: some View {
         Text("remaining")
             .font(.caption2)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(palette.textTertiary)
             .lineLimit(1)
     }
 
@@ -436,7 +487,7 @@ struct KeepAwakePage: View {
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(WatchActionButtonStyle(tint: palette.accent))
         .accessibilityLabel("Extend by \(minutes) minutes")
     }
 
@@ -453,8 +504,7 @@ struct KeepAwakePage: View {
             Text("End Now")
                 .frame(maxWidth: .infinity, minHeight: Self.controlMinHeight)
         }
-        .buttonStyle(.bordered)
-        .tint(.red)
+        .buttonStyle(WatchActionButtonStyle(tint: palette.danger))
         .accessibilityHint("Lets your Mac sleep normally again")
     }
 }

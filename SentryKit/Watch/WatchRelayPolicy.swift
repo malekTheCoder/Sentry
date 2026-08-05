@@ -156,6 +156,15 @@ public enum WatchRelayPolicy {
     /// just paused agent access from their wrist should not be looking at a
     /// page that still offers a "Stop" button for the next five minutes
     /// because nothing forced an early relay.
+    ///
+    /// **`themeID` is a member, and is the rarest one here by a wide
+    /// margin.** Picking a theme is a deliberate act someone performs a
+    /// handful of times ever, and its entire purpose is to be seen — a user
+    /// who switches the phone to Nord and then raises their wrist to a watch
+    /// still rendering One Dark will reasonably conclude the watch does not
+    /// follow the theme at all. It cannot fire in a burst by construction:
+    /// nothing changes this value except a person tapping a different row in
+    /// Settings.
     public static func isSignificantChange(
         from previous: WatchRelaySnapshot,
         to next: WatchRelaySnapshot
@@ -168,6 +177,7 @@ public enum WatchRelayPolicy {
         if previous.awakeIsActive != next.awakeIsActive { return true }
         if previous.agentAccessPaused != next.agentAccessPaused { return true }
         if (previous.agentToolCallCount == nil) != (next.agentToolCallCount == nil) { return true }
+        if previous.themeID != next.themeID { return true }
         if Int(previous.batteryPercent.rounded()) != Int(next.batteryPercent.rounded()) { return true }
         return false
     }

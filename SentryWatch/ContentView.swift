@@ -72,19 +72,33 @@ struct ContentView: View {
         case overview, keepAwake, agents
     }
 
+    /// The palette every page reads from the environment, resolved from the
+    /// theme the phone relayed — see `WatchPalette`. Computed here, once, so
+    /// no page has to know where a colour came from and none can quietly fall
+    /// back to a hardcoded one.
+    private var palette: WatchPalette {
+        WatchPalette(snapshot: sessionController.latestSnapshot)
+    }
+
     var body: some View {
         TabView(selection: $selection) {
             overviewPage
-                .modifier(PageInsets())
+                .modifier(PageChrome())
                 .tag(Page.overview)
             keepAwakePage
-                .modifier(PageInsets())
+                .modifier(PageChrome())
                 .tag(Page.keepAwake)
             agentActivityPage
-                .modifier(PageInsets())
+                .modifier(PageChrome())
                 .tag(Page.agents)
         }
         .tabViewStyle(.page)
+        .environment(\.palette, palette)
+        // The canvas, behind every page and behind the status bar's own
+        // area. `ignoresSafeArea` rather than a plain background so the black
+        // runs to the physical edge — on an OLED watch that is the difference
+        // between a page that ends and a page that merges into the bezel.
+        .background(palette.background.ignoresSafeArea())
         .alert(
             // "Sentry", not "Keep Awake": this alert now reports outcomes
             // for both the keep-awake taps and the agent kill switch, and a
@@ -313,26 +327,43 @@ struct ContentView: View {
     }
 }
 
-// MARK: - PageInsets
+// MARK: - PageChrome
 
-/// The one place horizontal inset is applied to a page.
+/// The margins and bottom clearance every page gets, applied once by the
+/// shell.
 ///
 /// **Why it lives in the shell rather than in each page.** Every page here is
 /// written flush to its own frame edges, deliberately — a page that insets
 /// itself and is then hosted inside chrome that also insets ends up
-/// double-padded, and on a 40mm screen that is the difference between three
-/// metric tiles fitting and not. Putting the inset on the container means
-/// there is exactly one number to change, it applies identically to pages
-/// written by different hands, and a page can still be previewed on its own
-/// at full width to see what it really does with the space.
+/// double-padded, and on a 42mm screen that is the difference between three
+/// metric dials fitting and not. Putting the inset on the container means
+/// there is exactly one number to change and it applies identically to pages
+/// written by different hands.
 ///
-/// 4pt, not 8: watchOS already supplies a small safe-area inset of its own on
-/// a round-cornered display, and this stacks on top of it. Measured against
-/// the simulator at 46mm and 40mm rather than picked off a spec sheet — the
-/// corner radius, not the bezel, is what decides how much is enough.
-private struct PageInsets: ViewModifier {
+/// **What changed in the redesign, and why both halves were needed.** The
+/// horizontal inset was 4pt, chosen to clear the bezel — but the constraint
+/// that actually bites is the display's *corner radius*, which curves in over
+/// the top and bottom of any line of text near the edge. At 4pt the
+/// simulator rendered the Overview header's device name and Keep Awake's mode
+/// label visibly clipped on their right-hand side. `WatchLayout
+/// .horizontalMargin` clears the curve at every supported size.
+///
+/// The bottom half is new and fixes the other half of the same complaint:
+/// `TabView`'s `.page` style floats its dot indicator *over* the bottom of
+/// the page instead of reserving space above it, so whatever each page put
+/// last was the thing sitting under the dots. Each page used to pad its own
+/// bottom by a number it picked itself, and all three picked one too small.
+/// A `safeAreaInset` here means the clearance is structural — it applies to
+/// the page's scroll view as real safe area, so content scrolls clear of the
+/// dots instead of merely starting clear of them — and a page cannot forget
+/// it.
+private struct PageChrome: ViewModifier {
     func body(content: Content) -> some View {
-        content.padding(.horizontal, 4)
+        content
+            .padding(.horizontal, WatchLayout.horizontalMargin)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: WatchLayout.pagingIndicatorClearance)
+            }
     }
 }
 
@@ -348,6 +379,8 @@ private struct PageInsets: ViewModifier {
 /// describes what the user can act on and never guesses at a cause the app
 /// cannot distinguish.
 struct UnavailablePage: View {
+    @Environment(\.palette) private var palette
+
     let symbol: String
     let title: String
     let detail: String
@@ -355,19 +388,28 @@ struct UnavailablePage: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 8) {
+                // Circled and tinted rather than a bare glyph: an empty state
+                // is the first thing a new user sees, and a lone grey symbol
+                // on black reads as a rendering failure rather than as a
+                // designed state.
                 Image(systemName: symbol)
-                    .font(.title)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(palette.accent)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(palette.surface))
+
                 Text(title)
-                    .font(.callout)
+                    .font(.system(.callout, design: .rounded).weight(.semibold))
+                    .foregroundStyle(palette.textPrimary)
                     .multilineTextAlignment(.center)
+
                 Text(detail)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.textSecondary)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 12)
+            .padding(.top, 14)
         }
     }
 }

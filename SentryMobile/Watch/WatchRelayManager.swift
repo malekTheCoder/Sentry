@@ -139,7 +139,16 @@ final class WatchRelayManager: NSObject {
             agentToolCallCount: snapshot.agentActivitySummary?.toolCallCount,
             agentLastActivityAt: snapshot.agentActivitySummary?.lastActivityAt,
             agentRecentToolNames: snapshot.agentActivitySummary?.recentToolNames,
-            agentAccessPaused: snapshot.agentAccessPaused
+            agentAccessPaused: snapshot.agentAccessPaused,
+            // Read straight from the same `UserDefaults` key `RootTabView`
+            // and `SettingsTabView` bind their `@AppStorage` to, rather than
+            // taking an injected `Theme`: this type is a plain actor with no
+            // SwiftUI environment to read from, and the key is already the
+            // app's single source of truth for "which theme" (see
+            // `RootTabView`'s doc comment). Defaulted to match those two call
+            // sites exactly so a phone that has never opened Settings relays
+            // the same theme it is itself rendering.
+            themeID: UserDefaults.standard.string(forKey: "selectedThemeID") ?? Theme.oneDark.id
         )
 
         let now = Date()
