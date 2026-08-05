@@ -13,6 +13,24 @@ import WidgetKit
 struct SentryWatchWidgetEntry: TimelineEntry {
     let date: Date
     let snapshot: WatchRelaySnapshot?
+
+    /// Tells watchOS's Smart Stack how urgently this complication deserves
+    /// to surface itself, versus every other complication competing for the
+    /// same slot. Left unset (the `TimelineEntry` default is `nil`) before
+    /// this fix — every entry looked equally uninteresting to the Stack no
+    /// matter what state the Mac was actually in, so a Mac mid-thermal-
+    /// throttle competed on equal footing with a weather glance.
+    ///
+    /// The score itself (`WatchRelaySnapshot.timelineRelevanceScore`) lives
+    /// on the payload type in `SentryKit`, not here, so it can be unit
+    /// tested from `SentryTests` — this target has no test bundle of its
+    /// own (it's a WidgetKit extension), and `TimelineEntryRelevance` isn't
+    /// `Equatable`, so the scoring logic has to be pure `Float` math on the
+    /// SentryKit side for a test to assert anything about it at all.
+    var relevance: TimelineEntryRelevance? {
+        guard let snapshot else { return nil }
+        return TimelineEntryRelevance(score: snapshot.timelineRelevanceScore)
+    }
 }
 
 // MARK: - Provider

@@ -3,8 +3,9 @@ import GRDB
 import os
 
 /// The four-step maintenance job from plan §6.3 that keeps `sample_raw`
-/// bounded while turning it into cheap, long-horizon history — plus a fifth,
-/// added by a later verified-bug pass, that bounds `alert_log`:
+/// bounded while turning it into cheap, long-horizon history — plus a fifth
+/// and sixth, added by later verified-bug passes, that bound `alert_log`
+/// and `agent_activity_log`:
 ///
 /// 1. Roll complete hours of `sample_raw` into `sample_hourly` (min/max/avg/count).
 /// 2. Delete `sample_raw` rows older than 48h.
@@ -15,6 +16,10 @@ import os
 ///    `alertLogRetentionDays` — see that constant's doc comment for why
 ///    `alert_log` needed this at all (it had no retention before this pass)
 ///    and why it isn't user-configurable like steps 2/3's windows are.
+/// 6. Once daily (alongside step 5): delete `agent_activity_log` rows older
+///    than `agentActivityLogRetentionDays` — same reasoning, see that
+///    constant's doc comment for why this table's "kept forever" premise
+///    stopped holding once read-tool calls started being logged too.
 ///
 /// `runHourlyRollup`/`runDailyRollup` take an injected `now` so tests can
 /// drive them deterministically instead of depending on the wall clock.
@@ -67,6 +72,20 @@ public final class RollupJob: @unchecked Sendable {
     /// alert history is exactly the kind of thing worth keeping longer than
     /// raw metric samples.
     private static let alertLogRetentionDays: Int = 180
+
+    /// Age-based retention for `agent_activity_log`. Its v3 migration comment
+    /// justified "kept forever" on the premise that only *executed write-tool
+    /// calls* were logged, making volume inherently low — but the
+    /// agent-session-attribution pass wired `authorizeInstrumented` into
+    /// every tool handler, including frequently-polled reads
+    /// (`get_system_snapshot`, `get_thermal_status`, `preflight_check`, ...)
+    /// and denied/rate-limited attempts, which quietly invalidated that
+    /// premise: an agent polling read tools every few seconds for months
+    /// grows this table unbounded with nothing to stop it. Same 180-day
+    /// window as `alertLogRetentionDays` for the same reason — this is a
+    /// low-value-per-row discrete-event log, not a sample tier, so a
+    /// generous fixed window is enough without a settings-pane control.
+    private static let agentActivityLogRetentionDays: Int = 180
 
     private static let lastDailyRollupKey = "dev.malekswilam.sentry.rollupjob.lastDailyRollup"
     private static let lastVacuumKey = "dev.malekswilam.sentry.rollupjob.lastVacuum"
@@ -274,6 +293,15 @@ public final class RollupJob: @unchecked Sendable {
                 try db.execute(
                     sql: "DELETE FROM alert_log WHERE ts < ?",
                     arguments: [alertLogCutoff]
+                )
+
+                // Same reasoning and cadence as alert_log immediately above —
+                // see `agentActivityLogRetentionDays`'s doc comment for why
+                // this table needed pruning at all.
+                let agentActivityLogCutoff = now.timeIntervalSince1970 - Double(Self.agentActivityLogRetentionDays) * 86400
+                try db.execute(
+                    sql: "DELETE FROM agent_activity_log WHERE ts < ?",
+                    arguments: [agentActivityLogCutoff]
                 )
             }
         } catch {

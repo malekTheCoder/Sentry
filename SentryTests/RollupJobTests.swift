@@ -276,4 +276,59 @@ final class RollupJobTests: XCTestCase {
         let remaining = try alertLogRuleNames(dbQueue)
         XCTAssertEqual(remaining, ["An hour ago"], "must not prune recent alert history")
     }
+
+    // MARK: - agent_activity_log pruning (verified-bug pass: its "kept
+    // forever, low volume" premise stopped holding once read-tool calls
+    // started being logged too)
+
+    private func insertAgentActivityLog(_ db: Database, ts: Double, tool: String) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO agent_activity_log (ts, client_name, tool)
+            VALUES (?, ?, ?)
+            """,
+            arguments: [ts, "claude", tool]
+        )
+    }
+
+    private func agentActivityLogTools(_ dbQueue: DatabaseQueue) throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT tool FROM agent_activity_log ORDER BY ts")
+        }
+    }
+
+    func testDailyRollupPrunesAgentActivityLogRowsOlderThanRetentionWindow() throws {
+        let (store, dbQueue) = try makeStore()
+        _ = store
+
+        // `RollupJob.agentActivityLogRetentionDays` is 180d, same window as
+        // alert_log. One row well outside it, one well inside it.
+        let now = Date(timeIntervalSince1970: dayStart + 200 * 86400)
+        try dbQueue.write { db in
+            try self.insertAgentActivityLog(db, ts: dayStart, tool: "too_old")
+            try self.insertAgentActivityLog(db, ts: now.timeIntervalSince1970 - 86400, tool: "recent")
+        }
+
+        let job = RollupJob(dbQueue: dbQueue)
+        job.runDailyRollup(now: now)
+
+        let remaining = try agentActivityLogTools(dbQueue)
+        XCTAssertEqual(remaining, ["recent"], "an agent polling read tools for months must not grow agent_activity_log forever")
+    }
+
+    func testDailyRollupDoesNotPruneAgentActivityLogRowsInsideRetentionWindow() throws {
+        let (store, dbQueue) = try makeStore()
+        _ = store
+
+        let now = Date(timeIntervalSince1970: dayStart)
+        try dbQueue.write { db in
+            try self.insertAgentActivityLog(db, ts: dayStart - 3600, tool: "an_hour_ago")
+        }
+
+        let job = RollupJob(dbQueue: dbQueue)
+        job.runDailyRollup(now: now)
+
+        let remaining = try agentActivityLogTools(dbQueue)
+        XCTAssertEqual(remaining, ["an_hour_ago"], "must not prune recent agent activity")
+    }
 }

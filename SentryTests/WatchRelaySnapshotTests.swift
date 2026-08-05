@@ -268,6 +268,56 @@ final class WatchRelaySnapshotTests: XCTestCase {
         let data = try JSONEncoder().encode(makeFullyPopulated())
         XCTAssertLessThan(data.count, 1024, "Encoded relay payload grew past 1 KB: \(data.count) bytes")
     }
+
+    // MARK: - timelineRelevanceScore (verified-bug pass: the watch
+    // complication never told Smart Stack when the Mac actually needed
+    // attention — see `SentryWatchWidgetEntry.relevance`'s doc comment)
+
+    private func relevanceSnapshot(
+        thermal: ThermalPressureSummary = .nominal,
+        memoryPressure: MemoryPressureSummary? = .normal,
+        throttling: Bool? = false
+    ) -> WatchRelaySnapshot {
+        var snapshot = makeFullyPopulated()
+        snapshot.thermalPressure = thermal
+        snapshot.memoryPressure = memoryPressure
+        snapshot.isThrottling = throttling
+        return snapshot
+    }
+
+    func testANominalHealthyMacScoresZero() {
+        let snapshot = relevanceSnapshot()
+        XCTAssertEqual(snapshot.timelineRelevanceScore, 0, "a healthy Mac must not outrank whatever the user actually pinned")
+    }
+
+    func testCriticalThermalPressureScoresTheMaximum() {
+        let snapshot = relevanceSnapshot(thermal: .critical)
+        XCTAssertEqual(snapshot.timelineRelevanceScore, 100)
+    }
+
+    func testThrottlingOutranksMerelySeriousThermalPressure() {
+        let throttling = relevanceSnapshot(thermal: .serious, throttling: true)
+        let seriousOnly = relevanceSnapshot(thermal: .serious, throttling: false)
+        XCTAssertGreaterThan(throttling.timelineRelevanceScore, seriousOnly.timelineRelevanceScore)
+    }
+
+    func testCriticalMemoryPressureAloneStillScoresAboveNominal() {
+        let snapshot = relevanceSnapshot(memoryPressure: .critical)
+        XCTAssertGreaterThan(snapshot.timelineRelevanceScore, 0)
+    }
+
+    func testTheWorseOfTwoSimultaneousProblemsWins() {
+        // Fair thermal (25) alongside critical memory (80): the score must
+        // reflect whichever signal is actually worse, not the last one
+        // evaluated or a sum of the two.
+        let snapshot = relevanceSnapshot(thermal: .fair, memoryPressure: .critical)
+        XCTAssertEqual(snapshot.timelineRelevanceScore, 80)
+    }
+
+    func testUnknownTiersAreTreatedAsNoSignalRatherThanInflatingTheScore() {
+        let snapshot = relevanceSnapshot(thermal: .unknown, memoryPressure: .unknown)
+        XCTAssertEqual(snapshot.timelineRelevanceScore, 0, "an unrecognised tier from a newer phone must not be read as a problem")
+    }
 }
 
 // MARK: - WatchRelayPolicy

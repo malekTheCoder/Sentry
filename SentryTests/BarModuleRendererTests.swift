@@ -27,6 +27,42 @@ final class BarModuleRendererTests: XCTestCase {
         BarModule(metric: .cpuTotalPercent, displayMode: .valueOnly, colorRule: .thresholdGradient(low: low, high: high))
     }
 
+    // MARK: - Width stability (verified-bug pass: a module's slot used to
+    // resize every tick as its value text reflowed, shifting every module to
+    // its right — see `stabilizedValueWidth(_:for:)`'s doc comment)
+
+    func testWidthNeverShrinksBelowAWiderValueAlreadySeen() {
+        let renderer = renderer()
+        let module = BarModule(metric: .cpuTotalPercent, displayMode: .valueOnly, showUnit: true)
+
+        let wide = renderer.width(for: module, value: 100, normalized: nil, history: [])
+        let narrow = renderer.width(for: module, value: 9, normalized: nil, history: [])
+
+        XCTAssertEqual(narrow, wide, "a value getting shorter must not shrink the module's slot back down")
+    }
+
+    func testWidthGrowsWhenAnEvenWiderValueArrives() {
+        let renderer = renderer()
+        let module = BarModule(metric: .cpuTotalPercent, displayMode: .valueOnly, showUnit: true)
+
+        let narrow = renderer.width(for: module, value: 9, normalized: nil, history: [])
+        let wide = renderer.width(for: module, value: 100, normalized: nil, history: [])
+
+        XCTAssertGreaterThan(wide, narrow, "a genuinely wider value must still grow the slot")
+    }
+
+    func testDistinctModulesTrackIndependentWidthFloors() {
+        let renderer = renderer()
+        let wideModule = BarModule(metric: .cpuTotalPercent, displayMode: .valueOnly, showUnit: true)
+        let narrowModule = BarModule(metric: .cpuTotalPercent, displayMode: .valueOnly, showUnit: true)
+
+        _ = renderer.width(for: wideModule, value: 100, normalized: nil, history: [])
+        let untouched = renderer.width(for: narrowModule, value: 9, normalized: nil, history: [])
+        let afterWideModuleGrew = renderer.width(for: narrowModule, value: 9, normalized: nil, history: [])
+
+        XCTAssertEqual(untouched, afterWideModuleGrew, "one module's wide reading must not raise a different module's floor")
+    }
+
     // MARK: - severity(for:value:)
 
     func testBelowWarningThresholdIsNominal() {

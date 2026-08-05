@@ -129,6 +129,9 @@ final class BarModuleRenderer {
     private let font: NSFont
     private let baseAttributes: [NSAttributedString.Key: Any]
     private var textSizeCache: [String: CGSize] = [:]
+    /// High-water mark of each module's rendered value-text width, keyed by
+    /// `BarModule.id`. See `stabilizedValueWidth(_:for:)`.
+    private var maxObservedValueWidth: [UUID: CGFloat] = [:]
     private var symbolCache: [SymbolKey: NSImage] = [:]
     private var symbolCacheOrder: [SymbolKey] = []
     private var fallbackImage: NSImage?
@@ -290,21 +293,46 @@ final class BarModuleRenderer {
         case .iconOnly:
             return iconWidth(for: module, battery: battery)
         case .valueOnly:
-            return textSize(valueText(module, value)).width
+            return stabilizedValueWidth(textSize(valueText(module, value)).width, for: module)
         case .iconAndValue:
-            return iconWidth(for: module, battery: battery) + iconTextGap + textSize(valueText(module, value)).width
+            return iconWidth(for: module, battery: battery) + iconTextGap
+                + stabilizedValueWidth(textSize(valueText(module, value)).width, for: module)
         case .sparkline:
             return labelWidth(module) + graphWidth(history: history)
         case .sparklineAndValue:
+            let valueWidth = textSize(valueText(module, value, includeLabel: false)).width
             return labelWidth(module)
                 + graphWidth(history: history)
                 + iconTextGap
-                + textSize(valueText(module, value, includeLabel: false)).width
+                + stabilizedValueWidth(valueWidth, for: module)
         case .bar:
             return labelWidth(module) + gaugeWidth(normalized: normalized)
         case .arc:
             return labelWidth(module) + arcWidth(normalized: normalized)
         }
+    }
+
+    /// A module's numeric text reflows every tick ("9%" → "100%" → "9%" as the
+    /// reading changes), and each reflow shifts every module to its right in
+    /// the bar — the menu bar equivalent of layout thrash, and distracting in
+    /// a way a system status item should never be. Each module's widest
+    /// rendering *so far this renderer instance's lifetime* (i.e. since the
+    /// last theme/appearance change — see the type doc comment) becomes a
+    /// floor others can't shrink below, so a value getting shorter leaves
+    /// trailing space instead of pulling the next module left, while a value
+    /// wider than any seen yet still grows the slot to fit it.
+    ///
+    /// Rejected: reserving a hardcoded worst case per `MetricUnit` (e.g. "100%"
+    /// for percent, a 3-digit-plus-suffix guess for byte rates). That needs
+    /// the renderer to know every formatter's tiering rules and every
+    /// module's `showLabel`/`showUnit` flags up front, and is wrong the
+    /// moment either changes; self-calibrating off what this exact module has
+    /// actually rendered needs none of that and can't drift out of sync.
+    private func stabilizedValueWidth(_ width: CGFloat, for module: BarModule) -> CGFloat {
+        let previous = maxObservedValueWidth[module.id] ?? 0
+        let stable = max(width, previous)
+        maxObservedValueWidth[module.id] = stable
+        return stable
     }
 
     // MARK: - Severity (§9.4)

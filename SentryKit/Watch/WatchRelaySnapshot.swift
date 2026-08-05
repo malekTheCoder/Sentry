@@ -389,6 +389,47 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         self.agentRecentToolNames = agentRecentToolNames
         self.agentAccessPaused = agentAccessPaused
     }
+
+    /// How urgently `SentryWatchWidget`'s complication deserves to surface
+    /// itself in watchOS's Smart Stack, on WidgetKit's 0...100
+    /// `TimelineEntryRelevance` scale. Lives here rather than in the widget
+    /// extension itself so it is plain `Float` math — `TimelineEntryRelevance`
+    /// isn't `Equatable` and the extension target has no test bundle of its
+    /// own — that `SentryTests` (linked against `SentryKit_macOS`, which
+    /// compiles this same file) can assert on directly.
+    ///
+    /// Scored from whichever *live* problem is currently worst: throttling,
+    /// thermal pressure, memory pressure — the same fields `ContentView`'s
+    /// vitals page already treats as "the Mac needs attention" signals, not
+    /// a new judgment invented for this property. A snapshot with no problem
+    /// at all scores 0 rather than some baseline "still alive" value, since
+    /// a healthy Mac is exactly the case where the Smart Stack should *not*
+    /// pull this complication forward over something the user asked to see.
+    public var timelineRelevanceScore: Float {
+        var score: Float = 0
+
+        // Throttling is the consequence, not just the description — it
+        // outranks a merely "serious" pressure reading that hasn't yet cut
+        // clocks.
+        if isThrottling == true {
+            score = max(score, 95)
+        }
+
+        switch thermalPressure {
+        case .critical: score = max(score, 100)
+        case .serious: score = max(score, 65)
+        case .fair: score = max(score, 25)
+        case .nominal, .unknown: break
+        }
+
+        switch memoryPressure {
+        case .critical: score = max(score, 80)
+        case .warning: score = max(score, 35)
+        case .normal, .unknown, nil: break
+        }
+
+        return score
+    }
 }
 
 // MARK: - Complication battery/CPU swap
