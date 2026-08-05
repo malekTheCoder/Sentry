@@ -43,9 +43,9 @@ struct SentryWatchApp: App {
     ///
     /// So the fixture comes in as a launch argument instead. `-SentryWatchDemo
     /// <fixture>` selects one of `WatchSessionController.PreviewFixture`'s
-    /// cases and an optional `-SentryWatchTheme <id>` overrides the theme, so
-    /// every page and every palette can be inspected on a real device at real
-    /// size.
+    /// cases; optional `-SentryWatchTheme <id>` and `-SentryWatchAppearance
+    /// <light|dark>` override the palette, so every page can be inspected in
+    /// every theme *and* in both halves of it, at real size on a real face.
     ///
     /// `#if DEBUG` for exactly the reason `WatchSessionController
     /// .init(preview:)` is: this is the one path that can put a number on
@@ -58,12 +58,16 @@ struct SentryWatchApp: App {
         if let flag = arguments.firstIndex(of: "-SentryWatchDemo"),
            arguments.index(after: flag) < arguments.endIndex,
            let fixture = WatchSessionController.PreviewFixture(rawValue: arguments[arguments.index(after: flag)]) {
-            var themeID: String?
-            if let themeFlag = arguments.firstIndex(of: "-SentryWatchTheme"),
-               arguments.index(after: themeFlag) < arguments.endIndex {
-                themeID = arguments[arguments.index(after: themeFlag)]
+            func value(after flag: String) -> String? {
+                guard let index = arguments.firstIndex(of: flag),
+                      arguments.index(after: index) < arguments.endIndex else { return nil }
+                return arguments[arguments.index(after: index)]
             }
-            return WatchSessionController(preview: fixture, themeID: themeID)
+            return WatchSessionController(
+                preview: fixture,
+                themeID: value(after: "-SentryWatchTheme"),
+                appearance: value(after: "-SentryWatchAppearance")
+            )
         }
         #endif
         return WatchSessionController()

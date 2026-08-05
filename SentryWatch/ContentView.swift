@@ -94,11 +94,23 @@ struct ContentView: View {
         }
         .tabViewStyle(.page)
         .environment(\.palette, palette)
+        // **Tell SwiftUI which appearance is actually on screen.** watchOS
+        // reports `colorScheme == .dark` unconditionally — the platform has
+        // no light mode of its own — so every semantic colour in every view
+        // this app renders resolves for a dark background, including inside
+        // shared components this target does not own (`FreshnessBadge`, in
+        // `SentryKit/Sync/`, whose "Live" label came out pale grey on a white
+        // page). Overriding the environment fixes all of them at once and is
+        // the honest statement: under a light theme, this app *is* rendering
+        // light, whatever the platform assumes.
+        .environment(\.colorScheme, palette.appearance == .light ? .light : .dark)
         // The canvas, behind every page and behind the status bar's own
-        // area. `ignoresSafeArea` rather than a plain background so the black
-        // runs to the physical edge — on an OLED watch that is the difference
-        // between a page that ends and a page that merges into the bezel.
+        // area. `ignoresSafeArea` so the theme's background runs to the
+        // physical edge rather than leaving a system-coloured band around a
+        // themed page — which is most visible under a light preset, where
+        // the default black would frame the content.
         .background(palette.background.ignoresSafeArea())
+        .overlay(alignment: .top) { clockScrim }
         .alert(
             // "Sentry", not "Keep Awake": this alert now reports outcomes
             // for both the keep-awake taps and the agent kill switch, and a
@@ -114,6 +126,58 @@ struct ContentView: View {
             Text(actionResult ?? "")
         }
     }
+
+    // MARK: Clock legibility
+
+    /// A soft dark wash across the top of the screen, drawn **only under a
+    /// light appearance**.
+    ///
+    /// **Why this has to exist.** watchOS draws the time in the top-right
+    /// corner itself, always in white, and gives an app no way to restyle or
+    /// suppress it. That is invisible on a light page — verified on the
+    /// simulator under the Paper preset, where the clock disappeared
+    /// completely. It is also the single worst thing a watch app can break:
+    /// whatever else Sentry is showing, the device is a watch and the time
+    /// has to be readable.
+    ///
+    /// **Why a gradient scrim rather than the alternatives.** A solid bar
+    /// would read as a black status strip stapled onto a white page. Keeping
+    /// the whole canvas dark and only lightening the cards was tried first
+    /// and is the thing this change exists to stop doing — it is what made
+    /// the watch not match a light phone. Darkening the theme's background
+    /// until white text lands on it would mean not honouring the light theme
+    /// at all. A wash that is strongest at the very top and gone by the time
+    /// content starts costs the design almost nothing, reads as a vignette
+    /// rather than as chrome, and buys back the ~4.5:1 the clock needs.
+    ///
+    /// Height is `topScrimHeight` — deliberately taller than the clock's own
+    /// glyphs so the fade completes above the first row of page content and
+    /// never tints a card.
+    @ViewBuilder
+    private var clockScrim: some View {
+        if palette.appearance == .light {
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0.42), location: 0),
+                    .init(color: .black.opacity(0.30), location: 0.35),
+                    .init(color: .black.opacity(0.10), location: 0.72),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: Self.topScrimHeight)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    /// Measured against the 42mm simulator: the system clock's baseline sits
+    /// around 30pt from the physical top, so the wash has to still be dark at
+    /// 30 and fully clear by roughly 54, which is where `PageChrome`'s
+    /// content begins.
+    private static let topScrimHeight: CGFloat = 54
 
     // MARK: Pages
 

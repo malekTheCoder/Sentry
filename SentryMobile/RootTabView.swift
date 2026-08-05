@@ -65,9 +65,40 @@ struct RootTabView: View {
         }
         .tint(palette.textPrimary)
         .environment(\.themePalette, palette)
-        .onAppear { applyTabBarChrome() }
+        .onAppear {
+            applyTabBarChrome()
+            publishAppearanceForWatch()
+        }
         .onChange(of: selectedThemeID) { applyTabBarChrome() }
-        .onChange(of: systemColorScheme) { applyTabBarChrome() }
+        .onChange(of: systemColorScheme) {
+            applyTabBarChrome()
+            publishAppearanceForWatch()
+        }
+    }
+
+    /// Records which half of the theme's light/dark pair this phone is
+    /// currently rendering, so `WatchRelayManager` can put it on the wire
+    /// (`WatchRelaySnapshot.themeAppearance`) and the watch can render the
+    /// same one.
+    ///
+    /// **Why `UserDefaults` rather than passing the value to the relay
+    /// manager directly.** `WatchRelayManager` is an actor with no SwiftUI
+    /// environment to read from — it already reaches for `selectedThemeID`
+    /// through exactly this mechanism, and that key is written by
+    /// `@AppStorage` from this same view. This mirrors it rather than
+    /// inventing a second, differently-shaped channel for the other half of
+    /// the same fact.
+    ///
+    /// Written here rather than computed in the relay manager because
+    /// `colorScheme` is a SwiftUI environment value: the equivalent UIKit
+    /// read (`UITraitCollection.current`) is only valid on the main thread
+    /// during a view update, which is precisely where this already is and
+    /// precisely where the actor is not.
+    private func publishAppearanceForWatch() {
+        UserDefaults.standard.set(
+            systemColorScheme.themeAppearance.rawValue,
+            forKey: WatchRelayAppearance.defaultsKey
+        )
     }
 
     /// The handoff's tab bar: flat, hairline top separator, background

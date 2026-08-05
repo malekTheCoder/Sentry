@@ -178,6 +178,12 @@ public enum WatchRelayPolicy {
         if previous.agentAccessPaused != next.agentAccessPaused { return true }
         if (previous.agentToolCallCount == nil) != (next.agentToolCallCount == nil) { return true }
         if previous.themeID != next.themeID { return true }
+        // Same argument as `themeID` immediately above, and the same rarity:
+        // this flips when the phone crosses into or out of dark mode, which
+        // is at most a couple of times a day and is exactly the moment a
+        // glance at the wrist would otherwise show the wrong half of the
+        // user's theme.
+        if previous.themeAppearance != next.themeAppearance { return true }
         if Int(previous.batteryPercent.rounded()) != Int(next.batteryPercent.rounded()) { return true }
         return false
     }

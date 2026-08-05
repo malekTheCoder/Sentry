@@ -172,6 +172,49 @@ public enum ThemeContrast {
         return scaled(color, by: low)
     }
 
+    /// Moves `color` *away from* `backdrop` — lighter on a dark backdrop,
+    /// darker on a light one — until it clears `target`, and returns it
+    /// unchanged if it already does.
+    ///
+    /// **Why direction has to be chosen rather than fixed.** The first
+    /// version of the Watch palette only ever blended toward white, because
+    /// the watch canvas was hardcoded black. Once the watch started following
+    /// the phone's light/dark appearance
+    /// (`WatchRelaySnapshot.themeAppearance`), that became actively wrong:
+    /// a light preset's already-pale token would be lightened *further*,
+    /// toward the white page it is sitting on, making the exact failure the
+    /// repair exists to prevent worse rather than better. Picking the
+    /// direction from the backdrop's own luminance is what makes one function
+    /// correct for both halves of every theme.
+    ///
+    /// The 0.5 threshold is relative luminance, not perceptual midpoint, and
+    /// that is deliberate: it is the same quantity `ratio` is computed from,
+    /// so "which side has more room" is answered in the units the answer is
+    /// graded in.
+    public static func legible(
+        _ color: ThemeColor.RGBA,
+        onto backdrop: ThemeColor.RGBA,
+        toRatioAtLeast target: Double
+    ) -> ThemeColor.RGBA {
+        let opaque = color.alpha < 1 ? flatten(color, onto: backdrop) : color
+        guard ratio(opaque, backdrop) < target else { return opaque }
+
+        let backdropIsLight = relativeLuminance(backdrop) > 0.5
+        let toward: (ThemeColor.RGBA, Double) -> ThemeColor.RGBA = backdropIsLight ? shaded : tinted
+
+        var low = 0.0
+        var high = 1.0
+        for _ in 0..<24 {
+            let mid = (low + high) / 2
+            if ratio(toward(opaque, mid), backdrop) >= target {
+                high = mid
+            } else {
+                low = mid
+            }
+        }
+        return toward(opaque, high)
+    }
+
     private static func tinted(_ rgba: ThemeColor.RGBA, by amount: Double) -> ThemeColor.RGBA {
         ThemeColor.RGBA(
             red: rgba.red + (1 - rgba.red) * amount,
@@ -179,6 +222,14 @@ public enum ThemeContrast {
             blue: rgba.blue + (1 - rgba.blue) * amount,
             alpha: 1
         )
+    }
+
+    /// The darkening counterpart of `tinted` — `c' = c · (1 - amount)`, which
+    /// is `scaled(by: 1 - amount)` expressed so the two share one "0 means
+    /// leave it alone, 1 means go all the way" convention and `legible` can
+    /// swap between them without inverting its own search.
+    private static func shaded(_ rgba: ThemeColor.RGBA, by amount: Double) -> ThemeColor.RGBA {
+        scaled(rgba, by: 1 - amount)
     }
 
     private static func scaled(_ rgba: ThemeColor.RGBA, by factor: Double) -> ThemeColor.RGBA {

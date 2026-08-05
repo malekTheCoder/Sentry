@@ -98,13 +98,47 @@ struct OverviewPage: View {
     private var usesDials: Bool { !dynamicTypeSize.isAccessibilitySize }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
-                header
+        // **The page is laid out to fit outright, and the `ScrollView` is
+        // kept anyway.** This is what a raise-to-wake lands on, so anything
+        // below the fold is data the user believes they glanced at and did
+        // not — the demo disclosure moved into `header` and `StatusChips`
+        // gained its one-row rule specifically to buy the ~50pt that makes
+        // everything fit on the smallest supported face at rest.
+        //
+        // Dropping the `ScrollView` once it stopped being needed was tried
+        // and is wrong twice over: watchOS hands a scroll view the top safe
+        // area that keeps content clear of the system clock, so a bare
+        // `VStack` rendered the header straight through the time (verified on
+        // the simulator), and at accessibility text sizes the flat layout
+        // genuinely is taller than any face. A scroll view whose content fits
+        // does not scroll; keeping it costs nothing and covers both.
+        ScrollView { content }
+            .scrollIndicators(.hidden)
+            // **Scrolling is switched off at the sizes where the page is
+            // known to fit.** The layout above was tightened until everything
+            // — header, hero, all three dials and the thermal state — is on
+            // screen at rest on the smallest supported face, but a
+            // `ScrollView` on watchOS still lets content travel up under the
+            // system clock, so the page could be nudged out of position for
+            // no gain. Disabling it makes "it all fits" a property of the
+            // page rather than something that merely happens to be true.
+            //
+            // The scroll view itself is kept rather than swapped for a plain
+            // `VStack`: watchOS hands a scroll view the top safe area that
+            // keeps content clear of the clock, and a bare stack rendered the
+            // header straight through the time (verified on the simulator).
+            //
+            // Bounded at `.large` — the top of the default range — rather
+            // than at `usesDials`. Between `.large` and the accessibility
+            // sizes the dials are still drawn but the text around them has
+            // grown enough that the fit is no longer guaranteed, and an
+            // unreachable status chip is far worse than a page that scrolls.
+            .scrollDisabled(dynamicTypeSize <= .large)
+    }
 
-                if snapshot.sourceIsDemoData {
-                    DemoDataChip()
-                }
+    private var content: some View {
+        VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
+                header
 
                 WatchCard {
                     HeroReadout(snapshot: snapshot, usesDial: usesDials)
@@ -125,18 +159,12 @@ struct OverviewPage: View {
                 WatchCard {
                     VStack(alignment: .leading, spacing: 6) {
                         MetricReadouts(snapshot: snapshot, usesDials: usesDials)
-
-                        Rectangle()
-                            .fill(palette.separator)
-                            .frame(height: 1)
-
                         StatusChips(snapshot: snapshot)
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 0)
         }
-        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Header
@@ -166,8 +194,21 @@ struct OverviewPage: View {
                 .minimumScaleFactor(0.6)
                 .layoutPriority(1)
 
-            if showsDeviceName {
-                Spacer(minLength: 2)
+            Spacer(minLength: 2)
+
+            // **The demo-data disclosure rides here, not on a row of its
+            // own.** As a full-width pill it cost a `sectionSpacing` plus its
+            // own height — about 27pt, which was the difference between this
+            // page fitting a 42mm face and not. It has to stay visible
+            // (`WatchRelaySnapshot.sourceIsDemoData` exists precisely because
+            // a watch surface has no companion banner to disclose fabricated
+            // numbers any other way), and it does: same glyph, same warning
+            // colour, same full sentence to VoiceOver. It replaces the device
+            // name rather than crowding it because a demo payload's device
+            // name is itself fabricated, so nothing true is lost.
+            if snapshot.sourceIsDemoData {
+                DemoDataChip()
+            } else if showsDeviceName {
                 Text(snapshot.deviceName)
                     .font(.caption2)
                     .foregroundStyle(palette.textTertiary)
@@ -212,7 +253,12 @@ struct DemoDataChip: View {
     @Environment(\.palette) private var palette
 
     var body: some View {
-        StatusPill(text: "Demo data", symbol: "theatermasks.fill", tint: palette.warning)
+        Label("Demo", systemImage: "theatermasks.fill")
+            .font(.system(.caption2, design: .rounded).weight(.semibold))
+            .foregroundStyle(palette.warning)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .accessibilityElement(children: .combine)
             .accessibilityLabel("Demo data. These numbers are fabricated, not from a real Mac.")
     }
 }
@@ -248,7 +294,7 @@ private struct HeroReadout: View {
     /// number work on a 42mm Series 11 and a 49mm Ultra — see that type for
     /// why a ring, alone among the things on this page, cannot just be left
     /// to reflow.
-    @ScaledMetric(relativeTo: .title3) private var baseDiameter: CGFloat = 46
+    @ScaledMetric(relativeTo: .title3) private var baseDiameter: CGFloat = 38
 
     private var diameter: CGFloat { baseDiameter * WatchFace.scale }
 
@@ -396,15 +442,25 @@ private struct HeroReadout: View {
         return snapshot.isCharging ? "bolt.fill" : "battery.100"
     }
 
-    /// Charging wins over severity: the theme's `success` says "resolving,"
-    /// and that is the more useful thing to know about a Mac at 8% on a
-    /// charger. Otherwise the severity tint, falling back to the theme's
-    /// accent — this app's "no opinion, but still ours" colour, which is what
-    /// replaced the old `.primary` and is the single biggest reason the page
-    /// now looks like Sentry rather than like a system template.
+    /// **The same ladder `BatteryHeroCard` uses on the phone**, in the same
+    /// order, so the two devices never disagree about what colour a given
+    /// battery is: charging wins over everything (the theme's `success` says
+    /// "resolving", which is the useful thing to know about a Mac at 8% on a
+    /// charger), then danger at ≤10%, then warning at ≤20%, then the theme's
+    /// own `battery.charge_percent` metric colour.
+    ///
+    /// That last step is why this reads `metricColor` rather than `accent`.
+    /// The two are identical for a preset with no battery entry — Ivory has
+    /// none, so both resolve to its terracotta — but they diverge for one
+    /// that does, and diverging from the phone is exactly the thing this page
+    /// keeps being asked not to do. `MetricSeverity.battery` already uses the
+    /// same 10/20 thresholds, so the middle two rungs come from it.
     private var tint: Color {
         if showsBattery && snapshot.isCharging { return palette.success }
-        return severity.tint(in: palette) ?? palette.accent
+        if let severityTint = severity.tint(in: palette) { return severityTint }
+        return showsBattery
+            ? palette.metricColor(.batteryChargePercent)
+            : palette.metricColor(.cpuTotalPercent)
     }
 
     /// Priority order, most informative first. Runway beats plug state
@@ -455,6 +511,10 @@ private struct MetricReadouts: View {
     private struct Metric: Identifiable {
         let id: String
         let percent: Double?
+        /// The theme lookup key for this metric's identity colour — see
+        /// `WatchPalette.metricColor`, which also decides when a theme's own
+        /// answer has to be overridden.
+        let metricID: MetricID
         let severity: MetricSeverity
         /// Per-metric severity vocabulary — see `MetricSeverity`'s header on
         /// why "disk nearly full" beats a generic "elevated".
@@ -476,28 +536,30 @@ private struct MetricReadouts: View {
     /// Mac pinned at 95% is still pinned a minute later; "12 MB/s" is not
     /// true of any interval but the one it was sampled over.
     ///
-    /// **All three dials share the theme's accent at normal severity, and
-    /// hue is reserved entirely for escalation.** This replaced a
-    /// blue/purple/teal identity palette, and the first attempt at replacing
-    /// it — asking `WatchPalette.metricColor` for each metric's real token —
-    /// was worse than either: several presets map a metric straight onto a
-    /// *semantic* colour (Notion sends `memory.used_bytes` to `warning`), so
-    /// a Mac with perfectly normal memory pressure rendered an orange MEM
-    /// dial, which in this app's own grammar means "elevated". A readout that
-    /// looks like an alarm when nothing is wrong is the exact failure the
-    /// honesty rules exist to prevent, and it is worse on a wrist than
-    /// anywhere else because a glance is all the user gives it.
+    /// **Each dial carries its metric's own colour from the theme**, which is
+    /// what makes the wrist look like the same product as the Mac window and
+    /// the phone dashboard — Ivory's slate CPU, muted-purple memory and warm
+    /// grey disk are the exact tokens those two surfaces draw.
     ///
-    /// Identity is carried by the labels instead — CPU, MEM and DISK are
-    /// written directly under their dials, two points away. That frees the
-    /// one channel a two-second glance actually resolves before it reads
-    /// anything, and spends it on the only question worth answering that
-    /// fast: is anything wrong.
+    /// The one exception is handled inside `WatchPalette.metricColor`, not
+    /// here: a few presets reuse their *warning* or *danger* token as a
+    /// metric identity, which on three side-by-side dials reads as an alarm
+    /// about a healthy machine. Those entries fall back to the accent. See
+    /// that method for the full argument.
+    ///
+    /// **The `MetricID`s are theme lookup keys, not claims about the value.**
+    /// DISK maps to `.diskReadBytesPerSec` rather than the semantically exact
+    /// `.diskUsedPercent` because that is the key every built-in preset
+    /// actually populates in `metricColors`; asking for the exact one would
+    /// silently fall back to the accent and cost the row its third distinct
+    /// colour. The dial shows a used-percentage either way — only the hue
+    /// comes from this key.
     private var metrics: [Metric] {
         [
             Metric(
                 id: "CPU",
                 percent: snapshot.cpuPercent,
+                metricID: .cpuTotalPercent,
                 severity: .cpu(snapshot.cpuPercent),
                 elevatedWord: "busy",
                 highWord: "very busy"
@@ -505,6 +567,7 @@ private struct MetricReadouts: View {
             Metric(
                 id: "MEM",
                 percent: snapshot.memoryUsedPercent,
+                metricID: .memoryUsedBytes,
                 // From pressure, never from the percentage. `MetricSeverity`'s
                 // header and `WatchRelaySnapshot.memoryUsedPercent` both spell
                 // out why: on macOS a high used-percent is normal, and this is
@@ -517,6 +580,7 @@ private struct MetricReadouts: View {
             Metric(
                 id: "DISK",
                 percent: snapshot.diskUsedPercent,
+                metricID: .diskReadBytesPerSec,
                 severity: .disk(snapshot.diskUsedPercent),
                 elevatedWord: "nearly full",
                 highWord: "critically full"
@@ -531,7 +595,7 @@ private struct MetricReadouts: View {
                     MetricDial(
                         label: metric.id,
                         percent: metric.percent,
-                        tint: palette.accent,
+                        tint: palette.metricColor(metric.metricID),
                         severity: metric.severity,
                         elevatedWord: metric.elevatedWord,
                         highWord: metric.highWord
@@ -544,7 +608,7 @@ private struct MetricReadouts: View {
                     MetricTile(
                         label: metric.id,
                         percent: metric.percent,
-                        tint: palette.accent,
+                        tint: palette.metricColor(metric.metricID),
                         severity: metric.severity,
                         elevatedWord: metric.elevatedWord,
                         highWord: metric.highWord
@@ -576,7 +640,7 @@ private struct MetricDial: View {
     /// so ring and digits scale together. At 42mm three of these plus two 4pt
     /// gaps sits comfortably inside the card's content width rather than
     /// exactly filling it.
-    @ScaledMetric(relativeTo: .caption2) private var baseDiameter: CGFloat = 32
+    @ScaledMetric(relativeTo: .caption2) private var baseDiameter: CGFloat = 28
 
     private var diameter: CGFloat { baseDiameter * WatchFace.scale }
 
@@ -605,7 +669,15 @@ private struct MetricDial: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
             }
-            .frame(maxWidth: .infinity, maxHeight: diameter)
+            // An explicit square, not `maxWidth: .infinity, maxHeight:
+            // diameter`. That flexible form worked while this page was
+            // wrapped in a `ScrollView` — unbounded height, so the dial's
+            // `aspectRatio(1, .fit)` sized itself from its content. Once the
+            // page became a fixed-height `VStack` (so it fits without
+            // scrolling), the same frame resolved to zero height and the
+            // dials vanished entirely, leaving three bare labels. Verified on
+            // the simulator under Ivory.
+            .frame(width: diameter, height: diameter)
 
             // The severity glyph rides with the label rather than inside the
             // well: the well is 30-odd points across and already holds the
@@ -794,21 +866,30 @@ private struct StatusChips: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 5) { chipViews(chips) }
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(Array(stride(from: 0, to: chips.count, by: 2)), id: \.self) { start in
-                    HStack(spacing: 5) {
-                        chipViews(Array(chips[start..<min(start + 2, chips.count)]))
-                    }
-                }
-            }
-            VStack(alignment: .leading, spacing: 5) { chipViews(chips) }
+            // Same chips, no labels. The worst case here is a Mac that is
+            // hot *and* throttling *and* out of memory — three pills, which
+            // do not fit one row at 42mm. Wrapping them to a second row was
+            // the previous answer and it cost this page the ~25pt that let it
+            // fit without scrolling at all. Dropping to glyphs keeps every
+            // state on screen: each pill still carries its own colour and its
+            // own symbol, and the spoken label is unchanged, so the only
+            // thing lost is a word the tint and glyph already carry. The
+            // labelled version is still the first choice and still wins
+            // whenever there is room for it, which is the common one- and
+            // two-chip case.
+            HStack(spacing: 4) { chipViews(chips, labelled: false) }
         }
     }
 
     @ViewBuilder
-    private func chipViews(_ specs: [ChipSpec]) -> some View {
+    private func chipViews(_ specs: [ChipSpec], labelled: Bool = true) -> some View {
         ForEach(specs) { spec in
-            StatusPill(text: spec.id, symbol: spec.symbol, tint: spec.tint)
+            StatusPill(
+                text: spec.id,
+                symbol: spec.symbol,
+                tint: spec.tint,
+                showsText: labelled
+            )
         }
     }
 
