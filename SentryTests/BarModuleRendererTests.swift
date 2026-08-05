@@ -125,6 +125,26 @@ final class BarModuleRendererTests: XCTestCase {
         XCTAssertNotEqual(warningWidth, criticalWidth, "expected a visually distinct (and differently sized) glyph per band")
     }
 
+    // MARK: - moduleDivider (verified-bug pass: the `.dot`/`.line` separators
+    // `StatusItemView` paints between modules used `separator`'s 0.15 alpha —
+    // sized for the `.bar`/`.arc` gauge track it backs, not for a mark that
+    // has to stand out against an arbitrary wallpaper — and were reported
+    // unreadable in practice.)
+
+    func testModuleDividerIsMoreOpaqueThanTheGaugeTrackSeparator() {
+        let palette = MenuBarPalette(theme: .slate, dark: true)
+        XCTAssertGreaterThan(
+            palette.moduleDivider.alphaComponent,
+            palette.separator.alphaComponent,
+            "the between-module divider must be more visible than the gauge-track background it used to share a token with"
+        )
+    }
+
+    func testModuleDividerMatchesTextSecondaryLegibility() {
+        let palette = MenuBarPalette(theme: .slate, dark: true)
+        XCTAssertEqual(palette.moduleDivider.alphaComponent, palette.textSecondary.alphaComponent)
+    }
+
     // MARK: - alertHighlightAlpha(for:)
 
     /// The bug: every token used to resolve to the same `NSColor` in

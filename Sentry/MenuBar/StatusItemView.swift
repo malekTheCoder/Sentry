@@ -385,12 +385,17 @@ final class StatusItemView: NSView {
         case .none, .space:
             return
         case .dot:
-            let size: CGFloat = 2
-            ctx.setFillColor(renderer.palette.separator.cgColor)
+            // 2pt at the old 0.15-alpha `separator` token was reported
+            // unreadable against a real wallpaper (verified-bug report) — up
+            // a point on size and switched to `moduleDivider` (see that
+            // token's doc comment) together make the dot actually visible
+            // rather than just less invisible.
+            let size: CGFloat = 3
+            ctx.setFillColor(renderer.palette.moduleDivider.cgColor)
             ctx.fillEllipse(in: CGRect(x: x - size / 2, y: rect.midY - size / 2, width: size, height: size))
         case .line:
             let inset: CGFloat = 4
-            ctx.setFillColor(renderer.palette.separator.cgColor)
+            ctx.setFillColor(renderer.palette.moduleDivider.cgColor)
             ctx.fill(CGRect(x: x - 0.5, y: rect.minY + inset, width: 1, height: max(rect.height - inset * 2, 1)))
         }
     }

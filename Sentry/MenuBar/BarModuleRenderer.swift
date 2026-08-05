@@ -24,6 +24,7 @@ struct MenuBarPalette {
     let warning: NSColor
     let danger: NSColor
     let separator: NSColor
+    let moduleDivider: NSColor
     let chartFill: [NSColor]
 
     init(theme: Theme, dark: Bool) {
@@ -35,7 +36,19 @@ struct MenuBarPalette {
         success = textPrimary
         warning = textPrimary
         danger = textPrimary
+        // Stays at 0.15 for the `.bar`/`.arc` gauge tracks (`BarModuleRenderer
+        // .drawBar`/`.drawArc`) it was originally sized for — a background a
+        // filled gauge sits on top of is *supposed* to recede.
         separator = base.withAlphaComponent(0.15)
+        // The `.dot`/`.line` glyphs `StatusItemView.drawSeparator` paints
+        // between modules are a different job: they're the only thing
+        // telling two adjacent readings apart, so they need to actually be
+        // seen against an arbitrary wallpaper, not recede into one. 0.15
+        // read as invisible in practice (verified-bug report); matching
+        // `textSecondary`'s opacity makes them as legible as the module text
+        // itself without going all the way to `textPrimary` and competing
+        // with it.
+        moduleDivider = textSecondary
         chartFill = [base.withAlphaComponent(0.25), base.withAlphaComponent(0)]
     }
 
