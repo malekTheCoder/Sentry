@@ -97,6 +97,98 @@ public enum ThemeContrast {
         case .dark: return ThemeColor.RGBA(red: 0, green: 0, blue: 0, alpha: 1)
         }
     }
+
+    // MARK: - Repair
+
+    /// Blends `color` toward white until it clears `target` against
+    /// `backdrop`, and returns it unchanged if it already does.
+    ///
+    /// **Why this exists.** The Watch app renders whichever theme the phone
+    /// relayed on a canvas it does not get to choose — watchOS has no light
+    /// appearance, so a preset authored for a white page (Paper's `#1F2328`
+    /// primary text, GitHub's greys) arrives with tokens that are perfectly
+    /// legible where they were designed to sit and invisible where they now
+    /// have to. Auditing them, the way `ThemeContrastAudit` does for the Mac,
+    /// is the wrong tool: there is no author present to act on a finding, and
+    /// the user picked a theme rather than a contract. Repairing them is.
+    ///
+    /// **Blending toward white rather than substituting a legible colour**
+    /// is what keeps the theme recognisable. Paper's `#0969DA` accent already
+    /// passes and comes back untouched; its near-black text comes back as a
+    /// light neutral rather than as some other hue. A caller that wants the
+    /// opposite direction — a fill pulled *down* so it behaves like a
+    /// dark-mode surface — wants `dimmed(_:toLuminanceAtMost:)`.
+    ///
+    /// Solved by bisection rather than algebraically: `linearize` is
+    /// piecewise, so there is no clean closed form, and 24 halvings land well
+    /// inside a 1/255 quantisation step. Returns white if even white cannot
+    /// reach `target`, which happens only for a backdrop lighter than the
+    /// ratio allows — a caller passing a near-white backdrop has a problem
+    /// this function cannot solve and should not pretend to.
+    public static func lifted(
+        _ color: ThemeColor.RGBA,
+        onto backdrop: ThemeColor.RGBA,
+        toRatioAtLeast target: Double
+    ) -> ThemeColor.RGBA {
+        let opaque = color.alpha < 1 ? flatten(color, onto: backdrop) : color
+        guard ratio(opaque, backdrop) < target else { return opaque }
+        var low = 0.0
+        var high = 1.0
+        for _ in 0..<24 {
+            let mid = (low + high) / 2
+            if ratio(tinted(opaque, by: mid), backdrop) >= target {
+                high = mid
+            } else {
+                low = mid
+            }
+        }
+        return tinted(opaque, by: high)
+    }
+
+    /// Scales `color`'s channels down until its relative luminance is at most
+    /// `target`, and returns it unchanged if it already is.
+    ///
+    /// The counterpart to `lifted(_:onto:toRatioAtLeast:)`, used for fills
+    /// rather than for marks: it is what turns a light preset's card surface
+    /// into a dark-mode card surface *of the same hue*. Multiplicative rather
+    /// than a blend toward black precisely because scaling all three channels
+    /// by one factor is the operation that leaves hue and saturation intact
+    /// while dropping brightness.
+    public static func dimmed(
+        _ color: ThemeColor.RGBA,
+        toLuminanceAtMost target: Double
+    ) -> ThemeColor.RGBA {
+        guard relativeLuminance(color) > target else { return color }
+        var low = 0.0
+        var high = 1.0
+        for _ in 0..<24 {
+            let mid = (low + high) / 2
+            if relativeLuminance(scaled(color, by: mid)) <= target {
+                low = mid
+            } else {
+                high = mid
+            }
+        }
+        return scaled(color, by: low)
+    }
+
+    private static func tinted(_ rgba: ThemeColor.RGBA, by amount: Double) -> ThemeColor.RGBA {
+        ThemeColor.RGBA(
+            red: rgba.red + (1 - rgba.red) * amount,
+            green: rgba.green + (1 - rgba.green) * amount,
+            blue: rgba.blue + (1 - rgba.blue) * amount,
+            alpha: 1
+        )
+    }
+
+    private static func scaled(_ rgba: ThemeColor.RGBA, by factor: Double) -> ThemeColor.RGBA {
+        ThemeColor.RGBA(
+            red: rgba.red * factor,
+            green: rgba.green * factor,
+            blue: rgba.blue * factor,
+            alpha: 1
+        )
+    }
 }
 
 // MARK: - Requirements

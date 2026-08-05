@@ -269,6 +269,53 @@ final class WatchRelaySnapshotTests: XCTestCase {
         XCTAssertLessThan(data.count, 1024, "Encoded relay payload grew past 1 KB: \(data.count) bytes")
     }
 
+    // MARK: - themeID / resolvedTheme (the Watch redesign's one new wire
+    // field: the watch renders in the user's chosen palette, and an id is
+    // what travels rather than a table of colours)
+
+    func testAKnownThemeIDResolvesToThatPreset() {
+        var snapshot = makeFullyPopulated()
+        snapshot.themeID = Theme.nord.id
+        XCTAssertEqual(snapshot.resolvedTheme.id, Theme.nord.id)
+    }
+
+    func testAnAbsentThemeIDFallsBackToTheDefaultTheme() {
+        var snapshot = makeFullyPopulated()
+        snapshot.themeID = nil
+        XCTAssertEqual(snapshot.resolvedTheme.id, Theme.defaultTheme.id)
+    }
+
+    func testAnUnknownThemeIDFallsBackRatherThanApproximating() {
+        // A custom, user-authored theme has no entry in `builtInPresets`, so
+        // the watch has never been sent its colours. Falling back is the
+        // honest outcome; rendering some other preset's palette because the
+        // id "looks close" would be worse than the default.
+        var snapshot = makeFullyPopulated()
+        snapshot.themeID = "custom.something-the-watch-was-never-sent"
+        XCTAssertEqual(snapshot.resolvedTheme.id, Theme.defaultTheme.id)
+    }
+
+    func testThemeIDSurvivesTheWCSessionRoundTrip() throws {
+        var snapshot = makeFullyPopulated()
+        snapshot.themeID = Theme.dracula.id
+        let payload = try XCTUnwrap(snapshot.wcSessionPayload())
+        let decoded = try XCTUnwrap(WatchRelaySnapshot.from(wcSessionPayload: payload))
+        XCTAssertEqual(decoded.themeID, Theme.dracula.id)
+    }
+
+    func testEveryBuiltInPresetIDRoundTripsToItself() {
+        // Guards the one way this design can silently break: an id renamed on
+        // the Mac side while the watch keeps resolving the old string.
+        for theme in Theme.builtInPresets {
+            var snapshot = makeFullyPopulated()
+            snapshot.themeID = theme.id
+            XCTAssertEqual(
+                snapshot.resolvedTheme.id, theme.id,
+                "\(theme.id) must resolve to itself on the watch"
+            )
+        }
+    }
+
     // MARK: - timelineRelevanceScore (verified-bug pass: the watch
     // complication never told Smart Stack when the Mac actually needed
     // attention — see `SentryWatchWidgetEntry.relevance`'s doc comment)

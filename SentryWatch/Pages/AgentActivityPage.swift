@@ -152,7 +152,12 @@ struct AgentActivityPage: View {
     /// 40mm face without scrolling at default text size; beyond that the list
     /// stops being glanceable and becomes an audit trail, which is the Mac
     /// pane's job.
-    private static let maximumListedTools = 4
+    /// Three, down from four. The fourth row cost about 16pt and this page's
+    /// action button was already fighting for the bottom of a 42mm face — and
+    /// a "+N more" line below the list already tells the reader the list is a
+    /// sample rather than the whole log, so trimming it loses no information,
+    /// only examples.
+    private static let maximumListedTools = 3
 
     /// Diameter of the dotted "no reading" ring in `unreportedState`. Tied to
     /// `.title3` — the text style of the em dash it encloses — so the ring and
@@ -169,17 +174,16 @@ struct AgentActivityPage: View {
 
     private var dialDiameter: CGFloat { baseDialDiameter * WatchFace.scale }
 
+    /// Every colour on this page resolves through the theme the phone
+    /// relayed — see `WatchPalette`. The `.red`/`.orange`/`.green` literals
+    /// this page used to carry were the last hardcoded ones in the app.
+    @Environment(\.palette) private var palette
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                header
-                if isStale {
-                    staleBanner
-                }
-                if agentAccessPaused == true {
-                    pausedBanner
-                }
-                content
+            VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
+                headerRow
+                WatchCard { content }
                 // While paused, the resume button replaces the stop button
                 // rather than sitting beside it — "Stop Agents" while agent
                 // access is already stopped is a control offering to do
@@ -193,20 +197,56 @@ struct AgentActivityPage: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.hidden)
         .navigationTitle("Agent Activity")
     }
 
     // MARK: - Header
 
-    private var header: some View {
-        HStack(spacing: 6) {
+    /// Title and state pills on one row, mirroring `OverviewPage`'s header.
+    ///
+    /// **Why they were merged.** Each pill used to occupy a full row of its
+    /// own below a full-row title, so the common paused case spent about 50pt
+    /// of a 42mm face on two short phrases — and pushed this page's one
+    /// control, the kill switch, off the bottom. On a paged app the user has
+    /// just swiped to get here, so the title is orientation rather than news;
+    /// it can share a line with the state it qualifies.
+    ///
+    /// `ViewThatFits` handles the case where both pills apply at once — the
+    /// candidates are pills and a `Text` with honest intrinsic widths, which
+    /// is the precondition the API needs (and which `OverviewPage`'s dials
+    /// famously do not meet).
+    private var headerRow: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                titleLabel
+                Spacer(minLength: 4)
+                pills
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                titleLabel
+                HStack(spacing: 5) { pills }
+            }
+        }
+    }
+
+    private var titleLabel: some View {
+        HStack(spacing: 4) {
             Image(systemName: "sparkles")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.accent)
             Text("Agent Activity")
-                .font(.headline)
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(palette.textPrimary)
+                .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var pills: some View {
+        if isStale { staleBanner }
+        if agentAccessPaused == true { pausedBanner }
     }
 
     /// States plainly, above everything else on the page, that the kill
@@ -215,28 +255,27 @@ struct AgentActivityPage: View {
     /// (a filled icon, not orange) since the two can be true at once and
     /// must read as two different facts, not variations on one.
     private var pausedBanner: some View {
-        HStack(alignment: .top, spacing: 4) {
-            Image(systemName: "bolt.slash.fill")
-            Text("Agent access is paused on your Mac.")
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.caption2)
-        .foregroundStyle(.red)
-        .accessibilityElement(children: .combine)
+        // A one-line pill rather than the wrapping sentence this used to be.
+        // "Agent access is paused on your Mac." ran to three lines at 42mm and
+        // pushed the count — the thing the page exists to show — most of the
+        // way off the screen, which is the same "cut off" failure the rest of
+        // this redesign is fixing. The full sentence survives verbatim as the
+        // accessibility label, so nothing is lost for a VoiceOver reader; the
+        // visual carries "Paused" plus a slashed-bolt glyph plus the theme's
+        // danger colour, which is three independent cues for two words.
+        StatusPill(text: "Agents paused", symbol: "bolt.slash.fill", tint: palette.danger)
+            .accessibilityLabel("Agent access is paused on your Mac.")
     }
 
     /// Named plainly rather than shown as a bare icon or a colour shift: the
     /// user has to be able to tell a stale reading from a current one while
     /// glancing, and only words do that reliably.
     private var staleBanner: some View {
-        HStack(alignment: .top, spacing: 4) {
-            Image(systemName: "clock.badge.exclamationmark")
-            Text("Out of date — your Mac hasn't reported recently.")
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.caption2)
-        .foregroundStyle(.orange)
-        .accessibilityElement(children: .combine)
+        // Same compaction as `pausedBanner`, and the two must stay visually
+        // distinct because both can be true at once: this one is the theme's
+        // warning colour with a clock glyph, that one is danger with a bolt.
+        StatusPill(text: "Out of date", symbol: "clock.badge.exclamationmark", tint: palette.warning)
+            .accessibilityLabel("Out of date — your Mac hasn't reported recently.")
     }
 
     @ViewBuilder
@@ -264,10 +303,10 @@ struct AgentActivityPage: View {
     private var unreportedState: some View {
         VStack(alignment: .leading, spacing: 4) {
             VStack(spacing: 6) {
-                SentryDial(fraction: nil, tint: .secondary, lineWidth: 4) {
+                SentryDial(fraction: nil, tint: palette.textSecondary, lineWidth: 4) {
                     Text(WatchFormatting.placeholder)
                         .font(.system(.title3, design: .rounded).weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                 }
@@ -285,7 +324,7 @@ struct AgentActivityPage: View {
             if recentToolNames.isEmpty {
                 Text("This build of Sentry on your Mac may not send agent activity yet.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
@@ -318,7 +357,7 @@ struct AgentActivityPage: View {
             VStack(spacing: 4) {
                 Image(systemName: "checkmark.circle")
                     .font(.title2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.textSecondary)
                 Text("No agent activity")
                     .font(.callout)
                     .multilineTextAlignment(.center)
@@ -328,7 +367,7 @@ struct AgentActivityPage: View {
 
             Text("No AI assistant has used Sentry's tools on your Mac. Tool calls show up here as they happen.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .fixedSize(horizontal: false, vertical: true)
@@ -337,18 +376,40 @@ struct AgentActivityPage: View {
             // agent that ran and then fell outside the log's window. Shown
             // only when it exists; never invented to fill the row.
             if lastActivityAt != nil {
-                lastActivityRow
+                HStack {
+                    Spacer(minLength: 0)
+                    lastActivityColumn
+                    Spacer(minLength: 0)
+                }
             }
         }
     }
 
+    /// **The count and the last-activity time share a row.** Stacked, as they
+    /// were, the count block alone stood about 50pt tall and the two together
+    /// pushed the page's one *control* — Stop Agents, or Resume Agents while
+    /// paused — clean off the bottom of a 42mm face. A control the user has
+    /// to go looking for is the failure this codebase already called out on
+    /// `KeepAwakePage`'s end button, and it applies with more force to a kill
+    /// switch. Side by side they also read better: "128 tool calls, last one
+    /// 58 seconds ago" is one sentence about one thing, and the count's own
+    /// left-aligned column left the right half of the widest line on the
+    /// screen empty.
     private var populatedState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            countLine(
-                value: toolCallCount.map(String.init) ?? "—",
-                caption: toolCallCount == 1 ? "tool call" : "tool calls"
-            )
-            lastActivityRow
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                countLine(
+                    value: toolCallCount.map(String.init) ?? "—",
+                    caption: toolCallCount == 1 ? "tool call" : "tool calls"
+                )
+                Spacer(minLength: 4)
+                lastActivityColumn
+            }
+            if !recentToolNames.isEmpty {
+                Rectangle()
+                    .fill(palette.separator)
+                    .frame(height: 1)
+            }
             toolList
         }
         // Stale numbers stay legible but visibly recede, so the banner above
@@ -361,13 +422,16 @@ struct AgentActivityPage: View {
     private func countLine(value: String, caption: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(value)
-                .font(.system(.title2, design: .monospaced, weight: .semibold))
+                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .foregroundStyle(palette.textPrimary)
+                .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(caption)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(palette.textTertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(value) \(caption)")
@@ -393,17 +457,18 @@ struct AgentActivityPage: View {
     /// acceptable here and would not be on `KeepAwakePage`'s countdown —
     /// "4 min. ago" silently aging into "5 min. ago" misleads nobody, whereas
     /// a frozen countdown would.
-    private var lastActivityRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text("Last")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 4)
+    private var lastActivityColumn: some View {
+        VStack(alignment: .trailing, spacing: 0) {
             Text(lastActivityAt.map { Self.relativeLabel(for: $0) } ?? "—")
-                .font(.caption)
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(palette.textPrimary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            Text("last")
+                .font(.caption2)
+                .foregroundStyle(palette.textTertiary)
+                .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(lastActivityAt == nil ? "Last activity not reported" : "Last activity")
@@ -437,8 +502,7 @@ struct AgentActivityPage: View {
             Text("Stop Agents on Mac")
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.bordered)
-        .tint(.red)
+        .buttonStyle(WatchActionButtonStyle(tint: palette.danger))
         .accessibilityHint("Pauses all AI agent access to your Mac")
     }
 
@@ -453,18 +517,14 @@ struct AgentActivityPage: View {
             Text("Resume Agents on Mac")
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(.bordered)
-        .tint(.green)
+        .buttonStyle(WatchActionButtonStyle(tint: palette.success))
         .accessibilityHint("Resumes AI agent access to your Mac")
     }
 
     @ViewBuilder
     private var toolList: some View {
         if !recentToolNames.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Recent tools")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(recentToolNames.prefix(Self.maximumListedTools).enumerated()), id: \.offset) { _, name in
                     Text(name)
                         .font(.caption)
@@ -480,7 +540,7 @@ struct AgentActivityPage: View {
                 if recentToolNames.count > Self.maximumListedTools {
                     Text("+\(recentToolNames.count - Self.maximumListedTools) more")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.textSecondary)
                 }
             }
         }

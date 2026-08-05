@@ -56,9 +56,14 @@ final class WatchSessionController: NSObject, ObservableObject {
     /// relay — the same reason `sourceIsDemoData` travels with the payload at
     /// all. Both fixtures below set `sourceIsDemoData: true` so even inside a
     /// preview the screen discloses that its numbers are fabricated.
-    init(preview: PreviewFixture) {
+    /// `themeID` overrides the fixture's own, so one fixture can be
+    /// inspected under every built-in palette from the command line — see
+    /// `SentryWatchApp.makeController()` for the launch-argument plumbing.
+    init(preview: PreviewFixture, themeID: String? = nil) {
         super.init()
-        latestSnapshot = preview.snapshot
+        var snapshot = preview.snapshot
+        if let themeID { snapshot.themeID = themeID }
+        latestSnapshot = snapshot
     }
 
     /// Two fixtures, chosen to cover the two states worth eyeballing: a Mac
@@ -66,9 +71,17 @@ final class WatchSessionController: NSObject, ObservableObject {
     /// would have sent — which is also exactly what an old phone paired with
     /// a new watch produces, and therefore the case where every "—" and every
     /// missing bar has to look deliberate rather than broken.
-    enum PreviewFixture {
+    /// `String`-backed so `SentryWatchApp`'s `-SentryWatchDemo <case>` launch
+    /// argument can name one without a second lookup table to keep in sync.
+    enum PreviewFixture: String {
         case fullyPopulated
         case batteryOnly
+        /// The worst case the Overview page can render — hot, throttling and
+        /// memory-critical at once, which is three status pills — plus a
+        /// paused kill switch on the Agent page. This is the fixture that
+        /// actually tests whether the layout holds, and the one every
+        /// "does it still fit" check should be run against.
+        case underPressure
 
         var snapshot: WatchRelaySnapshot {
             let now = Date()
@@ -92,7 +105,34 @@ final class WatchSessionController: NSObject, ObservableObject {
                     isThrottling: false,
                     awakeIsActive: true,
                     awakeExpiresAt: now.addingTimeInterval(42 * 60),
-                    awakeModeLabel: "System only"
+                    awakeModeLabel: "System only",
+                    agentToolCallCount: 14,
+                    agentLastActivityAt: now.addingTimeInterval(-90),
+                    agentRecentToolNames: ["get_system_snapshot", "keep_awake", "preflight_check"],
+                    agentAccessPaused: false
+                )
+            case .underPressure:
+                return WatchRelaySnapshot(
+                    deviceName: "Malek's MacBook Pro",
+                    lastSeen: now.addingTimeInterval(-12),
+                    relayedAt: now.addingTimeInterval(-10),
+                    sourceIsDemoData: true,
+                    batteryPercent: 8,
+                    isCharging: false,
+                    isPluggedIn: false,
+                    thermalPressure: .critical,
+                    batteryIsReported: true,
+                    cpuPercent: 97,
+                    memoryUsedPercent: 96,
+                    memoryPressure: .critical,
+                    diskUsedPercent: 97,
+                    batteryTimeRemainingMinutes: 11,
+                    isThrottling: true,
+                    awakeIsActive: false,
+                    agentToolCallCount: 128,
+                    agentLastActivityAt: now.addingTimeInterval(-30),
+                    agentRecentToolNames: ["get_system_snapshot", "preflight_check", "keep_awake"],
+                    agentAccessPaused: true
                 )
             case .batteryOnly:
                 return WatchRelaySnapshot(

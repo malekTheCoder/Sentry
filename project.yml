@@ -230,6 +230,29 @@ targets:
       # them. Despite its CloudKit-flavored header comment, SyncRecords.swift
       # imports only Foundation, so it builds on watchOS unchanged.
       - path: SentryKit/Sync/SyncRecords.swift
+      # Added for the Watch UI redesign: the watch renders in the user's
+      # chosen theme rather than in hardcoded system colors, so it needs the
+      # real `Theme`/`ThemeColor` types the Mac and phone already share
+      # (which theme is chosen travels in `WatchRelaySnapshot.themeID`).
+      # Both files import only Foundation and CoreGraphics — no AppKit, no
+      # GRDB — so they compile on watchOS unchanged, and using the real ones
+      # is what keeps a palette tweak on the Mac from silently failing to
+      # reach the wrist.
+      - path: SentryKit/Settings/Theme.swift
+      - path: SentryKit/Settings/ThemeTokens.swift
+      # Pulled in by the two `Theme` extensions that look a color up by
+      # metric — and worth having on its own terms: it means the watch's
+      # CPU/MEM/DISK dials ask the theme for the *same* per-metric colors the
+      # Mac's own charts use (`theme.metricColor(for: .cpuTotalPercent)`)
+      # instead of inventing a parallel palette that drifts. Self-contained:
+      # imports Foundation and declares MetricModule/MetricUnit itself.
+      - path: SentryKit/Models/MetricID.swift
+      # WCAG relative-luminance and contrast math, used by `WatchPalette`
+      # (SentryWatch/Theme/WatchPalette.swift) to guarantee that whichever
+      # theme is relayed stays readable against the watch's black canvas —
+      # including the light presets (Paper, Ivory, GitHub), whose tokens are
+      # authored for a white page. Pure Foundation.
+      - path: SentryKit/Settings/ThemeContrast.swift
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.sentry.kit.watch
       PRODUCT_NAME: SentryKit

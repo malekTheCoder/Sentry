@@ -58,6 +58,14 @@ import WatchKit
 /// a plain row, and that failure mode is the reason for the branch rather than
 /// a `minimumScaleFactor` deep enough to hide it.
 struct SentryDial<Center: View>: View {
+    /// The unfilled track and the dotted "not reported" collar both come from
+    /// the relayed theme's separator token rather than from SwiftUI's
+    /// `.tertiary`. `.tertiary` resolves against the *system* palette, which
+    /// is the one thing on these pages that could not follow the user's
+    /// theme — and it rendered as a flat mid-grey that read as a fourth
+    /// competing colour next to three themed arcs.
+    @Environment(\.palette) private var palette
+
     /// `0...1`, or `nil` for "the Mac did not report this." Values outside the
     /// range are clamped *for the arc only* — the caller still prints the raw
     /// number, on the same reasoning `MetricTile.fraction` documents: an arc
@@ -93,7 +101,7 @@ struct SentryDial<Center: View>: View {
         ZStack {
             if let fraction {
                 arc(to: Self.sweep)
-                    .stroke(.tertiary, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .stroke(palette.separator, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 arc(to: Self.sweep * min(max(fraction, 0), 1))
                     .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             } else {
@@ -123,7 +131,7 @@ struct SentryDial<Center: View>: View {
     private var notReported: some View {
         arc(to: Self.sweep)
             .stroke(
-                .tertiary,
+                palette.separator,
                 style: StrokeStyle(
                     lineWidth: lineWidth,
                     lineCap: .round,
@@ -229,14 +237,23 @@ enum MetricSeverity {
     case elevated
     case high
 
-    /// `nil` at normal severity, so the caller keeps the metric's own identity
-    /// colour (CPU blue, memory purple, disk teal) rather than being forced to
-    /// a neutral by this type.
-    var tint: Color? {
+    /// `nil` at normal severity, so the caller keeps the metric's own
+    /// identity colour — which is now the theme's own per-metric token (see
+    /// `WatchPalette.metricColor`) rather than a hardcoded blue/purple/teal.
+    ///
+    /// **Takes the palette rather than returning `Color.orange`/`Color.red`.**
+    /// Those two literals were the last hardcoded colours on these pages and
+    /// the reason a "warning" on the wrist did not match a warning anywhere
+    /// else in the product. Routing through the theme's `warning`/`danger`
+    /// means a user who picks Solarized gets Solarized's amber and red, and
+    /// — because `WatchPalette` contrast-checks every token it returns — the
+    /// escalation stays visible even in a preset whose warning colour was
+    /// authored for a white page.
+    func tint(in palette: WatchPalette) -> Color? {
         switch self {
         case .normal: return nil
-        case .elevated: return .orange
-        case .high: return .red
+        case .elevated: return palette.warning
+        case .high: return palette.danger
         }
     }
 

@@ -338,6 +338,31 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
     /// actually see the state.
     public var agentAccessPaused: Bool?
 
+    // MARK: Appearance
+
+    /// Which `Theme` the user picked, as a `Theme.id` — e.g.
+    /// `"builtin.oneDark"`. The watch resolves it against
+    /// `Theme.builtInPresets` and renders its whole UI in that palette.
+    ///
+    /// **An id, not the colors.** A `Theme` carries ~14 `ThemeColor`s plus
+    /// per-metric entries, and serialising all of them would be several
+    /// hundred bytes on a `WCSession` payload that
+    /// `WatchRelaySnapshotTests.testAFullyPopulatedPayloadStaysSmall` caps at
+    /// 1 KB — for data that is identical on both ends and changes about once
+    /// a year. The id is ~20 bytes and both sides already compile the same
+    /// `Theme.builtInPresets`, so they cannot disagree about what
+    /// `"builtin.nord"` looks like.
+    ///
+    /// The cost is that a **custom** (user-authored) theme has no entry in
+    /// `builtInPresets`, so the watch falls back to `Theme.defaultTheme`
+    /// rather than rendering a palette it was never sent. That is the honest
+    /// outcome for this design and a deliberate trade: relaying full color
+    /// tables to cover the custom-theme case would cost every user payload
+    /// budget for a feature only some have, and a wrong-but-plausible palette
+    /// is worse than the default one. `nil` — an older phone that predates
+    /// this field — takes the same fallback.
+    public var themeID: String?
+
     /// New parameters are defaulted so every existing call site — previews,
     /// tests, and `WatchRelayManager`'s own construction before it was
     /// taught the new fields — keeps compiling and keeps meaning exactly
@@ -364,7 +389,8 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         agentToolCallCount: Int? = nil,
         agentLastActivityAt: Date? = nil,
         agentRecentToolNames: [String]? = nil,
-        agentAccessPaused: Bool? = nil
+        agentAccessPaused: Bool? = nil,
+        themeID: String? = nil
     ) {
         self.deviceName = deviceName
         self.lastSeen = lastSeen
@@ -388,6 +414,17 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         self.agentLastActivityAt = agentLastActivityAt
         self.agentRecentToolNames = agentRecentToolNames
         self.agentAccessPaused = agentAccessPaused
+        self.themeID = themeID
+    }
+
+    /// The `Theme` this payload names, or `Theme.defaultTheme` when it names
+    /// none this build knows — see `themeID` for why a custom theme lands
+    /// here too rather than being approximated.
+    public var resolvedTheme: Theme {
+        guard let themeID, let match = Theme.builtInPresets.first(where: { $0.id == themeID }) else {
+            return .defaultTheme
+        }
+        return match
     }
 
     /// How urgently `SentryWatchWidget`'s complication deserves to surface
@@ -519,6 +556,7 @@ extension WatchRelaySnapshot {
         agentLastActivityAt = try container.decodeIfPresent(Date.self, forKey: .agentLastActivityAt)
         agentRecentToolNames = try container.decodeIfPresent([String].self, forKey: .agentRecentToolNames)
         agentAccessPaused = try container.decodeIfPresent(Bool.self, forKey: .agentAccessPaused)
+        themeID = try container.decodeIfPresent(String.self, forKey: .themeID)
     }
 }
 
