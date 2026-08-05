@@ -146,6 +146,12 @@ final class SnapshotDebugFormatterTests: XCTestCase {
         let names = Set(meta.fields.map(\.name))
         XCTAssertEqual(names, ["id", "timestamp", "deviceID", "schemaVersion", "agentAccessPaused", "protectionScore"])
         XCTAssertEqual(meta.fields.first { $0.name == "deviceID" }?.value, "test-device")
+        // `themePalette` is a top-level field and is deliberately absent —
+        // see `SnapshotDebugFormatter.excludedTopLevelKeys`. Asserted rather
+        // than left implicit in the set above, because the exclusion is the
+        // interesting part: without it `Mirror` sweeps the whole palette
+        // struct into this section.
+        XCTAssertFalse(names.contains("themePalette"), "presentation plumbing must not clutter the diagnostics dump")
     }
 
     // MARK: - Plain text (Copy button)

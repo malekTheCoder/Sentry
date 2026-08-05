@@ -269,6 +269,73 @@ final class WatchRelaySnapshotTests: XCTestCase {
         XCTAssertLessThan(data.count, 1024, "Encoded relay payload grew past 1 KB: \(data.count) bytes")
     }
 
+    /// The worst realistic payload: everything populated *and* a relayed
+    /// palette, which is what a Mac running a custom theme actually sends.
+    ///
+    /// **Why this gets its own budget rather than being folded into the test
+    /// above.** `RelayedPalette` is the single largest thing ever added to
+    /// this payload — fifteen colour fields — and it was added knowing that,
+    /// because it is the only way a theme that exists solely on one Mac can
+    /// reach the wrist. Measuring it separately keeps the original guard
+    /// honest about the common case while making the cost of the palette a
+    /// number someone can see and argue with, instead of a header comment
+    /// claiming it is "small".
+    func testAPayloadCarryingARelayedPaletteStaysWithinTheWCSessionBudget() throws {
+        var snapshot = makeFullyPopulated()
+        snapshot.themeID = Theme.ivory.id
+        snapshot.themeAppearance = ThemeAppearance.light.rawValue
+        snapshot.themePalette = RelayedPalette(theme: .ivory, appearance: .light)
+
+        let data = try JSONEncoder().encode(snapshot)
+        XCTAssertLessThan(
+            data.count, 2048,
+            "Relay payload with a palette grew past 2 KB: \(data.count) bytes"
+        )
+    }
+
+    func testARelayedPaletteCarriesIvorysExactColours() {
+        let palette = RelayedPalette(theme: .ivory, appearance: .light)
+        XCTAssertEqual(palette.bg, "FAF9F5")
+        XCTAssertEqual(palette.sf, "F0EEE6")
+        XCTAssertEqual(palette.t1, "3D3D3A")
+        XCTAssertEqual(palette.ac, "C96442")
+        XCTAssertEqual(palette.cpu, "5F7DA8")
+        XCTAssertEqual(palette.mem, "8A6FA8")
+        XCTAssertEqual(palette.dsk, "8A8778")
+    }
+
+    /// The case the whole field exists for: a theme that is not in
+    /// `builtInPresets` at all still arrives with usable colours, where its
+    /// id alone would resolve to the default preset on the far side.
+    func testACustomThemeSurvivesTheRelayEvenThoughItsIDCannot() throws {
+        var custom = Theme.ivory
+        custom.id = "custom.9F1C"
+        custom.name = "My Fork"
+        custom.isBuiltIn = false
+        custom.accent = ThemeColor(hex: "#123456")
+
+        var snapshot = makeFullyPopulated()
+        snapshot.themeID = custom.id
+        snapshot.themePalette = RelayedPalette(theme: custom, appearance: .light)
+
+        let payload = try XCTUnwrap(snapshot.wcSessionPayload())
+        let decoded = try XCTUnwrap(WatchRelaySnapshot.from(wcSessionPayload: payload))
+
+        XCTAssertEqual(decoded.resolvedTheme.id, Theme.defaultTheme.id, "the id genuinely cannot resolve")
+        XCTAssertEqual(decoded.themePalette?.ac, "123456", "but the colours arrive intact")
+    }
+
+    /// A translucent token must keep its alpha across the wire — several
+    /// presets set `separator`/`chartGrid` to a low-alpha wash, and dropping
+    /// it would draw a hairline several times heavier than the Mac's.
+    func testARelayedPaletteKeepsAlphaOnTranslucentTokens() {
+        var theme = Theme.ivory
+        theme.separator = ThemeColor(hex: "#000000", opacity: 0.05)
+        let palette = RelayedPalette(theme: theme, appearance: .light)
+        XCTAssertEqual(palette.sp.count, 8, "expected RRGGBBAA for a translucent token, got \(palette.sp)")
+        XCTAssertTrue(palette.sp.hasPrefix("000000"))
+    }
+
     // MARK: - themeID / resolvedTheme (the Watch redesign's one new wire
     // field: the watch renders in the user's chosen palette, and an id is
     // what travels rather than a table of colours)

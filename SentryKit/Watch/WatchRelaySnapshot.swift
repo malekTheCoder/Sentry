@@ -382,6 +382,22 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
     /// both this platform's convention and the behaviour that shipped before.
     public var themeAppearance: String?
 
+    /// The theme's actual colours, already resolved for `themeAppearance`.
+    ///
+    /// **This is what makes a *custom* theme reach the wrist**, and it is the
+    /// one case `themeID` structurally cannot cover: a theme forked in the
+    /// Mac's editor or imported from a `.sentrytheme` file lives in
+    /// `AppSettings.customThemes`, exists only on that Mac, and no id
+    /// resolves it anywhere else. See `RelayedPalette` for the full argument
+    /// and for why it carries fifteen short hex fields rather than a whole
+    /// `Theme`.
+    ///
+    /// Takes precedence over `themeID` when present. `themeID` is kept
+    /// alongside it rather than replaced: it costs about twenty bytes, it is
+    /// what a dumped payload is actually readable by, and it is the fallback
+    /// when an older phone sends an id and no palette.
+    public var themePalette: RelayedPalette?
+
     /// New parameters are defaulted so every existing call site — previews,
     /// tests, and `WatchRelayManager`'s own construction before it was
     /// taught the new fields — keeps compiling and keeps meaning exactly
@@ -410,7 +426,8 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         agentRecentToolNames: [String]? = nil,
         agentAccessPaused: Bool? = nil,
         themeID: String? = nil,
-        themeAppearance: String? = nil
+        themeAppearance: String? = nil,
+        themePalette: RelayedPalette? = nil
     ) {
         self.deviceName = deviceName
         self.lastSeen = lastSeen
@@ -436,6 +453,7 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         self.agentAccessPaused = agentAccessPaused
         self.themeID = themeID
         self.themeAppearance = themeAppearance
+        self.themePalette = themePalette
     }
 
     /// The light/dark half this payload names, defaulting to `.dark` when the
@@ -585,6 +603,7 @@ extension WatchRelaySnapshot {
         agentAccessPaused = try container.decodeIfPresent(Bool.self, forKey: .agentAccessPaused)
         themeID = try container.decodeIfPresent(String.self, forKey: .themeID)
         themeAppearance = try container.decodeIfPresent(String.self, forKey: .themeAppearance)
+        themePalette = try container.decodeIfPresent(RelayedPalette.self, forKey: .themePalette)
     }
 }
 

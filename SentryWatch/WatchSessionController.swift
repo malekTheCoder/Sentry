@@ -64,7 +64,48 @@ final class WatchSessionController: NSObject, ObservableObject {
         var snapshot = preview.snapshot
         if let themeID { snapshot.themeID = themeID }
         if let appearance { snapshot.themeAppearance = appearance }
+
+        // **Populate the relayed palette too, not just the id.** In
+        // production the Mac always sends `themePalette` and the watch
+        // prefers it (see `WatchPalette.relayed`), so a fixture that set only
+        // an id would exercise the *fallback* path and leave the one that
+        // actually ships unverified — including the custom-theme case, which
+        // has no id to resolve at all.
+        //
+        // `custom.*` is a deliberate escape hatch for eyeballing that case:
+        // it resolves to nothing in `builtInPresets`, exactly like a real
+        // theme forked in the Mac's editor, so what reaches the screen can
+        // only have come through the palette.
+        let resolved = snapshot.resolvedTheme
+        let base = (themeID?.hasPrefix("custom.") == true) ? Self.demoCustomTheme(from: resolved) : resolved
+        snapshot.themePalette = RelayedPalette(theme: base, appearance: snapshot.resolvedAppearance)
         latestSnapshot = snapshot
+    }
+
+    /// A recognisably-not-a-preset palette, for proving the custom-theme path
+    /// end to end on a simulator. Deliberately garish relative to any
+    /// built-in so a screenshot cannot be mistaken for a preset.
+    private static func demoCustomTheme(from base: Theme) -> Theme {
+        var theme = base
+        theme.id = "custom.demo"
+        theme.isBuiltIn = false
+        theme.background = ThemeColor(hex: "#101820")
+        theme.surface = ThemeColor(hex: "#1B2A33")
+        theme.surfaceElevated = ThemeColor(hex: "#24404D")
+        theme.textPrimary = ThemeColor(hex: "#F2E8CF")
+        theme.textSecondary = ThemeColor(hex: "#A9BFA8")
+        theme.textTertiary = ThemeColor(hex: "#6E8A7E")
+        theme.accent = ThemeColor(hex: "#F76C5E")
+        theme.success = ThemeColor(hex: "#8AC926")
+        theme.warning = ThemeColor(hex: "#FFCA3A")
+        theme.danger = ThemeColor(hex: "#FF595E")
+        theme.separator = ThemeColor(hex: "#33505C")
+        theme.metricColors = [
+            "cpu.total_percent": ThemeColor(hex: "#4CC9F0"),
+            "memory.used_bytes": ThemeColor(hex: "#B5179E"),
+            "disk.read_bytes_per_sec": ThemeColor(hex: "#80ED99"),
+        ]
+        return theme
     }
 
     /// Two fixtures, chosen to cover the two states worth eyeballing: a Mac
