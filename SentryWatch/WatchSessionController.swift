@@ -59,10 +59,11 @@ final class WatchSessionController: NSObject, ObservableObject {
     /// `themeID` overrides the fixture's own, so one fixture can be
     /// inspected under every built-in palette from the command line — see
     /// `SentryWatchApp.makeController()` for the launch-argument plumbing.
-    init(preview: PreviewFixture, themeID: String? = nil) {
+    init(preview: PreviewFixture, themeID: String? = nil, appearance: String? = nil) {
         super.init()
         var snapshot = preview.snapshot
         if let themeID { snapshot.themeID = themeID }
+        if let appearance { snapshot.themeAppearance = appearance }
         latestSnapshot = snapshot
     }
 

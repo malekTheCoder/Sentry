@@ -24,10 +24,10 @@ enum WatchLayout {
     static let horizontalMargin: CGFloat = 10
 
     /// Gap between the stacked sections of a page.
-    static let sectionSpacing: CGFloat = 5
+    static let sectionSpacing: CGFloat = 4
 
     /// Inner padding of a `WatchCard`.
-    static let cardPadding: CGFloat = 7
+    static let cardPadding: CGFloat = 6
 
     /// Corner radius for cards. Deliberately generous — it echoes the
     /// display's own corner curve, which is the single strongest visual cue
@@ -45,7 +45,7 @@ enum WatchLayout {
     /// "Memory critical", the most alarming thing the app can say — were
     /// clipped. Applied through `safeAreaInset` by the shell so a page cannot
     /// forget it.
-    static let pagingIndicatorClearance: CGFloat = 26
+    static let pagingIndicatorClearance: CGFloat = 8
 }
 
 // MARK: - WatchCard
@@ -103,9 +103,16 @@ struct StatusPill: View {
     /// that has to be seen first.
     var isProminent: Bool = false
 
+    /// Glyph-only when false. The caller that uses this
+    /// (`OverviewPage.StatusChips`) does so to keep three simultaneous
+    /// warnings on one row at 42mm rather than wrapping them below the fold —
+    /// `text` is still passed and still spoken, so nothing is lost to
+    /// VoiceOver and the tint plus symbol still distinguish the states.
+    var showsText: Bool = true
+
     var body: some View {
         Label {
-            Text(text)
+            if showsText { Text(text) }
         } icon: {
             Image(systemName: symbol)
         }
@@ -120,6 +127,7 @@ struct StatusPill: View {
                 .fill(isProminent ? AnyShapeStyle(tint) : AnyShapeStyle(tint.opacity(0.18)))
         )
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 }
 

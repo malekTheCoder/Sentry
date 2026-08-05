@@ -148,7 +148,12 @@ final class WatchRelayManager: NSObject {
             // `RootTabView`'s doc comment). Defaulted to match those two call
             // sites exactly so a phone that has never opened Settings relays
             // the same theme it is itself rendering.
-            themeID: UserDefaults.standard.string(forKey: "selectedThemeID") ?? Theme.oneDark.id
+            themeID: UserDefaults.standard.string(forKey: "selectedThemeID") ?? Theme.oneDark.id,
+            // Written by `RootTabView.publishAppearanceForWatch()` — see
+            // `WatchRelaySnapshot.themeAppearance` for why the watch cannot
+            // work this out for itself. Absent until this phone has drawn a
+            // frame, which the watch treats as `.dark`.
+            themeAppearance: UserDefaults.standard.string(forKey: WatchRelayAppearance.defaultsKey)
         )
 
         let now = Date()

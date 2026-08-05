@@ -363,6 +363,25 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
     /// this field — takes the same fallback.
     public var themeID: String?
 
+    /// Which half of the theme's light/dark pair the **phone** is currently
+    /// rendering, as a `ThemeAppearance` raw value.
+    ///
+    /// **Why the appearance has to travel too, rather than being decided on
+    /// the watch.** `ThemeColor` stores a light/dark pair and every other
+    /// surface picks a half by asking its environment for a `ColorScheme`.
+    /// watchOS has no light appearance and therefore no such environment
+    /// value to ask, so the watch has nothing to decide with — and the first
+    /// version of this feature responded by hardcoding the dark half and a
+    /// black canvas. That is wrong for a user running a light theme: they
+    /// look at a light phone, raise their wrist, and see a black screen that
+    /// plainly does not match. Relaying the phone's resolved appearance is
+    /// what lets the watch render the same half of the same theme the app is
+    /// rendering, which is what "matches my app" actually means.
+    ///
+    /// `nil` — a phone predating this field — falls back to `.dark`, which is
+    /// both this platform's convention and the behaviour that shipped before.
+    public var themeAppearance: String?
+
     /// New parameters are defaulted so every existing call site — previews,
     /// tests, and `WatchRelayManager`'s own construction before it was
     /// taught the new fields — keeps compiling and keeps meaning exactly
@@ -390,7 +409,8 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         agentLastActivityAt: Date? = nil,
         agentRecentToolNames: [String]? = nil,
         agentAccessPaused: Bool? = nil,
-        themeID: String? = nil
+        themeID: String? = nil,
+        themeAppearance: String? = nil
     ) {
         self.deviceName = deviceName
         self.lastSeen = lastSeen
@@ -415,6 +435,13 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
         self.agentRecentToolNames = agentRecentToolNames
         self.agentAccessPaused = agentAccessPaused
         self.themeID = themeID
+        self.themeAppearance = themeAppearance
+    }
+
+    /// The light/dark half this payload names, defaulting to `.dark` when the
+    /// phone said nothing — see `themeAppearance`.
+    public var resolvedAppearance: ThemeAppearance {
+        themeAppearance.flatMap(ThemeAppearance.init(rawValue:)) ?? .dark
     }
 
     /// The `Theme` this payload names, or `Theme.defaultTheme` when it names
@@ -557,6 +584,7 @@ extension WatchRelaySnapshot {
         agentRecentToolNames = try container.decodeIfPresent([String].self, forKey: .agentRecentToolNames)
         agentAccessPaused = try container.decodeIfPresent(Bool.self, forKey: .agentAccessPaused)
         themeID = try container.decodeIfPresent(String.self, forKey: .themeID)
+        themeAppearance = try container.decodeIfPresent(String.self, forKey: .themeAppearance)
     }
 }
 
@@ -619,4 +647,20 @@ extension WatchRelaySnapshot {
         guard let data = dictionary[payloadKey] as? Data else { return nil }
         return try? JSONDecoder().decode(WatchRelaySnapshot.self, from: data)
     }
+}
+
+// MARK: - WatchRelayAppearance
+
+/// The one `UserDefaults` key carrying "which half of the theme is this phone
+/// rendering right now", written by `RootTabView` and read by
+/// `WatchRelayManager`.
+///
+/// A named constant in `SentryKit` rather than a string literal at each end
+/// because the two ends are in different targets (`SentryMobile` writes,
+/// `SentryMobile` reads — but through an actor that has no view of the other
+/// file), and a typo would fail silently as "the watch never follows light
+/// mode" rather than as a build error. `selectedThemeID` is spelled as a
+/// literal at its own call sites and is exactly the precedent not to follow.
+public enum WatchRelayAppearance {
+    public static let defaultsKey = "resolvedThemeAppearanceForWatch"
 }
