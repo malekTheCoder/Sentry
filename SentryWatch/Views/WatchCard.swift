@@ -24,10 +24,10 @@ enum WatchLayout {
     static let horizontalMargin: CGFloat = 10
 
     /// Gap between the stacked sections of a page.
-    static let sectionSpacing: CGFloat = 4
+    static let sectionSpacing: CGFloat = 2
 
     /// Inner padding of a `WatchCard`.
-    static let cardPadding: CGFloat = 6
+    static let cardPadding: CGFloat = 5
 
     /// Corner radius for cards. Deliberately generous — it echoes the
     /// display's own corner curve, which is the single strongest visual cue
@@ -191,5 +191,67 @@ struct SectionHeading: View {
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .accessibilityAddTraits(.isHeader)
+    }
+}
+
+// MARK: - FreshnessPill
+
+/// How old the reading is, as a `StatusPill` rather than the bare
+/// icon-and-label `FreshnessBadge` renders.
+///
+/// **Why the watch has its own instead of using `FreshnessBadge`.** That view
+/// is shared with the Mac and phone, where it sits inline in a header and a
+/// plain tinted label is right. On this screen it now sits in the status row
+/// beside the thermal chip, where a bare label would read as the odd one out —
+/// two adjacent readouts saying the same *kind* of thing should look like the
+/// same kind of thing. It also has to be able to drop its text and survive as
+/// a glyph when three warnings are already competing for the row, which
+/// `FreshnessBadge` has no way to express.
+///
+/// **What is deliberately copied rather than reinvented.** The tiers, the
+/// labels, the dot-versus-moon glyph split and the refresh cadence all come
+/// straight from `Freshness`/`FreshnessBadge` — this is a restyling, not a
+/// second opinion about when a reading is stale. The one substitution is
+/// colour: plan §12.2's green/amber/gray becomes the theme's
+/// `success`/`warning`/`textSecondary`, so a user on Ivory gets Ivory's green
+/// rather than the system's, matching every other colour on these pages.
+///
+/// `TimelineView(.periodic)` is what keeps "Live" from lying: a watch app left
+/// open with no new relay arriving must not keep claiming the reading is
+/// current, and this is the page's one element that must never do that.
+struct FreshnessPill: View {
+    @Environment(\.palette) private var palette
+
+    let lastSeen: Date
+
+    /// Glyph-only when false — see `StatusPill.showsText`.
+    var showsText: Bool = true
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: FreshnessBadge.defaultRefreshInterval)) { context in
+            pill(now: context.date)
+        }
+    }
+
+    private func pill(now: Date) -> some View {
+        let freshness = Freshness(lastSeen: lastSeen, now: now)
+        return StatusPill(
+            text: freshness.label(lastSeen: lastSeen, now: now),
+            symbol: freshness.symbolName,
+            tint: tint(for: freshness),
+            showsText: showsText
+        )
+    }
+
+    /// Plan §12.2's assignment, resolved through the theme. `.asleep` shares
+    /// `.stale`'s tone deliberately: the plan gives it no colour of its own
+    /// because the moon glyph is what marks it as categorically different,
+    /// and inventing a fifth colour here would be this file overruling that.
+    private func tint(for freshness: Freshness) -> Color {
+        switch freshness {
+        case .live: return palette.success
+        case .recent: return palette.warning
+        case .stale, .asleep: return palette.textSecondary
+        }
     }
 }

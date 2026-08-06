@@ -97,43 +97,58 @@ struct OverviewPage: View {
 
     private var usesDials: Bool { !dynamicTypeSize.isAccessibilitySize }
 
+    /// Measured height of `content`, and of the scroll view it sits in.
+    /// Together they decide whether scrolling is switched off — see `body`.
+    @State private var contentHeight: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+
+    /// True once both measurements have arrived *and* the content genuinely
+    /// fits. Starts false, so the very first frame — before any measurement —
+    /// is scrollable rather than clipped.
+    private var contentFits: Bool {
+        contentHeight > 0 && viewportHeight > 0 && contentHeight <= viewportHeight
+    }
+
     var body: some View {
-        // **The page is laid out to fit outright, and the `ScrollView` is
-        // kept anyway.** This is what a raise-to-wake lands on, so anything
-        // below the fold is data the user believes they glanced at and did
-        // not — the demo disclosure moved into `header` and `StatusChips`
-        // gained its one-row rule specifically to buy the ~50pt that makes
-        // everything fit on the smallest supported face at rest.
+        // **Scrolling is switched off only when the content is measured to
+        // fit, never on the assumption that it will.**
         //
-        // Dropping the `ScrollView` once it stopped being needed was tried
-        // and is wrong twice over: watchOS hands a scroll view the top safe
-        // area that keeps content clear of the system clock, so a bare
-        // `VStack` rendered the header straight through the time (verified on
-        // the simulator), and at accessibility text sizes the flat layout
-        // genuinely is taller than any face. A scroll view whose content fits
-        // does not scroll; keeping it costs nothing and covers both.
-        ScrollView { content }
-            .scrollIndicators(.hidden)
-            // **Scrolling is switched off at the sizes where the page is
-            // known to fit.** The layout above was tightened until everything
-            // — header, hero, all three dials and the thermal state — is on
-            // screen at rest on the smallest supported face, but a
-            // `ScrollView` on watchOS still lets content travel up under the
-            // system clock, so the page could be nudged out of position for
-            // no gain. Disabling it makes "it all fits" a property of the
-            // page rather than something that merely happens to be true.
-            //
-            // The scroll view itself is kept rather than swapped for a plain
-            // `VStack`: watchOS hands a scroll view the top safe area that
-            // keeps content clear of the clock, and a bare stack rendered the
-            // header straight through the time (verified on the simulator).
-            //
-            // Bounded at `.large` — the top of the default range — rather
-            // than at `usesDials`. Between `.large` and the accessibility
-            // sizes the dials are still drawn but the text around them has
-            // grown enough that the fit is no longer guaranteed, and an
-            // unreachable status chip is far worse than a page that scrolls.
-            .scrollDisabled(dynamicTypeSize <= .large)
+        // The page is laid out to fit a 42mm face at rest — the demo
+        // disclosure moved into `header`, `StatusChips` gained a one-row rule,
+        // and `topInsetReclaim` pulls the whole thing up into the dead band
+        // under the clock. A fixed `scrollDisabled(true)` on top of that
+        // looked right and was a real bug: in the worst case this screen can
+        // render — three simultaneous warnings *and* a three-line hero
+        // ("8%", "11m left", "Critically low") — the content is genuinely
+        // taller than the display, and a disabled scroll view does not
+        // shrink it, it **clips** it. The status row was cut in half at the
+        // bottom edge with no way to reach it. Silent clipping is strictly
+        // worse than either alternative.
+        //
+        // Measuring both sides costs two preference keys and makes the
+        // behaviour exact: the common case (everything nominal) fits and is
+        // pinned, so the page cannot be nudged under the clock for no gain;
+        // the rare alarming case exceeds the screen and scrolls, so nothing
+        // is ever unreachable. It also self-corrects for the cases a fixed
+        // Dynamic Type bound could only guess at — a long device name that
+        // wraps, a larger text size, a future face.
+        ScrollView {
+            content
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                    }
+                )
+        }
+        .scrollIndicators(.hidden)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: ViewportHeightKey.self, value: proxy.size.height)
+            }
+        )
+        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
+        .onPreferenceChange(ViewportHeightKey.self) { viewportHeight = $0 }
+        .scrollDisabled(contentFits)
     }
 
     private var content: some View {
@@ -165,80 +180,77 @@ struct OverviewPage: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // **Pull the page up into the dead band under the clock.**
+        //
+        // watchOS gives a scroll view a generous top safe area — enough for
+        // the time plus the breathing room a *scrolling* page wants above its
+        // first line. This page does not scroll (see `body`), so that
+        // allowance is not breathing room, it is 30-odd points of nothing at
+        // the top paid for by the bottom: the metrics card's rounded lower
+        // edge was being clipped by the screen and the paging dots were
+        // sitting on it.
+        //
+        // Reclaiming part of it is the right fix rather than shrinking the
+        // dials again — the content was not too tall, it was too low. Kept to
+        // less than half the inset so the header still clears the clock by a
+        // comfortable margin, measured at 42mm where the band is tightest and
+        // then re-checked at 46mm and 49mm.
+        .padding(.top, -Self.topInsetReclaim)
     }
+
+    /// See `content`. A stored constant rather than a literal so the two
+    /// places that reason about the top band — this and `ContentView
+    /// .topScrimHeight` — are adjusted together deliberately rather than by
+    /// coincidence.
+    private static let topInsetReclaim: CGFloat = 20
 
     // MARK: Header
 
-    /// **One header line: how old this is, and which Mac.** In that order.
+    /// **The device name, and nothing else.**
     ///
-    /// The freshness badge leads because it qualifies everything below it and
-    /// because "Live" is the word that decides whether the rest of the screen
-    /// is worth reading — plan §12.2 makes it the one element that must never
-    /// be missed, so it gets the position that is unconditionally on screen at
-    /// every size.
+    /// This row used to lead with the freshness badge, on the reasoning that
+    /// plan §12.2 makes freshness the one element that must never be missed,
+    /// so it should hold the position that is unconditionally on screen. That
+    /// reasoning was sound while the page could scroll — it is not any more.
+    /// The page is now laid out to fit a 42mm face outright and scrolling is
+    /// switched off at the sizes where that holds, so *every* element is
+    /// unconditionally on screen and the badge no longer has to buy that
+    /// property with the most prominent slot on the page.
     ///
-    /// The device name is the caption to it, not the headline of the page: a
-    /// user with a single Mac learns nothing from that string, every time they
-    /// raise their wrist. It is not removed — a user with two Macs needs it to
-    /// know whose numbers these are, and this app must never be ambiguous
-    /// about that — but it is `.caption2` secondary and trailing-aligned.
+    /// Which frees the top line to answer the question it should have been
+    /// answering: whose Mac is this. That is the natural page title, it is
+    /// what the phone dashboard and the Mac window both put at the top, and
+    /// on a watch it is the one line the eye lands on before anything else.
+    /// The freshness moves to the status row at the bottom, next to the
+    /// thermal state — see `StatusChips`, which is where two readouts of the
+    /// same kind belong together.
+    ///
+    /// Truncation, not scaling, when the name is long: a Mac called
+    /// "Malek's MacBook Pro" reads perfectly as "Malek's MacBook…", whereas
+    /// shrinking it to 60% to fit whole makes the page's largest label its
+    /// least legible one.
     private var header: some View {
         HStack(spacing: 6) {
-            // `refreshingEvery:`, not the plain initializer: this is the
-            // page's one "must never lie" element, and a watch app left open
-            // with no new relay arriving must not keep reading "Live" past
-            // its actual freshness window.
-            FreshnessBadge(lastSeen: snapshot.lastSeen, refreshingEvery: FreshnessBadge.defaultRefreshInterval)
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
+            Text(snapshot.deviceName)
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(palette.textPrimary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .layoutPriority(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.85)
 
             Spacer(minLength: 2)
 
-            // **The demo-data disclosure rides here, not on a row of its
-            // own.** As a full-width pill it cost a `sectionSpacing` plus its
-            // own height — about 27pt, which was the difference between this
-            // page fitting a 42mm face and not. It has to stay visible
-            // (`WatchRelaySnapshot.sourceIsDemoData` exists precisely because
-            // a watch surface has no companion banner to disclose fabricated
-            // numbers any other way), and it does: same glyph, same warning
-            // colour, same full sentence to VoiceOver. It replaces the device
-            // name rather than crowding it because a demo payload's device
-            // name is itself fabricated, so nothing true is lost.
+            // The demo-data disclosure keeps its place here rather than
+            // moving down with the freshness. `WatchRelaySnapshot
+            // .sourceIsDemoData` exists because a watch has no companion
+            // banner to say "these numbers are fabricated" any other way, and
+            // the one thing it must never do is sit below the numbers it
+            // disqualifies.
             if snapshot.sourceIsDemoData {
                 DemoDataChip()
-            } else if showsDeviceName {
-                Text(snapshot.deviceName)
-                    .font(.caption2)
-                    .foregroundStyle(palette.textTertiary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .minimumScaleFactor(0.6)
             }
         }
         .padding(.horizontal, 2)
-    }
-
-    /// The device name is dropped entirely in the `.asleep` tier rather than
-    /// truncated.
-    ///
-    /// **Why a tier check and not a layout container.** `Freshness.label`
-    /// produces one long string and three short ones: "Live", "9m ago",
-    /// "3h ago" — and "Mac asleep — last seen 3h ago". With the badge holding
-    /// `layoutPriority(1)`, that fourth case leaves the name a few points of
-    /// width, and the simulator rendered "Malek's MacBook Pro" as a single
-    /// capital M pinned to the right edge. One truncated letter conveys
-    /// nothing and looks like a bug, which is worse than the absence it
-    /// stands in for.
-    ///
-    /// It is also the right *editorial* call. When the app is telling you the
-    /// reading is hours old and the Mac is asleep, that sentence is the whole
-    /// message; which machine it came from is the least useful thing on the
-    /// screen at that moment, and it is still one swipe away on any page that
-    /// names it.
-    private var showsDeviceName: Bool {
-        Freshness(lastSeen: snapshot.lastSeen) != .asleep
     }
 }
 
@@ -294,7 +306,7 @@ private struct HeroReadout: View {
     /// number work on a 42mm Series 11 and a 49mm Ultra — see that type for
     /// why a ring, alone among the things on this page, cannot just be left
     /// to reflow.
-    @ScaledMetric(relativeTo: .title3) private var baseDiameter: CGFloat = 38
+    @ScaledMetric(relativeTo: .title3) private var baseDiameter: CGFloat = 40
 
     private var diameter: CGFloat { baseDiameter * WatchFace.scale }
 
@@ -640,7 +652,7 @@ private struct MetricDial: View {
     /// so ring and digits scale together. At 42mm three of these plus two 4pt
     /// gaps sits comfortably inside the card's content width rather than
     /// exactly filling it.
-    @ScaledMetric(relativeTo: .caption2) private var baseDiameter: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption2) private var baseDiameter: CGFloat = 31
 
     private var diameter: CGFloat { baseDiameter * WatchFace.scale }
 
@@ -863,9 +875,21 @@ private struct StatusChips: View {
     /// intrinsic widths, so each one reports an ideal size that can genuinely
     /// fail to fit, which is the precondition the API needs and the dials do
     /// not meet.
+    /// **Thermal (plus any live warnings) on the left, freshness on the
+    /// right.** The freshness pill moved down here from the page header —
+    /// see `OverviewPage.header` for why it no longer needs the top slot —
+    /// and this is where it belongs: it and the thermal chip are the same
+    /// kind of thing, a one-word state about the machine, and a glance
+    /// reads them together. Pushing it to the trailing edge keeps it from
+    /// being mistaken for one of the warnings beside it, and gives the row
+    /// a stable anchor even when the warning count changes.
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 5) { chipViews(chips) }
+            HStack(spacing: 5) {
+                chipViews(chips)
+                Spacer(minLength: 6)
+                FreshnessPill(lastSeen: snapshot.lastSeen)
+            }
             // Same chips, no labels. The worst case here is a Mac that is
             // hot *and* throttling *and* out of memory — three pills, which
             // do not fit one row at 42mm. Wrapping them to a second row was
@@ -877,7 +901,23 @@ private struct StatusChips: View {
             // labelled version is still the first choice and still wins
             // whenever there is room for it, which is the common one- and
             // two-chip case.
-            HStack(spacing: 4) { chipViews(chips, labelled: false) }
+            //
+            // The freshness pill keeps its text one step longer than the
+            // warnings do: it is the page's "must never lie" element, "2m
+            // ago" is not recoverable from a dot the way "hot" is from a
+            // thermometer, and it is the shortest label in the row anyway.
+            HStack(spacing: 4) {
+                chipViews(chips, labelled: false)
+                Spacer(minLength: 4)
+                FreshnessPill(lastSeen: snapshot.lastSeen)
+            }
+            // Last resort: everything as glyphs. Only reachable when three
+            // warnings are live at once on the narrowest face.
+            HStack(spacing: 4) {
+                chipViews(chips, labelled: false)
+                Spacer(minLength: 4)
+                FreshnessPill(lastSeen: snapshot.lastSeen, showsText: false)
+            }
         }
     }
 
@@ -933,5 +973,25 @@ private struct StatusChips: View {
         case .critical: return "Memory critical"
         case .unknown: return "Memory: unrecognised"
         }
+    }
+}
+
+// MARK: - Fit measurement
+
+/// Height of `OverviewPage`'s laid-out content.
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Height of the scroll view showing it. Compared against
+/// `ContentHeightKey` to decide whether scrolling is needed at all — see
+/// `OverviewPage.body` for why that is measured rather than assumed.
+private struct ViewportHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
