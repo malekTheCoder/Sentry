@@ -157,8 +157,15 @@ final class SystemVitalsTests: XCTestCase {
         let vitals = SystemVitals.vitals(for: snapshot, enabledModules: enabled)
         let status = SystemVitals.status(for: snapshot, vitals: vitals, enabledModules: enabled)
 
-        let thermalReasons = status.reasons.filter { $0.localizedCaseInsensitiveContains("thermal") || $0.localizedCaseInsensitiveContains("throttling") }
-        XCTAssertEqual(thermalReasons.count, 1, "expected exactly one thermal-related reason, got: \(status.reasons)")
+        // Counted across the headline AND the reasons line: since the
+        // headline finding's own reason is dropped from `reasons` (it would
+        // narrate the same condition twice — see `status(for:)`), a
+        // throttling-only snapshot names the condition once, in the headline,
+        // and `reasons` is rightly empty. What this test pins is the original
+        // intent — the condition is narrated exactly once, never twice.
+        let narrated = [status.headline] + status.reasons
+        let thermalMentions = narrated.filter { $0.localizedCaseInsensitiveContains("thermal") || $0.localizedCaseInsensitiveContains("throttling") }
+        XCTAssertEqual(thermalMentions.count, 1, "expected the throttling condition narrated exactly once, got headline \"\(status.headline)\" + reasons \(status.reasons)")
         XCTAssertEqual(status.level, .critical)
     }
 }
