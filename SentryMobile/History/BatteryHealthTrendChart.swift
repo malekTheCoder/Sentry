@@ -114,6 +114,14 @@ struct BatteryHealthTrendChart: View {
             }
         }
         .chartYScale(domain: yDomain)
+        // The area fill under the line runs to the ZERO baseline, not the
+        // domain floor — with a domain clamped around the data (~77...79)
+        // that fill is drawn hundreds of points past the plot's bottom edge,
+        // washing green over everything below the card. Clip the plot to
+        // its own bounds; nothing legitimate draws outside them.
+        .chartPlotStyle { plot in
+            plot.clipped()
+        }
         // Axis labels are furniture, not prose, and they do not reflow: the
         // y-axis reserves whatever width its widest label needs, and the
         // x-axis truncates rather than wrapping. Left unbounded they scale

@@ -26,7 +26,7 @@ import Foundation
 public enum RemotePairing {
 
     /// URL scheme + host, e.g. `sentry://pair?host=…&port=…&code=…`.
-    /// The iPhone target's Info.plist registers `sentryctl` under
+    /// The iPhone target's Info.plist registers `sentry` under
     /// `CFBundleURLTypes`; changing either constant is a breaking change to
     /// already-printed/screenshotted QR codes.
     public static let scheme = "sentry"
