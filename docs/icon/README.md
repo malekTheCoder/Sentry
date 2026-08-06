@@ -9,12 +9,15 @@ visible cream square around it at every size.
 Two derived variants are committed alongside it, because macOS and iOS want
 genuinely different things:
 
-**`sentry-icon-macos.svg`** — the backdrop is dropped and the body is placed on
-Apple's macOS icon grid: 824×824 centred in 1024×1024, leaving the ~100px
-transparent margin the platform expects (macOS does *not* mask app icons, so
-the rounded corners and the drop shadow have to be in the artwork itself). The
-source art's corner radius already matched almost exactly — 165/720 = 22.9%
-against Apple's 185.4/824 = 22.5% — so no reshaping was needed, only scaling.
+**`sentry-icon-macos.svg`** — the pre-Tahoe variant: the backdrop dropped and
+the body placed on the classic macOS icon grid (824×824 centred in 1024×1024
+with the ~100px transparent margin), from when macOS did not mask app icons.
+**No longer what the asset catalog ships.** On macOS Tahoe the system applies
+its own squircle mask to every app icon, and margin-and-baked-corner art gets
+rendered as a small rounded square floating inside the system's plate — the
+"icon in a box" look. The catalog's PNGs are therefore rendered from
+`sentry-icon-ios.svg` (full-bleed, opaque) for macOS too, and the system does
+the masking. This file is kept only as a record of the old grid fit.
 
 **`sentry-icon-ios.svg`** — full-bleed square, because iOS and watchOS apply
 their own corner mask and reject any icon containing an alpha channel. Squaring
