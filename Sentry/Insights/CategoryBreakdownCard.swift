@@ -25,7 +25,7 @@ struct CategoryBreakdownCard: View {
                     domainSection(domain)
                 }
             }
-            Text("Each category starts at 100 and loses the weight of its own findings.")
+            Text("Each category starts at 100 and loses the weight of its own findings. A half's score above is the average of its categories here.")
                 .font(palette.font(size: 10))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)

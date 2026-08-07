@@ -101,21 +101,41 @@ public enum ProtectionBand: String, Codable, Sendable, CaseIterable, Comparable 
 /// A deterministic, explainable 0–100 rating of how well this Mac is
 /// protected, plus the same rating per category.
 ///
-/// **The whole model in two sentences:** each half — hardware and security —
-/// starts at 100 and subtracts every firing insight in its own domain. The
-/// overall score is the average of those two halves, and the *verdict* beside
-/// it comes from whichever half is weaker.
+/// **The whole model in one sentence, applied three times:** a category starts
+/// at 100 and subtracts its own findings; a domain is the mean of its
+/// categories; the overall is the mean of the two domains. The *verdict*
+/// beside the number does not follow that arithmetic — it comes from whichever
+/// half is weaker, floored by the most serious finding open.
 ///
-/// **Why the overall is not itself a subtraction.** It used to be: `100 minus
-/// every finding, globally`. That is arithmetically consistent but produces a
-/// headline number *below both of its own halves* — a Mac scoring 72 hardware
-/// and 85 security showed an overall of 57, which no aggregation a reader can
-/// imagine (average, minimum, weighted) could yield. The same deductions were
-/// being applied three times over: once per category, again per domain, and
-/// again globally, with every level restarting at 100. Averaging the halves
-/// keeps subtraction where it belongs — *within* a domain, where one critical
-/// finding still guts that half — while guaranteeing the headline always sits
-/// between the two numbers printed directly beneath it.
+/// **Why every level is a mean, and neither of the two things it used to be.**
+/// This model has now been corrected twice, at two different levels, for the
+/// same underlying reason: a composite score is only trustworthy if a reader
+/// can check each level against the level printed directly beneath it.
+///
+/// The first version made `overall` a global subtraction — `100 minus every
+/// finding, everywhere`. A Mac reading 72 hardware and 85 security showed an
+/// overall of **57**, below both of its own halves, which no aggregation a
+/// reader can imagine (mean, minimum, weighted) could produce. The same
+/// deductions were being applied three times over: once per category, again
+/// per domain, and again globally, each level restarting at 100.
+///
+/// Averaging the two halves fixed the headline and left the same fault one
+/// level down, where a domain was still `100 minus the sum of all its
+/// categories' deductions`. Six hardware categories reading 81 / 100 / 79 /
+/// 94 / 100 / 100 — a mean of 92 — produced a Hardware & Longevity of **54**.
+/// Individually correct numbers, no visible relationship.
+///
+/// So the rule is now uniform, and the card can be read downward or upward
+/// with the same arithmetic at every step.
+///
+/// **What the mean gives up, and where that is paid for.** Summation punished
+/// breadth: many mediocre categories compounded. A mean dilutes — one ruined
+/// category among six moves its domain by at most a sixth of its fall. That
+/// loss is deliberate and is covered by the verdict rather than by the number:
+/// `band` reads `weakerSubscore` and is floored by `highestSeverity`, so an
+/// open critical finding cannot be described as "well protected" however
+/// flattering the average. Severity governs the words; the mean only sets the
+/// digits.
 ///
 /// **Why the verdict follows the weaker half instead of the average.**
 /// Protection does not average: a pristine battery does not compensate for an
@@ -408,41 +428,102 @@ public struct ProtectionScore: Codable, Sendable, Equatable {
             let inCategory = insights.filter { $0.category == category }
             let lost = inCategory.reduce(0) { $0 + $1.scoreImpact }
             let hasData = categoryHasData(category, context: context)
+            // **A category that produced a finding is scored, whatever the
+            // coverage heuristic thinks.** `categoryHasData` asks whether
+            // enough of the right metrics were collected to judge the
+            // category *in general*; a rule that actually fired is direct
+            // evidence that it was judgeable in this instance, and the two
+            // can disagree — `.security` findings, for one, come from a live
+            // posture read rather than from sampled history.
+            //
+            // Before this, such a category reported `score == nil` while its
+            // deductions still moved the domain: the card listed it under
+            // "not scored" and the half dropped anyway, with nothing on
+            // screen to explain the gap. Scoring it makes the displayed
+            // categories and the arithmetic above them the same set of
+            // numbers, which is the property `subscore(for:)` depends on.
             return CategoryScore(
                 category: category,
-                score: hasData ? clamp(maximum - lost) : nil,
+                score: (hasData || !inCategory.isEmpty) ? clamp(maximum - lost) : nil,
                 pointsLost: lost,
                 findingCount: inCategory.count,
                 hasData: hasData
             )
         }
 
-        // Built from `categories` (uncapped, per-category truth) rather than
-        // re-filtering `insights` — this is the "natural extension of the
-        // per-category scores the type already computes" the type doc's cap
-        // section describes, not a second, independent aggregation that
-        // could drift from what the category chips show.
+        // **A domain is the mean of its own categories' scores.**
+        //
+        // This used to be `100 - (the sum of every deduction in the domain)`,
+        // and that is what made the card unreadable: six hardware categories
+        // reading 81 / 100 / 79 / 94 / 100 / 100 produced a Hardware &
+        // Longevity of 54. Every number on the screen was individually
+        // correct and their relationship was not explainable by any
+        // aggregation a person can perform by eye — which is exactly the
+        // complaint that produced this change, twice, about two different
+        // levels of the same card.
+        //
+        // Averaging makes the whole card one rule applied three times:
+        // a category is 100 minus its own findings, a domain is the mean of
+        // its categories, and `overall` is the mean of the two domains. A
+        // reader can check any level against the level below it, which is
+        // the property that makes a composite score trustworthy at all.
+        //
+        // **What this deliberately gives up.** Summation punished breadth:
+        // five mediocre categories dragged the domain down hard. The mean
+        // dilutes instead — one catastrophic category among six can only
+        // move the domain by a sixth of its fall. That is a real loss and it
+        // is covered elsewhere rather than here: `band` takes the verdict
+        // from `weakerSubscore` and is floored by `highestSeverity`, so a
+        // critical finding cannot read "well protected" no matter how
+        // flattering the arithmetic above it. Severity gates the words;
+        // the average only sets the number.
+        //
+        // **Categories with no data are excluded, not counted as perfect.**
+        // `CategoryScore.score` is nil when the app genuinely could not
+        // judge that category (see `categoryHasData`), and folding a nil in
+        // as 100 would let silence raise the score — the precise inversion
+        // of this codebase's rule that an absent reading is never a good
+        // reading. They are dropped from the mean and listed separately by
+        // the UI as "not scored".
+        //
+        // `categoryDeductionCapHardware` no longer participates. It existed
+        // to stop one category's deductions dominating a *sum*; under a mean
+        // each category's influence is inherently bounded to its own 0…100
+        // range and its share of the divisor, so the cap has nothing left to
+        // do. It is kept as a constant because the per-category truth it
+        // documents is still the right ceiling for a single finding's
+        // weight, and the engine's tests assert against it.
         func subscore(for domain: InsightDomain) -> Int {
-            let lost = categories
+            let scored = categories
                 .filter { $0.category.domain == domain }
-                .reduce(0) { total, categoryScore in
-                    // The cap only applies within the hardware domain — see
-                    // `categoryDeductionCapHardware`'s doc comment for why
-                    // the security domain is deliberately exempt.
-                    let contribution = domain == .hardware
-                        ? Swift.min(categoryScore.pointsLost, categoryDeductionCapHardware)
-                        : categoryScore.pointsLost
-                    return total + contribution
-                }
-            return clamp(maximum - lost)
+                // Exactly the scores the card prints — `CategoryScore.score`
+                // is nil only for a category the app genuinely could not
+                // judge and which produced no findings (see its assignment
+                // above). Nothing is recomputed here, so the half can never
+                // disagree with the chips beneath it.
+                .compactMap(\.score)
+            guard !scored.isEmpty else {
+                // Nothing in this half could be judged at all. Reporting 100
+                // would assert a clean bill of health from zero evidence;
+                // reporting 0 would invent a crisis. `maximum` is returned
+                // only because the type's contract is non-Optional, and the
+                // UI never shows a half whose categories are all unscored
+                // without also showing the "not scored" list beside it —
+                // see `unscoredCategories`.
+                return maximum
+            }
+            // Integer mean, rounded half-up: 85 and 100 give 93, not 92.
+            return clamp((scored.reduce(0, +) + scored.count / 2) / scored.count)
         }
 
         let hardware = subscore(for: .hardware)
         let security = subscore(for: .security)
 
-        // The average of the two halves, rounded half-up so a 72/85 split
-        // reads 79 rather than silently truncating to 78. Never below either
-        // half, never above either half — see the type doc.
+        // The mean of the two halves, rounded half-up so a 72/85 split reads
+        // 79 rather than silently truncating to 78. Never below either half,
+        // never above either half — and now the same operation applied at
+        // the level above `subscore(for:)`, so the card reads consistently
+        // from category to domain to headline.
         let overall = clamp((hardware + security + 1) / 2)
 
         return ProtectionScore(
