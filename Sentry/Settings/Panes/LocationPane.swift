@@ -39,14 +39,22 @@ struct LocationPane: View {
                 Toggle("Log this Mac's location", isOn: $store.settings.locationLogEnabled)
                     .accessibilityLabel("Log this Mac's location")
 
-                Text("When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running, and it has no connection to Apple's Find My network.")
+                Text("When on, Sentry periodically asks macOS for this Mac's approximate location (Wi-Fi-based, not precise GPS) and sends the most recent reading to your iPhone the next time it's on the same local network. This only happens while Sentry is running and the Mac is online — it cannot locate this Mac while it's asleep, offline, or Sentry isn't running.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Location Log")
             } footer: {
-                Text("Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more.")
+                // Says what the log does and, crucially, when it cannot
+                // report — which is the part a user actually needs before
+                // relying on it. The old copy opened by disclaiming Find My
+                // and spent most of its length on why that integration is
+                // impossible, which is true, uninteresting to the reader, and
+                // frames the feature by what it lacks. The limits are still
+                // stated; they are just stated as this feature's own
+                // conditions rather than as someone else's capabilities.
+                Text("A log of where Sentry last saw this Mac — recorded periodically while the app is running, not live tracking. Sentry sends it to your paired iPhone over your local Wi-Fi network; it never leaves your devices. Nothing is recorded while this Mac is off, asleep, or off the network.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
