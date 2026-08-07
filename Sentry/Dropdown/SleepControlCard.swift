@@ -6,9 +6,10 @@ import SentryKit
 /// while an assertion is running.
 ///
 /// **Layout.** Two states, one grid. Off, this is two rows: the switch, and a
-/// summary of what flipping it will do ("Indefinitely · Keep display on")
+/// summary of what flipping it will do ("Indefinitely · Screen stays on")
 /// which doubles as the disclosure for the pickers behind it. On, it is the
-/// countdown plus the controls that move it. Nothing is boxed — the section is
+/// countdown plus the controls that move it — *and the same pickers*, see
+/// "Editable while running" below. Nothing is boxed — the section is
 /// bounded by the hairlines `DropdownView` draws above and below it, and the
 /// labels/values sit on `DropdownGrid`, so the keep-awake rows and the vitals
 /// rows above them share a left edge, a right edge and a row height.
@@ -18,6 +19,53 @@ import SentryKit
 /// without changing anything. They're one click away now instead, and the
 /// collapsed summary states the current selection so the disclosure never
 /// hides *what will happen* — only *how to change it*.
+///
+/// **Editable while running (and what "apply" means).** The pickers used to
+/// render only in the inactive branch: turning keep-awake on was a one-way
+/// door, and changing your mind about the mode or the end condition meant
+/// ending the session and starting a new one — which is both an extra step
+/// and a moment where the Mac is genuinely allowed to sleep. They now render
+/// in both branches, *below* the countdown (the countdown is what the user
+/// opened the popover for; the controls that change it are secondary).
+///
+/// Committing a change is an explicit **Apply**, not an immediate re-assert
+/// on every edit. Immediate-apply was written first and rejected for two
+/// concrete reasons, both of which are worse than one extra click:
+///
+/// - *A half-configured trigger would arm itself.* Switching "For" from
+///   "Indefinitely" to "Until battery is low" would immediately re-arm at
+///   whatever battery floor happened to be left in the stepper, and then
+///   re-arm *again* when the user dialed in the number they actually wanted
+///   — a period of live, wrong behavior plus two teardowns, produced by a
+///   user who did nothing but start typing their intent.
+/// - *Every edit is a real IOKit teardown.* `startAssertionInternal` begins
+///   with `releaseAssertion()`, so each re-assert releases and recreates the
+///   OS-level assertion, bumps `assertionGeneration`, and closes and reopens
+///   an `awakeHolds` ledger entry. A `Stepper` held down, or a `DatePicker`
+///   typed into, would do that per tick and per keystroke.
+///
+/// Apply's semantics depend on *what* changed, because the two rows mean
+/// different things. The **For** row and its threshold row define when the
+/// hold ends, so changing them re-arms from scratch — the new end point is
+/// measured from now, exactly as if the user had started fresh. The **Mode**
+/// row defines what the hold prevents and says nothing about when it ends,
+/// so changing only the mode re-asserts with the new mode and **preserves
+/// the running deadline**: switching from "screen stays on" to "screen may
+/// sleep" forty minutes into an hour must not silently hand the user a fresh
+/// hour. `KeepAwakeChange` is that distinction, computed by comparing the
+/// shown selection against the one this card last handed to the service.
+///
+/// **Why an always-available Apply rather than one that appears only when
+/// something differs.** For a hold this card started, it can tell. For one
+/// it didn't — restored across a relaunch by `reconcilePersistedState`, or
+/// created over MCP by `startAgentAssertion` — it cannot: `SleepAssertionState`
+/// carries `mode`, `expiresAt` and `reason`, while the `ReleaseCondition`
+/// itself is private to `PowerControlService`, so there is no honest way to
+/// diff the "For" row against what is actually armed. That case is
+/// `KeepAwakeChange.unknown` and it says so in words rather than pretending
+/// to a comparison it can't make (P5). The one axis that *does* survive into
+/// `SleepAssertionState` is `mode`, so the Mode row is seeded from the live
+/// assertion in that case — see `syncWithRunningHold()`.
 ///
 /// **Scope, and what's deliberately missing.** Plan §10.3 lists six trigger
 /// kinds; a later competitive pass against other keep-awake utilities added
@@ -32,7 +80,27 @@ import SentryKit
 /// remaining space belongs to the vitals. It's deferred to the Settings
 /// window, not dropped: `ReleaseCondition.whileAppRunning` already exists and
 /// is fully handled by `PowerControlService`'s `NSWorkspace` termination
-/// observer — it needs no service-layer work to land later, only UI.
+/// observer — it needs no service-layer work to land later, only UI. Note
+/// that the Process picker below is *not* that feature arriving early: it
+/// drives `.whileProcessRunning` (an executable name matched against the
+/// process table) and adds no rows to this card, whereas `.whileAppRunning`
+/// is a `NSWorkspace` bundle-identifier trigger that still wants a browser
+/// with icons and app names. The two triggers stay distinct.
+///
+/// **Why the Process field is a picker with no text field.** It was a
+/// `TextField` plus a five-item preset menu, and free text was a correctness
+/// bug rather than a convenience: `.whileProcessRunning` matches an *exact*
+/// executable name, so `xcodbuild` is not a typo the user gets told about —
+/// it's a keep-awake session that silently never holds, which is the single
+/// worst failure mode a control whose entire job is "don't let the Mac sleep
+/// during my long build" can have. The picker offers what is actually on the
+/// process table (`PowerControlService.runningProcessNames()`), which makes
+/// the spelling correct by construction *and* is exactly the set of names
+/// `start()`'s arm-time validation will accept — offering anything else
+/// would be offering a guaranteed failure. See `KeepAwakeProcessMenu` for
+/// how ~900 running names are made navigable, and for the alternatives
+/// (flat list, hard cap, current-user filter) that were measured and
+/// rejected.
 ///
 /// **Why the scheduled trigger is preset-only, not a free-form day/time
 /// picker.** `ReleaseCondition.scheduledWindow` can express any weekday set
@@ -65,14 +133,44 @@ struct SleepControlCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var powerControl: PowerControlService
 
+    /// Where the Process picker's candidate names come from. Injected as a
+    /// closure with a real default rather than read straight from the static
+    /// so previews and tests can hand this card a fabricated process table —
+    /// the same reason `PowerControlService.processProbe` is a settable
+    /// closure over the very same scan. Both existing call sites
+    /// (`DropdownView`, `DashboardView`) construct this card as
+    /// `SleepControlCard(powerControl:)` and are unaffected: a stored
+    /// property with a default value becomes a defaulted memberwise
+    /// parameter.
+    var runningProcessNamesProvider: () -> [String] = { PowerControlService.runningProcessNames() }
+
     @State private var trigger: SleepTriggerOption = .indefinite
     @State private var mode: AwakeMode = .displayAndSystem
     @State private var batteryThreshold: Double = 20
     @State private var cpuThreshold: Double = 80
     /// Executable name for `.processRunning`. Defaults to the tool this
     /// feature was built for — an agent CLI chewing through a long task is
-    /// the canonical "hold the Mac awake until it's done" workload.
+    /// the canonical "hold the Mac awake until it's done" workload — but is
+    /// re-pointed at something that is genuinely running by
+    /// `refreshRunningProcesses()` if this default isn't, so the picker never
+    /// opens already showing a name that cannot arm.
     @State private var processName: String = "claude"
+
+    /// Snapshot of the process table, refreshed on the events listed in
+    /// `refreshRunningProcesses()`. Cached in `@State` rather than scanned
+    /// inside `body` because `body` runs far more often than the process
+    /// table meaningfully changes, and this scan walks every PID on the
+    /// machine — putting it on the render path would pay for a full
+    /// enumeration every time the countdown ticks.
+    @State private var runningProcesses: [String] = []
+
+    /// The selection this card last successfully handed to
+    /// `PowerControlService`, or `nil` when this card didn't start what's
+    /// running (relaunch restore, an MCP-created hold, or nothing running at
+    /// all). The baseline `KeepAwakeChange` diffs against — see the type doc
+    /// comment's "always-available Apply" paragraph for why `nil` is a
+    /// distinct, user-visible case rather than something to paper over.
+    @State private var applied: KeepAwakeSelection?
 
     /// `.scheduledWindow`'s selection — one of `KeepAwakeSchedule`'s named
     /// presets. See the type doc comment for why this is preset-only rather
@@ -121,22 +219,43 @@ struct SleepControlCard: View {
 
     private var isActive: Bool { activeState != nil }
 
+    /// The options block renders in *both* states now (see the type doc
+    /// comment's "Editable while running"), always below `activeDetail` so a
+    /// running session's countdown stays the first thing under the switch.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if let activeState {
                 activeDetail(for: activeState)
-            } else {
-                optionsDisclosure
-                if showsOptions {
-                    pickers
-                }
+            }
+            optionsDisclosure
+            if showsOptions {
+                pickers
             }
             if let startError {
                 errorRow(startError)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            // Only pay for the scan when the picker is (or is one row from
+            // being) on screen. It walks every PID on the machine, and the
+            // overwhelming majority of popover opens never expand these
+            // controls at all — the drawer-open and trigger-pick handlers
+            // cover the rest.
+            if showsOptions || trigger == .processRunning {
+                refreshRunningProcesses()
+            }
+            syncWithRunningHold()
+        }
+        // The service can end or replace an assertion without this view
+        // asking (expiry, a conditional trigger firing, wake reconciliation),
+        // and a hold created over MCP can appear while the popover is open —
+        // so the mode/baseline sync is driven off the service's own state
+        // rather than only off this card's actions.
+        .onChange(of: powerControl.state) { _, _ in
+            syncWithRunningHold()
+        }
     }
 
     // MARK: Header
@@ -178,20 +297,38 @@ struct SleepControlCard: View {
 
     // MARK: Inactive — configuration
 
-    /// Collapsed, this row *is* the answer to "what happens if I flip that
-    /// switch"; expanded, it becomes the group's label. Never both, because a
-    /// summary sitting directly above the two controls it summarises is
-    /// redundancy the eye still has to read.
+    /// Collapsed and inactive, this row *is* the answer to "what happens if I
+    /// flip that switch"; expanded, it becomes the group's label. Never both,
+    /// because a summary sitting directly above the two controls it summarises
+    /// is redundancy the eye still has to read.
+    ///
+    /// Collapsed and **active**, it deliberately does *not* restate
+    /// `selectionSummary`. Two reasons: the truth about the running session is
+    /// already spelled out immediately above it by the countdown and the
+    /// verbatim `reason` line, and — more importantly — `selectionSummary` is
+    /// built from this card's *pending* picker values, which for a restored or
+    /// MCP-created hold describe nothing that is actually armed. Rendering it
+    /// as a collapsed summary there would be a confident claim about state we
+    /// don't have (P5). It reads as a verb instead.
     private var optionsDisclosure: some View {
-        DropdownDisclosureRow(
-            title: showsOptions ? String(localized: "Options") : selectionSummary,
+        let collapsedTitle = isActive ? String(localized: "Change options") : selectionSummary
+        return DropdownDisclosureRow(
+            title: showsOptions ? String(localized: "Options") : collapsedTitle,
             isExpanded: showsOptions,
             accessibilityLabel: showsOptions
                 ? String(localized: "Hide keep awake options")
-                : String(localized: "Keep awake options, currently \(selectionSummary)")
+                : (isActive
+                    ? String(localized: "Change keep awake options")
+                    : String(localized: "Keep awake options, currently \(selectionSummary)"))
         ) {
             withAnimation(ThemePalette.disclosureMotion(reduceMotion: reduceMotion)) {
                 showsOptions.toggle()
+            }
+            if showsOptions {
+                // Opening the drawer is the one moment the process list is
+                // about to be read, and the cheapest place to make sure it
+                // isn't stale from a previous popover session.
+                refreshRunningProcesses()
             }
         }
     }
@@ -220,24 +357,120 @@ struct SleepControlCard: View {
                 )
             ) {
                 ForEach(SleepTriggerOption.allOptions) { option in
-                    Button(option.pickerLabel) { trigger = option }
+                    Button(option.pickerLabel) {
+                        trigger = option
+                        // Picking the process trigger is the moment its list
+                        // is about to be needed; the user may have opened this
+                        // drawer minutes ago.
+                        if case .processRunning = option { refreshRunningProcesses() }
+                    }
                 }
             }
             thresholdStepper
-            optionMenu(title: String(localized: "Mode"), selection: mode.shortLabel) {
-                ForEach(AwakeMode.allCases, id: \.self) { candidate in
-                    Button(candidate.longLabel) { mode = candidate }
-                }
-            }
+            modeRow
             Text(mode.explanation)
                 .font(palette.font(size: 10))
                 .foregroundStyle(palette.textTertiary)
-                .lineLimit(2)
+                // Three, not two: every explanation now states both axes —
+                // what stays awake *and* under what power condition — which
+                // is the whole point of the rewrite and costs a line.
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, palette.spacingTight)
+                .padding(.bottom, palette.spacingTight)
+            if isActive {
+                applyBlock
+            }
+        }
+        .transition(.opacity)
+    }
+
+    /// The mode picker, grouped by power condition.
+    ///
+    /// **Why sections rather than three flat items.** The three `AwakeMode`
+    /// cases describe two different things at once, which is what made the
+    /// old list ("Keep display on" / "System only (display may sleep)" /
+    /// "Only while plugged in") unreadable: the first two answer *what stays
+    /// awake* and the third answers *when the rule applies*, so a user
+    /// comparing them had no way to know that "Only while plugged in" also
+    /// lets the display sleep — the two axes were collapsed onto one list and
+    /// the third item silently carried both. Splitting the menu on the power
+    /// axis puts each axis on its own visual level: the section header is the
+    /// *when*, the item is the *what*. Two items now read identically apart
+    /// from their header, which is correct — `.systemOnly` and
+    /// `.systemWhileOnAC` genuinely differ only in power condition — and is
+    /// exactly the fact the flat list hid.
+    ///
+    /// **Why the item text carries the explanation rather than a subtitle
+    /// under it.** The obvious "show the per-option explanation in the menu"
+    /// implementation is a two-`Text` menu-item label, and this file already
+    /// documents what AppKit does to a menu label built from more than one
+    /// view (see `optionMenu`: it flattened an `HStack` down to one glyph and
+    /// one string, shipping a control whose selection was never drawn).
+    /// Rather than re-litigate that at the item level, each item is a single
+    /// self-contained sentence naming both axes, and the fuller sentence
+    /// stays under the closed picker where a `Text` renders predictably.
+    private var modeRow: some View {
+        optionMenu(title: String(localized: "Mode"), selection: mode.shortLabel) {
+            ForEach(AwakeModePowerScope.allCases) { scope in
+                Section(scope.menuHeader) {
+                    ForEach(scope.modes, id: \.self) { candidate in
+                        Button(candidate.longLabel) { mode = candidate }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Applying changes to a running session
+
+    /// What pressing Apply right now would do to the running hold.
+    private var pendingChange: KeepAwakeChange {
+        KeepAwakeChange.between(applied: applied, current: currentSelection)
+    }
+
+    private var currentSelection: KeepAwakeSelection {
+        KeepAwakeSelection(
+            trigger: trigger,
+            mode: mode,
+            batteryThreshold: batteryThreshold,
+            cpuThreshold: cpuThreshold,
+            processName: processName,
+            schedule: schedule,
+            untilTime: untilTime
+        )
+    }
+
+    /// The Apply control and the sentence explaining what it will do to the
+    /// countdown. The sentence is not decoration: "restarts the countdown"
+    /// versus "keeps the current end time" is the entire difference between
+    /// the two commit paths, and a user who changed the mode of a four-hour
+    /// hold deserves to know which one they're about to get *before* they
+    /// click, not by watching the clock jump afterwards.
+    @ViewBuilder
+    private var applyBlock: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if pendingChange.isApplicable {
+                HStack(spacing: 2) {
+                    Spacer(minLength: palette.spacingTight)
+                    DropdownInlineButton(
+                        title: String(localized: "Apply"),
+                        accessibilityLabel: String(localized: "Apply changes to the running keep awake session")
+                    ) {
+                        apply()
+                    }
+                }
+                .padding(.horizontal, palette.spacingTight)
+                .frame(height: DropdownGrid.rowHeight)
+            }
+            Text(pendingChange.caption)
+                .font(palette.font(size: 10))
+                .foregroundStyle(palette.textTertiary)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, palette.spacingTight)
                 .padding(.bottom, palette.spacingTight)
         }
-        .transition(.opacity)
     }
 
     /// Only the conditional triggers with something for the user to tune
@@ -254,7 +487,7 @@ struct SleepControlCard: View {
         case .cpuAbove:
             percentStepper(String(localized: "CPU floor"), value: $cpuThreshold, range: 10...100)
         case .processRunning:
-            processNameRow
+            processPickerRow
         case .scheduledWindow:
             scheduleRow
         case .indefinite, .fixed, .downloadActive:
@@ -293,38 +526,59 @@ struct SleepControlCard: View {
         }
     }
 
-    /// Free-text executable name plus a menu of the agent/build tools this
-    /// trigger exists for. The text field is the source of truth; the menu
-    /// just types for you.
-    private var processNameRow: some View {
-        HStack(spacing: palette.spacingTight) {
-            Text("Process")
-                .font(palette.font(size: 11))
-                .foregroundStyle(palette.textTertiary)
-            Spacer(minLength: palette.spacingTight)
-            TextField("name", text: $processName)
-                .textFieldStyle(.plain)
-                .font(palette.numericFont(size: 11, weight: .medium))
-                .foregroundStyle(palette.textPrimary)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 110)
-                .accessibilityLabel("Process name")
-            Menu {
-                ForEach(["claude", "codex", "xcodebuild", "node", "python3"], id: \.self) { preset in
-                    Button(preset) { processName = preset }
-                }
-            } label: {
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(palette.textTertiary)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .accessibilityLabel("Common processes")
+    /// `.processRunning`'s executable-name picker — the same `optionMenu`
+    /// idiom `scheduleRow` and `modeRow` use, with **no text entry at all**.
+    /// See the type doc comment ("Why the Process field is a picker with no
+    /// text field") for why free text was a correctness bug rather than a
+    /// convenience, and `KeepAwakeProcessMenu` for the shape of the list.
+    private var processPickerRow: some View {
+        let contents = processMenuContents
+        return optionMenu(
+            title: String(localized: "Process"),
+            selection: processName.isEmpty ? String(localized: "Choose…") : processName
+        ) {
+            processMenuItems(contents)
         }
-        .padding(.horizontal, palette.spacingTight)
-        .frame(height: DropdownGrid.rowHeight)
+    }
+
+    private var processMenuContents: KeepAwakeProcessMenu.Contents {
+        KeepAwakeProcessMenu.contents(running: runningProcesses)
+    }
+
+    /// The suggested names sit at the top level where they're one click away;
+    /// the long tail goes behind a submenu, and behind a letter submenu
+    /// inside that, because the raw list is hundreds of names long (see
+    /// `KeepAwakeProcessMenu`). When nothing suggested is running there's no
+    /// top-level section worth drawing, so the letter groups are promoted
+    /// rather than hiding the entire menu behind a single "All running
+    /// processes" item that the user would have to open to find anything.
+    @ViewBuilder
+    private func processMenuItems(_ contents: KeepAwakeProcessMenu.Contents) -> some View {
+        if contents.suggested.isEmpty {
+            letterGroupMenus(contents.groups)
+        } else {
+            Section(contents.suggestedHeader) {
+                ForEach(contents.suggested, id: \.self) { name in
+                    Button(name) { processName = name }
+                }
+            }
+            if !contents.groups.isEmpty {
+                Menu(String(localized: "All running processes")) {
+                    letterGroupMenus(contents.groups)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func letterGroupMenus(_ groups: [KeepAwakeProcessMenu.LetterGroup]) -> some View {
+        ForEach(groups) { group in
+            Menu(group.title) {
+                ForEach(group.names, id: \.self) { name in
+                    Button(name) { processName = name }
+                }
+            }
+        }
     }
 
     private func percentStepper(
@@ -526,14 +780,34 @@ struct SleepControlCard: View {
 
     // MARK: Actions
 
-    private func start() {
+    /// The one and only command path into `PowerControlService` for arming a
+    /// hold — the header switch, and Apply on a running session, both land
+    /// here. Deliberately not forked into a second "re-assert" method: the
+    /// arm-time process validation, the reason string, the conditional
+    /// -versus-timed decision and the error handling are all things a
+    /// re-assert needs to get exactly as right as a fresh start, and two
+    /// copies of that is how they drift.
+    ///
+    /// - Parameter keepingDeadline: preserve the running assertion's
+    ///   `expiresAt` instead of recomputing the duration from the trigger.
+    ///   Set only by the `KeepAwakeChange.modeOnly` path — see the type doc
+    ///   comment for why a mode switch must not silently restart the clock.
+    ///   Irrelevant to conditional triggers, which have no `expiresAt` to
+    ///   preserve and take no duration at all.
+    private func start(keepingDeadline: Bool = false) {
+        let wasActive = isActive
+        let preservedDeadline = keepingDeadline ? activeState?.expiresAt : nil
+
         // Arm-time validation for the process trigger: a hold on a process
         // that isn't running would release itself two ticks later, which
         // reads as "the switch is broken". Saying why beats a silent bounce.
+        // Still enforced even though the picker only offers running processes
+        // — the list is a snapshot, and the chosen process can exit between
+        // the menu opening and the switch being flipped.
         if case .processRunning = trigger {
             let name = processName.trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty else {
-                startError = String(localized: "Enter a process name first.")
+                startError = String(localized: "Choose a process first.")
                 return
             }
             processName = name
@@ -560,17 +834,37 @@ struct SleepControlCard: View {
             ) {
                 try powerControl.startConditionalAssertion(mode: mode, condition: condition, reason: reason)
             } else {
-                // `resolvedDuration`, not `duration`: `.untilTime` needs `now`
-                // (read fresh right here at start-time, not when the trigger
-                // was picked) to turn a clock time into a countdown — see
-                // that method's doc comment.
-                try powerControl.startAssertion(mode: mode, duration: trigger.resolvedDuration(untilTime: untilTime), reason: reason)
+                let duration: TimeInterval?
+                if let preservedDeadline {
+                    let remaining = preservedDeadline.timeIntervalSinceNow
+                    // A mode switch inside the last instant of a hold: the
+                    // expiry timer is already about to fire, and handing
+                    // `startAssertionInternal` a non-positive duration is a
+                    // documented no-op that would release without replacing
+                    // — i.e. the click would *end* the session instead of
+                    // re-pointing it. Leave the expiry to do its job.
+                    guard remaining > 0 else { return }
+                    duration = remaining
+                } else {
+                    // `resolvedDuration`, not `duration`: `.untilTime` needs `now`
+                    // (read fresh right here at start-time, not when the trigger
+                    // was picked) to turn a clock time into a countdown — see
+                    // that method's doc comment.
+                    duration = trigger.resolvedDuration(untilTime: untilTime)
+                }
+                try powerControl.startAssertion(mode: mode, duration: duration, reason: reason)
             }
             startError = nil
+            applied = currentSelection
             // The options were a means to starting this session; leaving them
             // open would push the countdown the user now cares about down the
-            // popover behind controls that no longer apply.
-            showsOptions = false
+            // popover behind controls that no longer apply. Only on the
+            // inactive → active transition, though: collapsing the drawer out
+            // from under someone who is mid-adjustment on a *running* session
+            // would make every Apply feel like a punishment.
+            if !wasActive {
+                showsOptions = false
+            }
         } catch {
             // `PowerControlError.assertionFailed` is a `LocalizedError`; the
             // `localizedDescription` fallback covers anything else IOKit
@@ -579,9 +873,67 @@ struct SleepControlCard: View {
         }
     }
 
+    /// Commits the shown options to the running session. Routes to the same
+    /// `start` above; the only decision here is whether the running deadline
+    /// survives, which is exactly what `KeepAwakeChange` encodes.
+    private func apply() {
+        switch pendingChange {
+        case .none:
+            return
+        case .modeOnly:
+            start(keepingDeadline: true)
+        case .retrigger, .unknown:
+            start(keepingDeadline: false)
+        }
+    }
+
     private func stop() {
         powerControl.releaseAssertion()
         startError = nil
+        applied = nil
+    }
+
+    /// Re-reads the process table and keeps the shown selection honest.
+    ///
+    /// Called from the events where the list is about to matter — the card
+    /// appearing, the options drawer opening, and the process trigger being
+    /// picked — rather than on a timer: this walks every PID on the machine,
+    /// and a menu-bar popover lives for seconds at a time, so a scan per
+    /// user-initiated moment is both fresh enough and far cheaper than any
+    /// polling cadence would be.
+    ///
+    /// The re-point at the end matters more than it looks. `processName`
+    /// defaults to `claude`, which on most Macs most of the time is not
+    /// running — so without this, selecting "While a process runs" would show
+    /// a name that `start()`'s own validation is guaranteed to reject, i.e.
+    /// the picker would open already broken. Only ever re-points to a
+    /// *suggested* (curated agent/build tool) name, never to an arbitrary
+    /// daemon that happens to sort first: silently arming the user onto
+    /// `AMPArtworkAgent` would be worse than the stale default.
+    private func refreshRunningProcesses() {
+        runningProcesses = runningProcessNamesProvider()
+        processName = KeepAwakeProcessMenu.resolvedSelection(
+            current: processName,
+            contents: processMenuContents
+        )
+    }
+
+    /// Keeps this card's local state consistent with a hold it may not have
+    /// started. Nothing running means there is no baseline to diff against,
+    /// so `applied` is dropped; a hold with no baseline is one this card
+    /// didn't create (relaunch restore, or `startAgentAssertion` over MCP),
+    /// and `mode` is the single axis `SleepAssertionState` preserves — so at
+    /// minimum the Mode row can be made to tell the truth about it, even
+    /// though the "For" row can't be (`ReleaseCondition` is private to the
+    /// service). See the type doc comment.
+    private func syncWithRunningHold() {
+        guard let activeState else {
+            applied = nil
+            return
+        }
+        if applied == nil {
+            mode = activeState.mode
+        }
     }
 
     private func adjust(bySeconds delta: TimeInterval) {
@@ -944,6 +1296,270 @@ struct KeepAwakeSchedule: Hashable, Identifiable {
     static let presets: [KeepAwakeSchedule] = [.everyNight, .weeknights, .workHours, .weekend]
 }
 
+// MARK: - Process picker contents
+
+/// Shapes the `.processRunning` trigger's picker from a raw list of running
+/// executable names. Pure and free of SwiftUI so the whole rule — what gets
+/// suggested, how the long tail is grouped, when the fallback kicks in — is
+/// unit-testable against a fabricated process table, exactly the split
+/// `DropdownProcessList.topThree(_:)` makes for the same reason.
+///
+/// **The problem this solves.** "Offer the processes actually running" sounds
+/// like a one-liner until you count them: a measurement on a developer Mac
+/// mid-session found **931 distinct executable names** across 1,715
+/// processes, the overwhelming majority of them XPC services and system
+/// daemons nobody would ever hold a Mac awake for. Three simpler shapes were
+/// tried against that number and rejected:
+///
+/// - *One flat alphabetical menu.* Nine hundred items in a popover menu is
+///   not a picker, it's a scroll-hunt, and it buries the five names this
+///   trigger actually exists for somewhere around the letter C.
+/// - *Cap the list.* Any cap silently drops somebody's process, which is the
+///   exact "the control is dead for me specifically" failure this whole
+///   change set out to remove — trading a typo you can't see for an omission
+///   you can't see is not progress.
+/// - *Filter to the current user's processes.* Sounds principled, measured
+///   useless: 931 names became 721, because modern macOS runs most of its
+///   per-user agent and XPC zoo as the logged-in user too.
+///
+/// So the list is *ranked*, not filtered, and nothing is dropped. The names
+/// this trigger was built for surface at the top level; everything else is
+/// still reachable, one submenu plus one letter submenu away. Letter
+/// grouping rather than a cap because it's bounded work for the user
+/// (~26 groups) with an unbounded list behind it, and because it's the
+/// idiom macOS already uses for long menus.
+///
+/// **Where "suggested" comes from.** `ProcessMonitor.agentProcessNames` — the
+/// curated agent/build-tool set this codebase already maintains for the
+/// Dashboard's agent-activity view — unioned with this card's own preset
+/// list. Reused rather than re-declared: a second hand-maintained list of
+/// "what counts as an agent workload" would drift from the first, and the two
+/// answer the same question.
+enum KeepAwakeProcessMenu {
+
+    /// The names the Process field shipped as a preset menu before it became
+    /// a picker. Still meaningful in exactly one place — the fallback below —
+    /// and folded into `suggestedNames` so they rank to the top when running.
+    static let presets: [String] = ["claude", "codex", "xcodebuild", "node", "python3"]
+
+    /// Lowercased, matching `ProcessMonitor.agentProcessNames`' own convention
+    /// and `PowerControlService.isProcessRunning(named:)`'s case-insensitive
+    /// comparison.
+    static let suggestedNames: Set<String> = ProcessMonitor.agentProcessNames
+        .union(presets.map { $0.lowercased() })
+
+    /// Bucket title for names that don't start with a letter (`-zsh`,
+    /// `(node)`), sorted after the letters rather than before them: the
+    /// alphabet is what a user scans for.
+    static let otherBucketTitle = "#"
+
+    struct LetterGroup: Equatable, Identifiable {
+        var id: String { title }
+        let title: String
+        let names: [String]
+    }
+
+    struct Contents: Equatable {
+        /// Curated agent/build tools that are currently running — or, when
+        /// `isFallback`, the preset list standing in for a scan that came
+        /// back empty.
+        var suggested: [String]
+        /// Everything else that's running, bucketed by initial letter.
+        var groups: [LetterGroup]
+        /// The process table couldn't be read (or is implausibly empty), so
+        /// `suggested` is the preset list rather than an observation. Drives
+        /// both the menu's section header and `resolvedSelection`'s refusal
+        /// to overrule the user on no evidence.
+        var isFallback: Bool
+
+        /// "Suggested" is a claim about what's running; the fallback isn't
+        /// entitled to make it.
+        var suggestedHeader: String {
+            isFallback ? String(localized: "Common tools") : String(localized: "Suggested")
+        }
+
+        /// Case-insensitive, matching how the name will eventually be
+        /// compared by `isProcessRunning(named:)`.
+        func offers(_ name: String) -> Bool {
+            let wanted = name.lowercased()
+            guard !wanted.isEmpty else { return false }
+            if suggested.contains(where: { $0.lowercased() == wanted }) { return true }
+            return groups.contains { $0.names.contains { $0.lowercased() == wanted } }
+        }
+    }
+
+    /// - Parameter running: distinct executable names from
+    ///   `PowerControlService.runningProcessNames()`. An empty array means
+    ///   "couldn't enumerate", which yields the preset fallback — a picker
+    ///   with no items would be a dead control, and a dead control on the
+    ///   only row that can arm this trigger is worse than a stale list.
+    static func contents(running: [String]) -> Contents {
+        var seen = Set<String>()
+        var deduped: [String] = []
+        for name in running {
+            let trimmed = name.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { continue }
+            deduped.append(trimmed)
+        }
+        // De-duplicated here as well as in `runningProcessNames()` because
+        // this function's contract is about its own input, not about who
+        // happened to produce it — the same "state the contract locally"
+        // reasoning `DropdownProcessList.topThree(_:)` documents for
+        // re-sorting an already-sorted array.
+        guard !deduped.isEmpty else {
+            return Contents(suggested: presets, groups: [], isFallback: true)
+        }
+
+        let sorted = deduped.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let suggested = sorted.filter { suggestedNames.contains($0.lowercased()) }
+        let rest = sorted.filter { !suggestedNames.contains($0.lowercased()) }
+        return Contents(suggested: suggested, groups: letterGroups(rest), isFallback: false)
+    }
+
+    /// The selection to show given what the picker can actually offer.
+    ///
+    /// Re-points a selection the menu doesn't contain onto the first
+    /// suggested name, because such a selection cannot arm — `start()`
+    /// validates against the same process table this list came from — so
+    /// leaving it in place would be showing the user a value whose only
+    /// possible outcome is an error. Two deliberate refusals to re-point:
+    /// on a fallback (no evidence the current value is wrong, so overruling
+    /// it would be guessing), and when nothing suggested is running (the
+    /// alternative would be snapping the user onto whichever daemon sorts
+    /// first, which is a worse lie than a stale name).
+    static func resolvedSelection(current: String, contents: Contents) -> String {
+        let trimmed = current.trimmingCharacters(in: .whitespaces)
+        guard !contents.isFallback else {
+            return trimmed.isEmpty ? (contents.suggested.first ?? trimmed) : trimmed
+        }
+        if contents.offers(trimmed) { return trimmed }
+        return contents.suggested.first ?? trimmed
+    }
+
+    static func bucketTitle(for name: String) -> String {
+        guard let first = name.first, first.isLetter else { return otherBucketTitle }
+        return String(first).uppercased()
+    }
+
+    private static func letterGroups(_ names: [String]) -> [LetterGroup] {
+        var buckets: [String: [String]] = [:]
+        // `names` arrives sorted, so each bucket is built in order and needs
+        // no second sort of its own.
+        for name in names {
+            buckets[bucketTitle(for: name), default: []].append(name)
+        }
+        return buckets
+            .map { LetterGroup(title: $0.key, names: $0.value) }
+            .sorted { lhs, rhs in
+                let lhsIsOther = lhs.title == otherBucketTitle
+                let rhsIsOther = rhs.title == otherBucketTitle
+                if lhsIsOther != rhsIsOther { return rhsIsOther }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+    }
+}
+
+// MARK: - Editing a running session
+
+/// Everything the card hands to `PowerControlService` when it arms a hold,
+/// captured so a later state of the same pickers can be compared against it.
+/// A plain value type rather than a pile of individual `@State` mirrors: the
+/// comparison below is the only reason it exists, and it should be impossible
+/// to add a picker without also deciding whether it belongs in the diff.
+struct KeepAwakeSelection: Equatable {
+    var trigger: SleepTriggerOption
+    var mode: AwakeMode
+    var batteryThreshold: Double
+    var cpuThreshold: Double
+    var processName: String
+    var schedule: KeepAwakeSchedule
+    var untilTime: Date
+
+    /// The parts of this selection that actually reach the service *for the
+    /// currently chosen trigger*, collapsed into one comparable string.
+    ///
+    /// This is why the diff isn't a plain `==` on the whole struct. Thresholds
+    /// live on the view rather than in `SleepTriggerOption`'s cases
+    /// specifically so switching between "battery below" and "CPU above"
+    /// doesn't discard the number dialed in for the other one (see that
+    /// type's doc comment) — which means an inactive-but-remembered value
+    /// changes constantly while meaning nothing. A whole-struct comparison
+    /// would report "you changed the trigger" because the user nudged a CPU
+    /// floor that the running battery-threshold hold has never read, and
+    /// then restart their countdown for it.
+    ///
+    /// `.untilTime` compares hour and minute only, matching exactly what
+    /// `SleepTriggerOption.resolvedDuration(untilTime:)` reads — the
+    /// `DatePicker` leaves a day/month/year on the `Date` that no code path
+    /// looks at, and rolling past midnight with the drawer open should not
+    /// count as an edit the user made.
+    func triggerKey(calendar: Calendar = .current) -> String {
+        switch trigger {
+        case .indefinite, .fixed, .downloadActive:
+            return trigger.id
+        case .untilTime:
+            let components = calendar.dateComponents([.hour, .minute], from: untilTime)
+            return "\(trigger.id):\(components.hour ?? 0):\(components.minute ?? 0)"
+        case .batteryBelow:
+            return "\(trigger.id):\(batteryThreshold)"
+        case .cpuAbove:
+            return "\(trigger.id):\(cpuThreshold)"
+        case .processRunning:
+            // Lowercased for the same reason `isProcessRunning(named:)`
+            // lowercases: `Node` and `node` are the same hold, and re-arming
+            // for a change of case would be a teardown for nothing.
+            return "\(trigger.id):\(processName.lowercased())"
+        case .scheduledWindow:
+            return "\(trigger.id):\(schedule.id)"
+        }
+    }
+}
+
+/// What pressing Apply would do to the running hold — and, just as
+/// importantly, what the card is allowed to *say* it would do. See
+/// `SleepControlCard`'s type doc comment for the reasoning behind the
+/// mode-only/retrigger split and for why `unknown` is a real case rather
+/// than a defensive default.
+enum KeepAwakeChange: Equatable {
+    /// The shown options are the ones this card armed. Nothing to do.
+    case none
+    /// Only `mode` differs: re-assert with the new mode, keep the deadline.
+    case modeOnly
+    /// The end condition itself differs: re-arm from scratch, clock and all.
+    case retrigger
+    /// This card didn't arm what's running, so no comparison is possible.
+    case unknown
+
+    static func between(
+        applied: KeepAwakeSelection?,
+        current: KeepAwakeSelection,
+        calendar: Calendar = .current
+    ) -> KeepAwakeChange {
+        guard let applied else { return .unknown }
+        guard applied.triggerKey(calendar: calendar) == current.triggerKey(calendar: calendar) else {
+            return .retrigger
+        }
+        return applied.mode == current.mode ? .none : .modeOnly
+    }
+
+    var isApplicable: Bool { self != .none }
+
+    /// One sentence, shown under the Apply button, naming the consequence
+    /// the user cannot otherwise predict: whether the countdown survives.
+    var caption: String {
+        switch self {
+        case .none:
+            return String(localized: "No changes to apply.")
+        case .modeOnly:
+            return String(localized: "Apply switches the mode and keeps the current end time.")
+        case .retrigger:
+            return String(localized: "Apply restarts this session with these settings, including its countdown.")
+        case .unknown:
+            return String(localized: "This session was started elsewhere. Apply replaces it with these settings.")
+        }
+    }
+}
+
 // MARK: - Formatting
 
 /// Duration text specific to the sleep card. Separate from `MetricFormatting`
@@ -991,34 +1607,104 @@ enum SleepCountdownFormatting {
 /// UI vocabulary for `AwakeMode`. Kept in the app target rather than on the
 /// model in SentryKit: the kit is shared with the iOS app and the MCP tool,
 /// neither of which should inherit this card's phrasing.
+///
+/// **This wording is a bug fix, and the bug was structural.** The three cases
+/// used to read "Keep display on" / "System only (display may sleep)" /
+/// "Only while plugged in", and users could not tell them apart — for a
+/// reason that is not a matter of taste. `AwakeMode` varies along *two*
+/// independent axes:
+///
+/// | case | what stays awake | when the rule applies |
+/// |---|---|---|
+/// | `.displayAndSystem` | screen and system | battery or power |
+/// | `.systemOnly` | system; screen may sleep | battery or power |
+/// | `.systemWhileOnAC` | system; screen may sleep | power only |
+///
+/// The old labels named the first axis for two cases and the second axis for
+/// the third, so nothing in the list told you that "Only while plugged in"
+/// *also* lets your screen go dark — the one case that differs on both axes
+/// was described by neither of them fully. Every label below now states both
+/// axes, and `AwakeModePowerScope` splits the menu on the second so the list
+/// stops mixing them. `explanation` additionally names the workload each mode
+/// suits, since "which one do I want" is really a question about what the
+/// user is doing.
+///
+/// Deliberately labels only: `AwakeMode`'s cases and their IOKit mapping
+/// (`SentryKit/Models/AwakeMode.swift`, `PowerControlService`'s
+/// `assertionType`) are untouched. The modes were never wrong — only the
+/// words for them were.
 extension AwakeMode {
+    /// Collapsed-picker and active-session text. Must survive on one short
+    /// line next to a label, so it leads with the screen — the axis the user
+    /// can *see* being wrong — and qualifies the power condition only where
+    /// it differs from "always".
     var shortLabel: String {
         switch self {
-        case .displayAndSystem: return String(localized: "Keep display on")
-        case .systemOnly: return String(localized: "System only")
-        case .systemWhileOnAC: return String(localized: "Only while plugged in")
+        case .displayAndSystem: return String(localized: "Screen stays on")
+        case .systemOnly: return String(localized: "Screen may sleep")
+        case .systemWhileOnAC: return String(localized: "Screen may sleep, power only")
         }
     }
 
-    /// Menu-item text — long enough to distinguish the three without the
-    /// explanation line, which the open menu doesn't show.
+    /// Menu-item text. Self-contained on purpose even though
+    /// `AwakeModePowerScope`'s section header already states the power
+    /// condition: the existing test that every mode's user-facing text is
+    /// distinct is worth keeping true, and an item that only makes sense
+    /// under its header is an item that silently breaks if the sections are
+    /// ever flattened. The redundancy costs three words in one item.
     var longLabel: String {
         switch self {
-        case .displayAndSystem: return String(localized: "Keep display on")
-        case .systemOnly: return String(localized: "System only (display may sleep)")
-        case .systemWhileOnAC: return String(localized: "Only while plugged in")
+        case .displayAndSystem: return String(localized: "Screen and Mac both stay awake")
+        case .systemOnly: return String(localized: "Mac stays awake, screen may sleep")
+        case .systemWhileOnAC: return String(localized: "Mac stays awake on power only, screen may sleep")
         }
     }
 
     var explanation: String {
         switch self {
         case .displayAndSystem:
-            return String(localized: "Screen and system stay awake. Best for presenting or watching.")
+            return String(localized: "The screen stays on and the Mac never idle-sleeps, on battery or power. Best for presenting or watching.")
         case .systemOnly:
-            return String(localized: "System stays awake; the display may sleep. Best for builds and downloads.")
+            return String(localized: "The Mac never idle-sleeps, but the screen can turn off. On battery or power. Best for builds and downloads.")
         case .systemWhileOnAC:
-            return String(localized: "Sleep is prevented only on AC power — on battery the Mac sleeps normally.")
+            return String(localized: "Same as “screen may sleep”, but only while plugged in — on battery the Mac sleeps normally. Best for overnight jobs.")
         }
+    }
+
+    /// Which `AwakeModePowerScope` section this mode belongs to. The one
+    /// place the two-axis split is encoded; `AwakeModePowerScope.modes`
+    /// derives from it so the grouping can't disagree with itself.
+    var powerScope: AwakeModePowerScope {
+        switch self {
+        case .displayAndSystem, .systemOnly: return .anyPower
+        case .systemWhileOnAC: return .onPowerOnly
+        }
+    }
+}
+
+/// The "when does this rule apply" axis of `AwakeMode`, used as the mode
+/// menu's section headers — see `SleepControlCard.modeRow` for why the menu
+/// is split at all, and the `AwakeMode` extension above for the two-axis
+/// table this is one column of.
+enum AwakeModePowerScope: String, CaseIterable, Identifiable {
+    case anyPower
+    case onPowerOnly
+
+    var id: String { rawValue }
+
+    var menuHeader: String {
+        switch self {
+        case .anyPower: return String(localized: "On battery or power")
+        case .onPowerOnly: return String(localized: "Only on power")
+        }
+    }
+
+    /// Derived from `AwakeMode.powerScope` rather than listed by hand, so a
+    /// fourth mode cannot be added to the enum and silently fail to appear in
+    /// the menu. `allCases` order is the declaration order of `AwakeMode`,
+    /// which is the order this card has always shown them in.
+    var modes: [AwakeMode] {
+        AwakeMode.allCases.filter { $0.powerScope == self }
     }
 }
 

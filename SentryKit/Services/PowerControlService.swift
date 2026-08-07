@@ -560,6 +560,68 @@ public final class PowerControlService: ObservableObject {
         return false
     }
 
+    /// Every distinct executable name currently on the process table, in the
+    /// exact spelling `isProcessRunning(named:)` matches against, sorted
+    /// case-insensitively. Backs the keep-awake card's Process *picker* — the
+    /// list of names a `.whileProcessRunning` hold can actually be armed with.
+    ///
+    /// **Why this lives next to `isProcessRunning(named:)` rather than being
+    /// derived from `ProcessCollector`.** These two functions have to agree or
+    /// the UI ships a menu whose items fail their own arm-time validation:
+    /// the picker offers a name, `start()` calls `isProcessRunning(named:)` on
+    /// it, and a disagreement between the two enumerations reads to the user
+    /// as "the dropdown listed it and then said it isn't running." So this is
+    /// deliberately the *same* scan — same `proc_listallpids`, same
+    /// `proc_name`, same 128-byte name buffer (`ProcessCollector` uses
+    /// `MAXCOMLEN * 2 + 1`, which truncates longer names differently), same
+    /// case-insensitive identity — with the early-exit-on-match removed and
+    /// the names collected instead of compared. Agreement by construction,
+    /// not by two implementations happening to line up.
+    ///
+    /// **Why not `ProcessCollector`/`ProcessMonitor`/`SystemSnapshot
+    /// .topProcesses` at all.** All three are ranked and *capped* — top-N by
+    /// CPU — and `ProcessCollector`'s own doc comment states the exact reason
+    /// that disqualifies them here: "`claude` at 0.2% CPU is exactly the row
+    /// that never makes a top-8 cut." The dropdown's instance is capped at
+    /// `limit: 3`. A picker built on any of them would omit precisely the
+    /// idle-but-long-running agent process this trigger was built for.
+    /// `ProcessCollector` additionally lives in SystemMetricsKit, which
+    /// depends on SentryKit rather than the other way round, so this file
+    /// could not call it even if the cap weren't disqualifying.
+    ///
+    /// De-duplicated case-insensitively, keeping the first spelling
+    /// encountered: a name like `mdworker_shared` can hold a dozen PIDs at
+    /// once, and a picker that lists it a dozen times is noise. Returns an
+    /// empty array (not an error) when the scan finds nothing — callers are
+    /// expected to treat that as "no list available" and fall back, the same
+    /// honest-nil posture `mostRecentDownloadsModification` takes.
+    public nonisolated static func runningProcessNames() -> [String] {
+        let expected = proc_listallpids(nil, 0)
+        guard expected > 0 else { return [] }
+        // Same headroom-for-races convention as `isProcessRunning(named:)`.
+        var pids = [pid_t](repeating: 0, count: Int(expected) + 32)
+        let filled = pids.withUnsafeMutableBufferPointer { buffer in
+            proc_listallpids(buffer.baseAddress, Int32(buffer.count * MemoryLayout<pid_t>.size))
+        }
+        guard filled > 0 else { return [] }
+
+        var seen = Set<String>()
+        var names: [String] = []
+        var nameBuffer = [CChar](repeating: 0, count: 128)
+        for index in 0..<Int(filled) {
+            let pid = pids[index]
+            guard pid > 0 else { continue }
+            let length = nameBuffer.withUnsafeMutableBufferPointer { pointer in
+                proc_name(pid, pointer.baseAddress, UInt32(pointer.count))
+            }
+            guard length > 0 else { continue }
+            let name = String(cString: nameBuffer)
+            guard !name.isEmpty, seen.insert(name.lowercased()).inserted else { continue }
+            names.append(name)
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     /// Pure comparison: given the most recent modification time found under
     /// `~/Downloads` (or `nil` when the directory is empty, missing, or
     /// unreadable), is a download "active" under `.whileDownloadActive`'s
