@@ -45,15 +45,34 @@ struct CycleCountSection: View {
         current.map { "\($0) cycles" } ?? MetricFormatting.placeholder
     }
 
+    /// How long the fetched records actually span — "41 days", not the range the
+    /// picker asked for.
+    ///
+    /// **The same overclaim the charts had, in a sentence instead of a shape.**
+    /// `delta` is `last.cycleCount - first.cycleCount` across whatever records
+    /// came back, and the label used to attribute that delta to "this range". On
+    /// a 90-day selection holding four days of records, "+3 this range" reads as
+    /// three cycles in three months — a battery being used a tenth as hard as it
+    /// really is. The delta is right; the period it was attributed to was not.
+    /// Naming the recorded span instead makes the number mean what it measures,
+    /// and needs no new input: this view already holds the records the delta
+    /// came from. Phrasing goes through `HistoryCoverage.phrase` so this line and
+    /// the range caption above it count days the same way (floored, never
+    /// rounded up).
+    private var recordedSpan: String? {
+        guard let first = series.first?.day, let last = series.last?.day, last > first else { return nil }
+        return HistoryCoverage.phrase(last.timeIntervalSince(first))
+    }
+
     @ViewBuilder
     private var trendLabel: some View {
         switch delta {
         case .some(let value) where value > 0:
-            Label("+\(value) this range", systemImage: "arrow.up.right")
+            Label(recordedSpan.map { "+\(value) over \($0)" } ?? "+\(value) recorded", systemImage: "arrow.up.right")
                 .font(.caption2)
                 .foregroundStyle(palette.textSecondary)
         case .some(0):
-            Text("No change this range")
+            Text(recordedSpan.map { "No change over \($0)" } ?? "No change recorded")
                 .font(.caption2)
                 .foregroundStyle(palette.textTertiary)
         // A negative delta shouldn't be reachable — cycle count only
@@ -61,7 +80,7 @@ struct CycleCountSection: View {
         // plainly rather than force-unwrapping/crashing is the same
         // defensive stance `Freshness.init` takes for a future `lastSeen`.
         case .some(let value):
-            Label("\(value) this range", systemImage: "arrow.down.right")
+            Label(recordedSpan.map { "\(value) over \($0)" } ?? "\(value) recorded", systemImage: "arrow.down.right")
                 .font(.caption2)
                 .foregroundStyle(palette.textSecondary)
         case .none:

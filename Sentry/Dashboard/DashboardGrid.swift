@@ -47,6 +47,17 @@ struct DashboardGrid: View {
     /// history for it still exists in the database.
     let enabledModules: Set<MetricModule>
 
+    /// The `(since, now)` span `series` was queried over, from
+    /// `DashboardViewModel.window` — forwarded to every cell's `DashboardChart`
+    /// so a 36pt sparkline can't imply more history than the card behind it
+    /// has. See `DashboardChart.window` for the argument, and its `compact`
+    /// property for what a 36pt chart does and doesn't get from it.
+    ///
+    /// Optional, and defaulted, for the same reason `historyStore`/`exportRange`
+    /// below are: a preview or a caller with no view model can omit it and gets
+    /// exactly the pre-existing auto-fitted rendering.
+    var window: ClosedRange<Date>? = nil
+
     /// `DashboardChart.ExportContext` for each card's "Export…" context menu
     /// needs a live `HistoryStore` (to re-query the *un*-downsampled rows —
     /// see that type's doc comment) and this grid's own `(since, tier)`
@@ -94,14 +105,14 @@ struct DashboardGrid: View {
 
         switch metric {
         case .cpu:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: cpuSubtitle, samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "E-cores"), value: MetricFormatting.percent(snapshot?.cpu?.ecorePercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "P-cores"), value: MetricFormatting.percent(snapshot?.cpu?.pcorePercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "Frequency"), value: MetricFormatting.value(snapshot?.value(for: .cpuFrequencyMHz), metric: .cpuFrequencyMHz))
                 MetricDetailRow(label: String(localized: "Package power"), value: MetricFormatting.watts(snapshot?.cpu?.packagePowerWatts))
             }
         case .gpu:
-            DashboardMetricCard(metric: metric, headline: headline, samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Renderer"), value: MetricFormatting.percent(snapshot?.gpu?.rendererPercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "Tiler"), value: MetricFormatting.percent(snapshot?.gpu?.tilerPercent, decimals: 1))
                 MetricDetailRow(label: String(localized: "VRAM"), value: MetricFormatting.bytes(snapshot?.gpu?.vramUsedBytes))
@@ -111,11 +122,11 @@ struct DashboardGrid: View {
         case .ane:
             // Same "no public ANE utilization" caveat as `ModuleCardStack` —
             // see `ANEStats`'s doc comment.
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Power draw proxy"), samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Active"), value: aneActivity)
             }
         case .memory:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: memorySubtitle, samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "App"), value: MetricFormatting.bytes(snapshot?.memory?.appMemoryBytes))
                 MetricDetailRow(label: String(localized: "Wired"), value: MetricFormatting.bytes(snapshot?.memory?.wiredBytes))
                 MetricDetailRow(label: String(localized: "Compressed"), value: MetricFormatting.bytes(snapshot?.memory?.compressedBytes))
@@ -124,7 +135,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Pressure"), value: memoryPressure)
             }
         case .disk:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: String(localized: "Read throughput"), samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Write"), value: MetricFormatting.bytesPerSecond(snapshot?.disk?.writeBytesPerSec))
                 MetricDetailRow(label: String(localized: "Read IOPS"), value: MetricFormatting.value(snapshot?.disk?.readIOPS, metric: .diskReadIOPS))
                 MetricDetailRow(label: String(localized: "Write IOPS"), value: MetricFormatting.value(snapshot?.disk?.writeIOPS, metric: .diskWriteIOPS))
@@ -132,7 +143,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Used"), value: MetricFormatting.percent(snapshot?.value(for: .diskUsedPercent), decimals: 1))
             }
         case .network:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: networkSubtitle, samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Upload"), value: MetricFormatting.bytesPerSecond(snapshot?.network?.txBytesPerSec))
                 MetricDetailRow(label: String(localized: "Session ↓"), value: MetricFormatting.bytes(snapshot?.network?.rxSessionTotalBytes))
                 MetricDetailRow(label: String(localized: "Session ↑"), value: MetricFormatting.bytes(snapshot?.network?.txSessionTotalBytes))
@@ -141,7 +152,7 @@ struct DashboardGrid: View {
                 MetricDetailRow(label: String(localized: "Link rate"), value: MetricFormatting.value(snapshot?.network?.wifiTxRateMbps, metric: .networkWifiTxRateMbps))
             }
         case .thermal:
-            DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples, cadence: seriesCadence, exportContext: export) {
+            DashboardMetricCard(metric: metric, headline: headline, subtitle: thermalSubtitle, samples: samples, cadence: seriesCadence, window: window, exportContext: export) {
                 MetricDetailRow(label: String(localized: "Throttling"), value: thermalThrottling)
                 ForEach(Array(fanRPMs.enumerated()), id: \.offset) { index, rpm in
                     MetricDetailRow(label: String(localized: "Fan \(String(index + 1))"), value: String(localized: "\(String(Int(rpm.rounded()))) RPM"))
@@ -246,12 +257,20 @@ private struct DashboardMetricCard<Detail: View>: View {
     var subtitle: String? = nil
     let samples: DashboardViewModel.RangedSamples
     let cadence: TimeInterval?
+    /// Forwarded to `DashboardChart.window`. See that property for why a 36pt
+    /// sparkline is pinned to the requested range like every other chart.
+    var window: ClosedRange<Date>? = nil
     /// Forwarded straight to `DashboardChart.exportContext` — see that
     /// property's doc comment. `nil` here (the default) means this card's
     /// chart shows no "Export…" menu, same as every call site before this
     /// feature existed.
     var exportContext: DashboardChart.ExportContext? = nil
     @ViewBuilder let detail: () -> Detail
+
+    /// The scrub readout the card's own sparkline is currently publishing, or
+    /// `nil` when the pointer is elsewhere. See `ChartScrubReadoutKey` for why
+    /// it arrives as a preference rather than a binding.
+    @State private var scrubReadout: String?
 
     private var tint: Color { palette.metricColor(metric.colorID) }
 
@@ -270,23 +289,19 @@ private struct DashboardMetricCard<Detail: View>: View {
                 metricTitle: metric.title,
                 unit: metric.unit,
                 expectedCadence: cadence,
+                window: window,
                 height: 36,
                 compact: true,
                 exportContext: exportContext
             )
                 .padding(.top, 2)
-            if let subtitle {
-                Text(subtitle)
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-                    .lineLimit(1)
-                    .padding(.top, 4)
-            }
+            captionLine
             VStack(alignment: .leading, spacing: 4) {
                 detail()
             }
-            .padding(.top, subtitle == nil ? 6 : 2)
+            .padding(.top, 2)
         }
+        .onPreferenceChange(ChartScrubReadoutKey.self) { scrubReadout = $0 }
         // The one place boxes survive the de-carding: a chart wants a plot
         // area. Fill only — the border went with the rest of the chrome.
         .quietCard(palette)
@@ -305,5 +320,32 @@ private struct DashboardMetricCard<Detail: View>: View {
                 .fill(tint)
                 .frame(width: 6, height: 6)
         }
+    }
+
+    /// The line under the sparkline: this card's subtitle normally, and the
+    /// chart's scrub readout ("14:32 · 41%") while the pointer is over the plot.
+    ///
+    /// **Why the readout borrows the subtitle's slot instead of getting its
+    /// own.** These cards sit in a `LazyVGrid`, where any card growing a line on
+    /// hover reflows its whole row — the chart would jump out from under the
+    /// pointer that is reading it. Sharing one always-present line makes hover a
+    /// pure text swap with zero layout change. It also puts the readout exactly
+    /// where the eye already is: two points below the plot, on the card's own
+    /// baseline grid, rather than floating over the data at 36pt.
+    ///
+    /// Rendered even when both are `nil` (an empty `Text`, which still claims a
+    /// line box) for the same reason: three of the seven metrics have no
+    /// subtitle, and letting those cards be one line shorter until you hover
+    /// them would reintroduce exactly the reflow this avoids.
+    private var captionLine: some View {
+        Text(scrubReadout ?? subtitle ?? "")
+            .font(palette.font(size: 10))
+            .monospacedDigit()
+            // Brighter while scrubbing: the readout is an answer to a question
+            // the user is actively asking with the pointer, and a subtitle is
+            // ambient. Same two tokens the rest of the card uses.
+            .foregroundStyle(scrubReadout == nil ? palette.textTertiary : palette.textPrimary)
+            .lineLimit(1)
+            .padding(.top, 4)
     }
 }

@@ -36,6 +36,30 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Optional x-domain
+
+extension View {
+    /// Pins a chart's x-axis to `domain`, or leaves Swift Charts to auto-fit
+    /// when there is no window to pin to.
+    ///
+    /// Exists because `chartXScale(domain:)` takes a non-optional and the
+    /// "unbounded request" case is real rather than defensive — the all-time
+    /// battery-health queries genuinely have no requested window (see
+    /// `DashboardChart.window`). Written as a modifier so the two call sites in
+    /// this file and its `ActivityOverlayChart` neighbour cannot drift apart on
+    /// what `nil` means, which on a correctness fix is the failure that matters:
+    /// one chart quietly keeping the auto-fit behaviour is the whole bug back
+    /// again on that one chart.
+    @ViewBuilder
+    func chartXDomain(_ domain: ClosedRange<Date>?) -> some View {
+        if let domain, domain.lowerBound < domain.upperBound {
+            chartXScale(domain: domain)
+        } else {
+            self
+        }
+    }
+}
+
 struct DashboardChart: View {
     @Environment(\.themePalette) private var palette
     @Environment(\.detailedCharts) private var detailedCharts
@@ -68,6 +92,32 @@ struct DashboardChart: View {
     /// mostly gap.
     var expectedCadence: TimeInterval? = nil
 
+    /// The window the user actually asked for — `TimeRangePicker`'s
+    /// `(since, now)` pair, straight off `DashboardViewModel.window` so the
+    /// domain is the same instant the query used rather than a fresh `Date()`
+    /// that drifts a few milliseconds on every body evaluation.
+    ///
+    /// **This is the fix for the chart's oldest lie.** With no domain pinned,
+    /// Swift Charts auto-fits the x-axis to whatever rows came back, so three
+    /// days of history under a "90d" selection render edge to edge and read as
+    /// ninety days. Pinned, the same three days are a short trace at the right
+    /// with 87 days of visibly empty plot to their left — and the emptiness is
+    /// the data, not a rendering failure. See
+    /// `SentryKit/History/HistoryCoverage.swift` for the full argument,
+    /// including why padding the series to fill the window is never an option.
+    ///
+    /// Pinned *always* when a window is known, not only when the data falls
+    /// short: the auto-fitted domain also silently moved the *right* edge, so a
+    /// Mac shut since Tuesday drew its last Tuesday sample flush against the
+    /// plot's right edge, where a reader reasonably reads "now". Both edges are
+    /// the query's, or neither.
+    ///
+    /// `nil` — the default — means "this caller asked for all history"
+    /// (`BatteryOverviewCard`/`BatteryHealthTrendCard`'s `.distantPast` query),
+    /// which has no left edge to fall short of. The auto-fitted domain *is* the
+    /// honest one there, so it is kept.
+    var window: ClosedRange<Date>? = nil
+
     /// Taller than `SparklineChart`'s 44pt default — this is a standalone
     /// dashboard card, not a compact accessory next to a stats row.
     var height: CGFloat = 180
@@ -86,6 +136,16 @@ struct DashboardChart: View {
     /// 36-44pt) and skips the "No history yet" prose empty state in favor of
     /// a bare baseline hairline, matching the mock's flat gradient-over-a-line
     /// treatment.
+    ///
+    /// **What compact mode does and does not get from the range-honesty work.**
+    /// It gets the pinned x-domain, because that costs nothing and is the
+    /// difference between a 36pt cell whose line spans the cell (reads: ninety
+    /// days) and one whose line occupies the right fifth of it (reads: a
+    /// sliver of ninety days). It does *not* get the unrecorded-span wash or
+    /// the coverage caption: a 6%-opacity fill over a 36pt plot is below the
+    /// threshold of noticing, and seven grid cells each repeating "3 of 90 days
+    /// recorded" would say the same sentence seven times about one window the
+    /// header already states it for once. Geometry scales down; prose doesn't.
     var compact: Bool = false
 
     /// Enables the "Export…" context menu — see the type's `Export` section
@@ -137,8 +197,13 @@ struct DashboardChart: View {
         } else if detailedCharts {
             // Settings ▸ General ▸ "Detailed charts": full axis chrome for
             // readers who want to read values off the plot. The sentence is
-            // omitted — axes and sentence together would say it twice.
-            chart.frame(height: height)
+            // omitted — axes and sentence together would say it twice. The
+            // coverage note is *not* omitted: axes describe the domain that was
+            // drawn, never how much of it was measured.
+            VStack(alignment: .leading, spacing: 4) {
+                chart.frame(height: height)
+                coverageNote
+            }
         } else {
             // The default: the stat sentence lives under the plot and
             // *replaces* axis labels (handoff chart rules) — one line a
@@ -150,7 +215,63 @@ struct DashboardChart: View {
                     .font(palette.font(size: 10))
                     .monospacedDigit()
                     .foregroundStyle(palette.textTertiary)
+                coverageNote
             }
+        }
+    }
+
+    // MARK: - Coverage
+
+    /// How much of `window` the plotted rows actually cover. Derived here
+    /// rather than passed in because this view already holds both halves — the
+    /// window the caller asked for and the series that came back — and a second
+    /// parameter would be one more thing a call site could get out of step with
+    /// the samples beside it.
+    ///
+    /// Measured against the *downsampled* series this view was handed, which is
+    /// marginally conservative: `DashboardViewModel.downsample` stamps each
+    /// bucket with its middle sample's time, so the first plotted point sits up
+    /// to half a bucket after the first row that exists. That error is bounded
+    /// at 120s on the worst case in the app (24h of 3s rows folded to 360
+    /// buckets) against an `edgeTolerance` of 864s on the same window, so it can
+    /// never manufacture a shortfall — and it errs toward *under*stating
+    /// coverage, which is the only direction an honesty feature is allowed to be
+    /// wrong in. `DashboardViewModel.historyCoverage`, which has the raw rows,
+    /// uses them.
+    private var coverage: HistoryCoverage {
+        HistoryCoverage(
+            requested: window,
+            timestamps: samples.map(\.timestamp),
+            resolution: cadence ?? 0
+        )
+    }
+
+    /// "3 of 90 days recorded · since Jun 27", under the plot, only when the
+    /// window is genuinely longer than the record.
+    ///
+    /// **Why here as well as in the window header.** The header states the
+    /// coverage for the window as a whole (the oldest row *anything* holds);
+    /// this states it for the metric in front of you, and the two legitimately
+    /// differ — a module enabled last week has a much later first row than CPU
+    /// does, and a reader looking at that card deserves the number that
+    /// describes *that* line rather than the database's optimistic best.
+    ///
+    /// Suppressed when the record covers the window, unlike the header caption
+    /// which always speaks: seven grid cards and a hero chart each announcing
+    /// "90 days recorded" on a healthy install would be eight restatements of a
+    /// fact the picker already implies.
+    @ViewBuilder
+    private var coverageNote: some View {
+        if !coverage.isComplete, let summary = coverage.summary {
+            Text(summary)
+                .font(palette.font(size: 10))
+                .monospacedDigit()
+                // `textSecondary`, a step brighter than the stat sentence above
+                // it: this is the one line on the card that corrects a
+                // misreading, and a correction pitched at the same weight as
+                // decoration doesn't get read.
+                .foregroundStyle(palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -200,6 +321,15 @@ struct DashboardChart: View {
             }
         }
         .chartYScale(domain: yDomain)
+        // Applied here, on the `Chart` itself and *above* every overlay, rather
+        // than at the end of the chain. `chartXScale` would reach the chart from
+        // either position, but `chartOverlay`'s `ChartProxy` — which
+        // `gapShading` uses to place the unrecorded-span wash and
+        // `ChartScrubOverlay` uses to turn a pointer x into a `Date` — has to
+        // resolve against the *pinned* scale. Establishing the domain before the
+        // overlays exist removes any question of ordering, on a fix whose whole
+        // job is that the x-axis means what it says.
+        .chartXDomain(coverage.requestedDomain)
         .accessibilityLabel("\(metricTitle) history, \(samples.count) samples")
         .accessibilityValue(rangeDescription)
 
@@ -208,6 +338,28 @@ struct DashboardChart: View {
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .chartPlotStyle { plot in plot.background(Color.clear) }
+                // **Scrubbing at 36pt, minus the plate.** The original argument
+                // for excluding compact cells entirely (see `interactive(_:)`)
+                // was never about the *pointer* — it was about the floating
+                // readout: a plate is ~18pt tall and would cover half a 36pt
+                // plot, so the label would hide the very point it describes.
+                // That argument rules out the plate, not the interaction. The
+                // rule and the dot are hairlines and read fine at this size, and
+                // the readout is published upward instead (see
+                // `ChartScrubReadoutKey`) so the card can render it on a line of
+                // its own, outside the plot, in the slot its subtitle already
+                // occupies. Same text, same "no data" honesty, same
+                // `ChartScrubOverlay` gesture handling — just parked somewhere a
+                // 36pt chart has room for it.
+                //
+                // `anchor: nil` is what suppresses the in-plot label: the
+                // overlay then installs only its hit area and draws nothing.
+                .chartOverlay { proxy in
+                    ChartScrubOverlay(proxy: proxy, scrubDate: $scrubDate, anchor: nil) {
+                        EmptyView()
+                    }
+                }
+                .preference(key: ChartScrubReadoutKey.self, value: compactReadoutText)
         } else if detailedCharts {
             // The detailed rendering: gridlines, y-axis, and intermediate
             // time labels — for readers who opted back into axes.
@@ -259,16 +411,19 @@ struct DashboardChart: View {
     // MARK: - Interaction and honesty layers
 
     /// Everything a full-size chart gets that a 36pt grid sparkline does not:
-    /// gap shading, hover/drag scrubbing, and a VoiceOver chart descriptor.
+    /// unrecorded-span shading, an in-plot scrub readout, and a VoiceOver chart
+    /// descriptor.
     ///
-    /// Compact mode is deliberately excluded from all three. At 36pt the
-    /// pointer would cover a third of the plot, the readout plate would be
-    /// taller than the chart it explains, and the grid cell it lives in is
-    /// already one combined accessibility element announcing the headline
-    /// value (see `DashboardMetricCard` in `DashboardGrid.swift`) — a second,
-    /// traversable descriptor inside it would double the VoiceOver stops in
-    /// the grid for a chart the sighted design explicitly says is "a shape to
-    /// glance at, not a chart to read exact values off of."
+    /// **Revised.** This used to exclude compact mode from scrubbing outright.
+    /// Two of the three reasons stand and one didn't survive contact with the
+    /// owner's "any chart you should be able to hover over": the *shading* is
+    /// genuinely pointless at 36pt (a 6% wash over a 36pt-tall plot is invisible),
+    /// and the *descriptor* would still double every VoiceOver stop in the grid
+    /// for a chart whose own design brief calls it "a shape to glance at" — both
+    /// still excluded. But "the readout plate would be taller than the chart"
+    /// argued only against putting the plate *inside* the plot. The interaction
+    /// itself is fine; the plate just needed somewhere else to live. See the
+    /// `compact` branch of `chartBody` for where it went.
     private func interactive<Content: View>(_ content: Content) -> some View {
         content
             .chartOverlay { proxy in
@@ -286,7 +441,8 @@ struct DashboardChart: View {
             .accessibilityChartDescriptor(self)
     }
 
-    /// Gap regions, painted as a barely-there wash.
+    /// Every stretch of the plotted domain with no measurement in it, painted
+    /// as a barely-there wash.
     ///
     /// Quiet on purpose: an unrecorded night is the normal state of a laptop,
     /// not an error, so this is a 6%-opacity tertiary fill — enough that the
@@ -295,15 +451,34 @@ struct DashboardChart: View {
     /// overlay via `ChartProxy.position(forX:)` rather than as a
     /// `RectangleMark` so it can't participate in the y-scale or the legend,
     /// and can't be mistaken for data by anything downstream.
+    ///
+    /// **Why the range-honesty edges share this treatment instead of getting
+    /// their own.** Two different causes feed `blankRegions`: interior gaps
+    /// (`ChartScrubbing.gaps` — the Mac slept) and the leading/trailing edges of
+    /// a window longer than the record (`HistoryCoverage.unrecordedEdges` —
+    /// Sentry wasn't installed yet, or the Mac has been shut since Tuesday).
+    /// It is tempting to distinguish them visually, and it would be a mistake:
+    /// to the eye they are one fact — *nothing was measured here* — and giving
+    /// one absence a hatch and the other a wash would make a single chart speak
+    /// two visual languages about a single thing, which is exactly the "don't
+    /// double up" failure a reader would then have to decode. Where they differ
+    /// is in the *words*, which is where a cause belongs: the scrub readout
+    /// names it (`readoutText`'s `beforeRecordStart` branch) and the caption
+    /// under the plot quantifies it.
+    ///
+    /// One consequence worth stating: on a fresh install at "90d" this wash can
+    /// cover most of the plot. That is correct. The loud signal there is not the
+    /// wash — it is the line occupying a fifth of the width, which the pinned
+    /// domain is what makes possible.
     @ViewBuilder
     private func gapShading(proxy: ChartProxy) -> some View {
         GeometryReader { geometry in
             if let plotAnchor = proxy.plotFrame {
                 let plot = geometry[plotAnchor]
                 ZStack(alignment: .topLeading) {
-                    ForEach(gaps, id: \.start) { gap in
-                        if let startX = proxy.position(forX: gap.start),
-                           let endX = proxy.position(forX: gap.end) {
+                    ForEach(blankRegions, id: \.start) { region in
+                        if let startX = proxy.position(forX: region.start),
+                           let endX = proxy.position(forX: region.end) {
                             Rectangle()
                                 .fill(palette.textTertiary.opacity(0.06))
                                 .frame(width: max(endX - startX, 1), height: plot.height)
@@ -314,6 +489,16 @@ struct DashboardChart: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// Interior gaps plus the window's unrecorded edges, as one list.
+    ///
+    /// Reuses `ChartScrubbing.Gap` for the edges rather than introducing a
+    /// second region type: a gap is already "a span between two instants with
+    /// nothing in it", which is precisely what an unrecorded edge is, and the
+    /// shading loop above should not have to care which produced it.
+    private var blankRegions: [ChartScrubbing.Gap] {
+        gaps + coverage.unrecordedEdges.map { ChartScrubbing.Gap(start: $0.lowerBound, end: $0.upperBound) }
     }
 
     // MARK: - Scrubbing
@@ -360,9 +545,22 @@ struct DashboardChart: View {
         }
     }
 
+    /// The readout string for wherever the pointer currently is, or `nil` when
+    /// nothing is being scrubbed. Shared by the in-plot plate (full size) and
+    /// the card's caption line (compact) so there is exactly one wording.
+    private var currentReadoutText: String? {
+        Self.readoutText(
+            reading: reading,
+            samples: samples,
+            unit: unit,
+            format: readoutDateFormat,
+            beforeRecordStart: isScrubbingBeforeRecordStart
+        )
+    }
+
     @ViewBuilder
     private var scrubReadout: some View {
-        if let text = Self.readoutText(reading: reading, samples: samples, unit: unit, format: readoutDateFormat) {
+        if let text = currentReadoutText {
             Text(text)
                 .font(palette.font(size: 10))
                 .monospacedDigit()
@@ -372,19 +570,53 @@ struct DashboardChart: View {
         }
     }
 
+    /// What the compact grid cell publishes upward for its card to render — the
+    /// same string, minus the plate the cell has no room for.
+    private var compactReadoutText: String? { currentReadoutText }
+
+    /// Whether the pointer is parked in the stretch of the window that predates
+    /// the first row this metric ever recorded.
+    ///
+    /// The distinction is only reachable once the domain is pinned: before that
+    /// there *was* no plot area to the left of the first sample, so this
+    /// question could not be asked and "no data — Mac asleep" was the only
+    /// answer a hover could ever produce. Now a reader can hover the empty 87
+    /// days of a fresh install's 90-day chart, and blaming that on sleep would
+    /// be a confidently wrong answer to the exact question this whole change
+    /// exists to answer.
+    private var isScrubbingBeforeRecordStart: Bool {
+        guard let scrubDate, let began = coverage.beganRecording else { return false }
+        return scrubDate < began
+    }
+
     /// Pure so `SentryTests/ChartScrubbingTests.swift` can assert the exact
     /// strings — the honesty of the gap case is the whole point of this
     /// feature and it should not be verifiable only by hovering a mouse.
+    ///
+    /// - Parameter beforeRecordStart: the pointer sits before the first row
+    ///   this series has. Kept as a caller-computed `Bool` rather than folded
+    ///   into `ChartScrubbing.Reading` as a third case: `Reading` answers "is
+    ///   there a sample here", which is a question about the series, and
+    ///   "does history reach this far back" is a question about the window —
+    ///   different inputs, and merging them would force every existing
+    ///   `Reading` call site to reason about a window it may not have.
     static func readoutText(
         reading: ChartScrubbing.Reading?,
         samples: [(timestamp: Date, min: Double, avg: Double, max: Double)],
         unit: MetricUnit,
-        format: Date.FormatStyle
+        format: Date.FormatStyle,
+        beforeRecordStart: Bool = false
     ) -> String? {
         switch reading {
         case nil:
             return nil
         case .noData:
+            if beforeRecordStart {
+                // The answer to "is this fake?": no, and here is why the plot
+                // is empty here. Blaming sleep would be wrong *and* would leave
+                // the reader still wondering where the data went.
+                return String(localized: "no data — Sentry wasn't recording yet")
+            }
             // Names the two ordinary causes rather than saying only "no
             // data": on a laptop this is almost always sleep, and a user who
             // isn't told that reads a broken line as a bug in the app.
@@ -401,11 +633,14 @@ struct DashboardChart: View {
     /// Finer than `xAxisFormat`: an axis label on a 30-day chart can say "Mar
     /// 4" because it is labelling a region, but a readout is answering "what
     /// was it *at this moment*", and "Mar 4" is not an answer to that.
+    ///
+    /// Keyed to the plotted *domain* rather than the samples' own span now that
+    /// the domain can be much wider than the data: on a 90-day window holding
+    /// four hours of rows, the samples span four hours but the pointer can land
+    /// anywhere in ninety days, and "3:42 PM" with no date on it would be an
+    /// ambiguous answer to "when was this".
     private var readoutDateFormat: Date.FormatStyle {
-        guard let first = samples.first?.timestamp, let last = samples.last?.timestamp else {
-            return .dateTime.month(.abbreviated).day()
-        }
-        let span = last.timeIntervalSince(first)
+        let span = plottedSpan
         if span <= 2 * 86400 {
             return .dateTime.hour().minute()
         } else if span <= 60 * 86400 {
@@ -415,8 +650,30 @@ struct DashboardChart: View {
         }
     }
 
-    /// First and last sample times — the only two x labels the handoff wants.
+    /// How much time the plot actually covers left to right: the requested
+    /// window when one is pinned, otherwise the samples' own extent.
+    private var plottedSpan: TimeInterval {
+        if let domain = coverage.requestedDomain {
+            return domain.upperBound.timeIntervalSince(domain.lowerBound)
+        }
+        guard let first = samples.first?.timestamp, let last = samples.last?.timestamp else { return 0 }
+        return last.timeIntervalSince(first)
+    }
+
+    /// The two x labels the handoff wants, at the plot's edges.
+    ///
+    /// The *domain's* edges when a window is pinned, not the first and last
+    /// sample: with a pinned domain those samples no longer sit at the edges,
+    /// and labelling the far left of a 90-day plot with the date of the first
+    /// row — three days ago — would put a date under a position that is
+    /// eighty-seven days earlier than it. The labels have to describe the axis
+    /// they are on.
     private var edgeTimestamps: [Date] {
+        if let domain = coverage.requestedDomain {
+            return domain.lowerBound == domain.upperBound
+                ? [domain.lowerBound]
+                : [domain.lowerBound, domain.upperBound]
+        }
         guard let first = samples.first?.timestamp, let last = samples.last?.timestamp, first != last else {
             return samples.first.map { [$0.timestamp] } ?? []
         }
@@ -436,13 +693,21 @@ struct DashboardChart: View {
         return String(localized: "avg \(fmt(avgValue)) · peak \(fmt(peak.max)) at \(peakTime)")
     }
 
+    /// The no-rows-at-all state.
+    ///
+    /// The second line now names the window ("nothing recorded in the last 90
+    /// days") instead of saying "for this range" and leaving the reader to
+    /// remember which range that was. It is the same `HistoryCoverage.label`
+    /// the caption uses when there *is* data, so an empty chart and a short one
+    /// answer the same question in the same vocabulary rather than in two
+    /// unrelated sentences.
     @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: 4) {
             Text("No history yet")
                 .font(palette.font(size: 12, weight: .medium))
                 .foregroundStyle(palette.textSecondary)
-            Text("Data will appear here once samples accumulate for this range.")
+            Text(coverage.label ?? String(localized: "Data will appear here once samples accumulate for this range."))
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .multilineTextAlignment(.center)
@@ -526,11 +791,15 @@ struct DashboardChart: View {
     /// minute-level ticks, but stamping "3:42 PM" every tick on a 30-day
     /// chart would be unreadable and the minutes are meaningless at that
     /// zoom level anyway.
+    ///
+    /// Reads `plottedSpan`, so on a pinned domain this follows the window the
+    /// axis actually spans rather than the (possibly far shorter) span of the
+    /// rows drawn on it.
     private var xAxisFormat: Date.FormatStyle {
-        guard let first = samples.first?.timestamp, let last = samples.last?.timestamp else {
+        let span = plottedSpan
+        if span <= 0 {
             return .dateTime.month(.abbreviated).day()
         }
-        let span = last.timeIntervalSince(first)
         if span <= 2 * 3600 {
             return .dateTime.hour().minute()
         } else if span <= 2 * 86400 {
@@ -559,11 +828,18 @@ struct DashboardChart: View {
     /// same formatting path the visible cards use.
     private var rangeDescription: String {
         guard let extremes = ChartScrubbing.extremes(mins: samples.map(\.min), maxes: samples.map(\.max)) else {
-            return String(localized: "no data")
+            return coverage.label ?? String(localized: "no data")
         }
         let fromText = MetricFormatting.value(extremes.min, unit: unit, compact: true)
         let toText = MetricFormatting.value(extremes.max, unit: unit, compact: true)
-        return String(localized: "ranging from \(fromText) to \(toText)")
+        let values = String(localized: "ranging from \(fromText) to \(toText)")
+        // The coverage clause matters *more* here than on screen, not less: a
+        // sighted reader can see 87 days of empty plot, and a VoiceOver user
+        // gets exactly this one sentence and nothing else. Leaving it out would
+        // mean the only user who cannot see the shortfall is the only one never
+        // told about it.
+        guard !coverage.isComplete, let summary = coverage.summary else { return values }
+        return "\(values), \(summary)"
     }
 
     // MARK: - Export
@@ -779,6 +1055,14 @@ struct ActivityOverlayChart: View {
     /// neighbours.
     var expectedCadence: [ChartMetric: TimeInterval] = [:]
 
+    /// The selected range's `(since, now)` pair — see `DashboardChart.window`
+    /// for the full argument. Pinned here for the same reason and with one
+    /// extra: this plot overlays three independently-queried series, so without
+    /// a shared domain the auto-fit would size the axis to whichever metric
+    /// happens to reach furthest back, and the other two would be silently
+    /// stretched or squeezed against a scale nothing declared.
+    var window: ClosedRange<Date>? = nil
+
     var height: CGFloat = 120
 
     /// Raw x-axis date under the pointer; see `DashboardChart.scrubDate`.
@@ -786,6 +1070,22 @@ struct ActivityOverlayChart: View {
 
     private var drawable: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)] {
         series.filter { !$0.samples.isEmpty }
+    }
+
+    /// One statement about the window for the whole overlay, folded from the
+    /// three series' own coverages — see `HistoryCoverage.combining(_:)` for
+    /// why the *oldest* start across metrics is the right answer to "how far
+    /// back does this plot's record go."
+    private var coverage: HistoryCoverage {
+        let perMetric = drawable.map { entry in
+            HistoryCoverage(
+                requested: window,
+                timestamps: entry.samples.map(\.timestamp),
+                resolution: cadence(for: entry) ?? 0
+            )
+        }
+        return HistoryCoverage.combining(perMetric)
+            ?? HistoryCoverage(requested: window, earliest: nil, latest: nil)
     }
 
     var body: some View {
@@ -804,6 +1104,12 @@ struct ActivityOverlayChart: View {
                         .font(palette.font(size: 10))
                         .monospacedDigit()
                         .foregroundStyle(palette.textTertiary)
+                }
+                if !coverage.isComplete, let summary = coverage.summary {
+                    Text(summary)
+                        .font(palette.font(size: 10))
+                        .monospacedDigit()
+                        .foregroundStyle(palette.textSecondary)
                 }
             }
         }
@@ -866,6 +1172,10 @@ struct ActivityOverlayChart: View {
             }
         }
         .chartYScale(domain: 0...1.05)
+        // Above the overlays, for the reason spelled out on `DashboardChart`'s
+        // own `chartXDomain` call: the proxies below have to resolve against the
+        // pinned scale, not a scale established after them.
+        .chartXDomain(coverage.requestedDomain)
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .chartPlotStyle { plotArea in
@@ -874,13 +1184,53 @@ struct ActivityOverlayChart: View {
                     .fill(palette.surface.opacity(0.6))
             )
         }
+        // Same single "nothing was measured here" wash `DashboardChart` uses —
+        // see `DashboardChart.gapShading` for why the unrecorded edges of the
+        // window share the interior gaps' treatment rather than getting a
+        // louder one of their own. Only the edges are drawn here: the three
+        // series have three different interior gap sets, and stacking three
+        // overlapping 6% washes would compound into a band that looks like data.
+        .chartOverlay { proxy in
+            unrecordedShading(proxy: proxy)
+        }
         .chartOverlay { proxy in
             ChartScrubOverlay(proxy: proxy, scrubDate: $scrubDate, anchor: scrubAnchor) {
                 scrubReadout
             }
         }
         .accessibilityLabel("Activity chart, \(drawable.map(\.metric.title).joined(separator: ", "))")
-        .accessibilityValue(cpuSentence ?? String(localized: "relative activity shapes"))
+        .accessibilityValue(activityAccessibilityValue)
+    }
+
+    /// VoiceOver's only sentence about this plot, extended with the coverage
+    /// clause for the same reason `DashboardChart.rangeDescription` is: the
+    /// empty span is visible to everyone except the person relying on this
+    /// string.
+    private var activityAccessibilityValue: String {
+        let shapes = cpuSentence ?? String(localized: "relative activity shapes")
+        guard !coverage.isComplete, let summary = coverage.summary else { return shapes }
+        return "\(shapes), \(summary)"
+    }
+
+    @ViewBuilder
+    private func unrecordedShading(proxy: ChartProxy) -> some View {
+        GeometryReader { geometry in
+            if let plotAnchor = proxy.plotFrame {
+                let plot = geometry[plotAnchor]
+                ZStack(alignment: .topLeading) {
+                    ForEach(coverage.unrecordedEdges, id: \.lowerBound) { region in
+                        if let startX = proxy.position(forX: region.lowerBound),
+                           let endX = proxy.position(forX: region.upperBound) {
+                            Rectangle()
+                                .fill(palette.textTertiary.opacity(0.06))
+                                .frame(width: max(endX - startX, 1), height: plot.height)
+                                .offset(x: plot.minX + startX, y: plot.minY)
+                        }
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     // MARK: - Scrubbing
@@ -937,6 +1287,36 @@ struct ActivityOverlayChart: View {
         }
     }
 
+    /// How precisely to stamp the readout's leading time.
+    ///
+    /// Was hardcoded to `time: .shortened` — a bare "3:42 PM", which was
+    /// unambiguous only because the plot never spanned more than the data did.
+    /// With the domain pinned to the selected range, a pointer on the 90-day
+    /// chart can be three months from today and "3:42 PM" would be an answer to
+    /// a question nobody asked. Mirrors `DashboardChart.readoutDateFormat`'s
+    /// thresholds so the two readouts on one window never describe the same
+    /// instant at two different granularities.
+    private var readoutDateFormat: Date.FormatStyle {
+        let span: TimeInterval
+        if let domain = coverage.requestedDomain {
+            span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        } else {
+            let starts = drawable.compactMap { $0.samples.first?.timestamp }
+            let ends = drawable.compactMap { $0.samples.last?.timestamp }
+            guard let first = starts.min(), let last = ends.max() else {
+                return .dateTime.hour().minute()
+            }
+            span = last.timeIntervalSince(first)
+        }
+        if span <= 2 * 86400 {
+            return .dateTime.hour().minute()
+        } else if span <= 60 * 86400 {
+            return .dateTime.month(.abbreviated).day().hour()
+        } else {
+            return .dateTime.month(.abbreviated).day()
+        }
+    }
+
     /// Where the rule stands. The first resolved series' own timestamp when
     /// there is one — so the rule lines up with at least one real dot — and
     /// the raw pointer position when every series is in a gap.
@@ -949,7 +1329,7 @@ struct ActivityOverlayChart: View {
     private var scrubReadout: some View {
         if let scrubDate, !readings.isEmpty {
             VStack(alignment: .leading, spacing: 1) {
-                Text(scrubDate.formatted(date: .omitted, time: .shortened))
+                Text(scrubDate.formatted(readoutDateFormat))
                     .font(palette.font(size: 9))
                     .foregroundStyle(palette.textTertiary)
                 ForEach(readings, id: \.metric) { reading in

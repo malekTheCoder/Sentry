@@ -114,6 +114,35 @@ final class DashboardViewModel: ObservableObject {
     /// and `DashboardChart`.
     @Published private(set) var expectedCadence: [ChartMetric: TimeInterval] = [:]
 
+    /// The exact `(since, now)` span the last `refresh()` queried, for the
+    /// charts to pin their x-axis to.
+    ///
+    /// **Why this is published rather than recomputed in the views.** Every
+    /// chart could call `timeRange.queryWindow()` itself, and every one of them
+    /// would get a slightly different `now` — a body evaluation is not an
+    /// instant, and seven cards each anchoring to their own millisecond means
+    /// seven axes that don't line up and, worse, an axis that doesn't line up
+    /// with the rows underneath it. The window is a property of the query that
+    /// produced `series`, so it is published beside `series` and moves only when
+    /// `series` does.
+    ///
+    /// `nil` until `refresh()` has run — same "absent means not queried yet"
+    /// contract as `series` and `expectedCadence`. A chart handed `nil` keeps
+    /// Swift Charts' auto-fitted domain, which is the pre-existing behaviour and
+    /// the correct one for a chart that has not been told what was asked for.
+    @Published private(set) var window: ClosedRange<Date>?
+
+    /// How much of `window` this Mac's history actually covers, folded across
+    /// every queried metric — the number the Dashboard header states beside the
+    /// range picker.
+    ///
+    /// One statement for the whole window rather than per card, because "when
+    /// does my history start" is a fact about the database, not about whichever
+    /// metric a card happens to plot. Per-card coverage still exists and can
+    /// legitimately differ (a module enabled last week has a much later first
+    /// row); `DashboardChart` derives its own from the samples it was handed.
+    @Published private(set) var historyCoverage: HistoryCoverage?
+
     /// AI-agent-integration pass (see Sentry-AI-Features-Research.md item
     /// #15) — a `HistoryStore.agentActivityEvents` summary for the current
     /// `timeRange`, refreshed alongside `series`. `nil` until `refresh()`
@@ -277,6 +306,11 @@ final class DashboardViewModel: ObservableObject {
         let rowInterval = timeRange.expectedRowInterval(samplingInterval: samplingInterval)
         var next: [ChartMetric: RangedSamples] = [:]
         var nextCadence: [ChartMetric: TimeInterval] = [:]
+        var coverages: [HistoryCoverage] = []
+        // `since...now`, not a fresh `Date()` per chart — see `window`'s doc
+        // comment. `queryWindow` only ever subtracts from `now`, so the range is
+        // well-formed by construction.
+        let queried = since...now
         for metric in ChartMetric.allCases where enabledModules.contains(metric.module) {
             let raw = historyStore.samplesWithRange(
                 metric: metric.metricID.rawValue,
@@ -285,14 +319,33 @@ final class DashboardViewModel: ObservableObject {
             )
             let reduced = Self.downsample(raw, cap: Self.maxPointsPerSeries)
             next[metric] = reduced
-            nextCadence[metric] = ChartScrubbing.expectedCadence(
+            let cadence = ChartScrubbing.expectedCadence(
                 baseInterval: rowInterval,
                 inputCount: raw.count,
                 outputCount: reduced.count
             )
+            nextCadence[metric] = cadence
+            // Built from `raw`, not `reduced`: `downsample` stamps each bucket
+            // with its *middle* sample's timestamp, so the reduced series' first
+            // point sits up to half a bucket after the first row that actually
+            // exists. Coverage is a claim about when recording began, and that
+            // is a question for the rows, not for the plotting compromise.
+            coverages.append(
+                HistoryCoverage(
+                    requested: queried,
+                    timestamps: raw.map(\.timestamp),
+                    resolution: cadence
+                )
+            )
         }
         series = next
         expectedCadence = nextCadence
+        window = queried
+        // A window with no enabled modules still has a truthful answer
+        // ("nothing recorded"), and the header should say it rather than go
+        // blank — an absent caption reads as "everything is fine".
+        historyCoverage = HistoryCoverage.combining(coverages)
+            ?? HistoryCoverage(requested: queried, earliest: nil, latest: nil, resolution: rowInterval)
         let agentEvents = historyStore.agentActivityEvents(since: since)
         agentActivity = Self.summarize(agentEvents)
         agentSessions = AgentSessionReport.sessions(from: agentEvents, awakeHolds: awakeHoldsProvider(), now: now)

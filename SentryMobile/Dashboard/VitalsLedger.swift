@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import SentryKit
 
 // The redesign handoff's iOS Dashboard (direction 2b): a borderless vitals
@@ -15,6 +16,20 @@ import SentryKit
 /// under-line fill for the CPU line on the big chart), tinted in the
 /// metric's own color. Renders nothing (not a flat fake line) until there
 /// are at least two real samples.
+///
+/// **Deliberately not scrubbable, unlike every other chart in the product.**
+/// This is 70×22pt on the trailing edge of a ledger row. A fingertip's contact
+/// patch is roughly 44pt across — it would cover two thirds of the plot's width
+/// and all of its height, so there is no position at which a reader could both
+/// touch a point and see it. Even granting that, the row it sits in already
+/// carries that metric's current value in 20pt type two inches to the left, and
+/// the tap gesture on the row belongs to the disclosure that reveals the
+/// module's detail rows; a scrub gesture here would race it and one of the two
+/// would lose unpredictably. The full-width `MobileActivityChart` directly above
+/// this ledger plots the same CPU/memory/GPU series at a size a finger can
+/// actually address, and *that* is where hovering a point belongs. Kept as a
+/// `Canvas` for the same reason: with no interaction and no axis, a `Chart` here
+/// would be strictly more machinery for an identical picture.
 struct LedgerSparkline: View {
     let values: [Double]
     let tint: Color
@@ -154,14 +169,18 @@ struct VitalsLedger: View {
     @Environment(\.themePalette) private var palette
 
     let snapshot: SystemSnapshot?
-    let series: [MetricID: [Double]]
+    /// Same ring buffer `MobileActivityChart` plots. The rows only need the
+    /// values (see `LedgerSparkline` for why these plots carry no time axis),
+    /// so each row maps its own series down at the call site rather than this
+    /// view flattening the timestamps away for everybody.
+    let series: [MetricID: [RecentSample]]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VitalsLedgerRow(
                 label: String(localized: "CPU"),
                 headline: MetricFormatting.percent(snapshot?.cpu?.totalPercent),
-                sparkline: series[.cpuTotalPercent] ?? [],
+                sparkline: series[.cpuTotalPercent]?.map(\.value) ?? [],
                 tint: palette.metricColor(.cpuTotalPercent),
                 details: snapshot?.cpu.map {
                     [
@@ -175,7 +194,7 @@ struct VitalsLedger: View {
             VitalsLedgerRow(
                 label: String(localized: "GPU"),
                 headline: MetricFormatting.percent(snapshot?.gpu?.utilizationPercent),
-                sparkline: series[.gpuUtilizationPercent] ?? [],
+                sparkline: series[.gpuUtilizationPercent]?.map(\.value) ?? [],
                 tint: palette.metricColor(.gpuUtilizationPercent),
                 details: snapshot?.gpu.map {
                     [
@@ -189,7 +208,7 @@ struct VitalsLedger: View {
                 label: String(localized: "Memory"),
                 headline: MetricFormatting.percent(memoryUsedPercent),
                 context: snapshot?.memory.map { MetricFormatting.bytes($0.usedBytes) },
-                sparkline: series[.memoryUsedBytes] ?? [],
+                sparkline: series[.memoryUsedBytes]?.map(\.value) ?? [],
                 tint: palette.metricColor(.memoryUsedBytes),
                 details: snapshot?.memory.map {
                     [
@@ -215,7 +234,7 @@ struct VitalsLedger: View {
                 label: String(localized: "Network"),
                 headline: MetricFormatting.bytesPerSecond(snapshot?.network?.rxBytesPerSec),
                 context: snapshot?.network.flatMap { $0.wifiSSID ?? $0.activeInterface },
-                sparkline: series[.networkRxBytesPerSec] ?? [],
+                sparkline: series[.networkRxBytesPerSec]?.map(\.value) ?? [],
                 tint: palette.metricColor(.networkRxBytesPerSec),
                 details: snapshot?.network.map {
                     [
@@ -279,11 +298,35 @@ struct VitalsLedger: View {
 /// normalized to its own observed peak (their units are incompatible — the
 /// plot shows shapes; the sentence below carries the real CPU numbers).
 /// Same honesty contract as the Mac's `ActivityOverlayChart`.
+///
+/// **Why this is a `Chart` and no longer a `Canvas`.** It was a hand-stroked
+/// `Canvas` polyline over bare `[Double]`s, positioned by array index. That
+/// rendered the same picture at lower cost, and it made two things impossible.
+/// It could not be scrubbed — the owner's "any chart you should be able to
+/// hover over the line and [see a] specific checkpoint" has no answer when the
+/// x-axis is an array index, because an index does not know when it was
+/// captured. And it was subtly wrong about spacing: the phone drops a metric
+/// from a tick where its module reported nothing (see
+/// `DashboardViewModel.appendToSeries`, correctly refusing to invent a zero), so
+/// evenly-spaced indices quietly compressed whatever was missed. Swift Charts
+/// over a real time axis fixes both, costs one framework this app already
+/// imports for `BatteryHealthTrendChart`, and lets this view reuse
+/// `ChartScrubOverlay`/`ChartScrubbing` rather than growing a second,
+/// nearly-identical readout of its own.
+///
+/// **Why the readout still refuses to give a combined number.** Unchanged from
+/// the Mac counterpart's argument: the three lines are normalized to their own
+/// peaks, so a y-position on this plot corresponds to no real quantity. The
+/// readout lists each series' own recorded value in its own unit and never a
+/// y-position, a fraction, or a total.
 struct MobileActivityChart: View {
     @Environment(\.themePalette) private var palette
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    let series: [MetricID: [Double]]
+    let series: [MetricID: [RecentSample]]
+
+    /// Raw x-axis date under the finger; see `ChartScrubOverlay.scrubDate`.
+    @State private var scrubDate: Date?
 
     private static let plotted: [(metric: MetricID, title: String)] = [
         (.cpuTotalPercent, String(localized: "CPU")),
@@ -291,7 +334,7 @@ struct MobileActivityChart: View {
         (.gpuUtilizationPercent, String(localized: "GPU")),
     ]
 
-    private var drawable: [(metric: MetricID, title: String, values: [Double])] {
+    private var drawable: [(metric: MetricID, title: String, values: [RecentSample])] {
         Self.plotted.compactMap { entry in
             guard let values = series[entry.metric], values.count >= 2 else { return nil }
             return (entry.metric, entry.title, values)
@@ -307,33 +350,8 @@ struct MobileActivityChart: View {
         } else {
             VStack(alignment: .leading, spacing: palette.spacingTight) {
                 legend
-                Canvas { context, size in
-                    for entry in drawable {
-                        let peak = max(entry.values.max() ?? 1, .leastNonzeroMagnitude)
-                        var path = Path()
-                        for (index, value) in entry.values.enumerated() {
-                            let x = size.width * CGFloat(index) / CGFloat(entry.values.count - 1)
-                            let y = size.height - (size.height - 4) * CGFloat(value / peak) - 2
-                            if index == 0 {
-                                path.move(to: CGPoint(x: x, y: y))
-                            } else {
-                                path.addLine(to: CGPoint(x: x, y: y))
-                            }
-                        }
-                        context.stroke(
-                            path,
-                            with: .color(palette.metricColor(entry.metric)),
-                            style: StrokeStyle(lineWidth: 1.5, lineJoin: .round)
-                        )
-                    }
-                }
-                .frame(height: 96)
-                .background(
-                    RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                        .fill(palette.surface.opacity(0.6))
-                )
-                .accessibilityLabel("Activity chart, last 60 seconds")
-                .accessibilityValue(cpuSentence ?? String(localized: "relative activity shapes"))
+                plot
+                    .frame(height: 96)
                 if let sentence = cpuSentence {
                     Text(sentence)
                         .scaledFont(palette, size: 11, monospacedDigit: true)
@@ -341,6 +359,177 @@ struct MobileActivityChart: View {
                 }
             }
         }
+    }
+
+    private var plot: some View {
+        Chart {
+            ForEach(drawable, id: \.metric) { entry in
+                let peak = max(entry.values.map(\.value).max() ?? 1, .leastNonzeroMagnitude)
+                let segments = segmentNumbers(for: entry.values)
+                ForEach(Array(entry.values.enumerated()), id: \.offset) { offset, sample in
+                    // The series key carries the segment number as well as the
+                    // metric, exactly as the Mac's overlay does: a phone that
+                    // lost the Mac for thirty seconds mid-window leaves a hole,
+                    // and three lines gliding smoothly across it would be three
+                    // lies rather than one.
+                    LineMark(
+                        x: .value("Time", sample.timestamp),
+                        y: .value("Relative", sample.value / peak),
+                        series: .value("Metric", "\(entry.title)#\(segments[offset])")
+                    )
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+                    .foregroundStyle(palette.metricColor(entry.metric))
+                    .interpolationMethod(.monotone)
+                }
+            }
+
+            if let scrubAnchor {
+                RuleMark(x: .value("Scrubbed time", scrubAnchor))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(palette.textTertiary)
+                ForEach(readings, id: \.metric) { reading in
+                    if let sample = reading.sample {
+                        let peak = max(reading.peak, .leastNonzeroMagnitude)
+                        PointMark(
+                            x: .value("Scrubbed time", sample.timestamp),
+                            y: .value("Relative", sample.value / peak)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(palette.metricColor(reading.metric))
+                    }
+                }
+            }
+        }
+        .chartYScale(domain: 0...1.05)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartPlotStyle { plotArea in
+            plotArea.background(
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface.opacity(0.6))
+            )
+        }
+        .chartOverlay { proxy in
+            ChartScrubOverlay(proxy: proxy, scrubDate: $scrubDate, anchor: scrubAnchor) {
+                scrubReadout
+            }
+        }
+        .accessibilityLabel("Activity chart, last 60 seconds")
+        .accessibilityValue(cpuSentence ?? String(localized: "relative activity shapes"))
+    }
+
+    // MARK: - Scrubbing
+
+    /// One resolved row per drawn metric. `sample` is `nil` when that metric has
+    /// no reading at the finger's position — which can be true of one series and
+    /// false of its neighbours, since a snapshot missing one module still
+    /// carries the others.
+    private struct Reading {
+        let metric: MetricID
+        let title: String
+        let sample: RecentSample?
+        let peak: Double
+    }
+
+    /// The Mac's snapshot cadence as this phone sees it — observed, not
+    /// declared.
+    ///
+    /// The Mac side can declare its cadence because it knows the tier it
+    /// queried; this app knows nothing about the sender's refresh interval
+    /// (`AppSettings.globalRefreshInterval` lives on the Mac and is not on the
+    /// wire), so the observed median spacing is the only honest answer.
+    /// `ChartScrubbing.effectiveCadence` is built for exactly this
+    /// "nothing declared" case.
+    private func cadence(for values: [RecentSample]) -> TimeInterval? {
+        ChartScrubbing.effectiveCadence(expected: nil, timestamps: values.map(\.timestamp))
+    }
+
+    private func segmentNumbers(for values: [RecentSample]) -> [Int] {
+        var numbers = [Int](repeating: 0, count: values.count)
+        guard let cadence = cadence(for: values) else { return numbers }
+        let segments = ChartScrubbing.segments(
+            timestamps: values.map(\.timestamp),
+            threshold: ChartScrubbing.gapThreshold(cadence: cadence)
+        )
+        for (number, range) in segments.enumerated() {
+            for index in range { numbers[index] = number }
+        }
+        return numbers
+    }
+
+    private var readings: [Reading] {
+        guard let scrubDate else { return [] }
+        return drawable.map { entry in
+            let resolved = ChartScrubbing.resolve(
+                at: scrubDate,
+                timestamps: entry.values.map(\.timestamp),
+                cadence: cadence(for: entry.values) ?? 0
+            )
+            var sample: RecentSample?
+            if case .sample(let index) = resolved, entry.values.indices.contains(index) {
+                sample = entry.values[index]
+            }
+            return Reading(
+                metric: entry.metric,
+                title: entry.title,
+                sample: sample,
+                peak: entry.values.map(\.value).max() ?? 1
+            )
+        }
+    }
+
+    /// Where the rule stands: the first resolved series' own timestamp when
+    /// there is one, so the rule lines up with a real dot, and the raw finger
+    /// position when every series is in a hole.
+    private var scrubAnchor: Date? {
+        guard let scrubDate else { return nil }
+        return readings.compactMap { $0.sample?.timestamp }.first ?? scrubDate
+    }
+
+    @ViewBuilder
+    private var scrubReadout: some View {
+        if let scrubDate, !readings.isEmpty {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(scrubDate.formatted(date: .omitted, time: .standard))
+                    .scaledFont(palette, size: 10)
+                    .foregroundStyle(palette.textTertiary)
+                ForEach(readings, id: \.metric) { reading in
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(palette.metricColor(reading.metric))
+                            .frame(width: 5, height: 5)
+                        Text(Self.rowText(metric: reading.metric, title: reading.title, sample: reading.sample))
+                            .scaledFont(palette, size: 11, monospacedDigit: true)
+                            .foregroundStyle(palette.textPrimary)
+                    }
+                }
+            }
+            .fixedSize()
+            .chartScrubPlate(palette)
+        }
+    }
+
+    /// Each metric's own real value in its own unit — never the normalized
+    /// y-position the line was drawn at.
+    ///
+    /// Pure, and a deliberate two-line mirror of `ActivityOverlayChart.rowText`
+    /// on the Mac, which `SentryTests/ChartScrubbingTests.swift` does cover:
+    /// there is no iOS test target in this build (`project.yml` — `SentryTests`
+    /// depends on `SentryKit_macOS`/`Sentry` only), so nothing under
+    /// `SentryMobile/` is reachable from a test. The same split
+    /// `BatteryHealthTrendChart.readoutText` documents applies here — the part
+    /// worth testing (`ChartScrubbing.resolve`, which decides *whether* there is
+    /// a sample) is in `SentryKit` and is tested; this is the phrasing layer
+    /// over its answer.
+    ///
+    /// The seconds-precision timestamp above these rows is not decoration: this
+    /// series is a 60-sample ring at the Mac's ~3s cadence, so a minute-precision
+    /// stamp would label twenty adjacent points identically.
+    static func rowText(metric: MetricID, title: String, sample: RecentSample?) -> String {
+        guard let sample else {
+            return String(localized: "\(title) no data")
+        }
+        return "\(title) \(MetricFormatter.compact(sample.value, unit: metric.unit))"
     }
 
     /// Three swatch+name pairs and a "last 60 s" caption. On one line at
@@ -381,7 +570,7 @@ struct MobileActivityChart: View {
     }
 
     private var cpuSentence: String? {
-        guard let cpu = series[.cpuTotalPercent], !cpu.isEmpty else { return nil }
+        guard let cpu = series[.cpuTotalPercent]?.map(\.value), !cpu.isEmpty else { return nil }
         let avg = cpu.reduce(0, +) / Double(cpu.count)
         let peak = cpu.max() ?? 0
         // Pre-formatted numbers so the sentence is one catalog key with

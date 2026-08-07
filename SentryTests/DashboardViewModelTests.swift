@@ -129,6 +129,99 @@ final class DashboardViewModelTests: XCTestCase {
         XCTAssertEqual(model.series(for: .gpu)?.count, 1)
     }
 
+    // MARK: - Window and coverage (range-honesty pass)
+    //
+    // The pure arithmetic is covered by `HistoryCoverageTests`; what these pin
+    // is the *wiring* — that the span the charts pin their x-axis to is the same
+    // span the query used, and that the coverage the header states is derived
+    // from rows that actually came back rather than from the picker's label.
+
+    func testRefreshPublishesTheExactWindowItQueried() throws {
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), enabledModules: [.cpu], timeRange: .quarter)
+        XCTAssertNil(model.window, "no query has run yet, so there is no window to pin a chart to")
+
+        model.refresh(now: now)
+
+        let window = try XCTUnwrap(model.window)
+        // Byte-for-byte the picker's own `(since, now)` pair. If these ever
+        // drift, every chart on the window is drawn against a domain that
+        // doesn't match the rows on it — the failure mode is silent and looks
+        // exactly like correct output.
+        XCTAssertEqual(window.lowerBound, TimeRangePicker.quarter.queryWindow(now: now).since)
+        XCTAssertEqual(window.upperBound, now)
+    }
+
+    func testCoverageReportsAShortHistoryAgainstALongWindow() throws {
+        // The headline scenario, end to end: three days of rows, "90d"
+        // selected. Before this pass the chart auto-fitted those three days
+        // across the full plot width and nothing anywhere said otherwise.
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        try dbQueue.write { db in
+            for hoursAgo in stride(from: 72, through: 0, by: -1) {
+                try db.execute(
+                    sql: """
+                    INSERT INTO sample_hourly (hour_start, metric, min_value, max_value, avg_value, sample_count)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        now.timeIntervalSince1970 - Double(hoursAgo) * 3600,
+                        "cpu.total_percent", 10.0, 30.0, 20.0, 1,
+                    ]
+                )
+            }
+        }
+
+        let model = DashboardViewModel(historyStore: store, enabledModules: [.cpu], timeRange: .quarter)
+        model.refresh(now: now)
+
+        let coverage = try XCTUnwrap(model.historyCoverage)
+        XCTAssertFalse(coverage.isComplete)
+        XCTAssertEqual(coverage.label, "3 of 90 days recorded")
+        XCTAssertEqual(coverage.unrecordedLead?.lowerBound, try XCTUnwrap(model.window).lowerBound)
+        XCTAssertNil(coverage.unrecordedTail, "rows run right up to now")
+    }
+
+    func testCoverageIsCompleteWhenTheRowsSpanTheWholeWindow() throws {
+        let store = tempHistoryStore()
+        let dbQueue = try XCTUnwrap(store.databaseQueue)
+        try dbQueue.write { db in
+            for hoursAgo in [24, 12, 0] {
+                try db.execute(
+                    sql: "INSERT INTO sample_raw (ts, metric, value) VALUES (?, ?, ?)",
+                    arguments: [now.timeIntervalSince1970 - Double(hoursAgo) * 3600, "cpu.total_percent", 42.0]
+                )
+            }
+        }
+
+        let model = DashboardViewModel(historyStore: store, enabledModules: [.cpu], timeRange: .day)
+        model.refresh(now: now)
+
+        let coverage = try XCTUnwrap(model.historyCoverage)
+        XCTAssertTrue(coverage.isComplete)
+        XCTAssertEqual(coverage.label, "24 hours recorded")
+        // Complete windows drop the start date — see `HistoryCoverage.summary`.
+        XCTAssertEqual(coverage.summary, "24 hours recorded")
+    }
+
+    func testCoverageWithNoRowsAtAllStillDescribesTheWindow() throws {
+        // An empty database must not produce a *silent* header: an absent
+        // caption reads as "everything is fine".
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), enabledModules: [.cpu], timeRange: .week)
+        model.refresh(now: now)
+
+        let coverage = try XCTUnwrap(model.historyCoverage)
+        XCTAssertEqual(coverage.label, "nothing recorded in the last 7 days")
+        XCTAssertEqual(coverage.unrecordedLead, model.window)
+    }
+
+    func testCoverageExistsEvenWithEveryModuleDisabled() throws {
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), enabledModules: [], timeRange: .month)
+        model.refresh(now: now)
+        XCTAssertNotNil(model.historyCoverage)
+        XCTAssertNotNil(model.window)
+    }
+
     // MARK: - Live theme (regression: theme used to freeze at DashboardView's
     // one-time init, since HistoryWindowController never rebuilds its
     // hosting controller — see DashboardViewModel.theme's doc comment)

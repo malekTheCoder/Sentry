@@ -118,14 +118,23 @@ struct DashboardView: View {
                 GlanceStrip(
                     snapshot: viewModel.snapshot,
                     series: viewModel.series,
-                    enabledModules: viewModel.enabledModules
+                    enabledModules: viewModel.enabledModules,
+                    // So the strip's six 20pt textures are drawn against the
+                    // same span as the full-size charts below them — six tiles
+                    // implying more history than the grid under them shows
+                    // would be worse than no strip.
+                    window: viewModel.window
                 )
                 .padding(.bottom, palette.spacingBlock)
 
                 // The handoff's full-width Activity plot: the glance
                 // strip's numbers, drawn over time, one band — no header
                 // of its own because it *is* the glance band's second row.
-                ActivityOverlayChart(series: overlaySeries, expectedCadence: viewModel.expectedCadence)
+                ActivityOverlayChart(
+                    series: overlaySeries,
+                    expectedCadence: viewModel.expectedCadence,
+                    window: viewModel.window
+                )
                     .padding(.bottom, palette.spacingSection)
 
                 SectionRule()
@@ -183,6 +192,10 @@ struct DashboardView: View {
                     series: viewModel.series,
                     expectedCadence: viewModel.expectedCadence,
                     enabledModules: viewModel.enabledModules,
+                    // The same `(since, now)` span the queries used, so every
+                    // grid sparkline is drawn against the range the picker
+                    // above actually asked for — see `DashboardChart.window`.
+                    window: viewModel.window,
                     // Enables each card's "Export…" context menu
                     // (`DashboardChart.ExportContext`) — `historyStore` is
                     // the same instance already threaded through this view
@@ -240,9 +253,45 @@ struct DashboardView: View {
                 }
             }
             Spacer(minLength: palette.spacing)
-            TimeRangePickerView(selection: $viewModel.timeRange)
+            VStack(alignment: .trailing, spacing: 2) {
+                TimeRangePickerView(selection: $viewModel.timeRange)
+                coverageCaption
+            }
         }
         .padding(.bottom, palette.spacingTight)
+    }
+
+    /// "90 days recorded", or "3 of 90 days recorded · since Jun 27" — directly
+    /// under the range control that produced the number.
+    ///
+    /// **Why this is here and not only on the charts.** A pinned x-domain shows
+    /// a *proportion*: a reader sees a short trace at the right and correctly
+    /// concludes "less than I asked for", but still has to eyeball how much
+    /// less. This states it. The two together are the point — the shape makes
+    /// the shortfall impossible to miss, the sentence makes it exact, and each
+    /// covers the other's failure mode.
+    ///
+    /// **Why it speaks even when coverage is complete.** A caption that appears
+    /// only on a shortfall is a warning light, and a reader learns to read its
+    /// absence as "fine" without ever learning what it measures — so the first
+    /// time it does appear, it is an unfamiliar alarm rather than a familiar
+    /// number that changed. Always present, it is just a fact about the window,
+    /// sitting where the question was asked.
+    ///
+    /// **Why under the picker rather than beside it.** `TimeRangePickerView` is
+    /// five text buttons with middots; putting a sentence on the same line would
+    /// make the sixth item look like a sixth range. A line below reads as a
+    /// caption on the control, which is what it is.
+    @ViewBuilder
+    private var coverageCaption: some View {
+        if let summary = viewModel.historyCoverage?.summary {
+            Text(summary)
+                .font(palette.font(size: 10))
+                .monospacedDigit()
+                .foregroundStyle(palette.textTertiary)
+                .lineLimit(1)
+                .accessibilityLabel("History coverage: \(summary)")
+        }
     }
 
     /// "updated 4s ago" — proof the numbers are alive. Quiet until the

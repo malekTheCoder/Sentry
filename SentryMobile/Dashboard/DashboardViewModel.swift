@@ -25,6 +25,26 @@ import SentryKit
 /// `MockDataSource`-only convenience even after this generalization — see
 /// `AppDataSource.devices()`'s doc comment for how it's synthesized for the
 /// local-sync case instead.
+/// One live reading, with the instant the Mac took it.
+///
+/// A named struct rather than a `(Date, Double)` tuple because it is a `Chart`
+/// input: Swift Charts' `ForEach` wants `Identifiable` elements, and tuples
+/// cannot conform to protocols. Identified by timestamp, which is unique within
+/// a series by construction — `appendToSeries` appends at most one value per
+/// metric per snapshot, and snapshots carry distinct times.
+///
+/// Local to `SentryMobile` rather than shared from `SentryKit`: this is the
+/// shape of *this app's* in-memory ring buffer, and the Mac's equivalent
+/// (`DashboardViewModel.RangedSamples`) is deliberately the tuple shape
+/// `HistoryStore` returns instead. Two different sources, two different shapes;
+/// what they genuinely share — the scrubbing arithmetic — already lives in
+/// `SentryKit/History/ChartScrubbing.swift`.
+struct RecentSample: Identifiable, Equatable, Sendable {
+    let timestamp: Date
+    let value: Double
+    var id: Date { timestamp }
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published private(set) var devices: [Device] = []
@@ -36,7 +56,20 @@ final class DashboardViewModel: ObservableObject {
     /// chart the redesign handoff calls for. In-memory only (the phone has
     /// no history store); it starts empty and honestly shows nothing until
     /// samples accumulate.
-    @Published private(set) var recentSeries: [MetricID: [Double]] = [:]
+    ///
+    /// **Why the values carry their timestamps now.** This was `[MetricID:
+    /// [Double]]` — bare values, positioned on screen by array index. That is
+    /// enough for a decorative polyline and not enough for anything a reader can
+    /// interrogate: the owner asked to "hover over the line and see specific
+    /// data points when they were captured", and index 37 of an array has no
+    /// answer to "when". It is also quietly wrong about *shape*, not just about
+    /// labels: `appendToSeries` skips a metric whose module reported nothing on
+    /// a given tick (correctly — a fake zero would draw a dip that never
+    /// happened), so index positions are not evenly spaced in time, and a plot
+    /// drawn against them silently compresses whatever the phone missed. With
+    /// real timestamps the Activity chart plots against a time axis and
+    /// `ChartScrubbing` can answer both questions honestly.
+    @Published private(set) var recentSeries: [MetricID: [RecentSample]] = [:]
 
     /// One minute of samples at the Mac's default cadence; enough for the
     /// handoff's "60 s" window, small enough to never matter memory-wise.
@@ -114,12 +147,19 @@ final class DashboardViewModel: ObservableObject {
     /// Only values that actually exist get appended — a snapshot missing a
     /// module contributes nothing to that series rather than a fake zero,
     /// so a sparkline never draws a dip that didn't happen.
+    ///
+    /// Each appended value carries the *snapshot's* timestamp, not `Date()` at
+    /// append time: the reading was taken on the Mac and travelled over the
+    /// local-sync link to get here, and stamping it with the moment the phone
+    /// happened to decode it would misdate every point by the network's latency
+    /// — small, but the whole reason this timestamp exists is to answer "when
+    /// was this captured", and the honest answer is the capture time.
     private func appendToSeries(_ snapshot: SystemSnapshot) {
         var updated = recentSeries
         func append(_ metric: MetricID, _ value: Double?) {
             guard let value else { return }
             var values = updated[metric] ?? []
-            values.append(value)
+            values.append(RecentSample(timestamp: snapshot.timestamp, value: value))
             if values.count > Self.seriesCap {
                 values.removeFirst(values.count - Self.seriesCap)
             }
@@ -127,9 +167,20 @@ final class DashboardViewModel: ObservableObject {
         }
         append(.cpuTotalPercent, snapshot.cpu?.totalPercent)
         append(.gpuUtilizationPercent, snapshot.gpu?.utilizationPercent)
-        if let memory = snapshot.memory, memory.totalBytes > 0 {
-            append(.memoryUsedBytes, Double(memory.usedBytes) / Double(memory.totalBytes) * 100)
-        }
+        // **Real bytes under a `.bytes`-unit key.** This used to store
+        // `usedBytes / totalBytes * 100` — a *percentage*, filed under
+        // `.memoryUsedBytes`, whose `MetricID.unit` is `.bytes`. Nothing caught
+        // it because nothing ever formatted the number: the ledger row's
+        // sparkline and the Activity chart both use the series for shape only,
+        // and both normalize, so a constant scale factor is invisible in either.
+        // The moment `MobileActivityChart` gained a scrub readout that runs the
+        // value through `MetricFormatter` with the key's own unit, the mismatch
+        // would have printed "Memory 62 B" for a Mac using 62% of its RAM —
+        // a plausible-looking, entirely fabricated number, which is the precise
+        // failure mode the rest of this work exists to remove. Storing the real
+        // byte count makes the key and its unit agree; the two shapes are
+        // unaffected, since both normalize and `totalBytes` is a constant.
+        append(.memoryUsedBytes, snapshot.memory.map { Double($0.usedBytes) })
         append(.networkRxBytesPerSec, snapshot.network?.rxBytesPerSec)
         recentSeries = updated
     }
