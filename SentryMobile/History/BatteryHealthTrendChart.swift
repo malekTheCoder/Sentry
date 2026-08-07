@@ -58,9 +58,26 @@ struct BatteryHealthTrendChart: View {
             // smooth curve drawn across it would claim two weeks of health
             // readings that were never taken.
             ForEach(Array(series.enumerated()), id: \.offset) { offset, record in
+                // **`yStart` at the domain floor, not the default zero
+                // baseline.** `AreaMark(x:y:)` fills from y = 0 up to the
+                // value. This chart's `yDomain` is clamped tightly around the
+                // data — roughly 77...79 for a worn battery — so a fill
+                // anchored at zero begins hundreds of points *below* the
+                // plot's bottom edge and washes the theme's success green
+                // over everything under the card. Reported twice from a real
+                // phone.
+                //
+                // A previous pass tried to contain it with
+                // `chartPlotStyle { $0.clipped() }`, and that is the fragile
+                // shape of fix: it lets the mark be laid out wrongly and then
+                // hides the consequence, which only holds for as long as
+                // Swift Charts happens to honour the clip for marks (it does
+                // not reliably — the wash survived). Bounding the mark itself
+                // means there is nothing outside the plot to clip.
                 AreaMark(
                     x: .value("Day", record.day),
-                    y: .value("Health", record.healthPercent),
+                    yStart: .value("Floor", yDomain.lowerBound),
+                    yEnd: .value("Health", record.healthPercent),
                     series: .value("Segment", segmentNumbers[offset])
                 )
                 .interpolationMethod(.monotone)
@@ -114,11 +131,11 @@ struct BatteryHealthTrendChart: View {
             }
         }
         .chartYScale(domain: yDomain)
-        // The area fill under the line runs to the ZERO baseline, not the
-        // domain floor — with a domain clamped around the data (~77...79)
-        // that fill is drawn hundreds of points past the plot's bottom edge,
-        // washing green over everything below the card. Clip the plot to
-        // its own bounds; nothing legitimate draws outside them.
+        // Kept as a second line of defence now that the area fill is bounded
+        // at the domain floor above. It is no longer load-bearing for the
+        // fill, but `.monotone` interpolation genuinely can overshoot the
+        // domain between two points, and a curve poking a few points past the
+        // plot edge is exactly what a clip is for.
         .chartPlotStyle { plot in
             plot.clipped()
         }
