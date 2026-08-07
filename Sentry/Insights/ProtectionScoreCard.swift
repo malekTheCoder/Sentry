@@ -125,7 +125,7 @@ struct ProtectionScoreCard: View {
             Text("Protection Score")
                 .font(palette.font(size: 13, weight: .semibold))
                 .foregroundStyle(palette.textPrimary)
-            Text("The average of the two halves below. Each starts at 100 and loses the weight of its own findings. The verdict beside the number follows the weaker half, and never reads \"well protected\" while a warning or critical finding is open — however high the average.")
+            Text("The average of the two halves below — each of which is the average of its own categories, and each category starts at 100 and loses the weight of its own findings. The verdict beside the number follows the weaker half, and never reads \"well protected\" while a warning or critical finding is open — however high the average.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)

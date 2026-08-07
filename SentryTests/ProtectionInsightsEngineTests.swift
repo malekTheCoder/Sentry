@@ -318,11 +318,14 @@ final class ProtectionInsightsEngineTests: XCTestCase {
             context: InsightContext(now: now)
         )
 
-        // The arithmetic is unchanged — the numeral still reports the average.
-        XCTAssertEqual(score.securitySubscore, 85)
+        // Security's categories are `security` 85 (100 - 15) and `privacy`
+        // 100, so the half is their mean, 93 — not 85. The half is no longer
+        // "100 minus everything in the domain"; see `ProtectionScore`'s
+        // header on why every level is now a mean of the level below.
+        XCTAssertEqual(score.securitySubscore, 93)
         XCTAssertEqual(score.hardwareSubscore, 100)
-        XCTAssertEqual(score.overall, 93)
-        XCTAssertEqual(score.weakerSubscore, 85)
+        XCTAssertEqual(score.overall, 97)
+        XCTAssertEqual(score.weakerSubscore, 93)
         // Points alone would still say "well protected"; the verdict must not.
         XCTAssertEqual(ProtectionScore.pointsBand(for: score.weakerSubscore), .wellProtected)
         XCTAssertEqual(score.band, .needsAttention)
@@ -335,7 +338,11 @@ final class ProtectionInsightsEngineTests: XCTestCase {
             insights: [finding("crit", category: .security, severity: .critical, impact: 1)],
             context: InsightContext(now: now)
         )
-        XCTAssertEqual(score.weakerSubscore, 99)
+        // One point against one of security's two categories rounds the half
+        // straight back to 100 — which makes this a *stronger* demonstration
+        // than it was: the points say a flawless machine and the band still
+        // reads `actOnThis`, purely on severity.
+        XCTAssertEqual(score.weakerSubscore, 100)
         XCTAssertEqual(ProtectionScore.pointsBand(for: score.weakerSubscore), .wellProtected)
         XCTAssertEqual(score.band, .actOnThis)
     }
@@ -356,12 +363,17 @@ final class ProtectionInsightsEngineTests: XCTestCase {
     /// `.warning` is a *cap*, not an override: it can only make the band
     /// worse than points, never better.
     func testWarningCapsTheBandButDoesNotSoftenAWorseOne() {
+        // Six findings, not three. Under the mean, three `majorSecurity`
+        // warnings put the half at 78, which bands `needsAttention` on points
+        // alone — the same verdict the warning cap would impose, so the test
+        // would pass while demonstrating nothing. Six drives the `security`
+        // category to 10 and the half to 55, so points genuinely say
+        // `actOnThis` and the assertion below proves the cap did not soften
+        // it.
         let score = ProtectionScore.compute(
-            insights: [
-                finding("a", category: .security, severity: .warning, impact: InsightWeight.majorSecurity),
-                finding("b", category: .security, severity: .warning, impact: InsightWeight.majorSecurity),
-                finding("c", category: .security, severity: .warning, impact: InsightWeight.majorSecurity)
-            ],
+            insights: (0..<6).map {
+                finding("a\($0)", category: .security, severity: .warning, impact: InsightWeight.majorSecurity)
+            },
             context: InsightContext(now: now)
         )
         XCTAssertEqual(score.securitySubscore, 55)
@@ -376,16 +388,22 @@ final class ProtectionInsightsEngineTests: XCTestCase {
             insights: [finding("a", category: .security, severity: .advice, impact: InsightWeight.minorSecurity)],
             context: InsightContext(now: now)
         )
-        XCTAssertEqual(clean.weakerSubscore, 94)
+        XCTAssertEqual(clean.weakerSubscore, 97)
         XCTAssertEqual(clean.band, .wellProtected)
 
+        // Six, not four: the mean dilutes a single category's losses against
+        // its clean sibling, so four `minorSecurity` findings still leave the
+        // half at 88 — inside `wellProtected`, which would make the
+        // assertion below vacuous. Six puts it at 82 and the pile genuinely
+        // degrades the verdict on points alone, which is what this test is
+        // for.
         let many = ProtectionScore.compute(
-            insights: (0..<4).map {
+            insights: (0..<6).map {
                 finding("a\($0)", category: .security, severity: .advice, impact: InsightWeight.minorSecurity)
             },
             context: InsightContext(now: now)
         )
-        XCTAssertEqual(many.weakerSubscore, 76)
+        XCTAssertEqual(many.weakerSubscore, 82)
         XCTAssertEqual(many.highestSeverity, .advice)
         XCTAssertEqual(many.band, .needsAttention)
     }
@@ -535,15 +553,24 @@ final class ProtectionInsightsEngineTests: XCTestCase {
             )
         }
         let score = ProtectionScore.compute(insights: insights, context: InsightContext(now: now))
-        // 250 points of deductions against a 100-point half: the half floors
-        // at 0 rather than going negative.
-        XCTAssertEqual(score.securitySubscore, 0)
-        XCTAssertEqual(score.weakerSubscore, 0)
+
+        // The clamp this test is named for lives on the *category*: 250
+        // points against a 100-point category floors at 0, never negative.
+        let securityCategory = score.categories.first { $0.category == .security }
+        XCTAssertEqual(securityCategory?.score, 0)
+        XCTAssertEqual(securityCategory?.pointsLost, 250)
+
+        // The half is the mean of its categories, and `privacy` is clean, so
+        // a ruined `security` category pulls the half to 50 rather than to 0.
+        // That dilution is the acknowledged cost of averaging — and it is
+        // why the verdict is not allowed to read off these points alone.
+        XCTAssertEqual(score.securitySubscore, 50)
+        XCTAssertEqual(score.weakerSubscore, 50)
         XCTAssertEqual(score.weakerDomain, .security)
-        // The overall is the average of the halves, so a hardware side with
-        // nothing wrong holds it at 50 — the *verdict* is what carries the
-        // severity here, and it reads off the weaker half, which is 0.
-        XCTAssertEqual(score.overall, 50)
+        XCTAssertEqual(score.overall, 75)
+        // The point of the whole design: ten critical findings still band
+        // `actOnThis`, on severity, however forgiving the arithmetic is.
+        XCTAssertEqual(score.band, .actOnThis)
     }
 
     /// The bug this model replaced: `overall` was `100 - every finding`,
@@ -567,9 +594,13 @@ final class ProtectionInsightsEngineTests: XCTestCase {
             )
         ]
         let score = ProtectionScore.compute(insights: insights, context: InsightContext(now: now))
-        XCTAssertEqual(score.hardwareSubscore, 85)   // 100 - 12 - 3
-        XCTAssertEqual(score.securitySubscore, 85)   // 100 - 15
-        XCTAssertEqual(score.overall, 85)
+        // Hardware's judged categories are `storage` 88 (100 - 12) and
+        // `memory` 97 (100 - 3); their mean is 93. Security's are `security`
+        // 85 (100 - 15) and `privacy` 100; mean 93. The headline is the mean
+        // of the halves.
+        XCTAssertEqual(score.hardwareSubscore, 93)
+        XCTAssertEqual(score.securitySubscore, 93)
+        XCTAssertEqual(score.overall, 93)
         XCTAssertGreaterThanOrEqual(score.overall, min(score.hardwareSubscore, score.securitySubscore))
         XCTAssertLessThanOrEqual(score.overall, max(score.hardwareSubscore, score.securitySubscore))
     }
@@ -584,12 +615,17 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         )
         let score = ProtectionScore.compute(insights: [fileVaultOff], context: InsightContext(now: now))
         XCTAssertEqual(score.hardwareSubscore, 100)
-        XCTAssertEqual(score.securitySubscore, 75)
-        // The average alone would read 88 and band as "well protected".
-        XCTAssertEqual(score.overall, 88)
-        // The verdict reads off 75, which bands as "needs attention".
-        XCTAssertEqual(score.weakerSubscore, 75)
+        // `security` 75 (100 - 25) averaged with a clean `privacy` 100.
+        XCTAssertEqual(score.securitySubscore, 88)
+        XCTAssertEqual(score.overall, 94)
+        XCTAssertEqual(score.weakerSubscore, 88)
         XCTAssertEqual(score.weakerDomain, .security)
+        // Points alone now say "well protected" at every level — which makes
+        // the severity floor the *only* thing standing between FileVault
+        // being off and a reassuring verdict. That it still holds is the
+        // whole point of this test.
+        XCTAssertEqual(ProtectionScore.pointsBand(for: score.weakerSubscore), .wellProtected)
+        XCTAssertEqual(score.band, .actOnThis)
     }
 
     func testWeakerDomainBreaksTiesTowardSecurity() {
@@ -990,15 +1026,21 @@ final class ProtectionInsightsEngineTests: XCTestCase {
 
     // MARK: - Category deduction cap (correlated hardware findings)
 
-    /// **The exact scenario from the review this cap was added for.** One
-    /// hot, sustained workload fires `SustainedHeatRule` and
-    /// `ThermalThrottlingRule` and `SustainedCPULoadRule` (all `.thermal`,
-    /// 12 + 12 + 7 = 31), plus `RisingThermalBaselineRule` (`.maintenance`,
-    /// 7) and `ChargingWhileHotRule` (`.batteryLongevity`, 7) — five
-    /// findings, one root cause, 45 raw points. Before the cap, that reads
-    /// hardware 55 / weakerSubscore 55 / `.actOnThis`. After it, `.thermal`'s
-    /// 31 is capped to 24, for a domain loss of 38 and hardware 62 —
-    /// crossing the `needsAttention` boundary.
+    /// **The correlated-findings scenario, now handled by the mean rather
+    /// than by the cap.** One hot, sustained workload fires
+    /// `SustainedHeatRule` + `ThermalThrottlingRule` + `SustainedCPULoadRule`
+    /// (all `.thermal`, 12 + 12 + 7 = 31), plus `RisingThermalBaselineRule`
+    /// (`.maintenance`, 7) and `ChargingWhileHotRule` (`.batteryLongevity`,
+    /// 7) — five findings, one root cause, 45 raw points.
+    ///
+    /// `categoryDeductionCapHardware` existed because those 45 points were
+    /// *summed* into the domain, so one overheating event could gut the
+    /// hardware half. Averaging removes that mechanism at the root: each
+    /// category contributes only its own 0…100 score divided by the number
+    /// of judged categories, so `.thermal` cannot dominate no matter how
+    /// many correlated rules pile onto it. The cap is therefore no longer
+    /// applied — see `subscore(for:)`. This test now pins that the
+    /// correlated pile-up still lands in a sane band *without* it.
     func testCategoryDeductionCapLimitsCorrelatedHardwareFindings() {
         let correlatedFindings = [
             finding("thermal.sustained-heat", category: .thermal, severity: .warning, impact: InsightWeight.majorHardware),
@@ -1010,54 +1052,70 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         let score = ProtectionScore.compute(insights: correlatedFindings, context: InsightContext(now: now))
 
         let thermalCategory = score.categories.first { $0.category == .thermal }
-        // The category's own truth is uncapped — 31 raw points lost, so the
+        // The category's own truth is untouched — 31 raw points lost, so the
         // Thermals chip still honestly reports how bad thermals are.
         XCTAssertEqual(thermalCategory?.pointsLost, 31)
+        XCTAssertEqual(thermalCategory?.score, 69)
 
-        // The domain aggregate is capped: 24 (thermal, capped from 31) + 7
-        // (maintenance) + 7 (batteryLongevity) = 38 lost, not 45.
-        XCTAssertEqual(score.hardwareSubscore, 100 - 38)
-        XCTAssertEqual(score.hardwareSubscore, 62)
+        // The half is the mean of its three judged categories: thermal 69,
+        // maintenance 93, batteryLongevity 93 -> 85.
+        XCTAssertEqual(score.hardwareSubscore, 85)
 
-        // The before/after headline: uncapped this would have banded
-        // `.actOnThis` (55 < 60); capped it bands `.needsAttention`.
-        XCTAssertEqual(ProtectionScore.pointsBand(for: 55), .actOnThis)
+        // Which lands in `needsAttention` on severity (all five are
+        // warnings), the same verdict the cap was introduced to produce —
+        // reached now by the model's own shape rather than by a special case.
         XCTAssertEqual(score.band, .needsAttention)
     }
 
-    /// A category sitting exactly at the cap is untouched; one point past it
-    /// is trimmed by exactly that one point — the cap is a ceiling, not a
-    /// rounding step.
-    func testCategoryDeductionCapBoundaryIsExact() {
+    /// **The cap no longer truncates anything, and that is the assertion.**
+    /// Under the previous summing model a category's deductions were clipped
+    /// at `categoryDeductionCapHardware` before entering the domain total, so
+    /// one point past the cap was absorbed. Under the mean, every point a
+    /// category loses is reflected in that category's own score and therefore
+    /// in the half — nothing is silently swallowed, which is the more
+    /// explainable behaviour and the reason the cap was retired.
+    func testDeductionsPastTheOldCapAreNoLongerAbsorbed() {
         let atCap = ProtectionScore.compute(
             insights: [finding("a", category: .thermal, severity: .warning, impact: ProtectionScore.categoryDeductionCapHardware)],
             context: InsightContext(now: now)
         )
-        XCTAssertEqual(atCap.hardwareSubscore, 100 - ProtectionScore.categoryDeductionCapHardware)
-
         let onePast = ProtectionScore.compute(
             insights: [finding("a", category: .thermal, severity: .warning, impact: ProtectionScore.categoryDeductionCapHardware + 1)],
             context: InsightContext(now: now)
         )
-        // Capped at the same value as "atCap" above — the extra point is
-        // absorbed, not applied.
-        XCTAssertEqual(onePast.hardwareSubscore, 100 - ProtectionScore.categoryDeductionCapHardware)
+
+        // The extra point now lands in the category's own score...
+        let atCapThermal = atCap.categories.first { $0.category == .thermal }
+        let onePastThermal = onePast.categories.first { $0.category == .thermal }
+        XCTAssertEqual(atCapThermal?.score, 100 - ProtectionScore.categoryDeductionCapHardware)
+        XCTAssertEqual(onePastThermal?.score, 100 - ProtectionScore.categoryDeductionCapHardware - 1)
+
+        // ...and the half strictly follows it down, rather than plateauing.
+        XCTAssertLessThan(onePast.hardwareSubscore, atCap.hardwareSubscore)
     }
 
-    /// The cap must never touch the security domain — a Mac with several
-    /// independently-disabled protections that happen to share the
-    /// `.security` category is not "one correlated event" the way a hot
-    /// workload is, and each disabled protection must still cost its full
-    /// weight. This is the same fixture `testSubscoreClampsAtZeroRatherThanGoingNegative`
-    /// uses; restated here to pin the cap-exemption explicitly by name.
-    func testCategoryDeductionCapDoesNotApplyToSecurityDomain() {
+    /// Several independently-disabled protections must each still cost their
+    /// full weight — a Mac with four of them is not "one correlated event"
+    /// the way a hot workload is, and nothing may absorb the difference.
+    /// Pinned on the *category*, which is where a deduction now lands in
+    /// full: the old hardware-domain cap has been retired entirely (see
+    /// `testDeductionsPastTheOldCapAreNoLongerAbsorbed`), so the thing this
+    /// test guards against leaking into security no longer exists anywhere.
+    func testIndependentSecurityFindingsEachCostFullWeight() {
         let manyIndependentSecurityFindings = (0..<4).map { i in
             finding("critical-\(i)", category: .security, severity: .critical, impact: InsightWeight.criticalSecurity)
         }
         let score = ProtectionScore.compute(insights: manyIndependentSecurityFindings, context: InsightContext(now: now))
-        // 4 × 25 = 100 lost, uncapped — if the hardware-domain cap of 24 had
-        // leaked into security, this would floor at 76, not 0.
-        XCTAssertEqual(score.securitySubscore, 0)
+
+        // 4 × 25 = 100 lost against the `security` category, which floors at
+        // 0 — nothing trimmed it to 76 on the way.
+        let securityCategory = score.categories.first { $0.category == .security }
+        XCTAssertEqual(securityCategory?.pointsLost, 100)
+        XCTAssertEqual(securityCategory?.score, 0)
+
+        // The half is that category averaged with a clean `privacy`.
+        XCTAssertEqual(score.securitySubscore, 50)
+        XCTAssertEqual(score.band, .actOnThis)
     }
 
     // MARK: - TCC (privacy permission) review
