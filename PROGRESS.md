@@ -182,3 +182,57 @@ test file runs and passes, the Insights tab renders correctly at runtime
 `SecurityPostureCollector`'s subprocess calls behave as expected on a real
 Mac (this was never exercised against actual `fdesetup`/`csrutil`/etc.
 output beyond the parser's unit tests).
+
+## Before the first release
+
+(Moved here from the README when it was rewritten for public display.)
+
+- [ ] Generate the Sparkle EdDSA key pair and replace the `SUPublicEDKey`
+      placeholder — see [`docs/sparkle-release-signing.md`](docs/sparkle-release-signing.md).
+      **Back the private key up offline**: losing it permanently orphans every
+      installed copy, with no recovery path.
+- [ ] Create a **Developer ID Application** certificate and verify the
+      Release signing configuration end to end. (Team membership and an
+      Apple Development certificate exist and have signed real builds; the
+      Developer ID certificate specifically does not yet.)
+- [ ] Notarize and staple a DMG, and confirm it passes
+      `spctl -a -vvv -t install`.
+- [ ] Publish `appcast.xml` to the feed URL baked into the app
+      (`https://malekthecoder.github.io/Sentry/appcast.xml`). That URL is
+      compiled into every shipped binary and cannot be changed on copies
+      already installed — rename the GitHub account or repo *before* the first
+      release, never after.
+- [ ] Verify the SMAppService/command-line-bridge flow end to end once a
+      Developer ID certificate exists — it's implemented and merged, but has
+      only run under an ad-hoc/Apple Development signature so far (see
+      "Using the CLI and MCP" above).
+- [ ] Decide the licensing checkout vendor and build the
+      `LicenseActivationClient` conformer against it; generate the production
+      Ed25519 keypair offline.
+- [x] Regenerate the marketing screenshots — done 2026-08-06: a full
+      cross-device set with matching data lives in `docs/screenshots/` and
+      fronts the README.
+- [ ] Publish [`docs/privacy-policy.md`](docs/privacy-policy.md) at a public
+      HTTPS URL — see
+      [`docs/privacy-policy-publishing.md`](docs/privacy-policy-publishing.md).
+      Both the Mac and iPhone About screens link to it and currently say so
+      isn't live yet.
+- [ ] Resolve the product name. "Sentry" collides with Sentry.io
+      (application monitoring — same developer-tools audience this app's
+      agent-manager feature targets). Cheap to change now; the Sparkle feed
+      URL noted above becomes permanent the moment it's first published, and
+      the App ID/App Group/iCloud container identifiers become permanent the
+      moment Aniketh registers them.
+- [ ] Draft a real EULA. `LICENSE` is "all rights reserved" only — it
+      prevents the worst outcome (no license at all) but isn't a substitute
+      for terms covering what a Pro purchase grants, refunds, and liability.
+
+## Monetization state
+
+(Also moved from the README.)
+
+**Monetization state** — free/Pro feature cut is implemented (`ProGate`);
+the license *verification* half exists (Ed25519-signed license blobs,
+offline grace, `LicenseProEntitlementStore`) and stops at a documented
+activation seam. The checkout/vendor half (and the production keypair) is
+deliberately not built — it needs accounts only the owner can create.

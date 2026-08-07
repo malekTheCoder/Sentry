@@ -703,6 +703,19 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Registers the `sentry` scheme that `RemotePairing` generates QR
+        # links with and `SentryMobileApp.onOpenURL` handles. Without this
+        # registration the Camera app never offers "Open in Sentry" and the
+        # entire scan-to-pair flow is unreachable — RemotePairing's doc
+        # comment had claimed the registration existed, but no plist carried
+        # it. Registered here, not by editing SentryMobile/Info.plist
+        # directly: that file is GENERATED from this block on every
+        # `xcodegen generate`, so a direct edit silently evaporates.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.malekswilam.sentry.pairing
+            CFBundleURLRole: Editor
+            CFBundleURLSchemes:
+              - sentry
         # Required for `LocalSyncClient` (`SentryKit/LocalSync/LocalSyncClient.swift`)
         # to browse for and connect to `LocalSyncServer` over Bonjour/
         # `Network.framework` — iOS gates both local-network `NWBrowser`

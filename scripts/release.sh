@@ -297,6 +297,10 @@ package() {
   rm -f "$DMG"
   create-dmg \
     --volname "Sentry" \
+    --background "$REPO_ROOT/scripts/dmg-background.png" \
+    --window-size 800 400 \
+    --icon-size 128 \
+    --icon "Sentry.app" 200 185 \
     --app-drop-link 600 185 \
     "$DMG" \
     "$EXPORT_DIR"

@@ -236,7 +236,10 @@ final class MetricFormatterTests: XCTestCase {
     }
 
     func testDetailedWatts() {
-        XCTAssertEqual(MetricFormatter.detailed(4.5, unit: .watts), "4.50 W")
+        // One decimal, not two — see the formatter's comment: wattage
+        // wanders by whole watts between samples, so a second decimal is
+        // false precision on every surface that shows it.
+        XCTAssertEqual(MetricFormatter.detailed(4.5, unit: .watts), "4.5 W")
     }
 
     func testDetailedCelsius() {
