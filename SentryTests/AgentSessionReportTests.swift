@@ -307,6 +307,140 @@ final class AgentSessionReportTests: XCTestCase {
         XCTAssertEqual(decoded.toolCallCounts, ["get_system_snapshot": 3])
     }
 
+    // MARK: - Per-session outcome + keep-awake projection (legibility pass)
+
+    func testSessionsCountsEachOutcomeSeparately() {
+        // Every one of these columns was already in `agent_activity_log`
+        // and was being discarded by the rollup — the whole point of this
+        // pass is that a *denied* call is the interesting one.
+        let events = [
+            AgentActivityEvent(timestamp: date(1_000), clientName: "Claude Code", tool: "get_system_snapshot", sessionID: "s1", outcome: .succeeded),
+            AgentActivityEvent(timestamp: date(1_100), clientName: "Claude Code", tool: "keep_awake", sessionID: "s1", outcome: .denied),
+            AgentActivityEvent(timestamp: date(1_200), clientName: "Claude Code", tool: "keep_awake", sessionID: "s1", outcome: .denied),
+            AgentActivityEvent(timestamp: date(1_300), clientName: "Claude Code", tool: "get_metric_history", sessionID: "s1", outcome: .rateLimited),
+            AgentActivityEvent(timestamp: date(1_400), clientName: "Claude Code", tool: "create_alert_rule", sessionID: "s1", outcome: .errored),
+        ]
+
+        let sessions = AgentSessionReport.sessions(from: events, awakeHolds: [], now: date(2_000))
+
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions[0].callCount, 5)
+        XCTAssertEqual(sessions[0].deniedCount, 2)
+        XCTAssertEqual(sessions[0].rateLimitedCount, 1)
+        XCTAssertEqual(sessions[0].erroredCount, 1)
+        XCTAssertEqual(sessions[0].blockedCount, 3, "blocked = denied + rate-limited; an errored call *ran*")
+        XCTAssertEqual(sessions[0].succeededCount, 1)
+    }
+
+    func testSessionsRecordsTheMostRecentToolAndItsOutcome() {
+        let events = [
+            AgentActivityEvent(timestamp: date(1_000), clientName: "Claude Code", tool: "get_system_snapshot", sessionID: "s1", outcome: .succeeded),
+            AgentActivityEvent(timestamp: date(1_900), clientName: "Claude Code", tool: "keep_awake", sessionID: "s1", outcome: .denied),
+        ]
+
+        let sessions = AgentSessionReport.sessions(from: events, awakeHolds: [], now: date(2_000))
+
+        XCTAssertEqual(sessions[0].lastTool, "keep_awake")
+        XCTAssertEqual(sessions[0].lastOutcome, .denied)
+        XCTAssertEqual(sessions[0].end, date(1_900), "`end` is the timestamp the last tool is 'ago' from")
+    }
+
+    /// The rollup must derive "last" from the timestamps, not from array
+    /// order — `HistoryStore` returns rows oldest-first today, but a caller
+    /// that filters or re-sorts must not be able to make the card claim the
+    /// wrong tool.
+    func testSessionsFindsTheLastToolEvenWhenEventsArriveOutOfOrder() {
+        let events = [
+            AgentActivityEvent(timestamp: date(1_900), clientName: "Claude Code", tool: "keep_awake", sessionID: "s1"),
+            AgentActivityEvent(timestamp: date(1_000), clientName: "Claude Code", tool: "get_system_snapshot", sessionID: "s1"),
+            AgentActivityEvent(timestamp: date(1_500), clientName: "Claude Code", tool: "get_thermal_status", sessionID: "s1"),
+        ]
+
+        let sessions = AgentSessionReport.sessions(from: events, awakeHolds: [], now: date(2_000))
+
+        XCTAssertEqual(sessions[0].lastTool, "keep_awake")
+        XCTAssertEqual(sessions[0].start, date(1_000))
+        XCTAssertEqual(sessions[0].end, date(1_900))
+    }
+
+    func testSessionsFlagsAnOpenKeepAwakeHoldAsHeldRightNow() {
+        // An open hold (`end == nil`) is the one agent action with a
+        // physical consequence for the user — the Mac will not sleep.
+        let events = [
+            AgentActivityEvent(timestamp: date(1_000), clientName: "Claude Code", tool: "keep_awake", sessionID: "s1"),
+            AgentActivityEvent(timestamp: date(1_000), clientName: "Cursor", tool: "keep_awake", sessionID: "s2"),
+        ]
+        let holds = [
+            AgentAwakeHold(owner: "s1", start: date(1_000), end: nil),
+            // A *closed* hold is history, not a live claim.
+            AgentAwakeHold(owner: "s2", start: date(1_000), end: date(1_500)),
+        ]
+
+        let sessions = AgentSessionReport.sessions(from: events, awakeHolds: holds, now: date(2_000))
+        let byID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+
+        XCTAssertEqual(byID["s1"]?.holdsKeepAwakeNow, true)
+        XCTAssertEqual(byID["s2"]?.holdsKeepAwakeNow, false)
+        XCTAssertEqual(byID["s2"]?.awakeSecondsHeld ?? 0, 500, accuracy: 0.001)
+    }
+
+    /// The ledger's owners are session IDs. A legacy group keyed by client
+    /// name must never match one by coincidence and claim to be holding the
+    /// Mac awake — the same guard that already zeroes its `awakeSecondsHeld`.
+    func testLegacyGroupNeverClaimsALiveKeepAwakeHold() {
+        let events = [AgentActivityEvent(timestamp: date(1_000), clientName: "Old Client", tool: "keep_awake")]
+        let holds = [AgentAwakeHold(owner: AgentSessionReport.legacyGroupPrefix + "Old Client", start: date(1_000), end: nil)]
+
+        let sessions = AgentSessionReport.sessions(from: events, awakeHolds: holds, now: date(2_000))
+
+        XCTAssertEqual(sessions[0].holdsKeepAwakeNow, false)
+        XCTAssertEqual(sessions[0].awakeSecondsHeld, 0)
+    }
+
+    // MARK: - "Still connected?" agrees with the registry
+
+    /// The Dashboard and `preflight_check` must not disagree about whether
+    /// the same session is still present — see `activeWithin`'s doc comment.
+    func testActiveWithinMirrorsTheRegistrysOwnStaleThreshold() async {
+        let registryThreshold = await MainActor.run { AgentSessionRegistry.staleAfter }
+        XCTAssertEqual(AgentSessionReport.activeWithin, registryThreshold)
+    }
+
+    func testIsActiveUsesLastCallNotSessionStart() {
+        let summary = AgentSessionSummary(
+            id: "s1",
+            clientName: "Claude Code",
+            start: date(0),
+            end: date(10_000),
+            callCount: 1,
+            toolCallCounts: [:],
+            awakeSecondsHeld: 0
+        )
+        XCTAssertTrue(summary.isActive(asOf: date(10_000 + AgentSessionReport.activeWithin)))
+        XCTAssertFalse(summary.isActive(asOf: date(10_001 + AgentSessionReport.activeWithin)))
+    }
+
+    /// Additive-init discipline: the fields this pass appended must default
+    /// to "not reported" / "nothing refused", never to a plausible-looking
+    /// success, so an existing call site's meaning is unchanged.
+    func testAppendedSummaryFieldsDefaultToNotReported() {
+        let summary = AgentSessionSummary(
+            id: "s1",
+            clientName: "Claude Code",
+            start: date(0),
+            end: date(1),
+            callCount: 0,
+            toolCallCounts: [:],
+            awakeSecondsHeld: 0
+        )
+        XCTAssertNil(summary.lastTool)
+        XCTAssertNil(summary.lastOutcome)
+        XCTAssertEqual(summary.deniedCount, 0)
+        XCTAssertEqual(summary.rateLimitedCount, 0)
+        XCTAssertEqual(summary.erroredCount, 0)
+        XCTAssertFalse(summary.holdsKeepAwakeNow)
+    }
+
     func testSessionsGroupsLegacyEventsByClientNameWithZeroAwakeTime() {
         // Pre-v5 rows carry no session — they group by client name under a
         // synthetic legacy key, and never claim awake time (the in-memory

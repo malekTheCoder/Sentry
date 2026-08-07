@@ -155,8 +155,17 @@ struct DashboardView: View {
                 HStack(alignment: .top, spacing: palette.spacingPage) {
                     AgentActivityCard(
                         summary: viewModel.agentActivity,
-                        agentProcesses: Array(processMonitor.agentProcesses.prefix(4)),
-                        sessions: viewModel.agentSessions
+                        // The card names the window its counts cover
+                        // ("Last 24 hours") instead of saying "in this
+                        // range" — see that type's doc comment.
+                        range: viewModel.timeRange,
+                        // Uncapped on purpose: the card classifies these
+                        // into agents vs. build tools and caps each group
+                        // separately, so a prefix here would discard rows
+                        // before they could be classified.
+                        agentProcesses: processMonitor.agentProcesses,
+                        sessions: viewModel.agentSessions,
+                        agentAccessPaused: viewModel.snapshot?.agentAccessPaused
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     AnomaliesCard(anomalies: viewModel.anomalies)
