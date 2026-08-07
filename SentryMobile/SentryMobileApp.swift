@@ -161,8 +161,18 @@ struct SentryMobileApp: App {
                         set: { isPresented in hasCompletedOnboarding = !isPresented }
                     )
                 ) {
-                    OnboardingView { hasCompletedOnboarding = true }
-                        .environment(\.themePalette, onboardingPalette)
+                    // The outcome (Skip vs. Get Started) is routed through
+                    // `WalkthroughGate.completedFlag(after:)` rather than
+                    // both paths hardcoding `true` here. They *do* both
+                    // resolve to `true` today — "Skip means done, not
+                    // later" — but writing the policy down in one shared
+                    // place is what stops the Mac and the phone drifting
+                    // apart on it, and what lets a test pin it. See that
+                    // function's doc comment.
+                    OnboardingView { outcome in
+                        hasCompletedOnboarding = WalkthroughGate.completedFlag(after: outcome)
+                    }
+                    .environment(\.themePalette, onboardingPalette)
                 }
         }
     }
