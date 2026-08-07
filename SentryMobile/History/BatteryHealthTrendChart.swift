@@ -22,6 +22,22 @@ struct BatteryHealthTrendChart: View {
     @Environment(\.themePalette) private var palette
     let series: [DailyHealth]
 
+    /// The window the range selector asked for, from `HistoryViewModel.window`.
+    ///
+    /// **The same presentation bug the Mac had, on the same control.** Without
+    /// a pinned domain, Swift Charts auto-fits the x-axis to whatever records
+    /// came back, so a phone holding four days of health under a "90d" selection
+    /// draws them edge to edge and reads as ninety days. Pinned, those four days
+    /// are a short trace at the right with the unrecorded span visibly empty.
+    /// Both apps' range controls offer the same five windows and must not answer
+    /// the same question two different ways — see
+    /// `SentryKit/History/HistoryCoverage.swift` for the full argument and the
+    /// alternatives (padding, interpolation, hiding ranges) it rejects.
+    ///
+    /// `nil` — the default, and what `.all` resolves to — keeps the auto-fitted
+    /// domain, because "all history" has no requested left edge to fall short of.
+    var window: ClosedRange<Date>? = nil
+
     /// Raw x-axis date under the finger while dragging; `nil` otherwise. See
     /// `ChartScrubOverlay` for why it is deliberately not pre-snapped.
     @State private var scrubDate: Date?
@@ -107,6 +123,12 @@ struct BatteryHealthTrendChart: View {
                 }
             }
         }
+        // Above both overlays: their `ChartProxy` has to resolve pointer
+        // positions and wash rectangles against the *pinned* scale, so the
+        // domain is established before either exists rather than at the end of
+        // the chain where the ordering would be a question worth asking. Same
+        // placement as the Mac's `DashboardChart`.
+        .chartXDomain(coverage.requestedDomain)
         .chartOverlay { proxy in
             gapShading(proxy: proxy)
         }
@@ -156,9 +178,30 @@ struct BatteryHealthTrendChart: View {
         .accessibilityChartDescriptor(self)
     }
 
+    // MARK: - Coverage
+
+    /// How much of `window` these records actually cover. Derived here from the
+    /// series this view already holds rather than passed in beside it, so the
+    /// two can't be handed in out of step with each other.
+    private var coverage: HistoryCoverage {
+        HistoryCoverage(requested: window, timestamps: days, resolution: Self.dayCadence)
+    }
+
     // MARK: - Gaps and scrubbing
 
     private var days: [Date] { series.map(\.day) }
+
+    /// Every stretch of the plotted domain with no record in it: interior holes
+    /// (a fortnight with no sync) plus the window's unrecorded edges (records
+    /// that don't reach back as far as the range asked for).
+    ///
+    /// Deliberately one list with one wash, matching
+    /// `Sentry/Dashboard/DashboardChart.swift`'s `blankRegions` — see the long
+    /// comment there for why giving the two causes two visual treatments would
+    /// make a single chart speak two languages about a single absence.
+    private var blankRegions: [ChartScrubbing.Gap] {
+        gaps + coverage.unrecordedEdges.map { ChartScrubbing.Gap(start: $0.lowerBound, end: $0.upperBound) }
+    }
 
     private var gaps: [ChartScrubbing.Gap] {
         ChartScrubbing.gaps(
@@ -188,7 +231,7 @@ struct BatteryHealthTrendChart: View {
             if let plotAnchor = proxy.plotFrame {
                 let plot = geometry[plotAnchor]
                 ZStack(alignment: .topLeading) {
-                    ForEach(gaps, id: \.start) { gap in
+                    ForEach(blankRegions, id: \.start) { gap in
                         if let startX = proxy.position(forX: gap.start),
                            let endX = proxy.position(forX: gap.end) {
                             Rectangle()
@@ -220,9 +263,23 @@ struct BatteryHealthTrendChart: View {
         }
     }
 
+    /// Whether the finger is parked before the first day this phone has a record
+    /// for — reachable only now that the domain is pinned, since before that
+    /// there was no plot area to the left of the first record. See
+    /// `DashboardChart.isScrubbingBeforeRecordStart`, which asks the same
+    /// question on the Mac for the same reason.
+    private var isScrubbingBeforeRecordStart: Bool {
+        guard let scrubDate, let began = coverage.beganRecording else { return false }
+        return scrubDate < began
+    }
+
     @ViewBuilder
     private var scrubReadout: some View {
-        if let text = Self.readoutText(reading: reading, series: series) {
+        if let text = Self.readoutText(
+            reading: reading,
+            series: series,
+            beforeRecordStart: isScrubbingBeforeRecordStart
+        ) {
             Text(text)
                 .scaledFont(palette, size: 11, monospacedDigit: true)
                 .foregroundStyle(palette.textPrimary)
@@ -235,11 +292,23 @@ struct BatteryHealthTrendChart: View {
     /// `SentryTests/ChartScrubbingTests.swift` covers the Mac app's twin of
     /// this; the phrasing here is deliberately the phone's own, since a phone
     /// has no "Mac asleep" to blame.
-    static func readoutText(reading: ChartScrubbing.Reading?, series: [DailyHealth]) -> String? {
+    static func readoutText(
+        reading: ChartScrubbing.Reading?,
+        series: [DailyHealth],
+        beforeRecordStart: Bool = false
+    ) -> String? {
         switch reading {
         case nil:
             return nil
         case .noData:
+            if beforeRecordStart {
+                // The point of the whole change, said out loud: the empty left
+                // half of a 90-day chart on a two-week-old install is not a
+                // missing reading, it is a period this app has no record of at
+                // all — and "no reading for this day" would leave a reader
+                // thinking a day's sync had failed ninety times over.
+                return String(localized: "no records go back this far")
+            }
             return String(localized: "no reading for this day")
         case .sample(let index):
             guard series.indices.contains(index) else { return nil }
@@ -281,12 +350,19 @@ struct BatteryHealthTrendChart: View {
     }
 
     /// Coarser as the visible span widens, same reasoning as
-    /// `DashboardChart.xAxisFormat`.
+    /// `DashboardChart.xAxisFormat` — and keyed to the *plotted domain* rather
+    /// than the records' own span, for the same reason it is over there: with a
+    /// pinned window the axis can be far wider than the data on it, and labels
+    /// have to describe the axis they sit on.
     private var xAxisFormat: Date.FormatStyle {
-        guard let first = series.first?.day, let last = series.last?.day else {
+        let span: TimeInterval
+        if let domain = coverage.requestedDomain {
+            span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        } else if let first = series.first?.day, let last = series.last?.day {
+            span = last.timeIntervalSince(first)
+        } else {
             return .dateTime.month(.abbreviated).day()
         }
-        let span = last.timeIntervalSince(first)
         if span <= 14 * 86400 {
             return .dateTime.month(.abbreviated).day()
         } else {
@@ -305,11 +381,40 @@ struct BatteryHealthTrendChart: View {
     private var rangeDescription: String {
         let values = series.map(\.healthPercent)
         guard let extremes = ChartScrubbing.extremes(mins: values, maxes: values) else {
-            return String(localized: "no data")
+            return coverage.label ?? String(localized: "no data")
         }
         let fromText = MetricFormatter.compact(extremes.min, unit: .percent, includeUnit: false)
         let toText = MetricFormatter.compact(extremes.max, unit: .percent, includeUnit: false)
-        return String(localized: "ranging from \(fromText) to \(toText) percent")
+        let span = String(localized: "ranging from \(fromText) to \(toText) percent")
+        // The coverage clause matters more to VoiceOver than to anyone else: a
+        // sighted reader can see the empty left half of the plot, and this
+        // string is the entire chart for someone who can't.
+        guard !coverage.isComplete, let summary = coverage.summary else { return span }
+        return "\(span), \(summary)"
+    }
+}
+
+// MARK: - Optional x-domain
+
+extension View {
+    /// Pins a chart's x-axis to `domain`, or leaves Swift Charts to auto-fit
+    /// when there is no window to pin to.
+    ///
+    /// A near-duplicate of the macOS helper in
+    /// `Sentry/Dashboard/DashboardChart.swift`, for the reason this codebase
+    /// duplicates rather than shares SwiftUI across the two app targets: Xcode
+    /// app targets can't import each other, and `SentryKit` — where the shared
+    /// *logic* (`HistoryCoverage`) does live — deliberately imports no UI
+    /// framework at all. Same convention as `ThemeColor+SwiftUI.swift`,
+    /// `MetricFormatting.swift` and `ChartScrubOverlay.swift`, each of which
+    /// exists once per platform for the same reason.
+    @ViewBuilder
+    func chartXDomain(_ domain: ClosedRange<Date>?) -> some View {
+        if let domain, domain.lowerBound < domain.upperBound {
+            chartXScale(domain: domain)
+        } else {
+            self
+        }
     }
 }
 

@@ -201,10 +201,42 @@ struct BatteryOverviewCard: View {
                     // day, and the query is capped well above the number of
                     // days it can return, so no downsample factor applies.
                     expectedCadence: 86400,
+                    // `window:` deliberately omitted. This query is
+                    // `.distantPast` — all-time — and "everything" has no left
+                    // edge to fall short of, so there is no requested span to
+                    // pin the axis to and the auto-fitted domain is already the
+                    // truthful one. Pinning to a 2,000-year `.distantPast`
+                    // domain would squash every real sample into a sub-pixel
+                    // sliver at the right edge: technically honest about the
+                    // query, useless as a chart, and not what the query means.
+                    // What this card owes the reader instead is `coverageLine`
+                    // below — how much history exists at all.
                     height: 88
                 )
             }
+            if let coverageLine {
+                Text(coverageLine)
+                    .font(palette.font(size: 10))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.textTertiary)
+            }
         }
+    }
+
+    /// "41 days recorded · since Jun 27".
+    ///
+    /// An all-time chart is the one place the range-honesty problem takes a
+    /// different shape: nobody asked for 90 days, so nothing is *over*claiming
+    /// — but "all-time" is a phrase that sounds like a lot, and on a Mac that
+    /// installed Sentry six weeks ago it means six weeks. Saying how long
+    /// "all-time" has been is the same disclosure the windowed charts make, in
+    /// the only form this query admits.
+    private var coverageLine: String? {
+        HistoryCoverage(
+            requested: nil,
+            timestamps: healthSamples.map(\.timestamp),
+            resolution: 86400
+        ).summary
     }
 
     private var forecastLine: String? {

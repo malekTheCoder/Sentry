@@ -320,6 +320,51 @@ final class ChartScrubbingTests: XCTestCase {
         )
     }
 
+    func testReadoutBeforeTheRecordBeginsBlamesTheRightThing() {
+        // Only reachable since the x-domain got pinned to the requested range:
+        // before that there was no plot to the left of the first sample, so
+        // every "no data" hover was necessarily inside the data's own span and
+        // sleep was always the right guess. On a fresh install's 90-day chart
+        // most of the plot is now to the left of the first row, and blaming
+        // sleep there would be a confidently wrong answer to the exact question
+        // this feature exists to answer.
+        XCTAssertEqual(
+            DashboardChart.readoutText(
+                reading: .noData,
+                samples: [sample(0, 41)],
+                unit: .percent,
+                format: .dateTime.hour().minute(),
+                beforeRecordStart: true
+            ),
+            "no data — Sentry wasn't recording yet"
+        )
+        // Inside the record's own span, the original wording stands.
+        XCTAssertEqual(
+            DashboardChart.readoutText(
+                reading: .noData,
+                samples: [sample(0, 41)],
+                unit: .percent,
+                format: .dateTime.hour().minute(),
+                beforeRecordStart: false
+            ),
+            "no data — Mac asleep or app not running"
+        )
+    }
+
+    func testBeforeRecordStartNeverSuppressesARealSample() {
+        // The flag only ever picks between two "no data" wordings. A hover that
+        // resolved to a real row must read that row out regardless — a stale
+        // `beforeRecordStart` must not be able to blank a measurement.
+        let text = DashboardChart.readoutText(
+            reading: .sample(index: 0),
+            samples: [sample(0, 41.4)],
+            unit: .percent,
+            format: .dateTime.hour().minute(),
+            beforeRecordStart: true
+        )
+        XCTAssertEqual(text?.hasSuffix("· 41%"), true, "unexpected readout: \(text ?? "nil")")
+    }
+
     func testReadoutUsesTheMetricsOwnUnit() {
         let samples = [sample(0, 41.4), sample(240, 12.3)]
         let percent = DashboardChart.readoutText(

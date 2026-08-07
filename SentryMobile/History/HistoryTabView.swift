@@ -70,7 +70,10 @@ struct HistoryTabView: View {
                 if !appDataSource.isUsingLocalSync {
                     demoDataBanner
                 }
-                HistoryRangeSelector(selection: $viewModel.selectedRange)
+                VStack(alignment: .leading, spacing: palette.spacingTight) {
+                    HistoryRangeSelector(selection: $viewModel.selectedRange)
+                    coverageCaption
+                }
                 batteryHealthCard
                 chargeSessionGapNotice
                 PerMetricHistoryBrowser(snapshot: viewModel.latestSnapshot)
@@ -90,6 +93,36 @@ struct HistoryTabView: View {
         Text("History")
             .scaledFont(palette, size: 20, weight: .semibold)
             .foregroundStyle(palette.textPrimary)
+    }
+
+    // MARK: - Range coverage
+
+    /// "30 days recorded", or "4 of 90 days recorded · since Jun 27" — under the
+    /// range selector that produced the number.
+    ///
+    /// **Why the phone gets this too, when its demo series always fills the
+    /// window.** `SyntheticDailyHealth` fabricates exactly `syntheticDayCount`
+    /// days, so on the mock transport this caption permanently reads "N days
+    /// recorded" and the chart never looks short. That is not a reason to skip
+    /// it — it is the reason to build it now. The moment `AppDataSource
+    /// .dailyHealthHistory` starts returning real records from a Mac (today it
+    /// honestly returns `[]` over local sync, see its doc comment), the phone
+    /// inherits the Mac's exact problem: a real record shorter than the selected
+    /// range, drawn to fill the width. Both platforms offer the same five
+    /// windows on the same data and must answer "how much of this do I actually
+    /// have" the same way — the shared `HistoryCoverage` is what guarantees they
+    /// word it identically rather than nearly identically.
+    ///
+    /// Placed directly under the selector, matching the Mac Dashboard header's
+    /// placement of the same string beneath its own range control.
+    @ViewBuilder
+    private var coverageCaption: some View {
+        if let summary = viewModel.coverage.summary {
+            Text(summary)
+                .scaledFont(palette, size: 11, monospacedDigit: true)
+                .foregroundStyle(palette.textTertiary)
+                .accessibilityLabel("History coverage: \(summary)")
+        }
     }
 
     // MARK: - Demo data disclosure
@@ -134,7 +167,7 @@ struct HistoryTabView: View {
             Text(batteryHealthHeadline)
                 .scaledFont(palette, size: 13, weight: .semibold)
                 .foregroundStyle(palette.textPrimary)
-            BatteryHealthTrendChart(series: viewModel.dailyHealth)
+            BatteryHealthTrendChart(series: viewModel.dailyHealth, window: viewModel.window)
             CycleCountSection(series: viewModel.dailyHealth)
         }
         .padding(palette.spacing * 1.6)

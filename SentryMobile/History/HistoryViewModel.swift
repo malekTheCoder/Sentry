@@ -27,6 +27,21 @@ final class HistoryViewModel: ObservableObject {
     @Published private(set) var latestSnapshot: SystemSnapshot?
     @Published var selectedRange: HistoryRange = .last30Days
 
+    /// The window `dailyHealth` was last fetched for, for the chart to pin its
+    /// x-axis to — see `BatteryHealthTrendChart.window`.
+    ///
+    /// Captured here, at fetch time, rather than derived in the view from
+    /// `selectedRange.since(Date())`: a view recomputes on every body evaluation
+    /// and would slide the axis a few milliseconds each time, which is both
+    /// pointless churn and a domain that no longer matches the rows drawn on it.
+    ///
+    /// `nil` for `.all`, which resolves to `.distantPast` (see `HistoryRange
+    /// .since(now:)`) — a two-thousand-year domain would compress every real day
+    /// into a sub-pixel sliver at the right edge. "All history" has no requested
+    /// left edge to fall short of, so the auto-fitted domain is the honest one,
+    /// exactly as on the Mac's all-time battery cards.
+    @Published private(set) var window: ClosedRange<Date>?
+
     private let appDataSource: AppDataSource
     private var snapshotTask: Task<Void, Never>?
     private var transportSubscription: AnyCancellable?
@@ -58,9 +73,30 @@ final class HistoryViewModel: ObservableObject {
     /// health history yet).
     func reloadDailyHealth() async {
         guard let device else { return }
+        let now = Date()
+        let since = selectedRange.since(now: now)
+        window = since > .distantPast ? since...now : nil
         dailyHealth = await appDataSource.dailyHealthHistory(
             deviceID: device.deviceID,
             dayCount: selectedRange.syntheticDayCount
+        )
+    }
+
+    /// How much of the selected window the fetched series actually covers — the
+    /// caption under the range selector, and the reason the chart's short trace
+    /// carries a number rather than only a shape. See
+    /// `SentryKit/History/HistoryCoverage.swift`.
+    ///
+    /// `resolution: 86400` because `DailyHealth` is one record per day, stamped
+    /// at midnight: without that floor the newest record would look like up to
+    /// 24h of missing tail on every single chart, which on a 7-day window is 14%
+    /// of the range and would make the honest signal fire permanently and mean
+    /// nothing.
+    var coverage: HistoryCoverage {
+        HistoryCoverage(
+            requested: window,
+            timestamps: dailyHealth.map(\.day),
+            resolution: 86400
         )
     }
 

@@ -71,6 +71,11 @@ struct BatteryHealthTrendCard: View {
                     // card owns its `.daily` query, so one row per day is the
                     // cadence, and no downsampling applies at this row count.
                     expectedCadence: 86400,
+                    // No `window:` — see `BatteryOverviewCard`'s chart for the
+                    // full argument. An all-time query has no requested left
+                    // edge, so there is nothing to pin and nothing to fall
+                    // short of; the header's coverage line carries the "how
+                    // long is all-time, here" disclosure instead.
                     height: 160
                 )
             }
@@ -112,7 +117,26 @@ struct BatteryHealthTrendCard: View {
                     .font(palette.font(size: 12))
                     .foregroundStyle(palette.textTertiary)
             }
+            if let coverageLine {
+                Text(coverageLine)
+                    .font(palette.font(size: 11))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.textTertiary)
+            }
         }
+    }
+
+    /// "41 days recorded · since Jun 27" — how long this card's "all-time"
+    /// actually is. See `BatteryOverviewCard.coverageLine`, which says the same
+    /// thing about the same query for the same reason; a title that reads
+    /// "all-time" should never be the only thing a reader has to go on when
+    /// deciding how much weight to give the trend under it.
+    private var coverageLine: String? {
+        HistoryCoverage(
+            requested: nil,
+            timestamps: samples.map(\.timestamp),
+            resolution: 86400
+        ).summary
     }
 
     /// The forecast sentence, or nil when there's nothing defensible to say —

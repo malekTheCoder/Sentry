@@ -121,6 +121,34 @@ private struct ScrubReadoutWidthKey: PreferenceKey {
     }
 }
 
+/// A chart's current scrub readout, published upward for a host that has more
+/// room for it than the plot does.
+///
+/// **Why a preference and not a binding or a callback.** The compact grid
+/// sparklines (`DashboardChart` with `compact: true`) are scrubbable but have
+/// nowhere inside a 36pt plot to put a readout plate — the label belongs on the
+/// card, in the line the subtitle already occupies. That means the string has to
+/// travel *up* the view tree. A `@Binding` would make every call site invent and
+/// own a piece of state it otherwise has no use for (including the several that
+/// don't want the readout at all), and a plain callback fired from inside `body`
+/// is a state mutation during view update — the classic SwiftUI purple-warning
+/// shape. A preference is the mechanism this exact problem has: it flows child →
+/// parent, costs nothing when nobody reads it, and `ChartScrubOverlay` already
+/// uses one three lines above for its own measured width.
+///
+/// `nil` means "not scrubbing" — the host falls back to whatever it normally
+/// shows in that slot.
+struct ChartScrubReadoutKey: PreferenceKey {
+    static let defaultValue: String? = nil
+    /// Last non-nil wins. A card hosts exactly one chart today, so this never
+    /// actually arbitrates between two; the rule exists so that if one ever
+    /// hosts two, a chart being hovered beats a chart that isn't, rather than
+    /// whichever happens to be later in the tree blanking the other's readout.
+    static func reduce(value: inout String?, nextValue: () -> String?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
 // MARK: - Readout chrome
 
 /// The one visual treatment every scrub readout in the Mac app wears: a small
