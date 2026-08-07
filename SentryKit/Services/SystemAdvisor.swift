@@ -81,7 +81,13 @@ public enum SystemAdvisor {
             reasons.append("Thermal pressure is \(pressure.rawValue).")
         }
         if let socTemp, socTemp > highSoCTempCelsius {
-            reasons.append("SoC temperature is \(Int(socTemp))°C, above \(Int(highSoCTempCelsius))°C.")
+            // The *comparison* above stays in Celsius against
+            // `highSoCTempCelsius`; only these two rendered numbers follow
+            // the user's display unit. Whether the advisor says "wait" must
+            // not depend on which unit somebody is reading in.
+            let observed = TemperatureFormatter.string(celsius: socTemp, style: .whole)
+            let limit = TemperatureFormatter.string(celsius: highSoCTempCelsius, style: .whole)
+            reasons.append("SoC temperature is \(observed), above \(limit).")
         }
 
         let cpuPercent = snapshot.cpu?.totalPercent

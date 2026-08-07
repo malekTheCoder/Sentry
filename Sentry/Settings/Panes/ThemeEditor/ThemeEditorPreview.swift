@@ -168,7 +168,12 @@ struct ThemeEditorPreview: View {
             (.cpuTotalPercent, String(localized: "CPU"), "14%"),
             (.gpuUtilizationPercent, String(localized: "GPU"), "37%"),
             (.memoryUsedBytes, String(localized: "Memory"), "12 GB"),
-            (.thermalSocTempC, String(localized: "Thermal"), "49°"),
+            // The one sample value here that isn't unit-free. Formatted
+            // rather than written as "49°" so this preview shows the same
+            // shape the menu bar will actually draw — including in
+            // Fahrenheit, where a hardcoded 49 would be a plausible-looking
+            // number that the bar never produces.
+            (.thermalSocTempC, String(localized: "Thermal"), MetricFormatter.compact(49, unit: .celsius)),
         ]
     }
 

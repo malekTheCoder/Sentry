@@ -43,6 +43,8 @@ struct GeneralPane: View {
                 Text("Charts")
             }
 
+            unitsSection
+
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Slider(
@@ -206,6 +208,49 @@ struct GeneralPane: View {
     ///     would produce is worse than an error: Sparkle would fetch the
     ///     feed, reject every item's signature, and report "You're up to
     ///     date!" — a false statement that stops the user looking.
+    // MARK: - Units
+
+    /// The Celsius/Fahrenheit display preference.
+    ///
+    /// **Why this pane and not Appearance or Menu Bar.** Menu Bar is about
+    /// *composing the bar* — which modules, in what order, with which
+    /// glyphs — and this preference is not a property of the bar: it
+    /// equally governs the dropdown, the Dashboard cards, Insights copy,
+    /// alert notifications, `sentryctl`, and Siri. Filing it there would
+    /// make three quarters of its effect invisible from where it is set.
+    /// Appearance/Theme is about *colour tokens*, and a theme is a
+    /// shareable `.sentrytheme` document — a Brit importing an American's
+    /// theme should not be switched to Fahrenheit as a side effect (see
+    /// `AppSettings.temperatureUnit`'s doc comment). General is where this
+    /// pane already keeps `detailedCharts`, the other cross-cutting
+    /// "how are numbers presented" switch, and it is the first place
+    /// someone looks for units.
+    ///
+    /// A segmented `Picker` rather than a toggle: two named options read as
+    /// two options, where "Use Fahrenheit" makes the user work out what the
+    /// off state means. `.pickerStyle(.segmented)` keeps both labels on
+    /// screen, so the current choice is legible without opening anything.
+    private var unitsSection: some View {
+        Section {
+            Picker(selection: $store.settings.temperatureUnit) {
+                ForEach(TemperatureUnit.allCases, id: \.self) { unit in
+                    Text(unit.displayName).tag(unit)
+                }
+            } label: {
+                Text("Temperature")
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Temperature unit")
+
+            Text("Changes how every temperature is displayed — the menu bar, the dropdown, Dashboard cards, Insights, alerts, and Fan Control. Sensors always report Celsius and history is always stored in Celsius, so switching this re-reads your existing data rather than changing it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } header: {
+            Text("Units")
+        }
+    }
+
     @ViewBuilder
     private var updatesSection: some View {
         Section {

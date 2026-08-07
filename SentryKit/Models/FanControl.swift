@@ -186,19 +186,30 @@ public enum FanCurveIssue: Equatable, Sendable {
     case rpmOutsideHardwareLimits(celsius: Double, rpm: Double, limits: FanHardwareLimits)
     case nonFiniteValue
 
+    /// Human-readable form, shown in `FanControlPane`.
+    ///
+    /// The associated values stay Celsius — they are curve breakpoints,
+    /// compared against raw sensor readings by `FanControlService` and the
+    /// daemon at a cadence no UI is part of — and only this rendering
+    /// follows the user's display unit, in the `.wholeSpaced` style the
+    /// pane's other temperature rows use.
     public var message: String {
         switch self {
         case .empty:
             return "A curve needs at least one point."
         case .duplicateTemperature(let celsius):
-            return "Two points share \(Int(celsius.rounded())) °C — each temperature can appear only once."
+            return "Two points share \(Self.temperature(celsius)) — each temperature can appear only once."
         case .rpmFallsAsTemperatureRises(let from, let to):
-            return "Speed drops between \(Int(from.rounded())) °C and \(Int(to.rounded())) °C — a curve should never slow the fans down as the Mac gets hotter."
+            return "Speed drops between \(Self.temperature(from)) and \(Self.temperature(to)) — a curve should never slow the fans down as the Mac gets hotter."
         case .rpmOutsideHardwareLimits(let celsius, let rpm, let limits):
-            return "\(Int(rpm.rounded())) rpm at \(Int(celsius.rounded())) °C is outside this fan's \(Int(limits.minRPM.rounded()))–\(Int(limits.maxRPM.rounded())) rpm range."
+            return "\(Int(rpm.rounded())) rpm at \(Self.temperature(celsius)) is outside this fan's \(Int(limits.minRPM.rounded()))–\(Int(limits.maxRPM.rounded())) rpm range."
         case .nonFiniteValue:
             return "A point has a temperature or speed that isn't a real number."
         }
+    }
+
+    private static func temperature(_ celsius: Double) -> String {
+        TemperatureFormatter.string(celsius: celsius, style: .wholeSpaced)
     }
 }
 

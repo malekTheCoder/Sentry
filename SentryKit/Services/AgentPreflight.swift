@@ -219,7 +219,11 @@ public enum AgentPreflight {
             var detail = "Thermal pressure is elevated"
             if isThrottling { detail += " and the machine is throttling" }
             if let socTemp, socTemp > SystemAdvisor.highSoCTempCelsius {
-                detail += " (SoC at \(Int(socTemp))°C, above \(Int(SystemAdvisor.highSoCTempCelsius))°C)"
+                // Display only — the gate on the `else if` above is the raw
+                // Celsius comparison and is unaffected by the user's unit.
+                let observed = TemperatureFormatter.string(celsius: socTemp, style: .whole)
+                let limit = TemperatureFormatter.string(celsius: SystemAdvisor.highSoCTempCelsius, style: .whole)
+                detail += " (SoC at \(observed), above \(limit))"
             }
             reasons.append(Reason(code: .thermalElevated, message: detail + " — waiting will help."))
         }

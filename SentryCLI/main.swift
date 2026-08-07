@@ -226,7 +226,12 @@ func runSessionReport(sinceSeconds: Double, targetClientName: String?, json: Boo
             parts.append("CPU avg \(Int(avg))% / peak \(Int(peak))%")
         }
         if let peakTemp = report.peakSoCTemperatureCelsius {
-            parts.append("peak SoC \(Int(peakTemp))°C")
+            // Human-readable branch only — the `--json` path above prints
+            // `report` verbatim, whose field is named
+            // `peakSoCTemperatureCelsius` and must stay Celsius: that is a
+            // machine contract, and a script parsing it has no way to know
+            // a display preference flipped.
+            parts.append("peak SoC \(TemperatureFormatter.string(celsius: peakTemp, style: .whole))")
         }
         if report.secondsThrottling > 0 {
             parts.append("throttled for ~\(Int(report.secondsThrottling))s")
@@ -499,6 +504,22 @@ func resolveTheme() -> Theme {
     return Theme.builtInPresets.first { $0.id == settings.themeID } ?? .defaultTheme
 }
 
+/// Publishes `AppSettings.temperatureUnit` into this process's ambient
+/// `TemperatureUnit.display`, so every temperature `sentryctl` prints —
+/// `statusline`, `report`'s peak SoC, and the thermal reasons `check` and
+/// `hook pretooluse` relay from `AgentPreflight` — matches the app.
+///
+/// Same file, same read-once-and-tolerate-everything policy as
+/// `resolveTheme` above; see the call site at the top of the command
+/// dispatch for the full argument.
+func applyTemperatureUnitPreference() {
+    guard let data = try? Data(contentsOf: SettingsStore.defaultSettingsURL()),
+          let settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+        return
+    }
+    TemperatureUnit.display = settings.temperatureUnit
+}
+
 enum StatuslineOutcome: Sendable {
     case answered(Data?, String?)
     case timedOut
@@ -648,6 +669,25 @@ guard let command = arguments.first else {
     printUsage()
     exit(64) // EX_USAGE
 }
+
+// Adopt the user's Celsius/Fahrenheit display preference before any command
+// renders anything.
+//
+// This is a separate process from `Sentry.app`, so nothing has published
+// `TemperatureUnit.display` into it — `SettingsStore`, which is what does
+// that in the app, is deliberately never instantiated here (see
+// `resolveTheme`'s doc comment for why: it is an `ObservableObject` with a
+// debounced write path and main-thread expectations, none of which suit a
+// process that reads once inside a millisecond budget). Reading the same
+// file directly, once, at startup is the same trade `resolveTheme` already
+// makes for the theme, and it is what keeps `sentryctl statusline` from
+// printing °C into a prompt on a Mac whose every other surface says °F.
+//
+// Failure is silent and total: no file, unreadable, or corrupt all leave
+// the ambient default (`.celsius`) in place. A status line in the wrong
+// temperature unit is a cosmetic miss; refusing to render one because a
+// settings file could not be parsed would be a broken prompt.
+applyTemperatureUnitPreference()
 
 switch command {
 case "check":

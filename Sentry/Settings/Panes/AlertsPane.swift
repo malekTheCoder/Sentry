@@ -586,6 +586,11 @@ struct AlertsPane: View {
                         .labelsHidden()
                         .frame(width: 110)
                         .accessibilityLabel("\(label) value in gigabytes")
+                } else if unit == .celsius {
+                    TextField(label, value: temperatureThresholdBinding(rule), format: .number)
+                        .labelsHidden()
+                        .frame(width: 110)
+                        .accessibilityLabel("\(label) value in \(TemperatureUnit.display.spokenSuffix)")
                 } else {
                     TextField(label, value: rule.threshold, format: .number)
                         .labelsHidden()
@@ -597,6 +602,38 @@ struct AlertsPane: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Bridges the stored Celsius threshold to whatever unit the user reads
+    /// in — exactly the same arrangement, and for exactly the same reason,
+    /// as `byteScaleThresholdBinding` below.
+    ///
+    /// **This one is not optional the way the byte case was.** The unit
+    /// label beside the field, this section's footer sentence, and the
+    /// rule row's condition summary all render through
+    /// `MetricFormatter.detailed`, which follows the display preference; a
+    /// field left editing raw Celsius would sit under a label reading "°F"
+    /// showing "95" — and typing the 203 that label invites would store a
+    /// 203 °C threshold no Mac will ever reach, silently disabling the
+    /// alert. Converting on the way in and back out is what keeps the
+    /// number the user types and the number the engine compares the same
+    /// physical temperature.
+    ///
+    /// `AlertRule.threshold` itself is never stored in Fahrenheit. The
+    /// engine, `alert_log`, and every `AlertRule` on the sync wire keep
+    /// working in Celsius unchanged.
+    private func temperatureThresholdBinding(_ rule: Binding<AlertRule>) -> Binding<Double> {
+        Binding(
+            get: {
+                let unit = TemperatureUnit.display
+                // Rounded to a tenth on the way out: 95 °C is 203.00000000000003 °F
+                // in binary floating point, and a threshold field is not the
+                // place to show that. The stored Celsius value is untouched
+                // unless the user actually edits the field.
+                return (unit.value(fromCelsius: rule.wrappedValue.threshold) * 10).rounded() / 10
+            },
+            set: { rule.wrappedValue.threshold = TemperatureUnit.display.celsiusValue(from: $0) }
+        )
     }
 
     /// Bridges the stored byte threshold to the GB number the field above
@@ -1134,6 +1171,11 @@ struct AlertsPane: View {
         case .boolean: return String(localized: "0 or 1")
         case .thermalLevel: return String(localized: "0–3")
         case .count, .decimal: return ""
+        // `MetricUnit.suffix` is a hard "°C" and stays that way — it
+        // describes the unit a *stored* value is in. This label sits beside
+        // a field the user reads and types in, so it follows the display
+        // preference instead. See `TemperatureUnit.suffix`.
+        case .celsius: return TemperatureUnit.display.suffix
         default: return unit.suffix
         }
     }

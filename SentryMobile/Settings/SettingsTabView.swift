@@ -55,6 +55,36 @@ struct SettingsTabView: View {
     /// sync, and why that's an accepted duplication rather than an oversight.
     @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.oneDark.id
 
+    /// Backs the Units section below — the Celsius/Fahrenheit *display*
+    /// preference for this phone.
+    ///
+    /// **Why this is a local phone preference and not the Mac's setting
+    /// relayed over.** The Mac's `AppSettings.temperatureUnit` lives in a
+    /// `settings.json` this app cannot read, and the only channel between
+    /// the two is `LocalSyncClient`'s snapshot stream, which carries
+    /// *readings*, not preferences. The Mac's theme does reach the Watch —
+    /// but by a different route entirely: the phone reads its own
+    /// `@AppStorage("selectedThemeID")` and puts *that* on the wire to the
+    /// wrist (`WatchRelayManager` → `WatchRelaySnapshot.themeID`). There is
+    /// no Mac→phone preference channel at all; `selectedThemeID` itself is
+    /// documented as deliberately per-device for exactly this reason
+    /// ("choosing one here doesn't change the Mac app, and vice versa"),
+    /// and a units preference is if anything *more* obviously per-device —
+    /// it is about the person holding the phone, not about the machine
+    /// being measured.
+    ///
+    /// So this follows `selectedThemeID` exactly: same `@AppStorage`
+    /// mechanism, same per-device semantics, same string-key duplication
+    /// with `RootTabView` (which is what publishes it into
+    /// `TemperatureUnit.display` for the whole app — see that view).
+    ///
+    /// Stored as the raw string rather than the enum because `@AppStorage`
+    /// only supports `RawRepresentable` where the raw value is `String` or
+    /// `Int` *and* the property is non-optional with a default — spelling
+    /// the raw value out here keeps the `UserDefaults` contents readable
+    /// and matches how `selectedThemeID` already stores a `Theme.id`.
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+
     /// The remote-Mac fallback endpoint — see `remoteMacSection`. The keys
     /// must match `AppDataSource.remoteEndpointFromDefaults()` exactly.
     @AppStorage("remoteSync.host") private var remoteHost: String = ""
@@ -121,6 +151,7 @@ struct SettingsTabView: View {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 title
                 themeSection
+                unitsSection
                 deviceCard
                 macPickerSection
                 syncStatusRow
@@ -378,6 +409,56 @@ struct SettingsTabView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(theme.name)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    // MARK: - Units (the second real, working section)
+
+    /// Celsius/Fahrenheit for every temperature this app shows: the
+    /// Dashboard's Thermals ledger row, the temperature rule thresholds on
+    /// the Alerts tab, and the Siri thermal-status dialog.
+    ///
+    /// Sits directly under Theme because they are the two settings on this
+    /// screen that actually do something (everything below is honestly
+    /// labelled as inert pending an Apple Developer Program enrolment), and
+    /// because they are the same kind of thing: a per-device presentation
+    /// choice. See `temperatureUnitRaw` for why it is per-device.
+    ///
+    /// A segmented picker rather than a toggle, matching the Mac's
+    /// `GeneralPane.unitsSection`: two named options read as two options,
+    /// where "Use Fahrenheit" makes the reader work out the off state.
+    private var unitsSection: some View {
+        VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
+            Text("UNITS")
+                .scaledFont(palette, size: 10, weight: .semibold)
+                .foregroundStyle(palette.textTertiary)
+
+            Picker(selection: temperatureUnitBinding) {
+                ForEach(TemperatureUnit.allCases, id: \.self) { unit in
+                    Text(unit.displayName).tag(unit)
+                }
+            } label: {
+                Text("Temperature")
+            }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Temperature unit")
+
+            Text("How temperatures are shown on this phone. Your Mac reports them in Celsius and stores them in Celsius, so this changes how the numbers read, never what was recorded — and like your theme, it's stored on this device only.")
+                .scaledFont(palette, size: 10.5)
+                .foregroundStyle(palette.textTertiary)
+        }
+    }
+
+    /// Bridges the `@AppStorage` raw string to the enum the picker binds to.
+    ///
+    /// The `??` is doing real work: `UserDefaults` is hand-editable and
+    /// survives downgrades, so an unrecognised string has to resolve to
+    /// something rather than trapping. Celsius, matching every other
+    /// fallback in this feature.
+    private var temperatureUnitBinding: Binding<TemperatureUnit> {
+        Binding(
+            get: { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius },
+            set: { temperatureUnitRaw = $0.rawValue }
+        )
     }
 
     // MARK: - Paired device (mock data, honestly labeled)

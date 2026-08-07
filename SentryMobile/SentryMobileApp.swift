@@ -55,6 +55,31 @@ struct SentryMobileApp: App {
     /// A scanned-but-not-yet-confirmed pairing; non-nil drives the alert.
     @State private var pendingPairing: RemotePairing.Endpoint?
 
+    /// Adopts the phone's stored temperature unit at *process* launch,
+    /// before any scene exists.
+    ///
+    /// `RootTabView` already publishes this on `.onAppear` and on change,
+    /// which covers everything a person looking at the app can do. This
+    /// covers the case they can't: Siri running `GetThermalStatusIntent`
+    /// (`SentryMobile/Intents/SentryIntents.swift`) without ever bringing
+    /// the app forward. That launches the process but need not build the
+    /// window group, so `onAppear` may never fire — and the dialog would
+    /// then be spoken in Celsius to someone whose whole app is in
+    /// Fahrenheit.
+    ///
+    /// Reads `UserDefaults` directly rather than through `@AppStorage`
+    /// because this runs in `init`, before any property wrapper is
+    /// projected, and because it needs to happen exactly once at startup
+    /// rather than tracking changes — `RootTabView` owns the tracking.
+    /// Third copy of the `"temperatureUnit"` key string, for the same
+    /// reason `"selectedThemeID"` has three: `@AppStorage`/`UserDefaults`
+    /// resolve by string, not by Swift symbol (see `RootTabView`'s doc
+    /// comment on that duplication).
+    init() {
+        let stored = UserDefaults.standard.string(forKey: "temperatureUnit")
+        TemperatureUnit.display = stored.flatMap(TemperatureUnit.init(rawValue:)) ?? .celsius
+    }
+
     /// Drives the reconnect-on-foreground fix below — see the `.onChange`
     /// doc comment.
     @Environment(\.scenePhase) private var scenePhase

@@ -28,6 +28,11 @@ public final class SettingsStore: ObservableObject {
     /// poke a single field — both go through `didSet`.
     @Published public var settings: AppSettings {
         didSet {
+            // Mirrored *before* the no-op guard below, and unconditionally.
+            // See `mirrorTemperatureUnit()` for why this store is the thing
+            // that publishes it, and why re-asserting an unchanged value is
+            // free (unlike the disk write the guard exists to skip).
+            mirrorTemperatureUnit()
             // A settings pane can re-assign an identical value on every view
             // update; skipping the no-op write keeps the SSD quiet.
             guard settings != oldValue else { return }
@@ -55,6 +60,13 @@ public final class SettingsStore: ObservableObject {
         self.fileURL = fileURL
         self.debounceInterval = debounceInterval
         self.settings = Self.load(from: fileURL)
+        // `didSet` does not fire for an assignment made inside `init`, so the
+        // initial mirror has to be explicit. Without this line the app would
+        // render in whatever unit the *previous* store in this process had
+        // set — which on a normal launch means "Celsius, always," and the
+        // preference would appear to do nothing until the user next touched
+        // any setting.
+        mirrorTemperatureUnit()
     }
 
     deinit {
@@ -92,6 +104,40 @@ public final class SettingsStore: ObservableObject {
         return appSupport
             .appendingPathComponent("Sentry", isDirectory: true)
             .appendingPathComponent("settings.json")
+    }
+
+    // MARK: - Temperature unit mirroring
+
+    /// Pushes `settings.temperatureUnit` into `TemperatureUnit.display`, the
+    /// process-wide ambient preference every formatting site reads.
+    ///
+    /// **Why a store publishes into a global at all.** `TemperatureUnit
+    /// .display`'s own doc comment covers why the value has to be ambient
+    /// (nineteen display surfaces, most of them pure `Sendable` value types
+    /// or free functions with no injection path, and the composition root
+    /// that would otherwise own the wiring is a file this change is not
+    /// permitted to touch). Given that it must be ambient, *this* is the
+    /// right place to set it: `SettingsStore` is the single owner of the
+    /// user's preferences on macOS, it already sits on both the load path
+    /// and every mutation path, and putting the mirror anywhere else would
+    /// mean some third party remembering to call it.
+    ///
+    /// **Why unconditionally, rather than only when the unit changed.** The
+    /// write is an uncontended `NSLock` acquire and a one-byte store; the
+    /// `settings != oldValue` guard next to it exists to skip a *disk*
+    /// write, which is six orders of magnitude more expensive. Making this
+    /// conditional would buy nothing and would introduce a way for the
+    /// mirror to drift out of sync if the guard's semantics ever changed.
+    ///
+    /// **The honest caveat: this is process-wide, and more than one
+    /// `SettingsStore` can exist.** In the app exactly one does. In the test
+    /// suite each case constructs its own against a temporary file, so the
+    /// last one built wins — which is why every temperature test passes its
+    /// unit explicitly through `TemperatureFormatter`'s `in:` parameter
+    /// instead of relying on the ambient value, and why the two tests that
+    /// *do* exercise the ambient path save and restore it.
+    private func mirrorTemperatureUnit() {
+        TemperatureUnit.display = settings.temperatureUnit
     }
 
     // MARK: - Theme resolution

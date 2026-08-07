@@ -901,6 +901,55 @@ public final class AlertEngine {
            let rated = snapshot.battery?.adapterRatedWatts {
             return "Charging at \(Int(actual))W of \(rated)W rated — \(fallback)"
         }
+        // Temperature rules get their body rebuilt here, rather than using
+        // the stored `fallback`, and the reason is specific to this unit.
+        //
+        // `AlertAction.notification`'s body is a fixed `String` chosen when
+        // the rule was *created* — the shipped "High temperature" rule's is
+        // the literal "SoC temperature is above 95°C." — and it is then
+        // persisted into `settings.json` with the rule. That was fine while
+        // there was one temperature unit. It cannot survive a display
+        // preference: a user who switches to Fahrenheit reads °F on the
+        // menu bar, in the dropdown, on the Dashboard, in every insight —
+        // and then gets a banner quoting °C, which is precisely the
+        // half-applied setting that is worse than no setting. Nor can it be
+        // fixed at rule-construction time, because the rule outlives the
+        // choice: `AppSettings.defaultAlertRules` is built once and stored
+        // forever.
+        //
+        // Selected by `metric.unit == .celsius` rather than by a stable rule
+        // ID (the mechanism `chargingPausedRuleID` above uses) deliberately.
+        // An ID match would miss two populations that matter: existing
+        // installs, whose persisted copy of the shipped rule carries a
+        // random UUID minted before any stable ID existed, and every
+        // *user-created* temperature rule, which by definition has an ID
+        // nothing can special-case. The unit is the actual thing that makes
+        // this body wrong, so the unit is what selects the fix.
+        //
+        // The rebuilt sentence is also strictly more informative than what
+        // it replaces: it quotes the reading that fired the rule, which the
+        // static text never did.
+        if rule.metric.unit == .celsius {
+            let thresholdText = TemperatureFormatter.string(celsius: rule.threshold, style: .whole)
+            let direction: String
+            switch rule.comparison {
+            case .above: direction = "above"
+            case .below: direction = "below"
+            // `.equals` and `.changedBy` have no shipped temperature rule
+            // and read badly as a direction word; "at" is true for both
+            // (a `.changedBy` body still names the live reading, which is
+            // the useful half) without asserting a direction that isn't
+            // there.
+            case .equals, .changedBy: direction = "at"
+            }
+            guard let observed = snapshot.value(for: rule.metric) else {
+                // No live reading — say the threshold and nothing more,
+                // rather than inventing a number (P5).
+                return "\(rule.metric.shortLabel) is \(direction) \(thresholdText)."
+            }
+            let observedText = TemperatureFormatter.string(celsius: observed, style: .whole)
+            return "\(rule.metric.shortLabel) is \(observedText), \(direction) the \(thresholdText) threshold."
+        }
         return fallback
     }
 
@@ -1109,7 +1158,15 @@ extension AlertEngine {
                 sustainedFor: 60,
                 cooldown: cooldown,
                 actions: [
-                    .notification(title: "High Temperature", body: "SoC temperature is above 95°C.", sound: false)
+                    // Deliberately unit-free. `dynamicBody` rebuilds every
+                    // temperature rule's body at fire time from the live
+                    // reading and this rule's own `threshold`, in whatever
+                    // unit the user reads in — see that method for why a
+                    // stored string cannot carry a unit chosen later. This
+                    // text therefore only ever reaches a user through a code
+                    // path that has no snapshot, and it must not name a unit
+                    // it can't convert.
+                    .notification(title: "High Temperature", body: "SoC temperature is above the alert threshold.", sound: false)
                 ]
             ),
             AlertRule(
