@@ -51,7 +51,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .fans: return String(localized: "Live fan speeds, and what fan control would need to work.")
         case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
         case .sync: return String(localized: "iPhone companion and device sync.")
-        case .location: return String(localized: "Opt-in last-known-location log for this Mac — not Find My.")
+        case .location: return String(localized: "An opt-in log of where this Mac last was, sent to your iPhone over local Wi-Fi.")
         case .advanced: return String(localized: "Diagnostics and debugging.")
         case .about: return String(localized: "Version, credits, and licenses.")
         }

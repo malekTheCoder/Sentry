@@ -52,7 +52,17 @@ struct LocationLogSection: View {
                 emptyState
             }
 
-            Text("Not Find My — Sentry has no connection to Apple's Find My network. This is a periodic location log: while Sentry is running on your Mac and location access is granted, it occasionally reports its approximate location to this phone over your local Wi-Fi network. It cannot be located while off, asleep, or offline.")
+            // Describes what the feature *is*, rather than opening by naming
+            // what it is not. The old copy led with "Not Find My — …", which
+            // put a competitor's feature in the reader's head before Sentry's
+            // own and made the section read defensively about a comparison
+            // nobody had made yet. Everything load-bearing survives: the
+            // periodic-not-live framing, the two conditions it needs (Sentry
+            // running, location granted), the local-network path, and the
+            // three states it cannot report from. That is what keeps the
+            // promise `LocationService`'s doc comment makes — the constraint
+            // was never the phrase, it was never implying live tracking.
+            Text("A periodic log of where your Mac was, not live tracking. While Sentry is running on your Mac and you've granted it location access, it occasionally sends its approximate location to this phone over your local Wi-Fi network. Your Mac can't report a location while it's off, asleep, or off the network.")
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
         }

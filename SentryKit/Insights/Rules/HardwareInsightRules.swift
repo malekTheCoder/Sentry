@@ -944,6 +944,26 @@ public struct StorageFillingTrendRule: ProtectionInsightRule, Sendable {
               slope < 0
         else { return nil }
 
+        // **Stand down when the disk is already out of room.**
+        //
+        // `LowStorageHeadroomRule` fires once the volume has held under 10%
+        // free for three days running, and it says the more useful thing:
+        // the space is gone *now*, here is why that breaks APFS, here is
+        // where to look. This rule's whole contribution is a forecast — "at
+        // this rate you have N days" — which is worth reading while there is
+        // still runway and is noise once there isn't. Shown together the two
+        // cards read as the same finding stated twice, which is what a user
+        // reported: a "filling up" card sitting directly under a "no
+        // headroom" card, saying less.
+        //
+        // Checked against the same `consecutiveDaysBelowTenPercentFree`
+        // signal and streak threshold the other rule gates on, rather than a
+        // free-percent number of this rule's own, so the two cannot drift
+        // apart into a window where both fire or neither does.
+        guard storage.consecutiveDaysBelowTenPercentFree < LowStorageHeadroomRule.warningStreakDays else {
+            return nil
+        }
+
         let severity: InsightSeverity = days <= Self.warningHorizonDays ? .warning : .advice
         let daysText = InsightPhrasing.days(days)
         let slopeText = String(format: "%.2f", abs(slope))
