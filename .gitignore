@@ -22,3 +22,9 @@ DerivedData/
 
 # Claude Code local state (worktrees, agent scratch files) — never shared
 .claude/
+
+# Parallel-development worktrees. `git worktree add worktrees/<name>` puts a
+# whole second checkout here; a plain `git add -A` from the repo root would
+# otherwise stage each one as an embedded git repository, which git accepts
+# with only a warning and which produces a commit nobody can clone.
+worktrees/
