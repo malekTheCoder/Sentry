@@ -31,6 +31,26 @@ public struct AgentAwakeHold: Equatable, Sendable {
 /// Per-session rollup of `agent_activity_log` events for UI presentation —
 /// the Dashboard's `AgentActivityCard` renders one row per value. Built by
 /// `AgentSessionReport.sessions(from:awakeHolds:)`.
+///
+/// **Why this type grew (agent-activity legibility pass).** Every field
+/// added below was *already sitting in `agent_activity_log`* — the v5
+/// migration has persisted `outcome`, `duration_ms` and `args_summary` per
+/// row since the attribution pass — and `sessions(from:awakeHolds:)` was
+/// throwing all of it away, collapsing a session to "N calls over M
+/// minutes." That is the least interesting projection of the data: a
+/// *denied* call is the one an operator actually needs to see (it means a
+/// guardrail fired, or the rate limiter did, or the user said no), and
+/// "which tool, how long ago" is what turns a row from a tally into a
+/// description of what an agent is doing to this Mac right now. None of
+/// this is new collection; it is the same query, projected honestly.
+///
+/// **Deliberately not a dictionary of outcome → count.** Three named
+/// integers make the "did anything get refused" question a property access
+/// at every call site (view, accessibility label, test) instead of a
+/// dictionary lookup that silently reads `nil` as zero — and this codebase's
+/// hard rule is that a missing reading must never render as a zero. Here the
+/// counts are always genuinely computed from the events, so zero always
+/// means zero.
 public struct AgentSessionSummary: Equatable, Sendable, Identifiable {
     /// The session ID, or a `"legacy:"`-prefixed client name for pre-v5
     /// rows that carry no session — see `sessions(from:awakeHolds:)`.
@@ -44,7 +64,92 @@ public struct AgentSessionSummary: Equatable, Sendable, Identifiable {
     public let toolCallCounts: [String: Int]
     public let awakeSecondsHeld: Double
 
-    public init(id: String, clientName: String, start: Date, end: Date, callCount: Int, toolCallCounts: [String: Int], awakeSecondsHeld: Double) {
+    /// Raw tool name (`MCPToolID.rawValue`) of the most recent call in this
+    /// session, paired with `end` as "when." `nil` only when a caller
+    /// constructs a summary with no event behind it — `sessions(from:…)`
+    /// always fills it, because a group cannot exist without at least one
+    /// event. Optional rather than `""` so "not reported" stays
+    /// representable and can never be mistaken for a tool actually named
+    /// the empty string.
+    public let lastTool: String?
+
+    /// How that most recent call ended. Same honest-`nil` contract as
+    /// `lastTool`: never defaulted to `.succeeded`, because "we don't know"
+    /// and "it worked" are different claims and only one of them is safe to
+    /// put in front of a user.
+    public let lastOutcome: AgentActivityOutcome?
+
+    /// Calls refused by the permission model, a guardrail, or a declined
+    /// confirmation dialog (`AgentActivityOutcome.denied`).
+    public let deniedCount: Int
+
+    /// Calls refused specifically by the per-client rate limiter
+    /// (`MCPAccessController.isRateLimited`). Kept separate from
+    /// `deniedCount` for exactly the reason `AgentActivityOutcome` splits
+    /// them: "you're calling too fast" and "you're not allowed" are
+    /// different findings, and conflating them would hide a misbehaving
+    /// agent behind a policy denial (or vice versa).
+    public let rateLimitedCount: Int
+
+    /// Calls that were authorized and ran, but whose reply carried an error.
+    /// Counted, not surfaced as a denial: the agent was allowed to do this,
+    /// it just didn't work.
+    public let erroredCount: Int
+
+    /// Whether this session owns a keep-awake hold that is **still open**
+    /// (`AgentAwakeHold.end == nil`) — i.e. this agent is holding the Mac
+    /// awake at this instant. Derived from the same ledger
+    /// `awakeSecondsHeld` sums, so it costs nothing extra and cannot drift
+    /// from it.
+    ///
+    /// This is the single most consequential thing an agent does, because it
+    /// is the only one with a *physical* effect the user will notice (a
+    /// laptop that won't sleep in a bag), which is why it gets its own flag
+    /// rather than being inferred from "awakeSecondsHeld is large."
+    /// Always `false` for legacy (pre-v5, session-less) groups — the ledger
+    /// is keyed by session ID, and a client *name* must never match an owner
+    /// slot by coincidence.
+    public let holdsKeepAwakeNow: Bool
+
+    /// Calls that never executed. The number a person scanning for trouble
+    /// wants; `callCount` alone cannot distinguish a busy agent from a
+    /// blocked one.
+    public var blockedCount: Int { deniedCount + rateLimitedCount }
+
+    /// Calls that executed and replied successfully. Derived rather than
+    /// stored so it can never disagree with the parts it's made of.
+    public var succeededCount: Int {
+        max(0, callCount - deniedCount - rateLimitedCount - erroredCount)
+    }
+
+    /// Whether the session's last call is recent enough that Sentry would
+    /// still consider it connected — see `AgentSessionReport.activeWithin`
+    /// for why this is the registry's own definition rather than a second
+    /// one invented here.
+    public func isActive(asOf now: Date) -> Bool {
+        now.timeIntervalSince(end) <= AgentSessionReport.activeWithin
+    }
+
+    /// New fields default to their "not reported" / "nothing refused"
+    /// values so every pre-existing call site of this memberwise
+    /// initializer keeps compiling and keeps meaning exactly what it did —
+    /// the same additive discipline `AgentSessionAttribution.init` documents
+    /// for its own late-added caffeinate fields.
+    public init(
+        id: String,
+        clientName: String,
+        start: Date,
+        end: Date,
+        callCount: Int,
+        toolCallCounts: [String: Int],
+        awakeSecondsHeld: Double,
+        lastTool: String? = nil,
+        lastOutcome: AgentActivityOutcome? = nil,
+        deniedCount: Int = 0,
+        rateLimitedCount: Int = 0,
+        erroredCount: Int = 0,
+        holdsKeepAwakeNow: Bool = false
+    ) {
         self.id = id
         self.clientName = clientName
         self.start = start
@@ -52,6 +157,12 @@ public struct AgentSessionSummary: Equatable, Sendable, Identifiable {
         self.callCount = callCount
         self.toolCallCounts = toolCallCounts
         self.awakeSecondsHeld = awakeSecondsHeld
+        self.lastTool = lastTool
+        self.lastOutcome = lastOutcome
+        self.deniedCount = deniedCount
+        self.rateLimitedCount = rateLimitedCount
+        self.erroredCount = erroredCount
+        self.holdsKeepAwakeNow = holdsKeepAwakeNow
     }
 }
 
@@ -266,12 +377,41 @@ public enum AgentSessionReport {
     /// renders as *something* coherent rather than one giant "unknown" row.
     public static let legacyGroupPrefix = "legacy:"
 
+    /// How recently a session must have called for
+    /// `AgentSessionSummary.isActive(asOf:)` to still call it connected.
+    ///
+    /// **Aliased to `AgentSessionRegistry.staleAfter`, not re-picked.** The
+    /// registry already owns this app's one answer to "when does a session
+    /// stop counting as present," with a documented rationale (XPC surfaces
+    /// no per-MCP-session disconnect, so silence is the only signal, and the
+    /// failure modes are asymmetric). A second threshold chosen here would
+    /// mean the Dashboard could call a session ended while `preflight_check`
+    /// still reports `another_agent_active` for it — two surfaces
+    /// contradicting each other about the same session. Deriving the value
+    /// makes that contradiction impossible by construction.
+    ///
+    /// The two are nonetheless answering the question from opposite sides:
+    /// the registry prunes *live in-memory rows*, this classifies *rows read
+    /// back out of SQLite* long after the fact. That's why the classification
+    /// lives here (a pure function over persisted events) rather than
+    /// becoming a method on the main-actor-isolated registry, which the
+    /// Dashboard's report path has no reason to touch.
+    public static let activeWithin: TimeInterval = AgentSessionRegistry.staleAfter
+
     /// Groups a window's events into per-session summaries, most recent
     /// last-activity first — the Dashboard `AgentActivityCard`'s data
     /// source. Awake time per session comes from the in-memory ledger, so
     /// it only covers holds from the current app run (see
     /// `AgentAwakeHold`'s doc comment); sessions older than the current run
     /// honestly show zero rather than a reconstructed guess.
+    ///
+    /// **Last-call fields are found by `max(by: timestamp)`, not by taking
+    /// `events.last`.** `HistoryStore.agentActivityEvents` happens to return
+    /// rows oldest-first today, but nothing in this function's signature
+    /// says so, and a caller that filters or re-sorts before calling would
+    /// otherwise silently make the card claim the wrong "last tool." Same
+    /// reasoning the existing `start`/`end` lines already apply by using
+    /// `min()`/`max()` instead of `first`/`last`.
     public static func sessions(
         from events: [AgentActivityEvent],
         awakeHolds: [AgentAwakeHold],
@@ -286,15 +426,31 @@ public enum AgentSessionReport {
         return grouped.compactMap { key, sessionEvents -> AgentSessionSummary? in
             guard
                 let start = sessionEvents.map(\.timestamp).min(),
-                let end = sessionEvents.map(\.timestamp).max()
+                let end = sessionEvents.map(\.timestamp).max(),
+                let lastEvent = sessionEvents.max(by: { $0.timestamp < $1.timestamp })
             else { return nil }
             var toolCounts: [String: Int] = [:]
+            var denied = 0
+            var rateLimited = 0
+            var errored = 0
             for event in sessionEvents {
                 toolCounts[event.tool, default: 0] += 1
+                switch event.outcome {
+                case .denied: denied += 1
+                case .rateLimited: rateLimited += 1
+                case .errored: errored += 1
+                case .succeeded: break
+                }
             }
-            let awake = key.hasPrefix(legacyGroupPrefix)
+            // Legacy groups are keyed by *client name*, not session ID, and
+            // the ledger's owners are session IDs — so they can neither
+            // claim held time nor claim to be holding one now. Both guards
+            // are the same guard; keeping them adjacent is why.
+            let isLegacy = key.hasPrefix(legacyGroupPrefix)
+            let awake = isLegacy
                 ? 0
                 : awakeSeconds(holds: awakeHolds, owner: key, window: start...max(now, end))
+            let holdingNow = !isLegacy && awakeHolds.contains { $0.owner == key && $0.end == nil }
             return AgentSessionSummary(
                 id: key,
                 clientName: sessionEvents.first?.clientName ?? "",
@@ -302,7 +458,13 @@ public enum AgentSessionReport {
                 end: end,
                 callCount: sessionEvents.count,
                 toolCallCounts: toolCounts,
-                awakeSecondsHeld: awake
+                awakeSecondsHeld: awake,
+                lastTool: lastEvent.tool,
+                lastOutcome: lastEvent.outcome,
+                deniedCount: denied,
+                rateLimitedCount: rateLimited,
+                erroredCount: errored,
+                holdsKeepAwakeNow: holdingNow
             )
         }
         .sorted { $0.end > $1.end }
