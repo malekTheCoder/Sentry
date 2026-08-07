@@ -16,6 +16,13 @@ struct GeneralPane: View {
 
     @Environment(\.themePalette) private var palette
 
+    /// The process-wide walkthrough coordinator — see `walkthroughSection`
+    /// for why this pane reaches for the singleton rather than being handed
+    /// one. Observed (not merely called) so the button's enabled state
+    /// tracks `canReplay`/`isShowing` instead of going stale the moment the
+    /// popover opens behind this window.
+    @ObservedObject private var walkthrough = OnboardingCoordinator.shared
+
     /// Non-nil while a `LaunchAtLogin` call has failed. Surfaced rather than
     /// swallowed: `SMAppService.register()` genuinely fails (unsigned builds,
     /// an app not in /Applications, MDM policy), and silently leaving the
@@ -31,6 +38,8 @@ struct GeneralPane: View {
                 Toggle("Launch Sentry at login", isOn: launchAtLoginBinding)
                     .accessibilityLabel("Launch Sentry at login")
             }
+
+            walkthroughSection
 
             Section {
                 Toggle("Detailed charts", isOn: $store.settings.detailedCharts)
@@ -162,6 +171,71 @@ struct GeneralPane: View {
             Button("OK") { launchAtLoginError = nil }
         } message: {
             Text(launchAtLoginError ?? "")
+        }
+    }
+
+    // MARK: - Walkthrough
+
+    /// Re-runs the first-run walkthrough (`Sentry/Onboarding/`).
+    ///
+    /// **Why this pane and not About.** About was the other candidate — it
+    /// is where "what is this app" material usually goes. General wins on
+    /// one argument: the walkthrough is not reference material, it is a
+    /// *setup* flow (it asks for notification permission, offers the
+    /// location log, mints a pairing code, installs the command-line
+    /// helper), and General is already the pane that owns startup and
+    /// first-run behaviour. Someone looking for "show me that again" checks
+    /// the first pane in the list before the last one, too.
+    ///
+    /// **Why the button reaches for the singleton directly.** The
+    /// walkthrough popover anchors to the menu bar status item, which no
+    /// settings view has or should have a reference to; `OnboardingCoordinator`
+    /// is the only thing that does, and it is a `@MainActor` process-wide
+    /// singleton for exactly the reason `StatusItemController` and
+    /// `SettingsStore` are. Threading it down through `SettingsView`'s
+    /// initialiser instead would mean a new parameter that `AppDelegate` has
+    /// to pass — a file this change may not edit — and a `nil` default that
+    /// would leave this button inert in the shipping app. This pane already
+    /// calls a process-wide type directly for the same class of reason: see
+    /// `LaunchAtLogin` in `launchAtLoginBinding` below.
+    ///
+    /// **Why the button can be disabled rather than always live.**
+    /// `canReplay` is false until `AppDelegate` has run its one
+    /// `showIfNeeded` call, and `isShowing` is true while the popover is
+    /// already up. Both are real, if rare, states, and both are rendered as
+    /// a disabled button *with the reason written next to it* rather than a
+    /// button that looks fine and does nothing — the disclosure discipline
+    /// the Updates section below applies to Sparkle's placeholder key.
+    @ViewBuilder
+    private var walkthroughSection: some View {
+        Section {
+            Button("Show Walkthrough") { walkthrough.replay() }
+                .disabled(!walkthrough.canReplay || walkthrough.isShowing)
+                .accessibilityLabel("Show the walkthrough again")
+                .accessibilityHint("Opens the nine-step introduction next to Sentry's menu bar icon.")
+
+            if walkthrough.isShowing {
+                Text("It's open now, next to the menu bar icon.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !walkthrough.canReplay {
+                // §9.4: the icon and the sentence both carry it.
+                Label {
+                    Text("The walkthrough needs Sentry's menu bar icon to point at, and this copy hasn't placed one.")
+                        .font(.caption)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(palette.warning)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        } header: {
+            Text("Walkthrough")
+        } footer: {
+            Text("The nine-step introduction Sentry shows once on a fresh install — the menu bar item, the sleep controls, Insights, agent access, and pairing a phone. Running it again changes nothing on its own; every switch it offers is also here in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

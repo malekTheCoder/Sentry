@@ -57,6 +57,13 @@ struct SettingsTabView: View {
 
     /// The remote-Mac fallback endpoint — see `remoteMacSection`. The keys
     /// must match `AppDataSource.remoteEndpointFromDefaults()` exactly.
+    /// Cleared by `walkthroughRow` to re-arm `SentryMobileApp`'s
+    /// `fullScreenCover` — see that row's doc comment for why re-arming the
+    /// one existing presentation beats presenting a second copy from here,
+    /// and for why duplicating the key is the same accepted tradeoff as
+    /// `selectedThemeID` above.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
     @AppStorage("remoteSync.host") private var remoteHost: String = ""
     @AppStorage("remoteSync.port") private var remotePort: String = "8643"
     @AppStorage("remoteSync.code") private var remoteCode: String = ""
@@ -128,6 +135,7 @@ struct SettingsTabView: View {
                 LocationLogSection(viewModel: locationLogViewModel)
                 notificationsSection
                 widgetsSection
+                walkthroughRow
                 aboutRow
             }
             .padding(palette.spacing * 2)
@@ -621,6 +629,65 @@ struct SettingsTabView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityHint("Add the widget from your home screen. It shows the most recent data this app cached — there are no in-app widget options to change yet.")
+    }
+}
+
+// MARK: - Walkthrough row
+
+extension SettingsTabView {
+    /// Re-runs the first-run walkthrough
+    /// (`SentryMobile/Onboarding/OnboardingView.swift`).
+    ///
+    /// **Why this writes `false` to a flag instead of presenting anything.**
+    /// `SentryMobileApp` already owns the only presentation of
+    /// `OnboardingView`, through a `.fullScreenCover` whose `isPresented`
+    /// binding is derived from `!hasCompletedOnboarding` — deliberately, so
+    /// there is exactly one source of truth for "has this run." Presenting a
+    /// second copy from here (a `.sheet` on this tab, say) would create a
+    /// second one, with its own dismissal path and its own opinion about the
+    /// flag. Clearing the flag re-arms the *existing* mechanism, and
+    /// finishing or skipping the re-run sets it again through the same
+    /// `WalkthroughGate.completedFlag(after:)` call the first run uses.
+    ///
+    /// **Why the `@AppStorage` key is duplicated here rather than passed
+    /// down.** Same tradeoff, and the same reasoning, as this file's
+    /// existing `selectedThemeID`/`remoteSync.*` properties: the string key
+    /// is what keeps the copies in sync, `SentryMobileApp` is a `Scene` with
+    /// no view hierarchy to thread a binding through, and inventing an
+    /// observable object to carry one boolean would be more machinery than
+    /// this file's own precedent accepts for four other flags.
+    ///
+    /// **Placed above About, not below it.** About is reference material and
+    /// belongs last (its own doc comment says so). The walkthrough is the
+    /// thing a confused user is looking for, so it sits one row closer to
+    /// where they are already scrolling.
+    fileprivate var walkthroughRow: some View {
+        Button {
+            hasCompletedOnboarding = false
+        } label: {
+            HStack(spacing: palette.spacingTight) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Walkthrough")
+                        .scaledFont(palette, size: 12.5)
+                        .foregroundStyle(palette.textPrimary)
+                    Text("The seven-step introduction, again.")
+                        .scaledFont(palette, size: 11)
+                        .foregroundStyle(palette.textTertiary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.counterclockwise")
+                    .scaledSystemFont(size: 12, weight: .semibold)
+                    .foregroundStyle(palette.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(palette.spacingBlock)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard(palette)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Show the walkthrough again")
+        .accessibilityHint("Reopens the introduction that explains pairing a Mac, the four tabs, and the Watch app.")
     }
 }
 
