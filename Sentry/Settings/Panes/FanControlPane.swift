@@ -400,17 +400,44 @@ struct FanControlPane: View {
         )
     }
 
+    // MARK: - Temperature rendering
+
+    /// This pane's house style for a temperature: whole degrees, a space,
+    /// then the unit — `"95 °C"` / `"203 °F"` — in whichever unit the user
+    /// picked in Settings ▸ General ▸ Units.
+    ///
+    /// Everything stored behind these strings stays Celsius:
+    /// `FanControlPolicy.safetyCeilingCelsius`, `FanCurvePoint.celsius` and
+    /// `ThermalSensorReading.celsius` are compared against raw sensor
+    /// readings by `FanControlService` and by the privileged daemon, on a
+    /// path no UI is part of. Converting any of them would change what the
+    /// fans do; converting only the strings changes what the user reads.
+    private static func temperature(_ celsius: Double) -> String {
+        TemperatureFormatter.string(celsius: celsius, style: .wholeSpaced)
+    }
+
+    /// Same style, but for a temperature *span* rather than a reading — see
+    /// the hysteresis row, and `TemperatureUnit.delta(fromCelsius:)`.
+    private static func temperatureDelta(_ celsius: Double) -> String {
+        TemperatureFormatter.delta(celsius: celsius, style: .wholeSpaced)
+    }
+
     // MARK: - Policy (read-only presentation of persisted values)
 
     private var policySection: some View {
         Section {
             LabeledContent("Safety ceiling",
-                           value: "\(Int(store.settings.fanControl.defaultPolicy.safetyCeilingCelsius.rounded())) °C")
+                           value: Self.temperature(store.settings.fanControl.defaultPolicy.safetyCeilingCelsius))
+            // Hysteresis is a *width*, not a reading — "the sensor must move
+            // this far before the fan is allowed to change" — so it converts
+            // as a delta. Rendering 3 °C of hysteresis through the absolute
+            // conversion would print "37 °F", which reads as a safety
+            // ceiling rather than a deadband and is wrong by 32 degrees.
             LabeledContent("Hysteresis",
-                           value: "\(Int(store.settings.fanControl.defaultPolicy.hysteresisCelsius.rounded())) °C")
+                           value: Self.temperatureDelta(store.settings.fanControl.defaultPolicy.hysteresisCelsius))
 
             ForEach(Array(store.settings.fanControl.defaultPolicy.curve.points.enumerated()), id: \.offset) { _, point in
-                LabeledContent("\(Int(point.celsius.rounded())) °C",
+                LabeledContent(Self.temperature(point.celsius),
                                value: "\(Int(point.rpm.rounded())) rpm")
             }
         } header: {
@@ -433,7 +460,7 @@ struct FanControlPane: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(service.availableSensors.prefix(8), id: \.name) { reading in
-                    LabeledContent(reading.name, value: "\(Int(reading.celsius.rounded())) °C")
+                    LabeledContent(reading.name, value: Self.temperature(reading.celsius))
                 }
             }
         } header: {

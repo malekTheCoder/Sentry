@@ -458,7 +458,15 @@ public struct SustainedHeatRule: ProtectionInsightRule, Sendable {
         }
         if thermal.hoursAtOrAbove95 >= 0.5 {
             let hoursText = InsightPhrasing.duration(hours: thermal.hoursAtOrAbove95)
-            evidence.append(String(localized: "Roughly \(hoursText) were spent at or above 95°C."))
+            // The 95 is `ThermalHistorySummary`'s own aggregate boundary
+            // (`hoursAtOrAbove95`), so it is a Celsius constant like every
+            // other threshold in this file — but it is *quoted* here, which
+            // makes it display, and a user reading in Fahrenheit must see
+            // 203°F rather than a stray "95°C" in an otherwise converted
+            // sentence. Formatted rather than written as a literal for
+            // exactly that reason.
+            let thresholdText = InsightPhrasing.celsius(95)
+            evidence.append(String(localized: "Roughly \(hoursText) were spent at or above \(thresholdText)."))
         }
         if let meanCPU = context.load?.meanCPUPercent {
             let cpuText = InsightPhrasing.percentValue(meanCPU, decimals: 0)
@@ -547,11 +555,16 @@ public struct RisingThermalBaselineRule: ProtectionInsightRule, Sendable {
         let severity: InsightSeverity = delta >= Self.warningDeltaCelsius ? .warning : .advice
         let olderText = InsightPhrasing.celsius(older)
         let newerText = InsightPhrasing.celsius(newer)
-        let deltaText = String(format: "%.1f", delta)
+        // `celsiusDelta`, not `celsius`: this is a *difference* of two
+        // readings, so the 32-degree offset between the scales' zeros must
+        // not be applied. A 4 °C drift is a 7 °F drift, not a 39 °F one —
+        // and the wrong one here would turn a mild advisory into a claim
+        // that the Mac had caught fire. See `InsightPhrasing.celsiusDelta`.
+        let deltaText = InsightPhrasing.celsiusDelta(delta)
         let dayText = InsightPhrasing.days(thermal.daysWithData)
 
         var evidence = [
-            String(localized: "Mean SoC temperature rose from \(olderText) in the first half of the last \(dayText) to \(newerText) in the second half — up \(deltaText)°C.")
+            String(localized: "Mean SoC temperature rose from \(olderText) in the first half of the last \(dayText) to \(newerText) in the second half — up \(deltaText).")
         ]
         if let meanCPU = context.load?.meanCPUPercent {
             let cpuText = InsightPhrasing.percentValue(meanCPU, decimals: 0)
@@ -561,7 +574,7 @@ public struct RisingThermalBaselineRule: ProtectionInsightRule, Sendable {
         return ProtectionInsight(
             id: id,
             title: String(localized: "Running hotter than it was two weeks ago"),
-            summary: String(localized: "Average temperature is up \(deltaText)°C against this Mac's own recent baseline."),
+            summary: String(localized: "Average temperature is up \(deltaText) against this Mac's own recent baseline."),
             detail: String(localized: "This compares this Mac against itself, not against any other machine — the only baseline that means anything. A cooling system quietly losing effectiveness (dust in the fan path, thermal paste past its useful life, a fan that has started spinning down) shows up exactly like this: the same work, a few degrees warmer, week over week.\n\nThe honest caveat: a genuinely heavier workload produces the identical pattern. Sentry cannot tell the two apart from temperature alone, which is why the average CPU load for the same window is listed alongside it."),
             recommendation: String(localized: "If your workload hasn't changed, this is a cooling problem worth looking at — vents and fan intake first, professional cleaning if the Mac is more than about three years old."),
             category: category,
@@ -594,9 +607,14 @@ public struct ThermalsWellBehavedRule: ProtectionInsightRule, Sendable {
 
         let peakText = InsightPhrasing.celsius(peak)
         let dayText = InsightPhrasing.days(thermal.daysWithData)
+        // Same reasoning as `SustainedHeatRule`'s quoted 95 above: 90 is
+        // `ThermalHistorySummary.sustainedHeatThreshold`, a Celsius
+        // constant that this sentence *shows*, so it converts with
+        // everything else rather than sitting in the copy as a literal.
+        let sustainedText = InsightPhrasing.celsius(ThermalHistorySummary.sustainedHeatThreshold)
         var evidence = [
             String(localized: "Highest SoC temperature across \(dayText): \(peakText)."),
-            String(localized: "No sustained periods above 90°C, and effectively no thermal throttling.")
+            String(localized: "No sustained periods above \(sustainedText), and effectively no thermal throttling.")
         ]
         if let mean = thermal.meanSoCTemperatureCelsius {
             let meanText = InsightPhrasing.celsius(mean)

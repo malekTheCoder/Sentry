@@ -315,8 +315,15 @@ struct GetThermalStatusIntent: AppIntent {
 
         var sentence = String(localized: "Your Mac's thermal pressure is \(pressureText)")
         if let socTemperature = thermal.socTemperatureCelsius {
-            let temperatureText = String(Int(socTemperature.rounded()))
-            sentence += String(localized: ", at \(temperatureText) degrees Celsius")
+            // Spelled-out form, unlike the Mac intent's "78°C" — this one is
+            // spoken far more often than it is read, and Siri does not
+            // reliably pronounce a degree sign. `TemperatureFormatter
+            // .spoken` produces "78 degrees Celsius" / "172 degrees
+            // Fahrenheit" following this phone's own Settings ▸ Units
+            // choice; the reading itself arrives from the Mac in Celsius
+            // either way.
+            let temperatureText = TemperatureFormatter.spoken(celsius: socTemperature)
+            sentence += String(localized: ", at \(temperatureText)")
         }
         if thermal.isThrottling {
             sentence += String(localized: ". Your Mac is currently throttling to cool down")

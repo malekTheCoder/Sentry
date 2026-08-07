@@ -194,8 +194,14 @@ enum SentryMacIntentFormatting {
             sentence = String(localized: "This Mac's thermal pressure is critical.")
         }
         if let soc = thermal.socTemperatureCelsius {
-            let socText = String(Int(soc.rounded()))
-            sentence += " " + String(localized: "SoC temperature is \(socText)°C.")
+            // `.whole` keeps this dialog's existing "78°C" shape while
+            // letting the unit follow Settings ▸ General ▸ Units. Not
+            // `TemperatureFormatter.spoken` ("78 degrees Celsius"), which
+            // the iPhone's equivalent intent does use: this string is a
+            // *shown* dialog as often as a spoken one (Shortcuts shows the
+            // result inline), and the symbol form reads better there.
+            let socText = TemperatureFormatter.string(celsius: soc, style: .whole)
+            sentence += " " + String(localized: "SoC temperature is \(socText).")
         }
         if thermal.isThrottling {
             sentence += " " + String(localized: "It's currently throttling performance to cool down.")

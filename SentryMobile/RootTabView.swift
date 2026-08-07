@@ -42,6 +42,27 @@ struct RootTabView: View {
     /// Mac (no sync channel exists to carry it). Defaults to One Dark, the
     /// direction the Mac app converged on.
     @AppStorage("selectedThemeID") private var selectedThemeID: String = Theme.oneDark.id
+
+    /// The phone's Celsius/Fahrenheit display preference, read here for the
+    /// same reason `selectedThemeID` is: this is the one view that is an
+    /// ancestor of all four tabs, so it is where a per-app display choice
+    /// gets applied once instead of in each tab.
+    ///
+    /// The key string is duplicated from `Settings/SettingsTabView.swift`
+    /// rather than shared through a constant — see this view's doc comment
+    /// above for why that duplication is the accepted arrangement here
+    /// (`@AppStorage` resolves by string key against the default suite, not
+    /// by a Swift symbol) and what to do if it ever drifts.
+    ///
+    /// Unlike the theme, this is not pushed down through the SwiftUI
+    /// environment: the code that formats a temperature is
+    /// `SentryKit.MetricFormatter`, a static function reached from view
+    /// bodies, view models, and an App Intent alike, none of which share an
+    /// environment. It is published into `TemperatureUnit.display` instead
+    /// — see `publishTemperatureUnit()` below, and `TemperatureUnit
+    /// .display`'s own doc comment for why that value is ambient at all.
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+
     @Environment(\.colorScheme) private var systemColorScheme
 
     private var palette: ThemePalette {
@@ -68,8 +89,15 @@ struct RootTabView: View {
         .onAppear {
             applyTabBarChrome()
             publishAppearanceForWatch()
+            publishTemperatureUnit()
         }
         .onChange(of: selectedThemeID) { applyTabBarChrome() }
+        // `@AppStorage` re-renders this view when the key changes — which
+        // is what makes the Settings tab's picker take effect immediately
+        // across every tab, since the tabs re-read their formatted strings
+        // on the same update. Without this line the ambient value would only
+        // catch up on the next launch.
+        .onChange(of: temperatureUnitRaw) { publishTemperatureUnit() }
         .onChange(of: systemColorScheme) {
             applyTabBarChrome()
             publishAppearanceForWatch()
@@ -94,6 +122,21 @@ struct RootTabView: View {
     /// read (`UITraitCollection.current`) is only valid on the main thread
     /// during a view update, which is precisely where this already is and
     /// precisely where the actor is not.
+    /// Publishes the stored preference into `TemperatureUnit.display`, the
+    /// process-wide value `SentryKit.MetricFormatter` (and therefore every
+    /// temperature string in this app) formats against.
+    ///
+    /// This is the iOS half of a pair: on macOS the same job is done by
+    /// `SettingsStore`, which owns that platform's preferences. Both are
+    /// documented at `TemperatureUnit.display` as the only two writers.
+    ///
+    /// An unrecognised stored string — a hand-edited `UserDefaults`, or a
+    /// value written by a newer build and read by an older one — resolves
+    /// to Celsius rather than trapping or leaving a stale unit in place.
+    private func publishTemperatureUnit() {
+        TemperatureUnit.display = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+
     private func publishAppearanceForWatch() {
         UserDefaults.standard.set(
             systemColorScheme.themeAppearance.rawValue,

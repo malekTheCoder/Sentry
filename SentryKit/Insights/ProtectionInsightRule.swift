@@ -51,9 +51,38 @@ public enum InsightPhrasing {
         return String(format: "%.\(Swift.max(0, decimals))f%%", value)
     }
 
+    /// `78.2` → `"78°C"` (or `"173°F"`). The argument is always a Celsius
+    /// reading — every `InsightContext` aggregate is, because the history
+    /// database is — and only the rendering follows the user's unit.
+    ///
+    /// **Why a display preference is legible from inside a rule whose
+    /// contract says `evaluate` is pure.** It isn't: rules still read
+    /// nothing but their `InsightContext`, and this helper is not called
+    /// during evaluation of a *condition* — every threshold comparison in
+    /// `HardwareInsightRules` is done against raw Celsius constants
+    /// (`sustainedHeatThreshold`, `hotChargingSoCThreshold`,
+    /// `advisoryDeltaCelsius`). This is called only while building the
+    /// human-readable `summary`/`evidence` strings of an insight that has
+    /// already been decided. Which insights fire, and on what evidence, is
+    /// identical in both units; only the words differ.
     public static func celsius(_ value: Double) -> String {
-        guard value.isFinite else { return MetricFormatter.unavailable }
-        return "\(Int(value.rounded()))°C"
+        TemperatureFormatter.string(celsius: value, style: .whole)
+    }
+
+    /// A temperature *difference* — `4.0` → `"4°C"` / `"7°F"`.
+    ///
+    /// Exists because `ThermalDriftRule` reports one ("average temperature
+    /// is up 4°C against this Mac's own recent baseline") and running that
+    /// through `celsius(_:)` above would print "up 39°F": a delta has no
+    /// zero point, so the 32-degree offset must not be applied. See
+    /// `TemperatureUnit.delta(fromCelsius:)`.
+    ///
+    /// One decimal, unlike `celsius(_:)`'s whole degrees: a drift of 4.2 °C
+    /// against 4.0 °C is the difference between the advisory and the
+    /// warning tier of that rule, and the copy quoted the tenth before this
+    /// helper existed.
+    public static func celsiusDelta(_ value: Double) -> String {
+        TemperatureFormatter.delta(celsius: value, style: .decimal)
     }
 
     public static func watts(_ value: Double) -> String {

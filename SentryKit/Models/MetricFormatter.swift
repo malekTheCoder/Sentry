@@ -23,11 +23,36 @@ public enum MetricFormatter {
     /// because several units are *transformed* on the way out (mV→V, mA→A,
     /// MHz→GHz, °C→"58°") — string-stripping the declared suffix silently
     /// fails for those, and leaves a trailing space for the spaced ones.
-    public static func compact(_ value: Double, unit: MetricUnit, includeUnit: Bool = true) -> String {
+    ///
+    /// `temperatureUnit` is the user's Celsius/Fahrenheit *display*
+    /// preference and is ignored for every unit but `.celsius`. It defaults
+    /// to the ambient `TemperatureUnit.display`, which is how the menu bar,
+    /// dropdown, Dashboard cards and chart readouts all pick the preference
+    /// up without a single one of them being changed — they were already
+    /// calling this method. Pass it explicitly to pin the output (the tests
+    /// do, so they never touch process-wide state). The incoming `value` is
+    /// always Celsius regardless: that is the storage unit, and
+    /// `TemperatureUnit`'s doc comment explains at length why it stays one.
+    public static func compact(
+        _ value: Double,
+        unit: MetricUnit,
+        includeUnit: Bool = true,
+        temperatureUnit: TemperatureUnit = .display
+    ) -> String {
         // A public formatter on the every-3s draw path must not trap: Int()
         // and Int64() of NaN/infinity are runtime traps that no do/catch can
         // rescue, and `max(nan, 0)` returns nan rather than clamping (P5).
         guard value.isFinite else { return unavailable }
+        // Temperature is the one unit whose *number* changes with a display
+        // preference, so it short-circuits the number/suffix split below
+        // rather than threading the preference through both halves of it.
+        // `.compact` there is "58°" — the degree sign with no unit letter,
+        // exactly what `compactSuffix` has always returned for `.celsius`.
+        if unit == .celsius {
+            return includeUnit
+                ? TemperatureFormatter.string(celsius: value, style: .compact, in: temperatureUnit)
+                : TemperatureFormatter.number(celsius: value, style: .compact, in: temperatureUnit)
+        }
         let number = compactNumber(value, unit: unit)
         guard includeUnit else { return number }
         return number + compactSuffix(value, unit: unit)
@@ -42,6 +67,10 @@ public enum MetricFormatter {
         case .watts:
             return value >= 10 ? String(format: "%.0f", value) : String(format: "%.1f", value)
         case .celsius:
+            // Unreachable from `compact`, which intercepts `.celsius` above;
+            // kept so this switch stays exhaustive over `MetricUnit` and so
+            // the Celsius rendering has an obvious home if the intercept is
+            // ever removed.
             return String(format: "%.0f", value)
         case .megahertz:
             return value >= 1000
@@ -121,7 +150,14 @@ public enum MetricFormatter {
     }
 
     /// Longer form for the dropdown, where a couple more characters are fine.
-    public static func detailed(_ value: Double, unit: MetricUnit) -> String {
+    ///
+    /// `temperatureUnit` behaves exactly as it does on `compact` above —
+    /// display-only, `.celsius`-only, ambient by default.
+    public static func detailed(
+        _ value: Double,
+        unit: MetricUnit,
+        temperatureUnit: TemperatureUnit = .display
+    ) -> String {
         guard value.isFinite else { return unavailable }
         switch unit {
         case .percent:
@@ -132,9 +168,9 @@ public enum MetricFormatter {
             // read that way on the dashboard hero ("Charging at 25.50 W").
             return String(format: "%.1f W", value)
         case .celsius:
-            return String(format: "%.1f °C", value)
+            return TemperatureFormatter.string(celsius: value, style: .detailed, in: temperatureUnit)
         default:
-            return compact(value, unit: unit)
+            return compact(value, unit: unit, temperatureUnit: temperatureUnit)
         }
     }
 

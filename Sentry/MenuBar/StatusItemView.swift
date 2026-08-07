@@ -444,11 +444,17 @@ final class StatusItemView: NSView {
     /// and "58°" it does not — the symbols get spelled or skipped, so the
     /// compact string is expanded into words here.
     private static func spoken(_ value: Double, unit: MetricUnit) -> String {
+        // Temperature is built from the reading rather than patched out of
+        // the formatted string. The old `replacingOccurrences(of: "°")`
+        // produced "58 degrees", which was already ambiguous with one unit
+        // and is simply wrong with two — a VoiceOver user is the last
+        // person who should have to infer which scale a number is on. See
+        // `TemperatureFormatter.spoken`.
+        if unit == .celsius { return TemperatureFormatter.spoken(celsius: value) }
         let text = MetricFormatter.compact(value, unit: unit)
         switch unit {
         case .percent: return text.replacingOccurrences(of: "%", with: " percent")
         case .watts: return text.replacingOccurrences(of: "W", with: " watts")
-        case .celsius: return text.replacingOccurrences(of: "°", with: " degrees")
         default: return text
         }
     }

@@ -242,11 +242,14 @@ public enum StatuslineRenderer {
                     severity: severity
                 ))
             case .compact, .nerdfont, .tmux:
-                // `MetricFormatter.compact` renders celsius as "62°" — the
-                // trailing "C" is appended here rather than changing the
-                // shared formatter, whose bare-degree form is what the menu
-                // bar wants at 11pt. §21.3's example spells out "62°C".
-                let value = MetricFormatter.compact(celsius, unit: .celsius) + "C"
+                // §21.3's example spells out "62°C" — the unit letter, not
+                // the menu bar's bare "62°". This used to be
+                // `MetricFormatter.compact(...) + "C"`, a hand-glued letter
+                // that would have kept saying "C" over a Fahrenheit number
+                // the moment the display preference existed.
+                // `TemperatureFormatter`'s `.whole` style is that same shape
+                // with the unit derived from the value instead of assumed.
+                let value = TemperatureFormatter.string(celsius: celsius, style: .whole)
                 result.append(Segment(metric: .thermalSocTempC, text: "\(format.temperatureGlyph)\(value)", severity: severity))
             }
         }

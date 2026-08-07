@@ -56,6 +56,36 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// intermediate time labels.
     public var detailedCharts: Bool
 
+    // MARK: - Units
+
+    /// Which unit every temperature on this Mac is **displayed** in. Not
+    /// which unit anything is stored in — see `TemperatureUnit`'s doc
+    /// comment for why the sensors, `HistoryStore`, the sync wire, every
+    /// `AlertRule.threshold`, and `FanCurve`'s breakpoints all stay in
+    /// Celsius no matter what this says.
+    ///
+    /// **Why this lives in `AppSettings` rather than in its own store or in
+    /// `Theme`.** The same reasoning `detailedCharts` immediately above
+    /// carries: it is a single small user-level display preference, it
+    /// belongs to the user rather than to a machine, and putting it in the
+    /// one file everything else round-trips through means copying
+    /// `settings.json` to a new Mac brings it along. `Theme` was the other
+    /// candidate and is wrong — a theme is a shareable, exportable
+    /// `.sentrytheme` document about *colour*, and a Brit importing an
+    /// American's theme should not thereby be switched to Fahrenheit.
+    ///
+    /// **The default is `.celsius`, deliberately and unconditionally — for
+    /// fresh installs as well as upgrading ones.** This value is also
+    /// `init(from:)`'s fallback for a settings file written before this key
+    /// existed, and that file belongs to a user who has been reading
+    /// Celsius since they installed the app; upgrading them into Fahrenheit
+    /// because their Mac happens to be in a US locale would be changing
+    /// what they see without asking. Seeding a *fresh* install from
+    /// `Locale.current.measurementSystem` instead was tried and rejected —
+    /// the full argument, including where it would have had to live and
+    /// what it would have broken, is at the bottom of `TemperatureUnit`.
+    public var temperatureUnit: TemperatureUnit
+
     // MARK: - Remote sync (off-LAN phone access)
 
     /// Opens `LocalSyncServer`'s second, TLS-PSK-secured listener on
@@ -406,6 +436,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
         detailedCharts: Bool = false,
+        temperatureUnit: TemperatureUnit = .celsius,
         remoteSyncEnabled: Bool = false,
         remoteSyncPort: Int = 8643,
         remoteSyncPairingCode: String = "",
@@ -447,6 +478,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
         self.detailedCharts = detailedCharts
+        self.temperatureUnit = temperatureUnit
         self.remoteSyncEnabled = remoteSyncEnabled
         self.remoteSyncPort = remoteSyncPort
         self.remoteSyncPairingCode = remoteSyncPairingCode
@@ -502,6 +534,13 @@ extension AppSettings {
         case enabledModules
         case menuBarLayout
         case detailedCharts
+        // Units, additive: absent in any settings.json written before the
+        // temperature-unit toggle existed, and its fallback is `.celsius` —
+        // which is exactly what such a file's owner has been looking at all
+        // along. This is the one case where the locale must *not* be
+        // consulted; see `temperatureUnit`'s own doc comment and
+        // `SettingsStore.load`.
+        case temperatureUnit
         case remoteSyncEnabled
         case remoteSyncPort
         case remoteSyncPairingCode
@@ -603,6 +642,15 @@ extension AppSettings {
                 ?? fallback.menuBarLayout,
             detailedCharts: try container.decodeIfPresent(Bool.self, forKey: .detailedCharts)
                 ?? fallback.detailedCharts,
+            // A hand-edited `"temperatureUnit": "kelvin"` throws here rather
+            // than silently resolving to Celsius, matching this decoder's
+            // stated contract for a present-but-wrong value: `SettingsStore`
+            // catches it, logs, and falls back to defaults wholesale, which
+            // is the honest outcome for a file the user broke. Note that is
+            // *different* from the key being absent, which is an upgrade and
+            // is handled by the `??` below.
+            temperatureUnit: try container.decodeIfPresent(TemperatureUnit.self, forKey: .temperatureUnit)
+                ?? fallback.temperatureUnit,
             remoteSyncEnabled: try container.decodeIfPresent(Bool.self, forKey: .remoteSyncEnabled)
                 ?? fallback.remoteSyncEnabled,
             remoteSyncPort: try container.decodeIfPresent(Int.self, forKey: .remoteSyncPort)

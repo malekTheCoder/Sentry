@@ -311,6 +311,20 @@ struct MenuBarPane: View {
                 // the unit has a real domain to slide across. Bytes/sec, MHz
                 // and counts have no upper bound worth inventing, so those get
                 // free numeric entry instead of a fake 0–100 track.
+                //
+                // For `.celsius`, `sliderBounds` stays a Celsius domain
+                // (0…110, step 1) while all three labels below render
+                // through `MetricFormatter.compact`, which follows the
+                // display preference — so a Fahrenheit reader sees a
+                // 32°…230° track that steps in 1.8° increments. That is the
+                // right trade rather than a bug: converting the *bounds*
+                // would mean the stored threshold, which `isVisible`
+                // compares against raw Celsius, no longer matched what the
+                // slider held, and a rounder-looking track is not worth a
+                // hidden module. `AlertsPane`'s threshold field is the case
+                // that genuinely needed the bidirectional conversion — it is
+                // free numeric entry, where a user types an absolute number
+                // and expects it back.
                 if let bounds = VisibilityThreshold.sliderBounds(for: unit) {
                     VStack(alignment: .leading, spacing: 2) {
                         Slider(
@@ -715,7 +729,10 @@ enum VisibilityThreshold {
         switch unit {
         case .percent: return String(localized: "percent")
         case .watts: return String(localized: "watts")
-        case .celsius: return String(localized: "degrees Celsius")
+        // Follows the display preference: the threshold field next to this
+        // caption is edited in whatever unit the bar shows, so naming the
+        // other one here would be a straightforward lie.
+        case .celsius: return TemperatureUnit.display.spokenSuffix
         case .megahertz: return String(localized: "megahertz")
         case .bytes: return String(localized: "bytes")
         case .bytesPerSecond: return String(localized: "bytes per second")
