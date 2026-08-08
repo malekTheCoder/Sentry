@@ -6,16 +6,31 @@
   applies to it.
 
   This target's surface is genuinely small, and the manifest is short because
-  the audit found little, not because it was skipped. What compiles in:
-  four Swift files under SentryWatch/, plus SentryKit.framework built from
+  the audit found little, not because it was skipped. What compiles in: the
+  Swift files under SentryWatch/, plus SentryKit.framework built from
   `SentryKit_watchOS` — which, unlike its macOS/iOS siblings, does not take
-  the whole SentryKit directory. project.yml lists exactly SentryKit/Watch/,
-  SentryKit/Sync/Freshness.swift, SentryKit/Sync/FreshnessBadge.swift and
-  SentryKit/Sync/SyncRecords.swift. So the two required-reason call sites the
-  iPhone side has to declare — `ProcessInfo.systemUptime` in
-  Insights/DeviceFacts.swift, and the `UserDefaults.standard` defaults in
-  Persistence/RollupJob.swift and Sync/PendingAlertPushStore.swift — are not
-  in this binary at all, and are correctly not declared here.
+  the whole SentryKit directory. project.yml enumerates it file by file:
+  SentryKit/Watch/ (the whole directory — RelayedPalette, WatchRelayPolicy,
+  WatchRelaySnapshot, WatchRelayStore), plus Sync/Freshness.swift,
+  Sync/FreshnessBadge.swift, Sync/SyncRecords.swift, Settings/Theme.swift,
+  Settings/ThemeTokens.swift, Settings/ThemeContrast.swift and
+  Models/MetricID.swift — eleven files from seven path entries.
+
+  (That count is stated precisely because it is the whole argument for what
+  is absent below, and it has drifted before: the list grew when the watch
+  gained themed rendering and Siri intents, while the prose here and in
+  project.yml still said "four files." Re-count it against project.yml
+  before trusting it again.)
+
+  So the two required-reason call sites the iPhone side has to declare —
+  `ProcessInfo.processInfo.systemUptime` in Insights/DeviceFacts.swift, and
+  the `UserDefaults.standard` defaults in Persistence/RollupJob.swift and
+  Sync/PendingAlertPushStore.swift — are not in this binary at all, and are
+  correctly not declared here. Of the eleven files above, only
+  Watch/WatchRelayStore.swift touches a required-reason API, and it is the
+  App Group suite declared below. Models/MetricID.swift is the one that looks
+  like a counterexample and is not: its `case systemUptimeSeconds` is a
+  String-backed enum identifier, never a call to read the boot time.
 
   Reason-code text quoted below comes from Apple's
   "NSPrivacyAccessedAPITypeReasons" documentation:

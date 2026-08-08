@@ -7,10 +7,12 @@
 
   Compile set: three Swift files under SentryWatchWidget/, plus the embedded
   SentryKit.framework built from `SentryKit_watchOS` — the deliberately
-  trimmed four-file source list in project.yml, not the whole SentryKit
-  directory. Same consequence as the watch app's manifest records: the
-  boot-time and standard-defaults call sites that the iPhone side must declare
-  are not present in this binary.
+  trimmed, file-by-file source list in project.yml (seven path entries,
+  eleven files; SentryWatch/PrivacyInfo.xcprivacy enumerates them and
+  explains why the exact set matters), not the whole SentryKit directory.
+  Same consequence as the watch app's manifest records: the boot-time and
+  standard-defaults call sites that the iPhone side must declare are not
+  present in this binary.
 
   Reason-code text quoted below comes from Apple's
   "NSPrivacyAccessedAPITypeReasons" documentation:

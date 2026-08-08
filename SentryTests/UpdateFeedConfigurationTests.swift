@@ -191,13 +191,29 @@ final class UpdateFeedConfigurationTests: XCTestCase {
 
     /// Guards the bug this pass was written to fix. `CFBundleShortVersionString`
     /// and `CFBundleVersion` were hardcoded to "1.0"/"1" in Info.plist while
-    /// `project.yml` set MARKETING_VERSION 0.1.0 — and Sparkle compares
+    /// `project.yml` set a different MARKETING_VERSION — and Sparkle compares
     /// exactly these Info.plist keys, not the build settings, to decide
     /// whether a feed item is newer. Shipped as-is, a "1.0" build would have
     /// judged every 0.x release older than itself and installed nothing,
     /// forever, with no error anywhere. These keys now substitute the build
     /// settings, so this asserts the substitution actually resolved rather
     /// than landing in the bundle as a literal "$(MARKETING_VERSION)".
+    ///
+    /// **Why this no longer asserts one exact version string.** It used to
+    /// end with `XCTAssertEqual(short, "0.1.0")`, and that assertion did the
+    /// opposite of its job: bumping MARKETING_VERSION to 1.0.0 for the first
+    /// public release turned the suite red, in the release commit itself,
+    /// for a version change that was entirely correct. A guard that fails on
+    /// every legitimate release is one that gets deleted or ignored, and
+    /// either outcome loses the real protection.
+    ///
+    /// So the assertions below are the ones that stay true across every
+    /// future bump while still catching all three ways this can actually
+    /// break: the substitution not resolving (a literal `$(...)` in the
+    /// bundle), a regression to XcodeGen's "1.0"/"1" defaults, and a version
+    /// that is not a plausible MARKETING_VERSION at all. What the version
+    /// *is* belongs in project.yml; what this test knows is that the bundle
+    /// faithfully reports it.
     func testHostAppReportsASubstitutedMarketingVersion() throws {
         // The test bundle's host is Sentry.app (TEST_HOST/BUNDLE_LOADER in
         // project.yml), so `.main` is the app under test.
@@ -208,7 +224,20 @@ final class UpdateFeedConfigurationTests: XCTestCase {
         XCTAssertFalse(short.contains("$("), "CFBundleShortVersionString wasn't substituted: \(short)")
         XCTAssertFalse(build.contains("$("), "CFBundleVersion wasn't substituted: \(build)")
         XCTAssertNotEqual(short, "1.0", "CFBundleShortVersionString is back to XcodeGen's default, which does not match MARKETING_VERSION")
-        XCTAssertEqual(short, "0.1.0", "CFBundleShortVersionString should track MARKETING_VERSION in project.yml")
+
+        // Three dot-separated numeric components — the shape every
+        // MARKETING_VERSION in this project has had, and the shape Sparkle's
+        // version comparison expects. This is what "1.0" (XcodeGen's
+        // default) fails and what any real release version passes.
+        let components = short.split(separator: ".", omittingEmptySubsequences: false)
+        XCTAssertEqual(
+            components.count, 3,
+            "CFBundleShortVersionString should be a three-component version tracking MARKETING_VERSION, got: \(short)"
+        )
+        XCTAssertTrue(
+            components.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) },
+            "CFBundleShortVersionString components should all be numeric, got: \(short)"
+        )
     }
 
     /// The two Sparkle keys really are in the shipped bundle, and the app

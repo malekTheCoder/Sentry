@@ -47,6 +47,41 @@ settings:
     CODE_SIGNING_REQUIRED: NO
     CODE_SIGNING_ALLOWED: NO
     DEVELOPMENT_TEAM: ""
+    # ---------------------------------------------------------------------
+    # Release version, project-wide — promoted here from the `Sentry` target.
+    #
+    # The macOS target's `info:` block already carries a long comment about
+    # why XcodeGen's default "1.0"/"1" in a generated Info.plist is a real
+    # bug rather than cosmetics (Sparkle compares the *plist* keys, not the
+    # build settings, so a build announcing itself as "1.0" considers every
+    # release in the feed older than itself and updates to nothing, forever).
+    # That comment ends with "there is no second place to forget."
+    #
+    # There were four. `SentryMobile`, `SentryWidgetExtension`, `SentryWatch`
+    # and `SentryWatchWidgetExtension` set no version at all and had no
+    # CFBundle* substitution in their `info:` blocks, so every one of them
+    # generated CFBundleShortVersionString "1.0" / CFBundleVersion "1" while
+    # this repository's tag said 1.0.0 (build 2). On the Mac that mistake
+    # breaks updates; on the App Store it is worse, because App Store Connect
+    # requires an embedded watch app and every app extension to carry the
+    # *same* CFBundleShortVersionString and CFBundleVersion as the containing
+    # iOS app, and rejects the upload when they disagree. They agreed only by
+    # accident here — all four were wrong in the same direction.
+    #
+    # Promoted to the project base rather than repeated on four targets so
+    # that a release bump stays one edit. The `Sentry` target keeps its own
+    # identical values in `settings.base`: an explicit override with the same
+    # numbers changes nothing about the notarized/Sparkle build, and leaving
+    # it in place keeps the macOS release path independent of an edit made
+    # for the iOS one.
+    #
+    # CURRENT_PROJECT_VERSION must be bumped for every *upload* to App Store
+    # Connect, not every release — ASC rejects a build whose number it has
+    # already seen for this CFBundleShortVersionString, even if the previous
+    # upload was never submitted.
+    # ---------------------------------------------------------------------
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "2"
 
 # Applied to every macOS target whose product ends up inside (or alongside) the
 # notarized Sentry.app: the app, the two embedded frameworks, the widget appex,
@@ -217,9 +252,19 @@ targets:
     # (`WatchRelaySnapshot`/`WatchRelayStore`, `SentryKit/Watch/`) and the
     # freshness-labeling helpers (`Freshness`/`FreshnessBadge`,
     # `SentryKit/Sync/`) — both already pure Foundation/SwiftUI with no
-    # platform-specific import, so listing exactly these three files keeps
-    # this target's compile surface (and its risk of picking up something
-    # watchOS can't build) as small as the feature actually requires.
+    # platform-specific import, so enumerating files one by one keeps this
+    # target's compile surface (and its risk of picking up something watchOS
+    # can't build) as small as the feature actually requires.
+    #
+    # This list has a second job it did not start with: it is the evidence
+    # behind SentryWatch/PrivacyInfo.xcprivacy and
+    # SentryWatchWidget/PrivacyInfo.xcprivacy, both of which argue that the
+    # boot-time and `UserDefaults.standard` required-reason call sites the
+    # iPhone must declare are absent from the watch binaries. That argument
+    # is only as true as this list, so anything added below has to be checked
+    # against those two manifests in the same commit. It has already grown
+    # from three entries to seven (eleven files) for theming and Siri intents
+    # while the prose here still said "three."
     sources:
       - path: SentryKit/Watch
       - path: SentryKit/Sync/Freshness.swift
@@ -737,6 +782,62 @@ targets:
         NSLocalNetworkUsageDescription: "Sentry uses your local network to find your Mac and show its live stats when you're on the same Wi-Fi, and to send it the keep-awake and sleep commands you tap or ask Siri for. None of this data is sent to any server."
         NSBonjourServices:
           - "_sentry._tcp"
+        # See the project-wide `settings.base` comment: without these two
+        # substitutions XcodeGen writes "1.0"/"1" and this app uploads as a
+        # different version than the one tagged, with the embedded watch app
+        # and both appexes silently agreeing on the same wrong numbers.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # ---------------------------------------------------------------
+        # Export compliance (US EAR Category 5 Part 2 / Apple's App Store
+        # Connect encryption questionnaire).
+        #
+        # Declared in the plist rather than answered by hand in App Store
+        # Connect because the hand-answered version has to be re-answered
+        # for *every* uploaded build, and a build sits in "Missing
+        # Compliance" — not submittable, not visible to TestFlight external
+        # testers — until someone remembers. The key answers it once, at
+        # build time, for every build produced from this spec.
+        #
+        # `false` — this app uses encryption, but only encryption that is
+        # exempt because it belongs to the operating system rather than to
+        # us. The evidence, in one place so a future reader can re-check it
+        # rather than trust it:
+        #
+        #   * The only encrypted channel is the remote (off-LAN) sync path
+        #     in `SyncSecurity.tlsOptions(pairingCode:)`
+        #     (SentryKit/LocalSync/SyncSecurity.swift). It is
+        #     `NWProtocolTLS.Options` — Apple's TLS stack, the same one
+        #     under URLSession's HTTPS — pinned to TLS 1.2 with the
+        #     standard, published IANA ciphersuite
+        #     TLS_PSK_WITH_AES_128_GCM_SHA256, keyed through
+        #     `sec_protocol_options_add_pre_shared_key`. Every one of those
+        #     symbols is Security.framework/Network.framework.
+        #   * The pairing code becomes key material via CryptoKit's
+        #     `SHA256.hash(data:)` (SyncSecurity.swift:95). SHA-256 is a
+        #     published standard hash, not encryption, and CryptoKit is
+        #     again the OS.
+        #   * The Bonjour/LAN path is deliberately plaintext (see
+        #     `LocalSyncServer`'s doc comment), so it contributes nothing.
+        #   * There is no bundled crypto library, no proprietary or
+        #     unpublished algorithm, and nothing in the one third-party
+        #     package that reaches this bundle (GRDB) that changes that.
+        #
+        # That is exactly Apple's stated exemption for encryption built into
+        # the operating system:
+        # https://developer.apple.com/documentation/security/complying-with-encryption-export-regulations
+        #
+        # ⚠️ This key is a legal declaration made by the app's owner, not a
+        # build setting. It is set here because the audit above supports it
+        # (docs/appstore-review-readiness.md, "Encryption / export
+        # compliance"), but the owner should read that section and satisfy
+        # themselves before the first upload. If a future change ever adds a
+        # crypto implementation of our own — a bundled library, a custom
+        # cipher, anything not reached through an Apple framework — this
+        # must be revisited, and France/annual-self-classification
+        # obligations may attach.
+        # ---------------------------------------------------------------
+        ITSAppUsesNonExemptEncryption: false
 
   SentryWidgetExtension:
     type: app-extension
@@ -780,6 +881,12 @@ targets:
       path: SentryWidget/Info.plist
       properties:
         CFBundleDisplayName: Sentry Widget
+        # App Store Connect requires an appex's version strings to match the
+        # containing app's exactly — see the project-wide `settings.base`
+        # comment for how all four iOS/watchOS bundles came to agree on the
+        # wrong pair of numbers.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
@@ -837,9 +944,10 @@ targets:
     platform: watchOS
     # SentryWatch/PrivacyInfo.xcprivacy is auto-detected from this path, the
     # same way SentryMobile's is. Its declarations are deliberately shorter
-    # than the phone's because `SentryKit_watchOS` above compiles four files
-    # rather than the whole framework — that manifest's header spells out
-    # which required-reason call sites are consequently absent here.
+    # than the phone's because `SentryKit_watchOS` above compiles an
+    # enumerated subset rather than the whole framework — that manifest's
+    # header spells out which required-reason call sites are consequently
+    # absent here, and names the exact file list it depends on.
     #
     # SentryWatch/Resources/Localizable.xcstrings rides along from this
     # path too (same auto-detected-by-extension mechanism as the Sentry/
@@ -907,6 +1015,12 @@ targets:
         WKCompanionAppBundleIdentifier: dev.malekswilam.sentry.mobile
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # An embedded watch app is the strictest case of the version-match
+        # rule App Store Connect enforces: its CFBundleShortVersionString and
+        # CFBundleVersion must equal the containing iOS app's, or the upload
+        # is rejected outright. See the project-wide `settings.base` comment.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
 
   SentryWatchWidgetExtension:
     type: app-extension
@@ -940,6 +1054,11 @@ targets:
       path: SentryWatchWidget/Info.plist
       properties:
         CFBundleDisplayName: Sentry Complication
+        # Same version-match rule as the iOS widget above — and this appex is
+        # nested two levels deep (iPhone app ▸ watch app ▸ complication), so
+        # it is the easiest of the four to forget.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 
