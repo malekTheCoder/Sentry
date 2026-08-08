@@ -5,14 +5,20 @@ import SentryKit
 /// count over time, charge/discharge session list, per-metric history
 /// browser).
 ///
-/// **Data source honesty.** Same constraint as `DashboardTabView`
-/// (`SentryMobile/Dashboard/DashboardTabView.swift`, separate,
-/// concurrently-built file): there is no live CloudKit sync in this build
-/// (`MockDataSource`'s doc comment), so every number on this tab is
-/// fabricated, not a real Mac's history. `demoDataBanner` below says so
-/// explicitly, matching `DashboardTabView`'s identical banner — a
-/// `FreshnessBadge` alone can only say "how old," never "how real," and
-/// this tab has the second problem, not just the first.
+/// **Data source honesty.** When no Mac is reachable, every number on this
+/// tab is fabricated by `MockDataSource`, not a real Mac's history — a
+/// `FreshnessBadge` alone can only say "how old," never "how real," and this
+/// tab has the second problem, not just the first.
+///
+/// This tab used to carry its own `demoDataBanner` card saying so, worded
+/// differently from the Dashboard's amber connection line, both of which
+/// scrolled away and neither of which existed on Alerts or Settings. That
+/// card is **deleted**: `RootTabView` pins `DemoDataBanner`
+/// (`SentryMobile/Disclosure/DemoDataBanner.swift`) above every tab, where it
+/// cannot scroll away and cannot be worded two ways. What this tab keeps is
+/// the inline `SAMPLE` tag on the battery-health card — the one surface here
+/// that draws a chart a reader would otherwise take for their own Mac's
+/// recorded history.
 ///
 /// **What's built vs. honestly scoped down or omitted, against the plan's
 /// five bullets for this tab:**
@@ -40,14 +46,14 @@ import SentryKit
 struct HistoryTabView: View {
     @StateObject private var viewModel = HistoryViewModel()
 
-    /// Same gating `DashboardTabView` applies to its own `demoDataBanner` —
-    /// see that type's doc comment. Note the battery-health trend chart
-    /// stays honestly empty (not fabricated) once a real `LocalSyncClient`
-    /// connection is live, since `AppDataSource.dailyHealthHistory(deviceID:
-    /// dayCount:)` returns `[]` rather than synthetic data for that case
-    /// (`SentryMobile/Data/AppDataSource.swift`'s doc comment) — the banner
-    /// only needs to stop claiming *fabrication* once data is genuinely real,
-    /// which `isUsingLocalSync` is the accurate signal for.
+    /// Read for one thing now — whether the battery-health card wears a
+    /// `SAMPLE` tag. Note the trend chart stays honestly empty (not
+    /// fabricated) once a real `LocalSyncClient` connection is live, since
+    /// `AppDataSource.dailyHealthHistory(deviceID:dayCount:)` returns `[]`
+    /// rather than synthetic data for that case
+    /// (`SentryMobile/Data/AppDataSource.swift`'s doc comment) — so an
+    /// untagged card is either real history or visibly no history, never
+    /// fabrication passing as either.
     @EnvironmentObject private var appDataSource: AppDataSource
 
     /// Reads the theme `RootTabView` already resolved and injected over the
@@ -67,9 +73,6 @@ struct HistoryTabView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: palette.spacing * 1.5) {
                 title
-                if !appDataSource.isUsingLocalSync {
-                    demoDataBanner
-                }
                 VStack(alignment: .leading, spacing: palette.spacingTight) {
                     HistoryRangeSelector(selection: $viewModel.selectedRange)
                     coverageCaption
@@ -127,30 +130,21 @@ struct HistoryTabView: View {
 
     // MARK: - Demo data disclosure
 
-    /// **Connection-honesty review, bug #6.** Used to say "this build has no
-    /// live iCloud sync yet" — true in isolation, but shown exactly when
-    /// `!appDataSource.isUsingLocalSync`, i.e. precisely when this phone
-    /// isn't reachable to a Mac over the local network right now. iCloud was
-    /// never the transport this build tries; naming it here told the reader
-    /// their real, fixable problem (Mac unreachable on Wi-Fi) was actually
-    /// an unrelated, unfinished cloud feature. Reworded to name the actual
-    /// cause: no local-network connection right now, same signal
-    /// `DashboardTabView`'s connection line and `SettingsTabView`'s device
-    /// card already key off.
-    private var demoDataBanner: some View {
-        Label {
-            Text("Showing demo data — not currently connected to a Mac on your local network")
-                .scaledFont(palette, size: 12)
-                .foregroundStyle(palette.textSecondary)
-        } icon: {
-            Image(systemName: "wand.and.stars")
-                .foregroundStyle(palette.warning)
-        }
-        .padding(palette.spacing)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(palette)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("This tab's numbers are synthesized, not a real Mac's history, because this phone isn't currently connected to a Mac over your local Wi-Fi network or a configured remote address — not because of any iCloud limitation.")
+    /// Whether this tab's fabricated surfaces wear a `SAMPLE` tag. Same
+    /// `DemoDataDisclosure` decision the app-level banner is built from, for
+    /// the same reason `DashboardTabView.marksDemoValues` derives it that way
+    /// rather than re-testing a boolean: one definition of "demo," so a
+    /// tagged chart under an absent banner is not a state this file can
+    /// produce.
+    ///
+    /// The card-shaped `demoDataBanner` that used to live here — its own
+    /// wording, its own icon, its own accessibility hint, scrolling away with
+    /// the rest of the page — was deleted rather than reworded. See this
+    /// type's doc comment.
+    private var marksDemoValues: Bool {
+        DemoDataDisclosure
+            .prominence(isShowingDemoData: appDataSource.isShowingDemoData, isQuieted: false)
+            .marksIndividualValues
     }
 
     // MARK: - Battery health
@@ -164,9 +158,15 @@ struct HistoryTabView: View {
     /// range-delta logic stays in one place.
     private var batteryHealthCard: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
-            Text(batteryHealthHeadline)
-                .scaledFont(palette, size: 13, weight: .semibold)
-                .foregroundStyle(palette.textPrimary)
+            HStack(spacing: palette.spacingTight) {
+                Text(batteryHealthHeadline)
+                    .scaledFont(palette, size: 13, weight: .semibold)
+                    .foregroundStyle(palette.textPrimary)
+                if marksDemoValues {
+                    DemoDataTag()
+                }
+                Spacer(minLength: 0)
+            }
             BatteryHealthTrendChart(series: viewModel.dailyHealth, window: viewModel.window)
             CycleCountSection(series: viewModel.dailyHealth)
         }

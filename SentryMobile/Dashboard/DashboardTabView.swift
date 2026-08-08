@@ -11,8 +11,22 @@ import SentryKit
 /// Mac is unreachable, EVERY value degrades to "—" — never stale numbers
 /// presented as live. That's implemented by handing the ledger and hero a
 /// `nil` snapshot when the connection is lost (their existing nil-handling
-/// renders em dashes), not by overlaying a banner on stale data. Demo data
-/// stays visibly labeled as demo in the connection sentence itself.
+/// renders em dashes), not by overlaying a banner on stale data.
+///
+/// **Demo data is no longer this tab's job to disclose.** The connection
+/// sentence used to carry an amber "Demo data — not from a real Mac" state,
+/// which was the app's most prominent disclosure and still scrolled out of
+/// sight after two flicks — and only ever existed on this one tab.
+/// `RootTabView` now pins `DemoDataBanner` above all four tabs
+/// (`SentryMobile/Disclosure/DemoDataBanner.swift`), so `connectionLine`
+/// below is scoped back to what it is actually good at: how *live* a real
+/// connection is. Its demo case is gone rather than kept-and-reworded,
+/// because two wordings of one fact is how the app got here.
+///
+/// What this tab does keep is the inline `SAMPLE` tag on the surfaces that
+/// render fabricated numbers as if they were telemetry — the activity chart
+/// and the vitals ledger. See `View.demoDataTagged(_:alignment:)` for how far
+/// that was taken and what was rejected.
 struct DashboardTabView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @EnvironmentObject private var appDataSource: AppDataSource
@@ -50,14 +64,26 @@ struct DashboardTabView: View {
 
                 BatteryHeroCard(battery: displaySnapshot?.battery)
 
+                // Bottom-trailing, not the default top-trailing: the chart's
+                // top row is its own legend and a right-aligned "last 60 s"
+                // caption, and the tag landed on top of that caption. The
+                // bottom-right of the plot is empty (the avg/peak sentence is
+                // leading-aligned), so the tag sits in free space against the
+                // chart itself rather than over a label.
                 MobileActivityChart(series: viewModel.recentSeries)
+                    .demoDataTagged(marksDemoValues, alignment: .bottomTrailing)
 
                 VStack(alignment: .leading, spacing: palette.spacingRow) {
-                    Text("VITALS")
-                        .scaledFont(palette, size: 11, weight: .semibold)
-                        .kerning(0.8)
-                        .foregroundStyle(palette.textTertiary)
-                        .accessibilityAddTraits(.isHeader)
+                    HStack(spacing: palette.spacingTight) {
+                        Text("VITALS")
+                            .scaledFont(palette, size: 11, weight: .semibold)
+                            .kerning(0.8)
+                            .foregroundStyle(palette.textTertiary)
+                            .accessibilityAddTraits(.isHeader)
+                        if marksDemoValues {
+                            DemoDataTag()
+                        }
+                    }
                     VitalsLedger(snapshot: displaySnapshot, series: viewModel.recentSeries)
                 }
 
@@ -91,6 +117,19 @@ struct DashboardTabView: View {
             return nil
         }
         return viewModel.latestSnapshot
+    }
+
+    /// Whether the chart and ledger should wear their own `SAMPLE` tags.
+    /// Derived from the same `DemoDataDisclosure` decision the app-level
+    /// banner uses — not from a second predicate — so a tagged chart and an
+    /// untagged banner (or the reverse) is not a state this tab can produce.
+    /// The `isQuieted:` argument is deliberately `false` here: quieting is a
+    /// statement about the banner, and `Prominence.marksIndividualValues` is
+    /// true for the quieted form too.
+    private var marksDemoValues: Bool {
+        DemoDataDisclosure
+            .prominence(isShowingDemoData: appDataSource.isShowingDemoData, isQuieted: false)
+            .marksIndividualValues
     }
 
     private var isSleepActive: Bool {
@@ -131,13 +170,25 @@ struct DashboardTabView: View {
                     .scaledFont(palette, size: 28, weight: .bold)
                     .foregroundStyle(palette.textPrimary)
             }
-            connectionLine
+            // Hidden entirely in demo mode: the app-level banner directly
+            // above this header already says the numbers are a sample and
+            // already carries the retry, and a second amber line four points
+            // below it saying a near-identical thing is how a reader learns
+            // to skim past both.
+            if !appDataSource.isShowingDemoData {
+                connectionLine
+            }
         }
     }
 
     /// 6pt dot + one sentence, per the handoff: green "Live · updated 2 s
-    /// ago", gray "unreachable · last seen …", amber for demo data. A slow
-    /// clock ages the caption without re-rendering the whole screen.
+    /// ago", gray "unreachable · last seen …". A slow clock ages the caption
+    /// without re-rendering the whole screen.
+    ///
+    /// **The amber demo-data state this used to have is gone**, and the
+    /// header above does not render this line at all in demo mode — see this
+    /// type's doc comment. What remains is only ever about a *real*
+    /// transport: live, connecting, or unreachable.
     ///
     /// **Retry (connection-honesty review, bug #1).** Before this existed,
     /// demo data was a dead end: `AppDataSource.resolveIfNeeded()` runs once
@@ -184,9 +235,6 @@ struct DashboardTabView: View {
     }
 
     private func connectionState(now: Date) -> (color: Color, sentence: String) {
-        if !appDataSource.isUsingLocalSync {
-            return (palette.warning, "Demo data — not from a real Mac")
-        }
         if !appDataSource.isLocalSyncConnected {
             let suffix = viewModel.selectedDevice.map {
                 " · last seen \($0.lastSeen.formatted(date: .omitted, time: .shortened))"

@@ -29,6 +29,21 @@ import SentryKit
 /// correct, honest fallback until it exists, exactly as it was before this
 /// type was introduced.
 ///
+/// **The disclosure contract that fallback is conditional on.** Falling back
+/// to fabricated readings is only defensible while the app says so, and the
+/// bar for "says so" is higher than this type's doc comment used to imply
+/// when it pointed at "the amber Demo data indicator" on the Dashboard. That
+/// indicator was one 12pt line that scrolled away, History worded the same
+/// fact differently, and Alerts and Settings disclosed nothing at all. The
+/// contract is now: while `isShowingDemoData` is true, `RootTabView` pins
+/// `DemoDataBanner` above **every** tab where it cannot scroll away, saying
+/// what the numbers are, why, and what to do about it
+/// (`SentryKit`'s `DemoDataDisclosure` owns the wording); the individual
+/// chart and ledger surfaces carry their own inline sample tags; and the
+/// whole thing disappears on the frame `transport` becomes a real
+/// `LocalSyncClient`. Anything that changes the fallback must keep that end
+/// of it.
+///
 /// **Why an `ObservableObject` holding `any StatsTransport`, not the
 /// transport type itself threaded everywhere.** View models
 /// (`DashboardViewModel`, `HistoryViewModel`) already accept `any
@@ -86,6 +101,33 @@ public final class AppDataSource: ObservableObject {
     /// immediately instead of an empty/loading state that only exists
     /// because of app-launch sequencing.
     @Published public private(set) var transport: any StatsTransport = MockDataSource()
+
+    /// Whether the numbers currently on screen were invented by
+    /// `MockDataSource` rather than reported by a Mac. The input to
+    /// `SentryKit`'s `DemoDataDisclosure`, and therefore to the app-level
+    /// banner `RootTabView` pins above every tab.
+    ///
+    /// **Why this and not `isUsingLocalSync`.** The two are not the same
+    /// question and the difference is exactly where an honesty bug would
+    /// live. `isUsingLocalSync` is false during the discovery window at
+    /// launch, when `MockDataSource` is genuinely on screen (so it happens to
+    /// agree here), but it stays *true* across a dropped connection, when the
+    /// transport is still the real `LocalSyncClient` and the correct
+    /// behaviour is the Dashboard's "Unreachable" degradation to em dashes —
+    /// not a claim that the readings are fabricated, because they aren't;
+    /// they're absent. Only the transport's identity answers "are these
+    /// numbers made up," which is what the disclosure asserts. This mirrors
+    /// the derivation `WatchRelayManager` and `DashboardViewModel` already
+    /// use for `sourceIsDemoData` on the Watch and widget payloads — one
+    /// definition of "demo," three consumers.
+    ///
+    /// Computed rather than stored so it cannot drift out of step with
+    /// `transport`: because `transport` is `@Published`, every swap
+    /// re-publishes and every SwiftUI reader re-evaluates this on the same
+    /// frame. That is what makes the banner vanish the instant a real Mac
+    /// connects, rather than at the mercy of a second flag somebody has to
+    /// remember to clear.
+    public var isShowingDemoData: Bool { transport is MockDataSource }
 
     /// `true` once `resolveIfNeeded()` has found and connected to a real Mac
     /// over the local network — `SettingsTabView`'s sync-status section
@@ -308,11 +350,15 @@ public final class AppDataSource: ObservableObject {
     /// comment for why automatic resolution stays single-shot). Two call
     /// sites, both real bugs from the connection-honesty review:
     ///
-    /// 1. The amber "Demo data — not from a real Mac" indicator
-    ///    (`DashboardTabView.connectionLine`) is now tappable and calls this
-    ///    — before this existed, a Mac that was merely asleep or slow at
-    ///    launch latched the app onto `MockDataSource` forever, with no
-    ///    recovery short of force-quitting.
+    /// 1. The app-level demo-data banner's "Try again" action
+    ///    (`DemoDataBanner`, pinned above every tab by `RootTabView`) calls
+    ///    this — before any retry existed, a Mac that was merely asleep or
+    ///    slow at launch latched the app onto `MockDataSource` forever, with
+    ///    no recovery short of force-quitting. (The retry used to hang off
+    ///    the Dashboard's own amber connection line, which was the only tab
+    ///    that offered one; that line no longer duplicates the demo
+    ///    disclosure, so the recovery path moved to the banner that is on
+    ///    every tab.)
     /// 2. `SentryMobileApp`'s `scenePhase` observer calls this when the app
     ///    returns to `.active` from the background — iOS suspends the
     ///    process while backgrounded, so `LocalSyncClient`'s Bonjour browser
