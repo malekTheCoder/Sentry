@@ -14,7 +14,7 @@ import SwiftUI
 /// silence because it cannot be ignored.
 ///
 /// So the variation is by **what happened**, not by which button was pressed.
-/// There are seven distinct things a control in this app can say, listed
+/// There are nine distinct things a control in this app can say, listed
 /// below. Two buttons that mean the same thing feel the same, and a user who
 /// uses the app for a week can tell a committed command from a rejected one
 /// with the phone in their pocket. That is the payoff, and it only exists if
@@ -182,5 +182,128 @@ extension View {
     /// thing that is missing.
     func haptic(_ haptic: SentryHaptic, onTapOf trigger: some Equatable) -> some View {
         sensoryFeedback(haptic.feedback, trigger: trigger)
+    }
+}
+
+// MARK: - Phone → Mac round trips
+
+/// Which entry of the vocabulary above a `ControlCommand` earns, at each of
+/// the **two** moments one of them produces: the instant it is issued, and
+/// the instant the Mac's `ControlStatus` (or its absence) comes back.
+///
+/// **Why a command gets two haptics and not one, which is the whole design
+/// decision in this type.** `SleepStatusCard`'s three adjust buttons and its
+/// End Now button do not change any state on this phone. They post a request
+/// over the local-sync link and then wait; what the card shows afterwards is
+/// whatever the *Mac* said, never a guess (that card's doc comment: "a send
+/// failure, a silent Mac, and a Mac that actively declined are three distinct
+/// messages, never collapsed into one optimistic 'Done'"). So there are
+/// genuinely two events, a request and an answer, separated by a round trip
+/// that is fast on a healthy LAN and up to `SentryIntents.statusTimeout`
+/// when it is not — and each one gets the feedback that is true of it:
+///
+///   * **`issued(commandType:)`** says only which way the user pushed.
+///     `.increase` for +15m/+1h, `.decrease` for −15m, `.end` for End Now.
+///     This is not an optimistic success: `.increase` means "you stepped it
+///     up", which is a fact about the tap, whereas `.confirmed` means "the
+///     far end agreed", which is the claim that would be a lie here. It is
+///     also the moment the directionality is *useful* — `SentryHaptic
+///     .increase`'s own note is that a user adjusting a countdown without
+///     looking should feel which way it went, and a tick that arrives after
+///     the round trip is too late to guide a thumb that is already moving to
+///     the next tap.
+///   * **`outcome(of:)`** says what the Mac did, and nothing else.
+///
+/// **Alternatives rejected.** Firing nothing on the tap: a command that has
+/// to time out leaves five seconds of a screen that felt dead, which is the
+/// failure the brief for this work names first. Firing the *directional*
+/// case on the reply instead: it makes `.confirmed` unreachable anywhere in
+/// this app, and directional feedback that arrives after the gesture is over
+/// guides nothing. Firing `.confirmed` on the tap: the exact optimism the
+/// rest of this codebase refuses everywhere else.
+///
+/// **Kept as pure static functions over plain values** — not methods on a
+/// view, not a `switch` inlined into `sendCommand` — for the same reason
+/// `BatteryHealthTrendChart.readoutText` is: this is the part with real
+/// branching, so it is the part worth being able to test. It is not tested
+/// today, and that is a project fact rather than an oversight: `SentryTests`
+/// is a macOS bundle that links `Sentry`/`SentryKit_macOS` only, so nothing
+/// under `SentryMobile/` is reachable from any test target in this build.
+enum SentryCommandHaptic {
+
+    /// A command's reply, in the only three shapes this app can actually
+    /// observe one. Modelled as a closed enum rather than an
+    /// `Error?`/`ControlStatus?` pair so `outcome(of:)` is total and the
+    /// "sent but silent" case cannot be quietly folded into either
+    /// neighbour — it is a distinct thing that happened, and the card's own
+    /// copy already treats it as one.
+    enum Reply: Equatable {
+        /// `StatsTransport.send(command:)` threw. Nothing left the phone.
+        case undelivered
+        /// Sent, but `awaitStatus(forNonce:timeout:)` returned nothing
+        /// before the timeout.
+        case unanswered
+        /// The Mac answered. `state` is `ControlStatus.state` verbatim —
+        /// deliberately the raw string rather than a parsed enum, because
+        /// `ControlStatus` documents the set as
+        /// `accepted`/`rejected`/`completed`/`expired` and a Mac running a
+        /// newer build may send something this phone has never heard of.
+        case answered(state: String)
+    }
+
+    /// What the tap itself is allowed to say.
+    ///
+    /// Keyed on `ControlCommand.commandType`, the same strings
+    /// `SleepStatusCard` and `SentryIntents` construct, so two controls that
+    /// send the same command feel the same however they were reached —
+    /// including `keepAwake`, which only Siri sends today and which would
+    /// need no change here the day a button for it lands on the card.
+    ///
+    /// An unrecognised command type falls back to `.tap` rather than to
+    /// silence: "that registered" is true of every button in this app, and a
+    /// command type this function has not been taught about is a gap in this
+    /// function, not a reason to leave a real tap feeling dead.
+    static func issued(commandType: String) -> SentryHaptic {
+        switch commandType {
+        case "extendAwake": return .increase
+        case "truncateAwake": return .decrease
+        case "releaseAwake": return .end
+        case "keepAwake": return .begin
+        default: return .tap
+        }
+    }
+
+    /// What the reply says — or `nil` for a reply this app has no honest
+    /// word for.
+    ///
+    /// `nil` is a real answer here, not an oversight, and it covers exactly
+    /// one case: a `state` outside the documented set, `accepted` included.
+    /// `accepted` means the Mac took the command and has not finished it, so
+    /// `.confirmed` would claim an agreement that has not happened yet and
+    /// `.rejected` would claim a refusal that never happened at all.
+    /// Silence is the only non-lie available, and it costs the user nothing
+    /// — they already felt `issued(commandType:)`, so they know the tap
+    /// landed, and the card prints the Mac's own `message` on screen. This
+    /// is deliberately *not* an argument for a tenth enum case: "the far end
+    /// said something we can't classify" is not a thing a user should learn
+    /// to recognise by feel.
+    ///
+    /// Both `undelivered` and `unanswered` are `.rejected`, matching that
+    /// case's own doc comment ("a command the Mac **refused**, or that could
+    /// not be delivered — unreachable, declined by guardrails, timed out").
+    /// Splitting them would mean inventing a distinction the user cannot act
+    /// on differently: in every one of the three, the thing they asked for
+    /// did not happen.
+    static func outcome(of reply: Reply) -> SentryHaptic? {
+        switch reply {
+        case .undelivered, .unanswered:
+            return .rejected
+        case .answered(let state):
+            switch state {
+            case "completed": return .confirmed
+            case "rejected", "expired": return .rejected
+            default: return nil
+            }
+        }
     }
 }

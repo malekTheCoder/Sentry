@@ -111,6 +111,18 @@ struct VitalsLedgerRow: View {
             }
         }
         .ledgerDivider(palette)
+        // Expanding and collapsing are both `SentryHaptic.tap` — that case
+        // names "expanded a disclosure" outright, and collapsing is the same
+        // kind of local, immediate, reversible thing. Deliberately *not*
+        // `.begin`/`.end`: those are for a persistent thing being turned on
+        // or off (a hold on the Mac, a saved endpoint), and a row that shows
+        // three more numbers while you look at it is not that.
+        //
+        // Keyed off `isExpanded` rather than the button's action, which
+        // makes the rows with no details silent for free: the button is
+        // `.disabled(details.isEmpty)`, so there is nothing to toggle and
+        // therefore nothing to feel.
+        .haptic(.tap, on: isExpanded)
     }
 
     /// The row's right-hand side: context word, headline numeral, sparkline,

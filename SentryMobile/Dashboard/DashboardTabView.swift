@@ -18,6 +18,22 @@ struct DashboardTabView: View {
     @EnvironmentObject private var appDataSource: AppDataSource
     @Environment(\.themePalette) private var palette
 
+    /// Bumped by the connection line's Retry button, purely as a haptic
+    /// trigger.
+    ///
+    /// **Why this is the one place on this tab that reaches for
+    /// `haptic(_:onTapOf:)`,** which that modifier's own doc comment asks
+    /// for a second's thought about. The thought: `retryConnection()`'s
+    /// effect is not observable as a state change that coincides with the
+    /// tap. It tears the transport down and re-runs discovery, which takes
+    /// up to `AppDataSource.discoveryTimeout` seconds and may end exactly
+    /// where it started. Keying the feedback off `isLocalSyncConnected`
+    /// instead would fire whenever a Mac came back on its own — a value
+    /// updating by itself, which this app's haptic header rules out — and
+    /// would fire nothing at all for the retry that failed, which is the
+    /// case a user is most likely to be poking at repeatedly.
+    @State private var retryTaps = 0
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: palette.spacingSection) {
@@ -57,6 +73,12 @@ struct DashboardTabView: View {
         }
         .themedScreenBackground(palette)
         .task { await viewModel.start() }
+        // Attached out here rather than inside `connectionLine`: that view
+        // lives in a `TimelineView(.periodic(...))` which rebuilds every five
+        // seconds, and a trigger modifier rebuilt out from under itself is a
+        // trigger that may or may not still be watching the value it was
+        // given. Retry is `.tap` — `SentryHaptic.tap` names it outright.
+        .haptic(.tap, onTapOf: retryTaps)
     }
 
     /// The snapshot the read-only surfaces render. `nil` while unreachable
@@ -92,6 +114,18 @@ struct DashboardTabView: View {
                 }
                 .pickerStyle(.menu)
                 .tint(palette.textPrimary)
+                // Choosing which Mac to look at is moving between options in
+                // a set, same as the range selector and the module chips.
+                //
+                // Attached inside this branch, not to the header, so the
+                // trigger only exists once there is a picker: `selectedDeviceID`
+                // is also written once programmatically, by
+                // `DashboardViewModel.start()`, and a modifier installed
+                // before that write could read it as a selection the user
+                // made. The `when:` guard covers the same hazard from the
+                // other side — nothing that lands *on* `nil` is a choice
+                // anybody made.
+                .haptic(.selection, on: viewModel.selectedDeviceID) { $0 != nil }
             } else {
                 Text(viewModel.selectedDevice?.deviceName ?? "Mac")
                     .scaledFont(palette, size: 28, weight: .bold)
@@ -119,6 +153,7 @@ struct DashboardTabView: View {
         TimelineView(.periodic(from: .now, by: 5)) { context in
             let state = connectionState(now: context.date)
             Button {
+                retryTaps += 1
                 Task { await appDataSource.retryConnection() }
             } label: {
                 HStack(spacing: palette.spacingTight) {

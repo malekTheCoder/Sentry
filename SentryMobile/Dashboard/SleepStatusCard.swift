@@ -26,6 +26,15 @@ import SentryKit
 /// actively declined are three distinct messages, never collapsed into one
 /// optimistic "Done."
 ///
+/// **The haptics follow the same rule as the copy.** Each button produces
+/// two: one when the request is issued, saying only which way the user pushed
+/// (`.increase`/`.decrease`/`.end`), and one when the Mac answers, saying
+/// what it actually did (`.confirmed`/`.rejected`). Nothing here buzzes
+/// success at the moment of the tap, for exactly the reason nothing here
+/// *prints* "Done." at the moment of the tap. See `SentryCommandHaptic`
+/// (`SentryMobile/Theme/Haptics.swift`) for the full argument and the
+/// alternatives it rejects.
+///
 /// **Why still no toggle.** A toggle needs a persistent, always-current
 /// on/off binding to mean anything; this card has point-in-time taps plus
 /// whatever `SystemSnapshot.sleepAssertion` the Mac last reported, with no
@@ -63,7 +72,64 @@ struct SleepStatusCard: View {
     @State private var feedback: String?
     @State private var feedbackTask: Task<Void, Never>?
 
+    /// The last command this card put on the wire, and the last answer it got
+    /// back — the two triggers behind this card's haptics. See
+    /// `SentryCommandHaptic` (`SentryMobile/Theme/Haptics.swift`) for why a
+    /// command produces two of them rather than one, and `CommandTrace` just
+    /// below for why each carries a nonce.
+    @State private var issued: CommandTrace?
+    @State private var answered: CommandTrace?
+
+    /// One command's identity plus what happened to it.
+    ///
+    /// **The nonce is what makes this work as a haptic trigger, and it is the
+    /// whole reason this is a struct rather than a bare
+    /// `SentryCommandHaptic.Reply`.** `.sensoryFeedback(trigger:)` fires on a
+    /// *change*, which is exactly the property that keeps a re-selected
+    /// picker row silent (see `View.haptic(_:on:)`). Here the same property
+    /// would work against the truth: tapping +15m twice, or having two
+    /// commands in a row both come back `completed`, are two real events that
+    /// a plain `Reply` would collapse into one value and therefore into one
+    /// buzz. `ControlCommand.nonce` is unique per command by construction, so
+    /// carrying it makes every issue and every answer a distinct value.
+    private struct CommandTrace: Equatable {
+        let nonce: String
+        let commandType: String
+        /// `nil` on the issue side — nothing has been answered yet.
+        var reply: SentryCommandHaptic.Reply?
+
+        /// What the tap says. See `SentryCommandHaptic.issued(commandType:)`.
+        var issuedHaptic: SentryHaptic { SentryCommandHaptic.issued(commandType: commandType) }
+
+        /// What the reply says, or `nil` while there isn't one (and for a
+        /// reply this app has no honest word for).
+        var outcomeHaptic: SentryHaptic? { reply.flatMap(SentryCommandHaptic.outcome(of:)) }
+    }
+
+    /// Split from `card` below rather than written as one property, because a
+    /// single `body` carrying this view's `switch` *and* five trigger
+    /// modifiers with closures is past what the type checker will solve in
+    /// reasonable time. Behaviourally identical; the modifiers apply to the
+    /// same view either way.
     var body: some View {
+        card
+            // Beat one: which way the user pushed, the instant they pushed
+            // it. Three lines rather than one branching modifier because each
+            // names the meaning it carries — the shape
+            // `View.haptic(_:on:when:)` was written for. Nothing here claims
+            // the Mac agreed; that is beat two.
+            .haptic(.increase, on: issued) { $0?.issuedHaptic == .increase }
+            .haptic(.decrease, on: issued) { $0?.issuedHaptic == .decrease }
+            .haptic(.end, on: issued) { $0?.issuedHaptic == .end }
+            // Beat two: what the Mac actually did. Driven off the reply,
+            // never off the tap — an optimistic success buzz for a command
+            // the Mac then refused is the lie this whole card is built to
+            // avoid. A reply this app has no word for is silent, deliberately.
+            .haptic(.confirmed, on: answered) { $0?.outcomeHaptic == .confirmed }
+            .haptic(.rejected, on: answered) { $0?.outcomeHaptic == .rejected }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             header
             switch assertion {
@@ -261,12 +327,19 @@ struct SleepStatusCard: View {
     private func sendCommand(_ command: ControlCommand) {
         feedbackTask?.cancel()
         feedback = String(localized: "Sending…")
+        // Beat one of this card's haptics — see the modifiers on `body` and
+        // `SentryCommandHaptic`. Recorded here rather than inside each
+        // button's action so the three adjust buttons and End Now cannot
+        // drift apart on it: they all come through this one function, so the
+        // rule "which command it was decides how it feels" is stated once.
+        issued = CommandTrace(nonce: command.nonce, commandType: command.commandType)
         feedbackTask = Task {
             let transport = await AppDataSource.shared.transport
             do {
                 try await transport.send(command: command)
             } catch {
                 feedback = String(localized: "Not sent — \(error.localizedDescription)")
+                record(.undelivered, for: command)
                 await clearFeedbackAfterDelay()
                 return
             }
@@ -275,12 +348,29 @@ struct SleepStatusCard: View {
                 timeout: SentryIntents.statusTimeout
             ) else {
                 feedback = String(localized: "Sent, but no reply from your Mac yet.")
+                record(.unanswered, for: command)
                 await clearFeedbackAfterDelay()
                 return
             }
             feedback = status.state == "completed" ? String(localized: "Done.") : status.message
+            record(.answered(state: status.state), for: command)
             await clearFeedbackAfterDelay()
         }
+    }
+
+    /// Beat two: publishes what the Mac did, for the `.confirmed`/`.rejected`
+    /// modifiers on `body` to read.
+    ///
+    /// **The cancellation check is the load-bearing line.** A second tap
+    /// cancels the first tap's `feedbackTask`, but a cancelled task can still
+    /// be sitting inside `awaitStatus`, which returns `nil` on cancellation
+    /// exactly as it does on a timeout. Without this guard, tapping +15m
+    /// twice in quick succession would buzz `.rejected` for the first
+    /// command — reporting a refusal that never happened, for a request the
+    /// user themselves superseded.
+    private func record(_ reply: SentryCommandHaptic.Reply, for command: ControlCommand) {
+        guard !Task.isCancelled else { return }
+        answered = CommandTrace(nonce: command.nonce, commandType: command.commandType, reply: reply)
     }
 
     private func clearFeedbackAfterDelay() async {

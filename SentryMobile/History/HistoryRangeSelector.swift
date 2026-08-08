@@ -39,6 +39,17 @@ struct HistoryRangeSelector: View {
         // stop growing at `.accessibility1` and stay legible rather than
         // growing into an ellipsis.
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        // A segmented control is the textbook `SentryHaptic.selection`. Lives
+        // here rather than at the call site (`HistoryTabView`) so anything
+        // that ever reuses this selector inherits it, and so this control
+        // cannot end up feeling different from the module chip row in
+        // `PerMetricHistoryBrowser` one card below it — two pickers over two
+        // sets, one feeling.
+        //
+        // Re-tapping the segment that is already selected changes nothing and
+        // so produces nothing; see `View.haptic(_:on:)` for why that is the
+        // point of driving this off the value rather than off a tap.
+        .haptic(.selection, on: selection)
     }
 
     /// Display-only override of `HistoryRange.label`, confined to this view.

@@ -17,6 +17,15 @@ import SentryKit
 /// insets) to add a single screen. A sheet reaches the same content without
 /// touching any existing view's layout.
 ///
+/// **The `Link`s on this screen are deliberately silent**, and they are the
+/// only controls in the phone app that are. A `Link` has no action closure
+/// and changes no state — it hands the URL to the system, which is why it
+/// gets the system's own affordances (long-press preview, drag out, the
+/// context menu) for free. The only way to attach feedback is to replace it
+/// with a `Button` calling `openURL`, which would trade all of that plus the
+/// link accessibility trait for one tick. The app leaving the foreground is
+/// already an unmistakable acknowledgement, so the trade buys nothing.
+///
 /// **Typography uses `scaledFont(_:size:weight:)`**, like every surrounding
 /// iPhone view. This screen was written on a branch that predated the
 /// Dynamic Type migration and deliberately used the fixed `palette.font`
@@ -156,6 +165,13 @@ struct AboutView: View {
                     .foregroundStyle(palette.textPrimary)
             }
             .tint(palette.textSecondary)
+            // Expanding and collapsing are both `SentryHaptic.tap` — that
+            // case names "expanded a disclosure" outright — which also makes
+            // this feel identical to the Dashboard's ledger rows, the app's
+            // other disclosure. Driven off `showsThirdParty` so the
+            // chevron, the label, and VoiceOver's own activation all produce
+            // the same one buzz.
+            .haptic(.tap, on: showsThirdParty)
 
             // Same rewording as the privacy note above, same reason: no
             // repository path in front of a reader who only has the app.

@@ -55,6 +55,20 @@ struct SentryMobileApp: App {
     /// A scanned-but-not-yet-confirmed pairing; non-nil drives the alert.
     @State private var pendingPairing: RemotePairing.Endpoint?
 
+    /// Which way the user resolved the pairing alert, or `nil` before they
+    /// have.
+    ///
+    /// **Why the alert needs its own state at all.** Both buttons collapse
+    /// `pendingPairing` to `nil`, so that value cannot tell "Pair" from
+    /// "Cancel" — and those are two different things that happened, which is
+    /// the one distinction this app's haptics exist to carry. Reset to `nil`
+    /// in `onOpenURL` below, so a second scanned code is a fresh decision
+    /// rather than a value that happens to already equal its predecessor and
+    /// therefore feels like nothing.
+    @State private var pairingDecision: PairingDecision?
+
+    private enum PairingDecision { case paired, cancelled }
+
     /// Adopts the phone's stored temperature unit at *process* launch,
     /// before any scene exists.
     ///
@@ -122,6 +136,7 @@ struct SentryMobileApp: App {
                 }
                 .onOpenURL { url in
                     if let endpoint = RemotePairing.endpoint(from: url) {
+                        pairingDecision = nil
                         pendingPairing = endpoint
                     }
                 }
@@ -134,12 +149,26 @@ struct SentryMobileApp: App {
                     presenting: pendingPairing
                 ) { endpoint in
                     Button("Pair") {
+                        pairingDecision = .paired
                         Task { await AppDataSource.shared.applyPairing(endpoint) }
                     }
-                    Button("Cancel", role: .cancel) {}
+                    Button("Cancel", role: .cancel) { pairingDecision = .cancelled }
                 } message: { endpoint in
                     Text("This sets \(endpoint.host):\(String(endpoint.port)) as your remote Mac and replaces any saved pairing. Only pair from a QR code shown on your own Mac's screen.")
                 }
+                // Pairing arms a persistent thing — a saved remote endpoint
+                // this phone will keep dialing until it is forgotten — which
+                // is `SentryHaptic.begin`, the same case Keep Awake starting
+                // gets. Cancelling only dismisses an alert, which is `.tap`.
+                //
+                // Deliberately *not* `.confirmed`: `applyPairing(_:)` writes
+                // the endpoint and starts dialing, and returns long before
+                // the Mac has agreed to anything. The outcome shows up later
+                // in `AppDataSource.remoteConnectFailureReason` and the
+                // Dashboard's connection line; claiming it here would be the
+                // optimistic success this app refuses everywhere else.
+                .haptic(.begin, on: pairingDecision) { $0 == .paired }
+                .haptic(.tap, on: pairingDecision) { $0 == .cancelled }
                 // First-run onboarding (connection-honesty review's other
                 // finding: a fresh install had nothing anywhere prominent
                 // telling a user this app needs Sentry running on a Mac

@@ -138,6 +138,55 @@ struct SettingsTabView: View {
     /// error before the user has done anything.
     @State private var remoteConnectResult: String?
 
+    /// How the last "Connect" tap resolved, or `nil` before any tap this
+    /// session. The haptic trigger behind that button — see `connectButton`.
+    ///
+    /// Separate from `remoteConnectResult` (which is the same fact as a
+    /// sentence) because that string is display copy: rewording it should
+    /// never silently change how the button feels.
+    @State private var lastConnectAttempt: ConnectAttempt?
+
+    /// **`ordinal` is why this is a struct and not a `Bool?`.** Trigger-based
+    /// feedback fires on a change, so two taps that both come back "you
+    /// haven't filled the fields in" would be one value and therefore one
+    /// buzz — and a user tapping Connect a second time after correcting
+    /// nothing has done a second real thing that deserves a second real
+    /// answer. Counting the attempts makes every resolution distinct, the
+    /// same job `ControlCommand.nonce` does for `SleepStatusCard`.
+    private struct ConnectAttempt: Equatable {
+        let ordinal: Int
+        /// `true` when the fields formed an endpoint and dialing started —
+        /// never "the Mac accepted", which this screen cannot know yet.
+        let dialed: Bool
+    }
+
+    /// Bumped by the number pad's "Done" key, purely as a haptic trigger.
+    ///
+    /// **Why this one earns `haptic(_:onTapOf:)`.** The state that button
+    /// changes is `focusedRemoteMacField` going `nil` — but three other
+    /// things reach that same state, and one of them is
+    /// `.scrollDismissesKeyboard(.interactively)`, a *drag*. Keying the
+    /// feedback off the focus value would put a buzz in the middle of a
+    /// continuous gesture, which is the first thing `SentryHaptic`'s header
+    /// rules out. Moving between the three fields is left silent for the
+    /// same family of reasons: iOS gives keyboard focus no haptic of its
+    /// own, and every keystroke-adjacent buzz this app could add competes
+    /// with the keyboard's own feedback.
+    @State private var keyboardDismissals = 0
+
+    /// Bumped by "Forget Remote Mac", purely as a haptic trigger.
+    ///
+    /// **Why a counter and not the state the button changes.** Two reasons,
+    /// either of which alone would settle it. The button's own effect —
+    /// `remoteHost`/`remoteCode` emptying — is also reachable by deleting
+    /// the last character out of a text field by hand, and a `.consequential`
+    /// buzz mid-edit would be badly wrong. And the row that owns the button
+    /// is inside `if !remoteHost.isEmpty || !remoteCode.isEmpty`, so the
+    /// change removes the view from the hierarchy: a trigger modifier
+    /// attached there would be torn down by the very edit it was watching
+    /// for. The counter is observed from `remoteMacSection`, which survives.
+    @State private var remoteMacsForgotten = 0
+
     /// Drives `locationLogSection` below — see `LocationLogViewModel`'s doc
     /// comment for why this follows `AppDataSource.shared`'s snapshot stream
     /// independently of `DashboardViewModel` rather than sharing that view
@@ -188,10 +237,25 @@ struct SettingsTabView: View {
             if focusedRemoteMacField == .port {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") { focusedRemoteMacField = nil }
+                    Button("Done") {
+                        keyboardDismissals += 1
+                        focusedRemoteMacField = nil
+                    }
                 }
             }
         }
+        // Dismissing the number pad is `.tap` — an ordinary local action.
+        // See `keyboardDismissals` for why it is driven off a counter rather
+        // than off `focusedRemoteMacField`.
+        .haptic(.tap, onTapOf: keyboardDismissals)
+        // Presenting and dismissing About are both `.tap` ("opened a sheet",
+        // "dismissed something" — `SentryHaptic.tap` names both). One
+        // modifier on the value covers both directions, which also means
+        // `AboutView`'s own Done button needs nothing: it calls `dismiss()`,
+        // which flips this same flag. A swipe-down dismissal lands here too,
+        // and should — it is a discrete "that's closed now", not the
+        // continuous gesture the header rules out.
+        .haptic(.tap, on: showsAbout)
         .sheet(isPresented: $showsAbout) {
             // The palette is re-injected explicitly: a sheet is presented
             // from a separate window scene, and relying on it inheriting
@@ -266,6 +330,18 @@ struct SettingsTabView: View {
         .padding(palette.spacingBlock)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(palette)
+        // `.consequential`, not `.end`, and the distinction is the point of
+        // having both cases. `.end` is for releasing a hold — something that
+        // can be started again from the same screen a second later. This
+        // discards a pairing code nobody retypes from memory; getting it
+        // back means walking to the Mac and scanning its QR code again.
+        // `SentryHaptic.consequential`'s own note is that "a control that
+        // stops other software from working should not feel identical to
+        // flipping a display setting," and this one stops this phone
+        // reaching that Mac from outside the LAN at all. It is the only
+        // `.consequential` control on the phone — the agent kill switch and
+        // rule deletion that case also names both live on the Mac.
+        .haptic(.consequential, onTapOf: remoteMacsForgotten)
     }
 
     /// Dismisses the keyboard, then hands the current field values to
@@ -281,6 +357,10 @@ struct SettingsTabView: View {
                 isConnectingRemote = true
                 let applied = await appDataSource.applyRemoteSettingsFromDefaults()
                 isConnectingRemote = false
+                lastConnectAttempt = ConnectAttempt(
+                    ordinal: (lastConnectAttempt?.ordinal ?? 0) + 1,
+                    dialed: applied
+                )
                 remoteConnectResult = applied
                     ? "Applied. Watch the Dashboard's connection line for the result."
                     : "Enter an address, port, and pairing code first."
@@ -303,6 +383,30 @@ struct SettingsTabView: View {
         .buttonStyle(.plain)
         .disabled(isConnectingRemote)
         .accessibilityHint("Applies the address, port, and pairing code above immediately, instead of waiting for the app to relaunch.")
+        // Fired when the tap *resolves*, not when it lands: this button can
+        // sit spinning for up to `AppDataSource.discoveryTimeout` seconds,
+        // and the only thing worth reporting is which of its two endings it
+        // reached.
+        //
+        // The success ending is `.tap`, not `.confirmed` — deliberately, and
+        // this is the same trap `SleepStatusCard` is built to avoid.
+        // `applyRemoteSettingsFromDefaults()` returning `true` means "those
+        // three fields formed an endpoint and we have started dialing it,"
+        // which is a fact about this phone. Whether the *Mac* accepts the
+        // pairing code shows up later, in `remoteConnectFailureRow` right
+        // below and on the Dashboard's connection line. `.confirmed` here
+        // would be exactly the buzz that says "the far end agreed" before
+        // the far end has been asked.
+        //
+        // The failure ending is `.rejected`, which is a judgement call worth
+        // naming: nothing was sent, so no Mac refused anything. But
+        // `SentryHaptic.rejected` covers a command "that could not be
+        // delivered," and an endpoint with no address or no pairing code is
+        // undeliverable in the most literal sense. The alternative — the
+        // same `.tap` for "now dialing" and for "we didn't even try" — is
+        // the ambiguity the pair exists to remove.
+        .haptic(.tap, on: lastConnectAttempt) { $0?.dialed == true }
+        .haptic(.rejected, on: lastConnectAttempt) { $0?.dialed == false }
 
         if let remoteConnectResult {
             Text(remoteConnectResult)
@@ -348,6 +452,7 @@ struct SettingsTabView: View {
     private var forgetRemoteMacButton: some View {
         if !remoteHost.isEmpty || !remoteCode.isEmpty {
             Button(role: .destructive) {
+                remoteMacsForgotten += 1
                 focusedRemoteMacField = nil
                 remoteHost = ""
                 remotePort = "8643"
@@ -361,6 +466,9 @@ struct SettingsTabView: View {
             .buttonStyle(.plain)
             .foregroundStyle(palette.danger)
             .accessibilityHint("Clears the saved address, port, and pairing code above and stops this phone from trying to reach that Mac.")
+            // The `.consequential` haptic for this button is attached to
+            // `remoteMacSection` rather than here — see `remoteMacsForgotten`
+            // for why it cannot live on the view it belongs to.
         }
     }
 
@@ -379,6 +487,15 @@ struct SettingsTabView: View {
                 }
                 .padding(.vertical, 2)
             }
+            // Nine swatches are nine options in a set, so this is the same
+            // `.selection` the module chip row two screens over already uses
+            // — the two rows are the same interaction (`PerMetricHistoryBrowser`'s
+            // doc comment says it built its chips on this row's pattern), and
+            // they must not feel different. Attached to the row, not to each
+            // swatch, for the reason that file gives: one modifier watching
+            // the selection covers every swatch, cannot fire twice for one
+            // change, and stays silent when the current theme is re-tapped.
+            .haptic(.selection, on: selectedThemeID)
             // Deliberately says neither "SentryKit/Settings/Theme.swift" (a
             // source path has no meaning to the person reading this) nor
             // "iCloud" (Sentry has no cloud account and no CloudKit
@@ -449,6 +566,14 @@ struct SettingsTabView: View {
             }
             .pickerStyle(.segmented)
             .accessibilityLabel("Temperature unit")
+            // Same case, same feel, as the History tab's range selector —
+            // two segmented controls over two sets of options, which under
+            // this app's rule is one meaning and therefore one haptic.
+            // Driven off the stored raw string rather than the binding, so a
+            // hand-edited or downgraded `UserDefaults` value resolving back
+            // to Celsius (see `temperatureUnitBinding`) is a real change and
+            // reads as one.
+            .haptic(.selection, on: temperatureUnitRaw)
 
             Text("How temperatures are shown on this phone. Your Mac reports them in Celsius and stores them in Celsius, so this changes how the numbers read, never what was recorded — and like your theme, it's stored on this device only.")
                 .scaledFont(palette, size: 10.5)
@@ -556,6 +681,24 @@ struct SettingsTabView: View {
                         macRow(mac)
                     }
                 }
+                // Choosing which Mac to talk to is moving between options in
+                // a set, so `.selection`, same as the theme swatches above.
+                //
+                // Keyed off `switchingMacID` rather than off
+                // `connectedMacIdentity`, which is the more obvious choice
+                // and the wrong one: that value is also written by
+                // `LocalSyncClient`'s connection-state handler, so it goes
+                // `nil` on its own the moment a Mac drops off the network,
+                // and a haptic there would be a buzz for something nobody
+                // did. `switchingMacID` moves only when `macRow`'s guard
+                // decides a tap is a real switch — which also means tapping
+                // the Mac you are already on is silent, exactly as re-tapping
+                // the current theme swatch is.
+                //
+                // The `when:` clause keeps this to one buzz per switch: the
+                // value returns to `nil` when the switch finishes, and that
+                // is the same event ending, not a second choice.
+                .haptic(.selection, on: switchingMacID) { $0 != nil }
 
                 Text("More than one Mac answered on your local network. Tap one to connect to it instead — your choice is remembered, so this phone reconnects to it automatically next time too.")
                     .scaledFont(palette, size: 11)
@@ -769,6 +912,15 @@ extension SettingsTabView {
         .buttonStyle(.plain)
         .accessibilityLabel("Show the walkthrough again")
         .accessibilityHint("Reopens the introduction that explains pairing a Mac, the four tabs, and the Watch app.")
+        // Opening the walkthrough is `.tap` — presenting something, the same
+        // as the About row below. Keyed off the flag this row writes rather
+        // than off the tap, and narrowed with `when:` to the direction this
+        // row is responsible for: the same flag goes back to `true` when the
+        // walkthrough finishes, which is `OnboardingView`'s event to report,
+        // not this row's. Without the guard, this modifier would also buzz
+        // for a dismissal happening on a screen the user cannot see this row
+        // from.
+        .haptic(.tap, on: hasCompletedOnboarding) { !$0 }
     }
 }
 
