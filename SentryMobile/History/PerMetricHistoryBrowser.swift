@@ -129,6 +129,11 @@ struct PerMetricHistoryBrowser: View {
                     proxy.scrollTo(module, anchor: .center)
                 }
             }
+            // Attached to the row rather than to each chip: one modifier
+            // observing the selection covers every chip, cannot fire twice
+            // for one change, and stays silent when a chip that is already
+            // selected is tapped again. See `SentryHaptic`.
+            .haptic(.selection, on: selectedModule)
         }
     }
 
