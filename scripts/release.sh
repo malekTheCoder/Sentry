@@ -168,10 +168,20 @@ archive() {
 export_archive() {
   say "Exporting"
   rm -rf "$EXPORT_DIR"
-  xcodebuild -exportArchive \
-             -archivePath "$ARCHIVE" \
-             -exportOptionsPlist "$REPO_ROOT/ExportOptions.plist" \
-             -exportPath "$EXPORT_DIR"
+  # Xcode 26 beta's exportArchive rejects `method: developer-id`
+  # ("expected one {} but found developer-id", observed 2026-08-08). The
+  # archive's app is already fully signed by the archive step's manual
+  # Developer ID settings, so falling back to copying it out of the archive
+  # loses nothing — `verify` below still gates on every signature property
+  # notarization checks.
+  if ! xcodebuild -exportArchive \
+                  -archivePath "$ARCHIVE" \
+                  -exportOptionsPlist "$REPO_ROOT/ExportOptions.plist" \
+                  -exportPath "$EXPORT_DIR"; then
+    print -r -- "  exportArchive failed; copying the signed app out of the archive instead."
+    mkdir -p "$EXPORT_DIR"
+    cp -R "$ARCHIVE/Products/Applications/Sentry.app" "$EXPORT_DIR/"
+  fi
   [[ -d "$APP" ]] || die "Export produced no Sentry.app at $APP"
 }
 
@@ -197,7 +207,28 @@ sign_inner_out() {
   say "Re-signing inner-out"
   local flags=(--force --timestamp --options runtime --sign "$IDENTITY")
 
-  # Frameworks first (deepest sealed containers).
+  # Sparkle's nested helpers first — deeper than the framework that contains
+  # them, and the first real notarization run (2026-08-08) proved they are
+  # rejected if they keep Sparkle's upstream signature: "not signed with a
+  # valid Developer ID certificate" / "no secure timestamp" on Updater.app,
+  # Autoupdate, and both XPC services. A flat `codesign` on the .framework
+  # does NOT recurse into these. The XPC services keep their own sandbox
+  # entitlements via --preserve-metadata.
+  local sparkle="$APP/Contents/Frameworks/Sparkle.framework"
+  if [[ -d "$sparkle" ]]; then
+    local nested
+    for nested in "$sparkle"/Versions/B/XPCServices/*.xpc(N); do
+      print -r -- "  sparkle xpc: ${nested:t}"
+      codesign "${flags[@]}" --preserve-metadata=entitlements "$nested"
+    done
+    for nested in "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app"; do
+      [[ -e "$nested" ]] || continue
+      print -r -- "  sparkle helper: ${nested:t}"
+      codesign "${flags[@]}" "$nested"
+    done
+  fi
+
+  # Frameworks next (deepest sealed containers after Sparkle's innards).
   local fw
   for fw in "$APP"/Contents/Frameworks/*.framework(N); do
     print -r -- "  framework: ${fw:t}"
