@@ -400,21 +400,139 @@ final class ChartScrubbingTests: XCTestCase {
         )
     }
 
-    // MARK: - Activity overlay rows
+    // MARK: - Activity lane rows
 
-    func testOverlayRowShowsEachSeriesRealValueInItsOwnUnit() {
-        // The point of the per-series readout: CPU reads as a percent and
-        // memory as bytes, never as the normalized fraction either line was
-        // actually drawn at.
-        XCTAssertEqual(ActivityOverlayChart.rowText(.cpu, sample: sample(0, 41.4)), "CPU 41%")
-        let memory = ActivityOverlayChart.rowText(.memory, sample: sample(0, 12_000_000_000))
-        XCTAssertTrue(memory.hasPrefix("Memory "), "unexpected row: \(memory)")
+    /// A bucket built by hand, so the readout's phrasing can be asserted
+    /// without going through `ChartBucketing` (which has its own suite).
+    private func bucket(
+        from: TimeInterval,
+        to: TimeInterval,
+        min low: Double,
+        avg: Double,
+        max high: Double,
+        count: Int = 4
+    ) -> ChartBucketing.Bucket {
+        ChartBucketing.Bucket(
+            start: epoch.addingTimeInterval(from),
+            end: epoch.addingTimeInterval(to),
+            min: low,
+            avg: avg,
+            max: high,
+            count: count,
+            segment: 0
+        )
+    }
+
+    func testLaneRowShowsEachSeriesRealValueInItsOwnUnit() {
+        // The point of the per-lane readout: CPU reads as a percent and memory
+        // as bytes, never as a y-position on a shared normalized axis.
+        let cpu = ActivityLanesChart.rowText(
+            .cpu,
+            bucket: bucket(from: 0, to: 1800, min: 12, avg: 41.4, max: 88)
+        )
+        XCTAssertEqual(cpu, "CPU avg 41% · 12%–88%")
+
+        let memory = ActivityLanesChart.rowText(
+            .memory,
+            bucket: bucket(from: 0, to: 1800, min: 11_000_000_000, avg: 12_000_000_000, max: 13_000_000_000)
+        )
+        XCTAssertTrue(memory.hasPrefix("Memory avg "), "unexpected row: \(memory)")
         XCTAssertTrue(memory.contains("GB"), "unexpected row: \(memory)")
     }
 
-    func testOverlayRowSaysNoDataPerSeries() {
-        // One series can be in a gap while its neighbours are not — they are
+    func testLaneRowOmitsTheRangeWhenNothingWasAveraged() {
+        // A single-reading bucket. Printing "41%–41%" would dress one
+        // measurement up as an aggregate, and printing "avg" would claim an
+        // averaging that did not happen.
+        XCTAssertEqual(
+            ActivityLanesChart.rowText(
+                .cpu,
+                bucket: bucket(from: 0, to: 0, min: 41.4, avg: 41.4, max: 41.4, count: 1)
+            ),
+            "CPU 41%"
+        )
+    }
+
+    func testLaneRowSaysNoDataPerSeries() {
+        // One lane can be in a gap while its neighbours are not — they are
         // separate queries with separate holes.
-        XCTAssertEqual(ActivityOverlayChart.rowText(.gpu, sample: nil), "GPU no data")
+        XCTAssertEqual(ActivityLanesChart.rowText(.gpu, bucket: nil), "GPU no data")
+    }
+
+    // MARK: - Activity lane captions
+
+    func testPointCaptionNamesTheBucketDuration() {
+        // The line the whole change hangs on: a point stopped being a reading,
+        // so the caption has to say what it is now.
+        XCTAssertEqual(
+            ActivityLanesChart.pointCaption(interval: 1800),
+            "each point averages 30 min · the band is that interval's full range"
+        )
+    }
+
+    func testPointCaptionClaimsNoAveragingWhenNoneHappened() {
+        // `ChartBucketing`'s identity case — one sample, or a series with no
+        // duration to divide — reports a zero interval.
+        XCTAssertEqual(
+            ActivityLanesChart.pointCaption(interval: 0),
+            "each point is a single reading"
+        )
+    }
+
+    func testIntervalLabelPicksTheCoarsestRoundUnit() {
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(3), "3 s")
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(89), "89 s")
+        // 90s is where minutes take over, so this reads "2 min" rather than a
+        // lumpy "90 s".
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(90), "2 min")
+        // The default 24h range: 48 cells across a day is exactly half an hour.
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(86_400 / 48), "30 min")
+        // 7d across 48 cells.
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(7 * 86_400 / 48), "4 h")
+        // 6mo across 48 cells.
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(182 * 86_400 / 48), "4 d")
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(0), "under a second")
+        // A negative interval can only come from a clock adjustment; it must
+        // not render as "-3 s".
+        XCTAssertEqual(ActivityLanesChart.intervalLabel(-10), "under a second")
+    }
+
+    func testLaneSummaryReportsTheBandsExtremesNotTheLinesAndNamesTheBucket() {
+        // The sentence VoiceOver reads, and the one place the averaging could
+        // silently swallow a spike: the extremes must come from the band, so a
+        // 95% peak is announced even though no drawn point is above 60%.
+        let buckets = [
+            bucket(from: 0, to: 1800, min: 2, avg: 20, max: 95),
+            bucket(from: 1800, to: 3600, min: 5, avg: 60, max: 71)
+        ]
+        let summary = ActivityLanesChart.laneSummary(.cpu, buckets: buckets, interval: 1800)
+        XCTAssertEqual(summary, "CPU, 2 points, each a 30 min average, ranging from 2% to 95%")
+    }
+
+    func testLaneSummaryHandlesTheUnbucketedAndEmptyCases() {
+        XCTAssertEqual(
+            ActivityLanesChart.laneSummary(
+                .cpu,
+                buckets: [bucket(from: 0, to: 0, min: 41, avg: 41, max: 41, count: 1)],
+                interval: 0
+            ),
+            "CPU, 1 readings, ranging from 41% to 41%"
+        )
+        XCTAssertEqual(
+            ActivityLanesChart.laneSummary(.gpu, buckets: [], interval: 1800),
+            "GPU, no data"
+        )
+    }
+
+    func testSpanCaptionStatesAnIntervalRatherThanAnInstant() {
+        // The readout's "when". An instant would be a precision the drawn line
+        // no longer has — the number beside it is a whole cell's mean.
+        let cell = epoch...epoch.addingTimeInterval(1800)
+        let text = ActivityLanesChart.spanCaption(cell, format: .dateTime.hour().minute())
+        XCTAssertTrue(text.contains("–"), "expected a range, got: \(text)")
+        XCTAssertEqual(
+            text,
+            "\(cell.lowerBound.formatted(.dateTime.hour().minute())) – \(cell.upperBound.formatted(.dateTime.hour().minute()))"
+        )
     }
 }

@@ -46,7 +46,7 @@ extension View {
     /// "unbounded request" case is real rather than defensive — the all-time
     /// battery-health queries genuinely have no requested window (see
     /// `DashboardChart.window`). Written as a modifier so the two call sites in
-    /// this file and its `ActivityOverlayChart` neighbour cannot drift apart on
+    /// this file and its `ActivityLanesChart` neighbour cannot drift apart on
     /// what `nil` means, which on a correctness fix is the failure that matters:
     /// one chart quietly keeping the auto-fit behaviour is the whole bug back
     /// again on that one chart.
@@ -1015,73 +1015,221 @@ extension DashboardChart: AXChartDescriptorRepresentable {
     }
 }
 
-// MARK: - Activity overlay
 
-/// The redesign handoff's full-width Activity chart: up to three metric
-/// lines overlaid in one plot, a text legend in each metric's own tint,
-/// and a CPU stat sentence in place of axes.
+// MARK: - Activity lanes
+
+/// The Dashboard's full-width Activity band: one short lane per metric —
+/// CPU, Memory, GPU — stacked under a shared x-axis, each drawing its bucket
+/// averages as a line inside the true min–max band of everything those buckets
+/// absorbed.
 ///
-/// **The honesty caveat, stated rather than hidden:** the overlaid series
-/// have incompatible units (percent vs bytes), so each line is normalized
-/// to its own observed peak — the plot shows each metric's *shape*, and
-/// the only absolute numbers on the chart are the ones in the sentence
-/// below it. That is exactly how the mock treats it (no y-axis at all).
+/// **This replaces a single overlaid plot, and the reasons are worth stating
+/// because the overlay was in the redesign handoff.** Three lines in one 120pt
+/// plot were unreadable for two compounding causes, and only one of them was
+/// about density:
 ///
-/// **What that caveat does and does not rule out.** This view used to say it
-/// offered no hover-to-read-values at all, on the grounds that "a read-off
-/// value from a normalized line would be a fabricated number." That reasoning
-/// is still correct and still binding — but it argues against exactly one
-/// thing: *a single shared readout*, one number for a pointer position on a
-/// plot where three incommensurable series cross. It does not argue against
-/// reading each series' own recorded value in its own unit. So the scrubbing
-/// added here shows a small stacked list — one row per drawn metric, each
-/// carrying that metric's real `MetricFormatting` value ("CPU 41%", "Memory
-/// 12.4 GB") — and never a y-position, a normalized fraction, or a combined
-/// figure. The y-axis stays absent and unreadable, which is the part the mock
-/// and the original caveat were both about.
-struct ActivityOverlayChart: View {
+/// 1. *The crossings meant nothing.* Because the three metrics have
+///    incompatible units (percent vs bytes), the overlay normalised each series
+///    to its own observed peak. The most visually arresting feature of the
+///    drawing — three lines crossing each other dozens of times — was therefore
+///    pure artifact: CPU crossing Memory is not an event, it is two unrelated
+///    numbers divided by two unrelated constants happening to land on the same
+///    pixel. Lanes have no crossings to misread.
+/// 2. *Per-series normalisation manufactured drama.* Dividing by the observed
+///    peak means an idle Mac's 3% CPU fills the plot from floor to ceiling —
+///    exactly the failure `ChartMetric.isPercentage` already warns about for
+///    sparklines ("so the sparkline shows absolute load instead of auto-scaling
+///    idle noise into a dramatic shape"). One lane per metric means each gets
+///    its own y-scale, so percent metrics can sit on a fixed 0–100 axis and
+///    read as absolute load, and the type no longer has a normalisation caveat
+///    to apologise for.
+///
+/// And the band this view now draws is not compatible with the overlay in any
+/// case: three translucent fills stacked in one plot compound into a wash where
+/// no band can be attributed to a line — the same argument the old overlay
+/// already accepted for *gap shading*, where it drew only the window's edges
+/// because "stacking three overlapping 6% washes would compound into a band
+/// that looks like data." Splitting into lanes is what lets each metric have
+/// both its own band and its own interior gap shading.
+///
+/// **What a point is now.** Not a reading. `HistoryStore`'s `.raw` tier — the
+/// tier the shortest range reads — returns `(min: avg, avg: avg, max: avg)`,
+/// one unaggregated value per row, and real CPU swings from 10% to 90% between
+/// two of them. Each lane folds its series into `targetBuckets` equal-duration
+/// cells (`ChartBucketing`), draws each cell's mean as the line and each cell's
+/// true low–high as the band behind it, and says so in the caption. Nothing is
+/// hidden by the averaging: a 95% spike is still the band's ceiling even when
+/// the line under it reads 60%. A smoothed line *without* the band would have
+/// produced the same legibility by quietly deleting that spike, which is the
+/// one thing this codebase never does with a measured number.
+///
+/// The band's fill matches `DashboardChart`'s exactly (`tint.opacity(0.16)`),
+/// because the longer ranges have always rendered their rollups this way — this
+/// change removes an inconsistency rather than introducing a new visual idea.
+struct ActivityLanesChart: View {
     @Environment(\.themePalette) private var palette
 
-    /// Metric → its ranged samples, in the order the legend should list
-    /// them. Empty series are skipped; if everything is empty the view
-    /// renders the standard sentence empty state.
+    /// Metric → its ranged samples, in the order the lanes should stack.
+    /// Empty series are skipped; if everything is empty the view renders the
+    /// standard sentence empty state.
     let series: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)]
 
-    /// `DashboardViewModel.expectedCadence`, for the same gap reasoning
-    /// `DashboardChart` uses. Each series is checked against its own entry:
-    /// three metrics queried over the same range share a cadence in practice,
-    /// but they are separate queries and a metric whose module was disabled
-    /// for part of the window genuinely has different gaps from its
-    /// neighbours.
+    /// `DashboardViewModel.expectedCadence` — the spacing of the *source* rows,
+    /// which is what gap detection has to run on. Each series is checked
+    /// against its own entry: three metrics queried over the same range share a
+    /// cadence in practice, but they are separate queries and a metric whose
+    /// module was disabled for part of the window genuinely has different gaps
+    /// from its neighbours.
     var expectedCadence: [ChartMetric: TimeInterval] = [:]
 
     /// The selected range's `(since, now)` pair — see `DashboardChart.window`
     /// for the full argument. Pinned here for the same reason and with one
-    /// extra: this plot overlays three independently-queried series, so without
-    /// a shared domain the auto-fit would size the axis to whichever metric
-    /// happens to reach furthest back, and the other two would be silently
-    /// stretched or squeezed against a scale nothing declared.
+    /// extra: the lanes are independently-queried series drawn one above
+    /// another, and lanes that don't share an x-axis are not small multiples,
+    /// they are three unrelated charts that happen to be adjacent.
     var window: ClosedRange<Date>? = nil
 
-    var height: CGFloat = 120
+    /// Per lane, not for the stack. Three 56pt lanes plus their captions come
+    /// to roughly the 120pt plot this replaced plus one lane's worth — the band
+    /// is the Dashboard's opening statement and it earns the extra height by
+    /// finally being followable.
+    var laneHeight: CGFloat = 56
+
+    /// How many equal-duration cells each lane's series is folded into.
+    ///
+    /// **Why 48.** The Dashboard window opens at 960pt wide
+    /// (`MainWindowController`) and never goes below 860; after the page gutter
+    /// and the lanes' name rail a plot is roughly 840pt across, so 48 cells put
+    /// a little over 17pt between points. That is ~11× the theme's default
+    /// 1.5pt stroke, which is the threshold that matters: below roughly a dozen
+    /// stroke-widths a segment reads as a corner rather than as a direction,
+    /// and a line made entirely of corners is the hash this change exists to
+    /// remove. The 360-point series this used to plot gave each segment about
+    /// 2.3pt — under two stroke widths.
+    ///
+    /// It also divides the ranges cleanly, which is a courtesy rather than a
+    /// requirement but makes the caption read like a round number: 48 cells
+    /// across the default 24h range is exactly half an hour per point, across
+    /// 7d it is 3.5 hours, across 30d it is 15.
+    ///
+    /// Not derived from the live plot width via a `GeometryReader`. That was
+    /// tempting — the count is a statement about pixels — and it would mean the
+    /// plotted series, the scrub readout, the caption's "averages 30 min" and
+    /// the VoiceOver summary all silently change as the user drags the window
+    /// edge. A chart whose data depends on its width is a chart no two people
+    /// can compare notes about. A fixed count chosen for the window's default
+    /// size holds still.
+    static let targetBuckets = 48
 
     /// Raw x-axis date under the pointer; see `DashboardChart.scrubDate`.
+    /// Owned here rather than per lane so one hover marks all three lanes at
+    /// the same instant — the thing three separate charts could not do, and
+    /// the reason these read as one instrument instead of three.
     @State private var scrubDate: Date?
 
     private var drawable: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)] {
         series.filter { !$0.samples.isEmpty }
     }
 
-    /// One statement about the window for the whole overlay, folded from the
-    /// three series' own coverages — see `HistoryCoverage.combining(_:)` for
-    /// why the *oldest* start across metrics is the right answer to "how far
-    /// back does this plot's record go."
+    // MARK: - Grid
+
+    /// The single lattice every lane's buckets are laid on: the union of the
+    /// drawn series' own spans.
+    ///
+    /// Shared rather than per-lane because a pointer has to land on the *same*
+    /// interval in every lane — otherwise the three readouts a single hover
+    /// produces would each describe a slightly different half-hour and the one
+    /// time span printed under them could only be right about one of them. The
+    /// union of the spans (rather than the intersection) so a metric whose
+    /// module was enabled later still gets cells over the whole of its own
+    /// record.
+    ///
+    /// Deliberately *not* `window`: see `ChartBucketing`'s type comment for why
+    /// bucketing over the requested range collapses a short record on a wide
+    /// window to a single dot.
+    private var grid: ClosedRange<Date>? {
+        let starts = drawable.compactMap { $0.samples.first?.timestamp }
+        let ends = drawable.compactMap { $0.samples.last?.timestamp }
+        guard let low = starts.min(), let high = ends.max(), low < high else { return nil }
+        return low...high
+    }
+
+    /// Everything one lane needs, computed once here so the lanes, the caption
+    /// and the accessibility summaries can't disagree about what was plotted.
+    private struct Lane: Identifiable {
+        let metric: ChartMetric
+        let bucketed: ChartBucketing.Series
+        /// Spacing to reason about the *bucketed* points with — see
+        /// `ChartBucketing.Series.interval` for why the view model's
+        /// pre-bucketing cadence would call every neighbouring pair a gap.
+        let cadence: TimeInterval
+        /// Stretches of the drawn domain with no reading in them: this
+        /// metric's own interior gaps plus the window's unrecorded edges.
+        let blankRegions: [ChartScrubbing.Gap]
+        /// Top of this lane's y-axis, and the number its rail names.
+        let peak: Double
+        var id: ChartMetric { metric }
+    }
+
+    private var lanes: [Lane] {
+        let shared = grid
+        return drawable.map { entry in
+            let timestamps = entry.samples.map(\.timestamp)
+            let sourceCadence = ChartScrubbing.effectiveCadence(
+                expected: expectedCadence[entry.metric],
+                timestamps: timestamps
+            ) ?? 0
+            let threshold = ChartScrubbing.gapThreshold(cadence: sourceCadence)
+            let bucketed = ChartBucketing.bucket(
+                entry.samples,
+                over: shared,
+                target: Self.targetBuckets,
+                gapThreshold: threshold
+            )
+            // Coverage from the *source* timestamps, never the buckets: it is a
+            // claim about when recording began, and that is a question for the
+            // rows rather than for the plotting compromise — the same reasoning
+            // `DashboardViewModel.refresh` gives for building coverage from
+            // `raw` instead of from `reduced`.
+            let coverage = HistoryCoverage(
+                requested: window,
+                timestamps: timestamps,
+                resolution: sourceCadence
+            )
+            // Gaps likewise from the source: the wash marks where nothing was
+            // *measured*, and a bucket boundary is not a measurement. It ends up
+            // marginally narrower than the break in the stroke (which runs
+            // between bucket midpoints), which is the conservative direction —
+            // shading more than was actually missing would be the lie.
+            let gaps = ChartScrubbing.gaps(timestamps: timestamps, threshold: threshold)
+            return Lane(
+                metric: entry.metric,
+                bucketed: bucketed,
+                cadence: ChartScrubbing.effectiveCadence(
+                    expected: bucketed.interval,
+                    timestamps: bucketed.buckets.map(\.timestamp)
+                ) ?? 0,
+                blankRegions: gaps + coverage.unrecordedEdges.map {
+                    ChartScrubbing.Gap(start: $0.lowerBound, end: $0.upperBound)
+                },
+                peak: bucketed.buckets.map(\.max).max() ?? 0
+            )
+        }
+    }
+
+    /// One statement about the window for the whole band, folded from the
+    /// lanes' own coverages — see `HistoryCoverage.combining(_:)` for why the
+    /// *oldest* start across metrics is the right answer to "how far back does
+    /// this record go."
     private var coverage: HistoryCoverage {
         let perMetric = drawable.map { entry in
             HistoryCoverage(
                 requested: window,
                 timestamps: entry.samples.map(\.timestamp),
-                resolution: cadence(for: entry) ?? 0
+                resolution: ChartScrubbing.effectiveCadence(
+                    expected: expectedCadence[entry.metric],
+                    timestamps: entry.samples.map(\.timestamp)
+                ) ?? 0
             )
         }
         return HistoryCoverage.combining(perMetric)
@@ -1093,18 +1241,41 @@ struct ActivityOverlayChart: View {
             Text("No activity recorded for this range yet.")
                 .font(palette.font(size: 11))
                 .foregroundStyle(palette.textTertiary)
-                .frame(maxWidth: .infinity, minHeight: height, alignment: .center)
+                .frame(maxWidth: .infinity, minHeight: laneHeight * 2, alignment: .center)
         } else {
-            VStack(alignment: .leading, spacing: 6) {
-                legend
-                plot
-                    .frame(height: height)
+            let lanes = lanes
+            let interval = lanes.first?.bucketed.interval ?? 0
+            VStack(alignment: .leading, spacing: palette.spacingTight) {
+                ForEach(lanes) { lane in
+                    ActivityLane(
+                        metric: lane.metric,
+                        bucketed: lane.bucketed,
+                        cadence: lane.cadence,
+                        blankRegions: lane.blankRegions,
+                        peak: lane.peak,
+                        domain: coverage.requestedDomain,
+                        height: laneHeight,
+                        scrubDate: $scrubDate,
+                        ruleAnchor: ruleAnchor
+                    )
+                }
                 if let sentence = cpuSentence {
                     Text(sentence)
                         .font(palette.font(size: 10))
                         .monospacedDigit()
                         .foregroundStyle(palette.textTertiary)
                 }
+                // The line item 5 of this change exists for: a point stopped
+                // being a reading, so the caption has to say what it is now.
+                // While scrubbing it becomes the interval under the pointer,
+                // stated once for all three lanes rather than repeated inside
+                // each lane's plate — the lanes share a lattice, so there is
+                // exactly one right answer and three copies of it would just be
+                // three chances to notice they disagreed.
+                Text(scrubbedSpanText ?? Self.pointCaption(interval: interval))
+                    .font(palette.font(size: 10))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.textTertiary)
                 if !coverage.isComplete, let summary = coverage.summary {
                     Text(summary)
                         .font(palette.font(size: 10))
@@ -1115,187 +1286,39 @@ struct ActivityOverlayChart: View {
         }
     }
 
-    private var legend: some View {
-        HStack(spacing: palette.spacingRow) {
-            ForEach(drawable, id: \.metric) { entry in
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(palette.metricColor(entry.metric.colorID))
-                        .frame(width: 6, height: 6)
-                    Text(entry.metric.title)
-                        .font(palette.font(size: 10))
-                        .foregroundStyle(palette.textSecondary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var plot: some View {
-        Chart {
-            ForEach(drawable, id: \.metric) { entry in
-                let peak = max(entry.samples.map(\.max).max() ?? 1, .leastNonzeroMagnitude)
-                // The series key carries the segment number as well as the
-                // metric, so a gap breaks the stroke here exactly as it does
-                // in `DashboardChart` — three overlaid lines that all glide
-                // smoothly across the same missing night would be three lies,
-                // not one.
-                let segments = segmentNumbers(for: entry)
-                ForEach(Array(entry.samples.enumerated()), id: \.offset) { offset, sample in
-                    LineMark(
-                        x: .value("Time", sample.timestamp),
-                        y: .value("Relative", sample.avg / peak),
-                        series: .value("Metric", "\(entry.metric.title)#\(segments[offset])")
-                    )
-                    .lineStyle(StrokeStyle(lineWidth: palette.theme.chartLineWidth, lineJoin: .round))
-                    .foregroundStyle(palette.metricColor(entry.metric.colorID))
-                    .interpolationMethod(.monotone)
-                }
-            }
-
-            if let scrubAnchor {
-                RuleMark(x: .value("Scrubbed time", scrubAnchor))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .foregroundStyle(palette.textTertiary)
-                ForEach(readings, id: \.metric) { entry in
-                    if let sample = entry.sample {
-                        let peak = max(entry.peak, .leastNonzeroMagnitude)
-                        PointMark(
-                            x: .value("Scrubbed time", sample.timestamp),
-                            y: .value("Relative", sample.avg / peak)
-                        )
-                        .symbolSize(30)
-                        .foregroundStyle(palette.metricColor(entry.metric.colorID))
-                    }
-                }
-            }
-        }
-        .chartYScale(domain: 0...1.05)
-        // Above the overlays, for the reason spelled out on `DashboardChart`'s
-        // own `chartXDomain` call: the proxies below have to resolve against the
-        // pinned scale, not a scale established after them.
-        .chartXDomain(coverage.requestedDomain)
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartPlotStyle { plotArea in
-            plotArea.background(
-                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                    .fill(palette.surface.opacity(0.6))
-            )
-        }
-        // Same single "nothing was measured here" wash `DashboardChart` uses —
-        // see `DashboardChart.gapShading` for why the unrecorded edges of the
-        // window share the interior gaps' treatment rather than getting a
-        // louder one of their own. Only the edges are drawn here: the three
-        // series have three different interior gap sets, and stacking three
-        // overlapping 6% washes would compound into a band that looks like data.
-        .chartOverlay { proxy in
-            unrecordedShading(proxy: proxy)
-        }
-        .chartOverlay { proxy in
-            ChartScrubOverlay(proxy: proxy, scrubDate: $scrubDate, anchor: scrubAnchor) {
-                scrubReadout
-            }
-        }
-        .accessibilityLabel("Activity chart, \(drawable.map(\.metric.title).joined(separator: ", "))")
-        .accessibilityValue(activityAccessibilityValue)
-    }
-
-    /// VoiceOver's only sentence about this plot, extended with the coverage
-    /// clause for the same reason `DashboardChart.rangeDescription` is: the
-    /// empty span is visible to everyone except the person relying on this
-    /// string.
-    private var activityAccessibilityValue: String {
-        let shapes = cpuSentence ?? String(localized: "relative activity shapes")
-        guard !coverage.isComplete, let summary = coverage.summary else { return shapes }
-        return "\(shapes), \(summary)"
-    }
-
-    @ViewBuilder
-    private func unrecordedShading(proxy: ChartProxy) -> some View {
-        GeometryReader { geometry in
-            if let plotAnchor = proxy.plotFrame {
-                let plot = geometry[plotAnchor]
-                ZStack(alignment: .topLeading) {
-                    ForEach(coverage.unrecordedEdges, id: \.lowerBound) { region in
-                        if let startX = proxy.position(forX: region.lowerBound),
-                           let endX = proxy.position(forX: region.upperBound) {
-                            Rectangle()
-                                .fill(palette.textTertiary.opacity(0.06))
-                                .frame(width: max(endX - startX, 1), height: plot.height)
-                                .offset(x: plot.minX + startX, y: plot.minY)
-                        }
-                    }
-                }
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
     // MARK: - Scrubbing
 
-    /// One resolved row per drawn metric. `sample` is `nil` when that metric
-    /// has no measurement at the pointer's position — which can be true of one
-    /// series and false of its neighbours, since the three are separate
-    /// queries with separate gaps.
-    private struct Reading {
-        let metric: ChartMetric
-        let sample: (timestamp: Date, min: Double, avg: Double, max: Double)?
-        let peak: Double
+    /// The lattice cell under the pointer, or `nil` when not scrubbing / when
+    /// the pointer is outside the span the buckets were laid over.
+    private var scrubbedCell: ClosedRange<Date>? {
+        guard let scrubDate, let grid else { return nil }
+        return ChartBucketing.cell(containing: scrubDate, over: grid, target: Self.targetBuckets)
     }
 
-    private func cadence(for entry: (metric: ChartMetric, samples: DashboardViewModel.RangedSamples)) -> TimeInterval? {
-        ChartScrubbing.effectiveCadence(
-            expected: expectedCadence[entry.metric],
-            timestamps: entry.samples.map(\.timestamp)
-        )
-    }
-
-    private func segmentNumbers(for entry: (metric: ChartMetric, samples: DashboardViewModel.RangedSamples)) -> [Int] {
-        var numbers = [Int](repeating: 0, count: entry.samples.count)
-        guard let cadence = cadence(for: entry) else { return numbers }
-        let segments = ChartScrubbing.segments(
-            timestamps: entry.samples.map(\.timestamp),
-            threshold: ChartScrubbing.gapThreshold(cadence: cadence)
-        )
-        for (number, range) in segments.enumerated() {
-            for index in range { numbers[index] = number }
-        }
-        return numbers
-    }
-
-    private var readings: [Reading] {
-        guard let scrubDate else { return [] }
-        return drawable.map { entry in
-            let resolved = ChartScrubbing.resolve(
-                at: scrubDate,
-                timestamps: entry.samples.map(\.timestamp),
-                cadence: cadence(for: entry) ?? 0
-            )
-            let sample: (timestamp: Date, min: Double, avg: Double, max: Double)?
-            if case .sample(let index) = resolved, entry.samples.indices.contains(index) {
-                sample = entry.samples[index]
-            } else {
-                sample = nil
-            }
-            return Reading(
-                metric: entry.metric,
-                sample: sample,
-                peak: entry.samples.map(\.max).max() ?? 1
-            )
-        }
-    }
-
-    /// How precisely to stamp the readout's leading time.
+    /// Where every lane stands its rule: the centre of the hovered cell.
     ///
-    /// Was hardcoded to `time: .shortened` — a bare "3:42 PM", which was
-    /// unambiguous only because the plot never spanned more than the data did.
-    /// With the domain pinned to the selected range, a pointer on the 90-day
-    /// chart can be three months from today and "3:42 PM" would be an answer to
-    /// a question nobody asked. Mirrors `DashboardChart.readoutDateFormat`'s
-    /// thresholds so the two readouts on one window never describe the same
-    /// instant at two different granularities.
+    /// The cell's centre rather than any one lane's bucket timestamp, because
+    /// one rule is drawn across three lanes and each lane's bucket sits at the
+    /// midpoint of *its own* readings inside that cell — three slightly
+    /// different instants. The rule marks the interval being read; each lane's
+    /// dot marks where inside that interval its readings actually fell, which
+    /// on a partly-filled cell is a difference worth seeing rather than one
+    /// worth hiding.
+    private var ruleAnchor: Date? {
+        guard let cell = scrubbedCell else { return scrubDate }
+        return cell.lowerBound.addingTimeInterval(
+            cell.upperBound.timeIntervalSince(cell.lowerBound) / 2
+        )
+    }
+
+    private var scrubbedSpanText: String? {
+        guard let cell = scrubbedCell else { return nil }
+        return Self.spanCaption(cell, format: readoutDateFormat)
+    }
+
+    /// How precisely to stamp the scrubbed interval. Mirrors
+    /// `DashboardChart.readoutDateFormat`'s thresholds so two readouts on one
+    /// window never describe the same instant at two different granularities.
     private var readoutDateFormat: Date.FormatStyle {
         let span: TimeInterval
         if let domain = coverage.requestedDomain {
@@ -1317,53 +1340,116 @@ struct ActivityOverlayChart: View {
         }
     }
 
-    /// Where the rule stands. The first resolved series' own timestamp when
-    /// there is one — so the rule lines up with at least one real dot — and
-    /// the raw pointer position when every series is in a gap.
-    private var scrubAnchor: Date? {
-        guard let scrubDate else { return nil }
-        return readings.compactMap { $0.sample?.timestamp }.first ?? scrubDate
-    }
+    // MARK: - Pure captions (unit-tested in ChartScrubbingTests)
 
-    @ViewBuilder
-    private var scrubReadout: some View {
-        if let scrubDate, !readings.isEmpty {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(scrubDate.formatted(readoutDateFormat))
-                    .font(palette.font(size: 9))
-                    .foregroundStyle(palette.textTertiary)
-                ForEach(readings, id: \.metric) { reading in
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(palette.metricColor(reading.metric.colorID))
-                            .frame(width: 5, height: 5)
-                        Text(Self.rowText(reading.metric, sample: reading.sample))
-                            .font(palette.font(size: 10))
-                            .monospacedDigit()
-                            .foregroundStyle(palette.textPrimary)
-                    }
-                }
-            }
-            .fixedSize()
-            .chartScrubPlate(palette)
+    /// "each point averages 30 min · the band is that interval's full range".
+    ///
+    /// Stated rather than implied. The previous caption on this band described
+    /// only the window; a reader had no way to know that one plotted point had
+    /// become a summary of thirty minutes rather than one reading, and a chart
+    /// that changes what a point means without saying so is a chart that lies
+    /// quietly.
+    static func pointCaption(interval: TimeInterval) -> String {
+        guard interval > 0 else {
+            // The identity case out of `ChartBucketing` — one sample, or a
+            // series with no duration to divide. Nothing was averaged, so the
+            // caption must not claim anything was.
+            return String(localized: "each point is a single reading")
         }
+        let span = intervalLabel(interval)
+        return String(localized: "each point averages \(span) · the band is that interval's full range")
     }
 
-    /// Each metric's own real value in its own unit — never the normalized
-    /// y-position the line was drawn at. Pure so the "no data" wording is
-    /// testable (`SentryTests/ChartScrubbingTests.swift`).
-    static func rowText(
-        _ metric: ChartMetric,
-        sample: (timestamp: Date, min: Double, avg: Double, max: Double)?
-    ) -> String {
-        guard let sample else {
+    /// "3:30 – 4:00 PM" — the interval a scrub is reading, never an instant.
+    ///
+    /// An instant is what the old readout printed, and on a bucketed chart it
+    /// would be a precision the drawn line no longer has: the number beside it
+    /// is the mean of a whole cell, and stamping it "3:42 PM" would invite the
+    /// reader to believe CPU was 41% at 3:42, which nothing on the plot claims.
+    static func spanCaption(_ cell: ClosedRange<Date>, format: Date.FormatStyle) -> String {
+        "\(cell.lowerBound.formatted(format)) – \(cell.upperBound.formatted(format))"
+    }
+
+    /// A duration in the coarsest unit that still reads as a round number.
+    ///
+    /// Hand-rolled for the same reason `AgentActivityCard.agoLabel` is:
+    /// this has to fit a 10pt caption alongside two other clauses, and the
+    /// system formatters' spelled-out output ("30 minutes") is several times
+    /// wider than the slot. The 90-unit thresholds (rather than 60) keep
+    /// "75 min" from becoming a lumpy "1 h".
+    static func intervalLabel(_ seconds: TimeInterval) -> String {
+        let value = max(seconds, 0)
+        if value < 1 { return String(localized: "under a second") }
+        if value < 90 { return String(localized: "\(Int(value.rounded())) s") }
+        if value < 90 * 60 { return String(localized: "\(Int((value / 60).rounded())) min") }
+        if value < 36 * 3600 { return String(localized: "\(Int((value / 3600).rounded())) h") }
+        return String(localized: "\(Int((value / 86400).rounded())) d")
+    }
+
+    /// One lane's readout row: its own real value in its own unit, plus the
+    /// range the band actually spans over the same cell.
+    ///
+    /// **What a scrub reads, and why it is the bucket rather than the nearest
+    /// real sample.** Snapping to the nearest recorded reading was the other
+    /// candidate and it is wrong here for a specific reason: the drawn line is
+    /// the cell's mean, so a readout quoting the nearest raw sample would print
+    /// 92% while the line directly under the pointer sits at 60%. A readout
+    /// that contradicts the drawing is worse than one that is coarse — it makes
+    /// the reader distrust both. So the readout describes exactly what was
+    /// drawn: the mean, labelled `avg`, and beside it the cell's true low and
+    /// high, which is where that 92% reading is still visible and still exact.
+    ///
+    /// A single-reading cell prints one bare number with no `avg` and no range,
+    /// because nothing was averaged and claiming otherwise would be its own
+    /// small dishonesty.
+    static func rowText(_ metric: ChartMetric, bucket: ChartBucketing.Bucket?) -> String {
+        guard let bucket else {
             return String(localized: "\(metric.title) no data")
         }
-        return "\(metric.title) \(MetricFormatting.value(sample.avg, unit: metric.unit, compact: true))"
+        let average = MetricFormatting.value(bucket.avg, unit: metric.unit, compact: true)
+        guard bucket.hasRange else {
+            return "\(metric.title) \(average)"
+        }
+        let low = MetricFormatting.value(bucket.min, unit: metric.unit, compact: true)
+        let high = MetricFormatting.value(bucket.max, unit: metric.unit, compact: true)
+        return String(localized: "\(metric.title) avg \(average) · \(low)–\(high)")
     }
 
-    /// "avg CPU 18% · peak 91% at 10:42" — real, unnormalized numbers for
-    /// the one metric whose unit needs no compaction.
+    /// VoiceOver's one sentence about a lane.
+    ///
+    /// The extremes come from the *band* (`min` of mins, `max` of maxes), not
+    /// from the drawn line: a VoiceOver user gets this string and nothing else,
+    /// and reporting the averaged line's range would tell the one reader who
+    /// cannot see the band that the day's peak was 60% when it was 95%. It also
+    /// names the bucket duration, so the same "a point is not a reading" fact
+    /// the caption states on screen is stated here too.
+    static func laneSummary(
+        _ metric: ChartMetric,
+        buckets: [ChartBucketing.Bucket],
+        interval: TimeInterval
+    ) -> String {
+        guard let extremes = ChartScrubbing.extremes(
+            mins: buckets.map(\.min),
+            maxes: buckets.map(\.max)
+        ) else {
+            return String(localized: "\(metric.title), no data")
+        }
+        let low = MetricFormatting.value(extremes.min, unit: metric.unit, compact: true)
+        let high = MetricFormatting.value(extremes.max, unit: metric.unit, compact: true)
+        let count = buckets.count
+        guard interval > 0 else {
+            return String(localized: "\(metric.title), \(count) readings, ranging from \(low) to \(high)")
+        }
+        let span = intervalLabel(interval)
+        return String(localized: "\(metric.title), \(count) points, each a \(span) average, ranging from \(low) to \(high)")
+    }
+
+    /// "avg CPU 18% · peak 91% at 10:42" — computed from the *source* samples
+    /// rather than from the buckets, deliberately. This sentence is the one
+    /// place on the band that reports an instant, and the peak's real
+    /// timestamp is still in the data even though no drawn point carries it
+    /// any more; rounding it to a bucket midpoint would blur the only precise
+    /// "when" the band offers for no gain.
     private var cpuSentence: String? {
         guard let cpu = drawable.first(where: { $0.metric == .cpu }) else { return nil }
         let avg = cpu.samples.map(\.avg).reduce(0, +) / Double(max(cpu.samples.count, 1))
@@ -1375,5 +1461,289 @@ struct ActivityOverlayChart: View {
         let avgText = String(format: "%.0f%%", avg)
         let peakText = String(format: "%.0f%%", peak.max)
         return String(localized: "avg CPU \(avgText) · peak \(peakText) at \(time)")
+    }
+}
+
+// MARK: - One lane
+
+/// A single metric's lane: a name rail on the left stating what full height
+/// means, and a short plot drawing the bucket means inside the true min–max
+/// band.
+///
+/// Fileprivate and separate from `ActivityLanesChart` rather than an inlined
+/// `@ViewBuilder` on it, for two reasons that are not style: each lane needs
+/// its own `AXChartDescriptor` (three metrics with three units cannot share one
+/// descriptor's y-axis any more honestly than they could share one plot's), and
+/// `AXChartDescriptorRepresentable` is a conformance on a *type* — so each lane
+/// has to be one.
+private struct ActivityLane: View {
+    @Environment(\.themePalette) private var palette
+
+    let metric: ChartMetric
+    let bucketed: ChartBucketing.Series
+    /// Spacing between the *bucketed* points, for scrub snapping.
+    let cadence: TimeInterval
+    let blankRegions: [ChartScrubbing.Gap]
+    /// Highest value the band reaches — the number the rail names.
+    let peak: Double
+    let domain: ClosedRange<Date>?
+    let height: CGFloat
+    @Binding var scrubDate: Date?
+    /// The shared rule position, from `ActivityLanesChart.ruleAnchor`.
+    let ruleAnchor: Date?
+
+    private var tint: Color { palette.metricColor(metric.colorID) }
+
+    /// The lane's y-domain.
+    ///
+    /// **Percent metrics get a fixed 0–100 and nothing else.** This is the
+    /// single biggest legibility win of splitting the overlay up, and it is not
+    /// a new opinion: `ChartMetric.isPercentage` already states it for the
+    /// dropdown's sparklines — "so the sparkline shows absolute load instead of
+    /// auto-scaling idle noise into a dramatic shape". The overlay could not
+    /// obey it, because three metrics sharing one axis had to be normalised to
+    /// something. A lane can. An idle Mac's GPU now draws a flat line along the
+    /// floor, which is what an idle GPU is.
+    ///
+    /// Everything else is zero-anchored to a hair above its own peak. Zero
+    /// rather than the observed minimum (which is what `DashboardChart.yDomain`
+    /// pads around) because these lanes are a load band: memory that never
+    /// leaves 11.8–12.4 GB should read as a flat line near its ceiling, not as
+    /// a dramatic waveform filling 56pt, and anchoring at zero is what makes
+    /// the flatness visible. The 5% headroom keeps the peak's stroke off the
+    /// top edge.
+    private var yDomain: ClosedRange<Double> {
+        if metric.isPercentage { return 0...100 }
+        guard peak > 0, peak.isFinite else { return 0...1 }
+        return 0...(peak * 1.05)
+    }
+
+    /// "0–100%" or "0–24 GB": what the lane's full height is worth.
+    ///
+    /// The overlay had no y-axis and could not have one — a normalised
+    /// fraction has no unit to label. Two words of rail restore the thing that
+    /// absence cost: a reader can now tell a lane that is busy from a lane that
+    /// is merely auto-scaled.
+    private var scaleLabel: String {
+        if metric.isPercentage { return String(localized: "0–100%") }
+        guard peak > 0, peak.isFinite else { return String(localized: "no range") }
+        return String(localized: "0–\(MetricFormatting.value(peak, unit: metric.unit, compact: true))")
+    }
+
+    /// The bucket under the pointer, or `nil` for "this lane has nothing
+    /// there" — which can be true of one lane and false of its neighbours,
+    /// since the three are separate queries with separate holes.
+    private var reading: ChartBucketing.Bucket? {
+        guard let scrubDate else { return nil }
+        let resolved = ChartScrubbing.resolve(
+            at: scrubDate,
+            timestamps: bucketed.buckets.map(\.timestamp),
+            cadence: cadence
+        )
+        guard case .sample(let index) = resolved, bucketed.buckets.indices.contains(index) else {
+            return nil
+        }
+        return bucketed.buckets[index]
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: palette.spacingRow) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 6, height: 6)
+                    Text(metric.title)
+                        .font(palette.font(size: 10, weight: .medium))
+                        .foregroundStyle(palette.textSecondary)
+                }
+                Text(scaleLabel)
+                    .font(palette.font(size: 9))
+                    .monospacedDigit()
+                    .foregroundStyle(palette.textTertiary)
+            }
+            // Fixed so the three plots start at the same x and the lanes read
+            // as one instrument sharing an axis — the entire point of small
+            // multiples. Sized for the longest label the set produces
+            // ("Memory" over "0–24.6 GB").
+            .frame(width: 68, alignment: .leading)
+            .accessibilityHidden(true)
+
+            plot
+        }
+    }
+
+    private var plot: some View {
+        Chart {
+            ForEach(Array(bucketed.buckets.enumerated()), id: \.offset) { _, bucket in
+                // Same band as `DashboardChart` draws for the rollup tiers,
+                // same 16% fill: the whole argument for this change is that
+                // the live range should render the way every longer range
+                // already does, and a band that didn't match would undo it.
+                AreaMark(
+                    x: .value("Time", bucket.timestamp),
+                    yStart: .value("Low", bucket.min),
+                    yEnd: .value("High", bucket.max),
+                    series: .value("Segment", bucket.segment)
+                )
+                .foregroundStyle(tint.opacity(0.16))
+                .interpolationMethod(.monotone)
+                LineMark(
+                    x: .value("Time", bucket.timestamp),
+                    y: .value("Average", bucket.avg),
+                    series: .value("Segment", bucket.segment)
+                )
+                .lineStyle(StrokeStyle(lineWidth: palette.theme.chartLineWidth, lineJoin: .round))
+                .foregroundStyle(tint)
+                .interpolationMethod(.monotone)
+            }
+
+            if let ruleAnchor {
+                RuleMark(x: .value("Scrubbed time", ruleAnchor))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .foregroundStyle(palette.textTertiary)
+                if let reading {
+                    PointMark(
+                        x: .value("Scrubbed time", reading.timestamp),
+                        y: .value("Average", reading.avg)
+                    )
+                    .symbolSize(30)
+                    .foregroundStyle(tint)
+                }
+            }
+        }
+        .chartYScale(domain: yDomain)
+        // Above the overlays, for the reason spelled out on `DashboardChart`'s
+        // own `chartXDomain` call: the proxies below have to resolve against the
+        // pinned scale, not a scale established after them.
+        .chartXDomain(domain)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartPlotStyle { plotArea in
+            plotArea.background(
+                RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                    .fill(palette.surface.opacity(0.6))
+            )
+        }
+        .frame(height: height)
+        // Each lane now shades its *own* interior gaps as well as the window's
+        // unrecorded edges — the thing the overlay explicitly could not do,
+        // because three overlapping 6% washes in one plot compound into a band
+        // that looks like data. One series per plot, one wash per absence.
+        .chartOverlay { proxy in
+            gapShading(proxy: proxy)
+        }
+        .chartOverlay { proxy in
+            ChartScrubOverlay(
+                proxy: proxy,
+                scrubDate: $scrubDate,
+                anchor: reading?.timestamp ?? ruleAnchor
+            ) {
+                scrubReadout
+            }
+        }
+        .accessibilityLabel("\(metric.title) activity")
+        .accessibilityValue(
+            ActivityLanesChart.laneSummary(
+                metric,
+                buckets: bucketed.buckets,
+                interval: bucketed.interval
+            )
+        )
+        .accessibilityChartDescriptor(self)
+    }
+
+    /// Same quiet 6% wash `DashboardChart.gapShading` uses — see that method
+    /// for why an interior gap and an unrecorded window edge share one visual
+    /// treatment instead of getting two.
+    @ViewBuilder
+    private func gapShading(proxy: ChartProxy) -> some View {
+        GeometryReader { geometry in
+            if let plotAnchor = proxy.plotFrame {
+                let plot = geometry[plotAnchor]
+                ZStack(alignment: .topLeading) {
+                    ForEach(blankRegions, id: \.start) { region in
+                        if let startX = proxy.position(forX: region.start),
+                           let endX = proxy.position(forX: region.end) {
+                            Rectangle()
+                                .fill(palette.textTertiary.opacity(0.06))
+                                .frame(width: max(endX - startX, 1), height: plot.height)
+                                .offset(x: plot.minX + startX, y: plot.minY)
+                        }
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var scrubReadout: some View {
+        if scrubDate != nil {
+            Text(ActivityLanesChart.rowText(metric, bucket: reading))
+                .font(palette.font(size: 10))
+                .monospacedDigit()
+                .foregroundStyle(palette.textPrimary)
+                .fixedSize()
+                .chartScrubPlate(palette)
+        }
+    }
+}
+
+// MARK: - VoiceOver lane traversal
+
+/// One descriptor per lane, so VoiceOver's chart rotor can walk a metric's
+/// shape rather than being handed a single summary sentence — the same
+/// reasoning as `DashboardChart`'s own conformance, with one addition specific
+/// to this view: the descriptor's data points are the *bucket means*, which is
+/// exactly what is drawn. Feeding it the source readings instead would give the
+/// non-visual reader a different chart from the visual one, and the summary
+/// sentence already carries the band's true extremes so nothing is lost by it.
+extension ActivityLane: AXChartDescriptorRepresentable {
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let buckets = bucketed.buckets
+
+        // `AXNumericDataAxisDescriptor` needs a non-degenerate range; an empty
+        // or single-point lane has none, so both axes fall back to a unit span.
+        let times = buckets.map(\.timestamp.timeIntervalSince1970)
+        let xLow = times.first ?? 0
+        let xHigh = Swift.max(times.last ?? 1, xLow + 1)
+        let xAxis = AXNumericDataAxisDescriptor(
+            title: String(localized: "Time"),
+            range: xLow...xHigh,
+            gridlinePositions: []
+        ) { seconds in
+            Date(timeIntervalSince1970: seconds).formatted(.dateTime.hour().minute())
+        }
+
+        let unit = metric.unit
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: metric.title,
+            range: yDomain,
+            gridlinePositions: []
+        ) { value in
+            MetricFormatting.value(value, unit: unit, compact: true)
+        }
+
+        let series = AXDataSeriesDescriptor(
+            name: metric.title,
+            isContinuous: true,
+            dataPoints: buckets.map {
+                AXDataPoint(x: $0.timestamp.timeIntervalSince1970, y: $0.avg)
+            }
+        )
+
+        return AXChartDescriptor(
+            title: String(localized: "\(metric.title) activity"),
+            summary: ActivityLanesChart.laneSummary(
+                metric,
+                buckets: buckets,
+                interval: bucketed.interval
+            ),
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
     }
 }
