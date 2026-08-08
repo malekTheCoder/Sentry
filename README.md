@@ -1,14 +1,17 @@
 # Sentry
 
-A macOS menu bar system monitor with iPhone and Apple Watch companions,
-remote access over the local network or a VPN, sleep-prevention control from
-any of the three, and an AI-agent (MCP) integration layer.
+**A macOS menu bar system monitor with iPhone and Apple Watch companions —
+and a built-in manager for the AI agents running on your Mac.**
 
-By Malek Swilam & Aniketh Bandlamudi.
+Live charts, battery health trends, thermal insights, alert rules,
+conditional keep-awake, real fan control on Apple Silicon, and an MCP
+integration layer that lets coding agents check your Mac's capacity before
+they start heavy work. No cloud, no accounts, no telemetry: your Mac's data
+goes to your phone and your watch, never to a server.
 
-Private / proprietary — all rights reserved. Not licensed for reuse; see
-[`LICENSE`](LICENSE). Bundled open-source dependencies are acknowledged in
-[`docs/third-party-licenses.md`](docs/third-party-licenses.md).
+[![Download](https://img.shields.io/github/v/release/malekTheCoder/Sentry?label=download&color=blue)](https://github.com/malekTheCoder/Sentry/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20iOS%2017%2B%20%7C%20watchOS%2010%2B-lightgrey)
 
 <p align="center">
   <img src="docs/screenshots/macos-dashboard.png" alt="Sentry's macOS dashboard: live CPU, memory, and GPU charts over a 24-hour history, battery health, and keep-awake controls" width="840">
@@ -24,6 +27,34 @@ Private / proprietary — all rights reserved. Not licensed for reuse; see
   <img src="docs/screenshots/watch-overview.png" alt="Apple Watch overview: battery, CPU, memory, and disk dials" width="200">&nbsp;&nbsp;&nbsp;
   <img src="docs/screenshots/macos-menubar.png" alt="The menu bar dropdown: system verdict and vitals at a glance" width="300">
 </p>
+
+## Install
+
+**[⬇ Download Sentry.dmg](https://github.com/malekTheCoder/Sentry/releases/latest/download/Sentry.dmg)** — then open it and drag **Sentry** into **Applications**.
+
+Requires macOS 14 (Sonoma) or later, Apple Silicon or Intel.
+
+> **First launch:** on builds that have not yet been notarized by Apple
+> (each release's notes state its status), macOS will refuse to open the
+> download with *"Apple could not verify … is free of malware"* and offer
+> only **Move to Trash** or **Done**. The app is fine — approve it like
+> this:
+>
+> 1. Click **Done** (not Move to Trash).
+> 2. Open **System Settings ▸ Privacy & Security** and scroll to the
+>    **Security** section, where the blocked file is listed.
+> 3. Click **Open Anyway**, authenticate, and open the file again.
+>
+> Sentry ships outside the Mac App Store by necessity, not choice — it
+> reads low-level power and thermal interfaces (`libIOReport`,
+> `IOHIDEventSystemClient`) that do not exist inside the App Sandbox the
+> App Store requires.
+
+**iPhone & Apple Watch:** the companion apps are built from this same repo
+(`SentryMobile`, `SentryWatch`) — the watch app installs automatically with
+the iPhone app. Open Sentry on the iPhone while the Mac app is running on
+the same Wi-Fi and they find each other over Bonjour; for away-from-home
+access, scan the pairing QR code in **Settings ▸ Sync** on the Mac.
 
 ## What it does
 
@@ -77,20 +108,7 @@ Claude Code plugin bundle (MCP registration, the hook, and a
 Copy-pasteable configs live in
 [`docs/integrations/`](docs/integrations/README.md).
 
-## Installing
-
-Sentry ships outside the Mac App Store as a notarized DMG. That's forced,
-not chosen: the app reads `libIOReport.dylib` and the private
-`IOHIDEventSystemClient` API, neither of which exists inside the App
-Sandbox the App Store requires. Grab the DMG from Releases when published,
-or build from source below.
-
-The iPhone and Watch apps install together — the watch app is embedded in
-the iPhone app. Open Sentry on the iPhone while the Mac app is running on
-the same Wi-Fi and they find each other over Bonjour; pairing for
-away-from-home access is a QR code in Settings ▸ Sync on the Mac.
-
-## Building
+## Building from source
 
 The Xcode project is generated from [`project.yml`](project.yml) via
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) — `Sentry.xcodeproj` itself
@@ -148,14 +166,22 @@ refuses and the tools fail with an error naming exactly that.
 one-time enable step and has copy-pasteable configs for Claude Desktop,
 Claude Code, and Cursor.
 
-## Releasing
+## Privacy
 
-```sh
-scripts/release.sh                  # archive → export → verify → dmg → notarize → staple
-scripts/release.sh --skip-notarize  # everything up to submission
-```
+Everything stays on your devices. The full policy — what is collected,
+where it lives, and how to delete it — is
+[`docs/privacy-policy.md`](docs/privacy-policy.md).
 
-Prerequisites (a `Developer ID Application` certificate, `create-dmg`, and a
-stored `notarytool` credential) are listed in that script's header, and it
-refuses to start until all of them are present. Launch-readiness work is
-tracked in [`PROGRESS.md`](PROGRESS.md).
+## Contributing
+
+Issues and pull requests are welcome — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how the project is laid out, how
+to run the test suite, and what a good PR looks like. Maintainers cutting a
+release should follow [`docs/release-checklist.md`](docs/release-checklist.md)
+and run `scripts/release.sh`.
+
+## License
+
+Sentry is open source under the [MIT License](LICENSE), © Malek Swilam &
+Aniketh Bandlamudi. Bundled open-source dependencies are acknowledged in
+[`docs/third-party-licenses.md`](docs/third-party-licenses.md).
