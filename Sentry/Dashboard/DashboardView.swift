@@ -91,10 +91,10 @@ struct DashboardView: View {
     /// this window is this, or the header's own spacing.
     private var rowGap: CGFloat { palette.spacingBlock }
 
-    /// The overlay chart's series, in legend order: the three metrics the
-    /// handoff overlays, minus any module the user has disabled. Missing
+    /// The activity band's series, in lane order: the three metrics the
+    /// handoff shows, minus any module the user has disabled. Missing
     /// series stay in the list as empty (the chart skips them) so the
-    /// legend order is stable as data arrives.
+    /// lane order is stable as data arrives.
     private var overlaySeries: [(metric: ChartMetric, samples: DashboardViewModel.RangedSamples)] {
         [ChartMetric.cpu, .memory, .gpu]
             .filter { viewModel.enabledModules.contains($0.module) }
@@ -128,9 +128,12 @@ struct DashboardView: View {
                 .padding(.bottom, palette.spacingBlock)
 
                 // The handoff's full-width Activity plot: the glance
-                // strip's numbers, drawn over time, one band — no header
-                // of its own because it *is* the glance band's second row.
-                ActivityOverlayChart(
+                // strip's numbers, drawn over time — no header of its own
+                // because it *is* the glance band's second row. One lane per
+                // metric rather than the original single overlaid plot; see
+                // `ActivityLanesChart` for why three normalized lines sharing
+                // one y-axis could not be made legible.
+                ActivityLanesChart(
                     series: overlaySeries,
                     expectedCadence: viewModel.expectedCadence,
                     window: viewModel.window

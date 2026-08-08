@@ -297,7 +297,15 @@ struct VitalsLedger: View {
 /// The full-width Activity plot: CPU / memory / GPU overlaid, each
 /// normalized to its own observed peak (their units are incompatible — the
 /// plot shows shapes; the sentence below carries the real CPU numbers).
-/// Same honesty contract as the Mac's `ActivityOverlayChart`.
+/// Same honesty contract the Mac's activity band used to carry under the same
+/// design. Note that the Mac has since split its overlay into small multiples
+/// (`ActivityLanesChart`) precisely because normalizing three incompatible
+/// units onto one axis makes the crossings meaningless and turns idle noise
+/// into a dramatic shape — the argument applies here too, and this view is a
+/// candidate for the same treatment. It is left overlaid for now because a
+/// phone's 60-sample ring buffer is a different data problem from the Mac's
+/// history query, and splitting it is not a change to make blind from the
+/// other platform.
 ///
 /// **Why this is a `Chart` and no longer a `Canvas`.** It was a hand-stroked
 /// `Canvas` polyline over bare `[Double]`s, positioned by array index. That
@@ -512,8 +520,11 @@ struct MobileActivityChart: View {
     /// Each metric's own real value in its own unit — never the normalized
     /// y-position the line was drawn at.
     ///
-    /// Pure, and a deliberate two-line mirror of `ActivityOverlayChart.rowText`
-    /// on the Mac, which `SentryTests/ChartScrubbingTests.swift` does cover:
+    /// Pure, and a deliberate two-line mirror of `ActivityLanesChart.rowText`
+    /// on the Mac, which `SentryTests/ChartScrubbingTests.swift` does cover
+    /// (the Mac's version now reads a bucket rather than a single sample, so
+    /// the two have diverged on *what* is described — not on the "no data"
+    /// wording this mirrors):
     /// there is no iOS test target in this build (`project.yml` — `SentryTests`
     /// depends on `SentryKit_macOS`/`Sentry` only), so nothing under
     /// `SentryMobile/` is reachable from a test. The same split

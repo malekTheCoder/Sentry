@@ -2,7 +2,7 @@ import Foundation
 
 /// The pure arithmetic behind interactive chart scrubbing and honest gap
 /// rendering, shared by `Sentry/Dashboard/DashboardChart.swift` (and
-/// `ActivityOverlayChart` in the same file) and
+/// `ActivityLanesChart` in the same file) and
 /// `SentryMobile/History/BatteryHealthTrendChart.swift`.
 ///
 /// **Why this lives in `SentryKit` and not next to the views.** Both apps draw
