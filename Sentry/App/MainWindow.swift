@@ -45,6 +45,7 @@ enum MainTab: String, CaseIterable, Identifiable {
 final class MainWindowState: ObservableObject {
     @Published var tab: MainTab = .dashboard
     @Published var theme: Theme = .defaultTheme
+    @Published var appearanceMode: AppearanceMode = .auto
 }
 
 /// The pure rule behind `AppDelegate.updateProcessMonitorState()`: whether
@@ -95,13 +96,20 @@ struct MainWindowView: View {
         ThemePalette(theme: state.theme, scheme: systemColorScheme)
     }
 
-    /// Fixed-appearance themes (same hex for light and dark — One Dark,
-    /// Paper, Ivory) force the native controls inside every tab to match
-    /// the theme's own brightness, judged by the background's luminance;
-    /// adaptive themes (Notion, System) keep following macOS. Without
-    /// this, Paper on a dark Mac renders dark system controls on a white
-    /// page — exactly the "not part of the app" seam being removed here.
+    /// The user's Light/Dark pin wins outright — it must also flip the
+    /// native controls, or a pinned-dark theme would render light system
+    /// pickers ("not part of the app" all over again). On `.auto`, the old
+    /// heuristic remains for appearance-fixed themes (same hex both halves,
+    /// e.g. a custom theme imported from an older build): force the native
+    /// controls to the theme's own brightness, judged by the background's
+    /// luminance. Fully adaptive themes on `.auto` return nil and follow
+    /// macOS.
     private var forcedScheme: ColorScheme? {
+        switch state.appearanceMode {
+        case .light: return .light
+        case .dark: return .dark
+        case .auto: break
+        }
         let background = state.theme.background
         guard background.light == background.dark else { return nil }
         guard let rgb = ThemeColor.components(fromHex: background.light) else { return nil }
@@ -148,12 +156,67 @@ struct MainWindowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .ignoresSafeArea()
+
+            // Progressive blur under the floating switcher. Scrolled content
+            // slides beneath the transparent titlebar (that's the design),
+            // but with nothing between it and the pill, charts collide with
+            // the toolbar and the top of the window turns to noise. This
+            // sits above the content and below the AppKit toolbar: a
+            // within-window blur whose gradient mask fades it out, plus a
+            // wash of the theme's own background so the strip stays on-theme
+            // for opaque themes, where a bare system material would read as
+            // foreign chrome.
+            TopEdgeFade(palette: palette)
         }
         .environment(\.themePalette, palette)
         .preferredColorScheme(forcedScheme)
         .frame(minWidth: 860, minHeight: 620)
     }
 
+}
+
+// MARK: - Top edge fade
+
+/// The progressive blur strip behind the nav switcher: a within-window
+/// `NSVisualEffectView` masked by a vertical gradient (full blur through the
+/// titlebar region, easing to nothing), under a matching wash of the theme's
+/// background color. Hit-testing is off — it is purely a legibility layer.
+private struct TopEdgeFade: View {
+    let palette: ThemePalette
+
+    /// Covers the 52pt titlebar region plus a soft tail below it — short
+    /// enough that the content headers at rest sit below the wash.
+    static let height: CGFloat = MainWindowView.navHeight + 16
+
+    /// Drawn once — the mask is appearance- and theme-independent (pure
+    /// alpha), so there is nothing to invalidate.
+    private static let mask = VisualEffect.topFadeMask(height: TopEdgeFade.height)
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VisualEffect(
+                material: .headerView,
+                blendingMode: .withinWindow,
+                maskImage: Self.mask
+            )
+            .overlay(
+                LinearGradient(
+                    stops: [
+                        .init(color: palette.background.opacity(0.72), location: 0.0),
+                        .init(color: palette.background.opacity(0.30), location: 0.55),
+                        .init(color: palette.background.opacity(0.0), location: 1.0),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(height: Self.height)
+            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
 }
 
 // MARK: - Nav switcher pill

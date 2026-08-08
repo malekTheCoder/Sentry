@@ -98,14 +98,14 @@ final class ThemeDocumentTests: XCTestCase {
     }
 
     func testCustomFontNamesSurviveTheRoundTrip() throws {
-        var theme = Theme.notion.duplicated(named: "Berkeley")
+        var theme = Theme.system.duplicated(named: "Berkeley")
         theme.fontFamily = .custom("BerkeleyMono-Regular")
         let restored = try ThemeDocument.decode(try ThemeDocument.encode(theme))
         XCTAssertEqual(restored.fontFamily, .custom("BerkeleyMono-Regular"))
     }
 
     func testExportingABuiltInPresetStripsItsBuiltInIdentity() throws {
-        let data = try ThemeDocument.encode(Theme.nord)
+        let data = try ThemeDocument.encode(Theme.slate)
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let theme = try XCTUnwrap(object["theme"] as? [String: Any])
 
@@ -114,7 +114,7 @@ final class ThemeDocumentTests: XCTestCase {
         let id = try XCTUnwrap(theme["id"] as? String)
         XCTAssertFalse(id.hasPrefix(Theme.builtInIDPrefix), "an exported file must not claim a built-in id")
         // The ancestry is what makes reset-to-preset work after re-import.
-        XCTAssertEqual(theme["basePresetID"] as? String, Theme.nord.id)
+        XCTAssertEqual(theme["basePresetID"] as? String, Theme.slate.id)
     }
 
     func testImportedThemesAlwaysGetAFreshIdentity() throws {
@@ -130,7 +130,7 @@ final class ThemeDocumentTests: XCTestCase {
     }
 
     func testExportIsPrettyPrintedAndKeySortedForHumanEditing() throws {
-        let data = try ThemeDocument.encode(Theme.notion)
+        let data = try ThemeDocument.encode(Theme.system)
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))
         XCTAssertTrue(text.contains("\n"), "an interchange file people edit should not be one line")
         XCTAssertLessThan(
@@ -320,8 +320,8 @@ final class ThemeDocumentTests: XCTestCase {
 
     func testRejectsAFileClaimingABuiltInIdentifier() {
         var theme = minimalTheme
-        theme["id"] = "builtin.notion"
-        assertRejects(file(theme: theme), .reservedIdentifier("builtin.notion"))
+        theme["id"] = "builtin.system"
+        assertRejects(file(theme: theme), .reservedIdentifier("builtin.system"))
     }
 
     func testRejectsAWrongTypedFieldWithAMessageThatNamesTheField() {
@@ -355,7 +355,7 @@ final class ThemeDocumentTests: XCTestCase {
     // MARK: - Filenames
 
     func testSuggestedFilenameIsSafeForTheFilesystem() {
-        var theme = Theme.notion.duplicated(named: "My / Weird : Theme")
+        var theme = Theme.system.duplicated(named: "My / Weird : Theme")
         XCTAssertEqual(ThemeDocument.suggestedFilename(for: theme), "My - Weird - Theme.sentrytheme")
 
         theme.name = "///"

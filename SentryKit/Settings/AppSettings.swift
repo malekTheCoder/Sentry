@@ -18,6 +18,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// live in their own store later without bloating this file.
     public var themeID: String
 
+    /// Whether the app follows macOS light/dark, or pins one half of every
+    /// theme's light/dark pair. `.auto` is the default and the pre-existing
+    /// behavior.
+    public var appearanceMode: AppearanceMode
+
     /// The user's own themes (plan §9.3): duplicated from a preset in the
     /// theme editor, or imported from a `.sentrytheme` file.
     ///
@@ -432,6 +437,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public init(
         themeID: String = Theme.defaultTheme.id,
+        appearanceMode: AppearanceMode = .auto,
         customThemes: [Theme] = [],
         enabledModules: Set<MetricModule> = AppSettings.defaultEnabledModules,
         menuBarLayout: MenuBarLayout = .batteryFocus,
@@ -474,6 +480,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         schemaVersion: Int = AppSettings.currentSchemaVersion
     ) {
         self.themeID = themeID
+        self.appearanceMode = appearanceMode
         self.customThemes = customThemes
         self.enabledModules = enabledModules
         self.menuBarLayout = menuBarLayout
@@ -526,6 +533,10 @@ extension AppSettings {
 
     private enum CodingKeys: String, CodingKey {
         case themeID
+        // Additive: absent in any settings.json written before the
+        // light/dark/auto control existed; the fallback is `.auto`, which is
+        // exactly what those builds did.
+        case appearanceMode
         // Theme editor, additive: absent in any settings.json written before
         // custom themes existed, and its fallback is `[]` — the same
         // "missing and explicitly-empty are the same situation" case as
@@ -631,6 +642,8 @@ extension AppSettings {
         self.init(
             themeID: try container.decodeIfPresent(String.self, forKey: .themeID)
                 ?? fallback.themeID,
+            appearanceMode: try container.decodeIfPresent(AppearanceMode.self, forKey: .appearanceMode)
+                ?? fallback.appearanceMode,
             // `Theme` has its own additive-tolerant decoder (see
             // `Theme.init(from:)`), so a stored custom theme written by an
             // older build survives a token being added here as well.

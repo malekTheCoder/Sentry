@@ -227,14 +227,14 @@ final class DashboardViewModelTests: XCTestCase {
     // hosting controller — see DashboardViewModel.theme's doc comment)
 
     func testThemeDefaultsToTheValuePassedAtInit() {
-        let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .paper)
-        XCTAssertEqual(model.theme, .paper)
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .ivory)
+        XCTAssertEqual(model.theme, .ivory)
     }
 
     func testThemeCanBeReassignedLiveAfterConstruction() {
         let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .slate)
-        model.theme = .paper
-        XCTAssertEqual(model.theme, .paper)
+        model.theme = .ivory
+        XCTAssertEqual(model.theme, .ivory)
     }
 
     func testAssigningTheSameValuesDoesNotForceAnExtraRefresh() {

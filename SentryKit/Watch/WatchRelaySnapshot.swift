@@ -351,7 +351,7 @@ public struct WatchRelaySnapshot: Codable, Sendable, Equatable {
     /// 1 KB — for data that is identical on both ends and changes about once
     /// a year. The id is ~20 bytes and both sides already compile the same
     /// `Theme.builtInPresets`, so they cannot disagree about what
-    /// `"builtin.nord"` looks like.
+    /// `"builtin.slate"` looks like.
     ///
     /// The cost is that a **custom** (user-authored) theme has no entry in
     /// `builtInPresets`, so the watch falls back to `Theme.defaultTheme`

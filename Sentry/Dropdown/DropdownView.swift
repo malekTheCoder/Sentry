@@ -503,8 +503,8 @@ struct DropdownView: View {
     /// action row reads as one control group.
     ///
     /// Custom themes come first and are separated by a divider: a user who
-    /// authored a theme is switching *to* it far more often than to Monokai,
-    /// and the fifteen presets below would otherwise bury it. When there are
+    /// authored a theme is switching *to* it far more often than to a
+    /// preset, and the presets below would otherwise bury it. When there are
     /// none, no divider and no empty section appears — the menu is exactly
     /// what it used to be.
     /// One row of the switcher menu. Extracted so the custom and built-in

@@ -105,7 +105,7 @@ public enum ThemeDocumentError: Error, Equatable, LocalizedError {
 ///
 /// **Identity is never trusted.** An imported theme always gets a fresh
 /// `custom.<uuid>` id, regardless of what the file said, and is always
-/// `isBuiltIn == false`. A file naming itself `builtin.notion` is rejected
+/// `isBuiltIn == false`. A file naming itself `builtin.system` is rejected
 /// outright rather than quietly renamed, because a file that tried it is more
 /// likely hostile than confused and the user should be told.
 public enum ThemeDocument {
@@ -148,7 +148,7 @@ public enum ThemeDocument {
     /// theme object carries `isBuiltIn: false` and a fresh custom id — the
     /// file is a starting point somebody will edit, not a claim on Sentry's
     /// namespace, and re-importing it must not produce a second thing calling
-    /// itself `builtin.nord`.
+    /// itself `builtin.slate`.
     public static func encode(_ theme: Theme, formatVersion: Int = currentFormatVersion) throws -> Data {
         var exported = theme
         if exported.isBuiltIn {

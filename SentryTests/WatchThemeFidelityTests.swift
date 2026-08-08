@@ -60,13 +60,14 @@ final class WatchThemeFidelityTests: XCTestCase {
         XCTAssertEqual(try hex(XCTUnwrap(ivory.metricColor(for: .gpuUtilizationPercent))), "#A86F8E")
     }
 
-    /// A fixed-light preset stores the same string in both halves
+    /// An appearance-fixed token stores the same string in both halves
     /// (`ThemeColor(hex:)`), so the watch asking for `.light` and the watch
-    /// asking for `.dark` must agree. This is what makes the relayed
-    /// appearance safe to trust rather than something that could silently
-    /// swap a palette out from under a fixed-light theme.
-    func testAFixedLightPresetResolvesIdenticallyInBothAppearances() throws {
-        for token in [ivory.background, ivory.surface, ivory.textPrimary, ivory.accent] {
+    /// asking for `.dark` must agree. Every shipped preset now carries a
+    /// real light/dark pair, so the fixture is a constructed fixed token —
+    /// the case still exists in the wild via custom themes imported from
+    /// builds that predate the pairing.
+    func testAFixedTokenResolvesIdenticallyInBothAppearances() throws {
+        for token in [ThemeColor(hex: "#FAF9F5"), ThemeColor(hex: "#C96442", opacity: 0.8)] {
             XCTAssertEqual(try hex(token, .light), try hex(token, .dark))
         }
     }
@@ -147,19 +148,19 @@ final class WatchThemeFidelityTests: XCTestCase {
         }
     }
 
-    /// Notion is the case the override exists for: `nocturneMetricColors`
+    /// Slate is a case the override exists for: `nocturneMetricColors`
     /// sends `memory.used_bytes` straight to `warning`, so the watch must
     /// *not* draw a normal-pressure memory dial in the alarm colour.
-    func testNotionsMemoryMetricIsCorrectlyDetectedAsAliasingWarning() throws {
-        let notion = Theme.notion
-        let memory = try XCTUnwrap(XCTUnwrap(notion.metricColor(for: .memoryUsedBytes)).rgba(for: .dark))
+    func testSlatesMemoryMetricIsCorrectlyDetectedAsAliasingWarning() throws {
+        let slate = Theme.slate
+        let memory = try XCTUnwrap(XCTUnwrap(slate.metricColor(for: .memoryUsedBytes)).rgba(for: .dark))
         XCTAssertTrue(
-            collides(memory, with: notion, .dark),
-            "Notion aliases memory onto warning — the watch has to override it"
+            collides(memory, with: slate, .dark),
+            "Slate aliases memory onto warning — the watch has to override it"
         )
 
         // CPU does not alias anything, and must survive the same check.
-        let cpu = try XCTUnwrap(XCTUnwrap(notion.metricColor(for: .cpuTotalPercent)).rgba(for: .dark))
-        XCTAssertFalse(collides(cpu, with: notion, .dark), "the override must be narrow, not blanket")
+        let cpu = try XCTUnwrap(XCTUnwrap(slate.metricColor(for: .cpuTotalPercent)).rgba(for: .dark))
+        XCTAssertFalse(collides(cpu, with: slate, .dark), "the override must be narrow, not blanket")
     }
 }

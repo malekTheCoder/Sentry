@@ -125,7 +125,7 @@ final class ThemeContrastTests: XCTestCase {
 
     /// The invariant that *is* true today, and the one that matters most:
     /// the token carrying every actual readout passes AA on every surface, in
-    /// both appearances, in all fifteen presets.
+    /// both appearances, in every preset.
     func testPrimaryTextPassesAAInEveryPreset() {
         for preset in Theme.builtInPresets {
             let failures = preset.contrastAudit
@@ -141,20 +141,18 @@ final class ThemeContrastTests: XCTestCase {
     /// **A documented gap, asserted so it can't widen silently.**
     ///
     /// Plan §9.4 says "Every preset must pass WCAG AA (4.5:1) for text
-    /// tokens." Running the checker built for this task against the fifteen
-    /// shipped presets shows that claim is not true today — every one of them
-    /// has at least one text token below 4.5:1, most commonly `textTertiary`
-    /// (timestamps and disabled text, deliberately faint in every preset) and
-    /// the semantic colors on `surfaceElevated`.
+    /// tokens." Running the checker against the shipped presets shows that
+    /// claim is not true today — each has at least one text token below
+    /// 4.5:1, most commonly `textTertiary` (timestamps and disabled text,
+    /// deliberately faint in every preset) and, in the halves that predate
+    /// the light/dark pairing, semantic colors on `surfaceElevated`.
     ///
     /// This test deliberately does **not** assert the requirement and fail.
-    /// Making the presets pass is a palette redesign, not a bug fix: `Nord`,
-    /// `Dracula`, `Solarized Dark`, `Monokai`, `Tokyo Night` and `GitHub` are
-    /// *reproductions of published palettes*, and the change that makes
-    /// Dracula's `#6272A4` comment-gray reach 4.5:1 is the change that stops
-    /// it being Dracula. That is a product decision with a visual review
-    /// attached, and it is not this task's — this task built the instrument
-    /// that measured it.
+    /// Making the shipped halves pass is a palette redesign with a visual
+    /// review attached (Tokyo Night's dark half is a reproduction of a
+    /// published palette; the faint tertiary ramp is a deliberate design
+    /// choice) — this test is the instrument that measures the gap, not the
+    /// fix.
     ///
     /// What is asserted is the *shape* of the gap: which tokens are
     /// responsible. If a future edit drops `textPrimary` below AA, or fixes
@@ -187,50 +185,8 @@ final class ThemeContrastTests: XCTestCase {
         )
     }
 
-    /// The fix for the DEFAULT theme's verified AA failures on
-    /// `textTertiary`, `warning`, and `danger`: a prior code review measured
-    /// `textTertiary` light at 2.81:1, `warning` light on `surfaceElevated`
-    /// at ~2.82:1, and `danger` light on `surfaceElevated` at ~3.67:1, all
-    /// below the 4.5:1 text bar that applies to them (see the doc comments
-    /// on `Theme.notion` and `ThemeColorToken.isTextToken` for why 4.5:1,
-    /// not 1.4.11's 3:1, is the correct requirement — real call sites render
-    /// all three as literal text). This asserts the fix holds: worst-case
-    /// across every audited backdrop, in both appearances, these three
-    /// tokens now clear `.textAA`.
-    func testNotionDefaultThemeTertiaryWarningAndDangerNowClearTextAA() {
-        for token in [ThemeColorToken.textTertiary, .warning, .danger] {
-            for appearance in ThemeAppearance.allCases {
-                let color = Theme.notion[token]
-                guard let fg = color.rgba(for: appearance) else {
-                    return XCTFail("\(token.rawValue) failed to parse for \(appearance.rawValue)")
-                }
-                for backdropToken in ThemeContrastAudit.auditedBackdrops {
-                    guard let bg = Theme.notion[backdropToken].rgba(for: appearance) else {
-                        return XCTFail("\(backdropToken.rawValue) failed to parse for \(appearance.rawValue)")
-                    }
-                    let composited = ThemeContrast.flatten(fg, onto: bg)
-                    let measured = ThemeContrast.ratio(composited, bg)
-                    XCTAssertGreaterThanOrEqual(
-                        measured,
-                        ContrastRequirement.textAA.minimumRatio,
-                        "\(token.rawValue) on \(backdropToken.rawValue) in \(appearance.rawValue) measured \(measured), still below AA"
-                    )
-                }
-            }
-        }
-
-        // Same assertion via the real audit path, not just the raw math
-        // above — this is what the editor and `testPrimaryTextPassesAAInEveryPreset`
-        // actually consult.
-        let audit = Theme.notion.contrastAudit
-        for token in [ThemeColorToken.textTertiary, .warning, .danger] {
-            let failures = audit.failures(for: token).filter { $0.requirement == .textAA }
-            XCTAssertTrue(failures.isEmpty, "\(token.rawValue): " + failures.map(\.summary).joined(separator: " | "))
-        }
-    }
-
     func testAuditCoversBothAppearancesAndEverySurface() {
-        let audit = Theme.notion.contrastAudit
+        let audit = Theme.system.contrastAudit
         for appearance in ThemeAppearance.allCases {
             for backdrop in ThemeContrastAudit.auditedBackdrops {
                 for token in ThemeContrastAudit.auditedTextTokens {
@@ -248,7 +204,7 @@ final class ThemeContrastTests: XCTestCase {
     }
 
     func testUnreadableTextIsFlaggedRatherThanScored() {
-        var theme = Theme.notion.duplicated(named: "Invisible")
+        var theme = Theme.system.duplicated(named: "Invisible")
         // The classic unreadable theme: text the same color as its backdrop.
         theme.background = ThemeColor(hex: "#202020")
         theme.surface = ThemeColor(hex: "#202020")
@@ -266,7 +222,7 @@ final class ThemeContrastTests: XCTestCase {
     }
 
     func testMalformedColorProducesNoRatioAndDoesNotPass() {
-        var theme = Theme.notion.duplicated(named: "Broken")
+        var theme = Theme.system.duplicated(named: "Broken")
         theme.textPrimary = ThemeColor(hex: "#NOTAHEX")
 
         let findings = theme.contrastAudit.findings.filter { $0.subject == .token(.textPrimary) }
@@ -294,7 +250,7 @@ final class ThemeContrastTests: XCTestCase {
     }
 
     func testMetricColorsAreHeldToTheNonTextThreshold() {
-        let audit = Theme.notion.contrastAudit
+        let audit = Theme.system.contrastAudit
         let metricFindings = audit.findings.filter {
             if case .metric = $0.subject { return true }
             return false
@@ -306,7 +262,7 @@ final class ThemeContrastTests: XCTestCase {
     }
 
     func testUnknownMetricKeysAreAuditedRatherThanSkipped() {
-        var theme = Theme.notion.duplicated(named: "Odd keys")
+        var theme = Theme.system.duplicated(named: "Odd keys")
         theme.metricColors["not.a.real.metric"] = ThemeColor(hex: "#191919")
 
         let audit = theme.contrastAudit
@@ -317,12 +273,12 @@ final class ThemeContrastTests: XCTestCase {
     func testFindingIdentifiersAreUnique() {
         // The editor puts these in `ForEach`; a collision would silently drop
         // rows from the issue list.
-        let ids = Theme.notion.contrastAudit.findings.map(\.id)
+        let ids = Theme.system.contrastAudit.findings.map(\.id)
         XCTAssertEqual(Set(ids).count, ids.count)
     }
 
     func testWorstRatioReportsTheLowestNotTheFirst() {
-        var theme = Theme.notion.duplicated(named: "Uneven")
+        var theme = Theme.system.duplicated(named: "Uneven")
         theme.background = ThemeColor(hex: "#FFFFFF")
         theme.surface = ThemeColor(hex: "#FFFFFF")
         theme.surfaceElevated = ThemeColor(hex: "#767676")
@@ -342,7 +298,7 @@ final class ThemeContrastTests: XCTestCase {
         // Built from scratch rather than forked from a preset: as the gap
         // test above records, no shipped preset currently passes, so there is
         // no preset to use as the "passes" fixture.
-        var clean = Theme.notion.duplicated(named: "Clean")
+        var clean = Theme.system.duplicated(named: "Clean")
         clean.background = ThemeColor(hex: "#FFFFFF")
         clean.surface = ThemeColor(hex: "#FFFFFF")
         clean.surfaceElevated = ThemeColor(hex: "#FFFFFF")

@@ -59,8 +59,8 @@ week / month); alert rules with history; keep-awake with process-aware mode
 (hold until a named process exits); fan RPM readout everywhere and real fan
 *control* on Apple Silicon behind an explicitly-installed root helper
 (`SentryFanDaemon` — SMC writes live in that binary and nowhere else); a
-custom theme editor with WCAG contrast checking on top of 15 built-in
-themes.
+custom theme editor with WCAG contrast checking on top of six built-in
+themes, each with light, dark, and follow-the-system variants.
 
 **Companions** — an iPhone app and a three-page Watch app (overview,
 keep-awake, agent activity — with a kill-switch resume path and its own Siri

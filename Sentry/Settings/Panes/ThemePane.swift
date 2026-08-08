@@ -84,8 +84,10 @@ struct ThemePane: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(
                 String(localized: "Presets"),
-                String(localized: "Fifteen built-in themes. Presets can't be edited in place — duplicate one to make it yours.")
+                String(localized: "Six built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours.")
             )
+
+            appearancePicker
 
             presetContrastNote
 
@@ -183,24 +185,43 @@ struct ThemePane: View {
         }
     }
 
+    /// Auto / Light / Dark. Auto follows macOS; Light and Dark pin every
+    /// theme to that half of its pair, app-wide (window, dropdown, and the
+    /// palette relayed to the watch — the menu bar readout keeps following
+    /// the menu bar itself).
+    private var appearancePicker: some View {
+        HStack(spacing: 10) {
+            Text("Appearance")
+                .font(palette.font(size: 12, weight: .medium))
+                .foregroundStyle(palette.textPrimary)
+            Picker("Appearance", selection: $store.settings.appearanceMode) {
+                ForEach(AppearanceMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 260)
+            Spacer(minLength: 0)
+        }
+    }
+
     /// **Why the presets carry one shared note instead of per-card warnings.**
     ///
-    /// The contrast checker built for §9.4 reports that every one of the
-    /// fifteen shipped presets has at least one text pair below 4.5:1 —
-    /// almost always the deliberately-faint tertiary ramp, and the semantic
-    /// colors sitting on the elevated surface. That is measured, not
-    /// suspected (`SentryTests/ThemeContrastTests.swift` asserts the exact
-    /// shape of it).
+    /// The contrast checker built for §9.4 reports that the shipped presets
+    /// still have text pairs below 4.5:1 — chiefly the deliberately-faint
+    /// tertiary ramp, and (in the halves that shipped before the light/dark
+    /// pairing) semantic colors sitting on the elevated surface. That is
+    /// measured, not suspected (`SentryTests/ThemeContrastTests.swift`
+    /// asserts the exact shape of it).
     ///
-    /// Stamping a red warning on all fifteen cards was the first thing tried
-    /// and is the wrong answer twice over: a warning that appears on every
-    /// option is not information, and these palettes are a shipped design
-    /// decision the user didn't make and can't fix from here — several of
-    /// them are faithful reproductions of published palettes (Nord, Dracula,
-    /// Solarized) where "fix the contrast" and "stop being that palette" are
-    /// the same edit. So the presets get one honest sentence, and the full
-    /// per-token breakdown appears the moment a preset is duplicated and the
-    /// user is somewhere they can actually act on it.
+    /// Stamping a red warning on every card was the first thing tried and is
+    /// the wrong answer twice over: a warning that appears on every option
+    /// is not information, and these palettes are a shipped design decision
+    /// the user didn't make and can't fix from here. So the presets get one
+    /// honest sentence, and the full per-token breakdown appears the moment
+    /// a preset is duplicated and the user is somewhere they can actually
+    /// act on it.
     ///
     /// Custom themes below *are* flagged individually, because those a user
     /// authored and can change.
@@ -320,11 +341,11 @@ private struct ThemeCard: View {
     let isSelected: Bool
     let onSelect: () -> Void
 
-    // The card previews the theme, so it resolves tokens against the theme's
-    // own intent rather than the settings window's appearance. Dark is the
-    // right default for the appearance-fixed presets; `.system` and `.paper`
-    // are handled by their own light/dark pairs either way.
-    private var scheme: ColorScheme { .dark }
+    // Every preset now carries a real light/dark pair, so the honest preview
+    // is the half the app is actually showing — which the pane's environment
+    // already resolves (the user's Auto/Light/Dark pin feeds the window's
+    // color scheme via `MainWindowView.forcedScheme`).
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Button(action: onSelect) {

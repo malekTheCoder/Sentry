@@ -176,6 +176,34 @@ public enum ThemeAppearance: String, Codable, CaseIterable, Equatable, Sendable 
     }
 }
 
+/// The user's appearance choice for the whole app: follow macOS, or pin the
+/// theme to one half of its light/dark pair. Distinct from `ThemeAppearance`
+/// (which names a *resolved* half and has no "follow the system" case) so
+/// the model layer never has to answer "what is the system appearance" —
+/// only the rendering layer can, and only it consumes `.auto`.
+public enum AppearanceMode: String, Codable, CaseIterable, Equatable, Sendable {
+    case auto
+    case light
+    case dark
+
+    public var displayName: String {
+        switch self {
+        case .auto: return String(localized: "Auto")
+        case .light: return String(localized: "Light")
+        case .dark: return String(localized: "Dark")
+        }
+    }
+
+    /// The pinned half, or nil for "ask the system".
+    public var fixedAppearance: ThemeAppearance? {
+        switch self {
+        case .auto: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 /// A color token expressed as a light/dark hex pair plus opacity, so a single
 /// token can answer `NSApp.effectiveAppearance` without the rendering layer
 /// needing per-appearance branching at every call site.
@@ -632,7 +660,7 @@ extension Theme {
     }
 }
 
-// MARK: - Built-in presets (Nocturne redesign — 2 minimal defaults + 5 IDE-inspired)
+// MARK: - Built-in presets (six themes, each a light/dark pair)
 
 extension Theme {
     /// Shared per-theme metric→role mapping: CPU/Disk track accent, GPU/Network
@@ -653,132 +681,35 @@ extension Theme {
         ]
     }
 
-    /// Notion — the app's default theme, and the only built-in that tracks the
-    /// system appearance rather than committing to one. Every token is a
-    /// light/dark pair, so `ThemePalette` resolves it against
-    /// `NSApp.effectiveAppearance` (macOS) / `colorScheme` (iOS) instead of
-    /// forcing a single look the way the IDE-inspired presets below do.
-    ///
-    /// The palette is deliberately near-monochrome: a warm-neutral text ramp on
-    /// an untinted background, with a single blue accent. Semantic colors are
-    /// reserved for state that actually needs attention (warning/danger), which
-    /// is what keeps a dense metrics UI from reading as confetti — see
-    /// `nocturneMetricColors` for how the six metric modules reuse those four
-    /// semantic tokens rather than carrying six bespoke hues.
-    public static let notion = Theme(
-        id: "builtin.notion",
-        name: "Notion",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#FFFFFF", dark: "#191919"),
-        surface: ThemeColor(light: "#F7F6F3", dark: "#202020"),
-        surfaceElevated: ThemeColor(light: "#EFEEE9", dark: "#2C2C2C"),
-        textPrimary: ThemeColor(light: "#37352F", dark: "#D4D4D4"),
-        textSecondary: ThemeColor(light: "#787774", dark: "#9B9B9B"),
-        // `textTertiary`, `warning` and `danger` below were darkened
-        // (light) / lightened (dark) from their original Notion values to
-        // clear WCAG 2.1 SC 1.4.3's 4.5:1 text bar. `isTextToken` on
-        // `ThemeColorToken` documents why 4.5:1 is the applicable
-        // requirement rather than 1.4.11's 3:1 non-text floor: real call
-        // sites (`Sentry/Insights/InsightRowView.swift`,
-        // `Sentry/Dropdown/VitalsSection.swift`,
-        // `Sentry/Dashboard/AnomaliesCard.swift`,
-        // `Sentry/MenuBar/BarModuleRenderer.swift`, etc.) render all three
-        // as literal text — timestamps, status sentences, numeric readouts,
-        // and menu-bar glyphs — not just icons or dots. The worst-case
-        // backdrop for every one of these is `surfaceElevated`, the
-        // lightest of the three surfaces in light mode and (in dark mode)
-        // the lightest of the three dark surfaces, which is where each
-        // ratio below was measured.
-        //
-        // Original `#9B9A97` measured 2.81:1 on `background`, 2.42:1 (worst
-        // case) on `surfaceElevated` — both fail 4.5:1. New `#6B6A67` keeps
-        // the same warm-neutral hue/saturation (HSL hue ~0.125, sat ~0.02)
-        // and reaches 4.66:1 on `surfaceElevated` (5.41:1 on `background`).
-        // This unavoidably lands close to — in fact slightly darker than —
-        // `textSecondary`'s own `#787774` (which itself measures 4.48:1 on
-        // `background`, just short of AA and part of the still-tracked gap
-        // `ThemeContrastTests` documents): a tertiary token cannot pass
-        // 4.5:1 on white while staying lighter than a secondary token that
-        // doesn't. Fixing `textSecondary` is out of scope for this change.
-        textTertiary: ThemeColor(light: "#6B6A67", dark: "#949494"),
-        accent: ThemeColor(light: "#2383E2", dark: "#529CCA"),
-        success: ThemeColor(light: "#0F7B6C", dark: "#4DAB9A"),
-        // Original `#D9730D` on `surfaceElevated` measured 2.82:1 (worst
-        // case among the three light surfaces) — fails 4.5:1. New `#A3560A`
-        // keeps the same orange hue/saturation (HSL hue ~0.083, sat ~0.89),
-        // darkened, and reaches 4.64:1 on `surfaceElevated` (5.39:1 on
-        // `background`). Dark mode's `#FFA344` already measures 7.03:1
-        // worst-case and is left untouched.
-        warning: ThemeColor(light: "#A3560A", dark: "#FFA344"),
-        // Original `#E03E3E` on `surfaceElevated` measured 3.67:1 (worst
-        // case) — fails 4.5:1 even though it clears 1.4.11's 3:1 non-text
-        // floor; the call sites above confirm `danger` is used as text, so
-        // 4.5:1 is the bar that governs. New `#D02121` keeps the same red
-        // hue/saturation (HSL hue 0, sat ~0.72), darkened, and reaches
-        // 4.61:1 on `surfaceElevated` (5.36:1 on `background`). Dark mode's
-        // `#FF7369` already measures 5.26:1 worst-case and is left
-        // untouched.
-        danger: ThemeColor(light: "#D02121", dark: "#FF7369"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
-        chartFill: [
-            ThemeColor(light: "#2383E2", dark: "#529CCA", opacity: 0.18),
-            ThemeColor(light: "#2383E2", dark: "#529CCA", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.09),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#2383E2", dark: "#529CCA"),
-            success: ThemeColor(light: "#0F7B6C", dark: "#4DAB9A"),
-            // Kept in sync with the `warning`/`danger` tokens above rather
-            // than left on the pre-fix hues — metric colors are only held
-            // to the 3:1 non-text floor (both the old and new values clear
-            // it comfortably), but leaving "memory" and "thermal" on the
-            // old orange/red would put two different warning hues and two
-            // different danger hues in the same preset for no reason.
-            warning: ThemeColor(light: "#A3560A", dark: "#FFA344"),
-            danger: ThemeColor(light: "#D02121", dark: "#FF7369")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        // Small on purpose. Notion's own surfaces sit around 3–4pt; 6 is the
-        // most a Mac popover wants. Large radii read as "card" and invite the
-        // nested-rounded-rectangle look this redesign is specifically moving
-        // away from — interior elements should mostly have no radius at all
-        // because they should mostly have no fill or border.
-        cornerRadius: 6,
-        density: .comfortable,
-        chartStyle: .area,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 36,
-        useMaterialBackground: true,
-        materialStyle: .popover,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// Slate — minimal, dark.
+    /// Slate — minimal. Graphite dark half, cool paper light half.
     public static let slate = Theme(
         id: "builtin.slate",
         name: "Slate",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#0D0E12"),
-        surface: ThemeColor(hex: "#181A21"),
-        surfaceElevated: ThemeColor(hex: "#1F212B"),
-        textPrimary: ThemeColor(hex: "#E7E7EA"),
-        textSecondary: ThemeColor(hex: "#9A9CA8"),
-        textTertiary: ThemeColor(hex: "#6B6D78"),
-        accent: ThemeColor(hex: "#7C8CF0"),
-        success: ThemeColor(hex: "#5FCE8F"),
-        warning: ThemeColor(hex: "#E0A851"),
-        danger: ThemeColor(hex: "#E0616B"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        chartFill: [ThemeColor(hex: "#7C8CF0", opacity: 0.35), ThemeColor(hex: "#7C8CF0", opacity: 0.0)],
-        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        background: ThemeColor(light: "#F4F5F8", dark: "#0D0E12"),
+        surface: ThemeColor(light: "#EAECF1", dark: "#181A21"),
+        surfaceElevated: ThemeColor(light: "#DFE2E9", dark: "#1F212B"),
+        textPrimary: ThemeColor(light: "#24262E", dark: "#E7E7EA"),
+        textSecondary: ThemeColor(light: "#565968", dark: "#9A9CA8"),
+        textTertiary: ThemeColor(light: "#878B99", dark: "#6B6D78"),
+        accent: ThemeColor(light: "#4553CE", dark: "#7C8CF0"),
+        success: ThemeColor(light: "#1E6B41", dark: "#5FCE8F"),
+        warning: ThemeColor(light: "#835C06", dark: "#E0A851"),
+        danger: ThemeColor(light: "#B03340", dark: "#E0616B"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
+        // The light half carries an alpha byte (#…4D ≈ 30%) so the shared
+        // `opacity` can stay at the dark half's shipped 0.35 without the
+        // light chart drowning in indigo — effective light fill ≈ 0.10.
+        chartFill: [
+            ThemeColor(light: "#4553CE4D", dark: "#7C8CF0", opacity: 0.35),
+            ThemeColor(light: "#4553CE", dark: "#7C8CF0", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
         metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#7C8CF0"), success: ThemeColor(hex: "#5FCE8F"),
-            warning: ThemeColor(hex: "#E0A851"), danger: ThemeColor(hex: "#E0616B")
+            accent: ThemeColor(light: "#4553CE", dark: "#7C8CF0"),
+            success: ThemeColor(light: "#1E6B41", dark: "#5FCE8F"),
+            warning: ThemeColor(light: "#835C06", dark: "#E0A851"),
+            danger: ThemeColor(light: "#B03340", dark: "#E0616B")
         ),
         fontFamily: .system,
         barFontSize: 11,
@@ -796,81 +727,36 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Paper — direction 1a of the Claude Design exploration round: light,
-    /// GitHub Primer palette, blue accent. Fixed-light by design (the dark
-    /// counterpart in the exploration is One Dark, its own preset). Unlike
-    /// the earlier presets it carries the handoff's per-metric hues rather
-    /// than reusing the four semantic tokens — the redesign wants CPU blue,
-    /// memory purple, GPU pink as *data* colors, with accent reserved
-    /// strictly for actions.
-    public static let paper = Theme(
-        id: "builtin.paper",
-        name: "Paper",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#FFFFFF"),
-        surface: ThemeColor(hex: "#F6F8FA"),
-        surfaceElevated: ThemeColor(hex: "#EAEEF2"),
-        textPrimary: ThemeColor(hex: "#1F2328"),
-        textSecondary: ThemeColor(hex: "#59636E"),
-        textTertiary: ThemeColor(hex: "#8B949E"),
-        accent: ThemeColor(hex: "#0969DA"),
-        success: ThemeColor(hex: "#1A7F37"),
-        warning: ThemeColor(hex: "#9A6700"),
-        danger: ThemeColor(hex: "#CF222E"),
-        chartGrid: ThemeColor(hex: "#000000", opacity: 0.05),
-        // 8–10% fill under the line, per the handoff's chart rules.
-        chartFill: [ThemeColor(hex: "#0969DA", opacity: 0.09), ThemeColor(hex: "#0969DA", opacity: 0.0)],
-        separator: ThemeColor(hex: "#D8DEE4"),
-        metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#0969DA"),
-            "gpu.utilization_percent": ThemeColor(hex: "#BF3989"),
-            "memory.used_bytes": ThemeColor(hex: "#8250DF"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#57606A"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#1A7F37"),
-            "thermal.soc_temp_c": ThemeColor(hex: "#D1242F"),
-        ],
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 8,
-        density: .comfortable,
-        chartStyle: .area,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 36,
-        useMaterialBackground: false,
-        materialStyle: .contentBackground,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
     /// One Dark — direction 1b of the exploration round: Atom's One Dark
-    /// palette, fixed-dark, blue accent as the only chrome color.
+    /// palette (its light half follows One Light), blue accent as the only
+    /// chrome color.
     public static let oneDark = Theme(
         id: "builtin.onedark",
         name: "One Dark",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#282C34"),
-        surface: ThemeColor(hex: "#2F343E"),
-        surfaceElevated: ThemeColor(hex: "#3A404C"),
-        textPrimary: ThemeColor(hex: "#D7DAE0"),
-        textSecondary: ThemeColor(hex: "#9DA5B4"),
-        textTertiary: ThemeColor(hex: "#6B7382"),
-        accent: ThemeColor(hex: "#61AFEF"),
-        success: ThemeColor(hex: "#98C379"),
-        warning: ThemeColor(hex: "#E5C07B"),
-        danger: ThemeColor(hex: "#E06C75"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.05),
-        chartFill: [ThemeColor(hex: "#61AFEF", opacity: 0.10), ThemeColor(hex: "#61AFEF", opacity: 0.0)],
-        separator: ThemeColor(hex: "#3B4048"),
+        background: ThemeColor(light: "#FAFAFA", dark: "#282C34"),
+        surface: ThemeColor(light: "#F1F1F2", dark: "#2F343E"),
+        surfaceElevated: ThemeColor(light: "#E7E8EA", dark: "#3A404C"),
+        textPrimary: ThemeColor(light: "#383A42", dark: "#D7DAE0"),
+        textSecondary: ThemeColor(light: "#5D626E", dark: "#9DA5B4"),
+        textTertiary: ThemeColor(light: "#8B909B", dark: "#6B7382"),
+        accent: ThemeColor(light: "#2864C8", dark: "#61AFEF"),
+        success: ThemeColor(light: "#357034", dark: "#98C379"),
+        warning: ThemeColor(light: "#875803", dark: "#E5C07B"),
+        danger: ThemeColor(light: "#B93340", dark: "#E06C75"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.05),
+        chartFill: [
+            ThemeColor(light: "#2864C8", dark: "#61AFEF", opacity: 0.10),
+            ThemeColor(light: "#2864C8", dark: "#61AFEF", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#DCDDE0", dark: "#3B4048"),
         metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#61AFEF"),
-            "gpu.utilization_percent": ThemeColor(hex: "#56B6C2"),
-            "memory.used_bytes": ThemeColor(hex: "#C678DD"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#ABB2BF"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#98C379"),
-            "thermal.soc_temp_c": ThemeColor(hex: "#E06C75"),
+            "cpu.total_percent": ThemeColor(light: "#2864C8", dark: "#61AFEF"),
+            "gpu.utilization_percent": ThemeColor(light: "#0A6C80", dark: "#56B6C2"),
+            "memory.used_bytes": ThemeColor(light: "#8E34A5", dark: "#C678DD"),
+            "disk.read_bytes_per_sec": ThemeColor(light: "#696E79", dark: "#ABB2BF"),
+            "network.rx_bytes_per_sec": ThemeColor(light: "#357034", dark: "#98C379"),
+            "thermal.soc_temp_c": ThemeColor(light: "#B93340", dark: "#E06C75"),
         ],
         fontFamily: .system,
         barFontSize: 11,
@@ -890,31 +776,35 @@ extension Theme {
 
     /// Ivory — direction 1c of the exploration round, and the most
     /// Claude-like of the three: warm paper neutrals, terracotta accent,
-    /// muted dusty metric hues. Fixed-light.
+    /// muted dusty metric hues. The dark half keeps the same warmth on
+    /// charcoal, with the terracotta lifted a step for legibility.
     public static let ivory = Theme(
         id: "builtin.ivory",
         name: "Ivory",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#FAF9F5"),
-        surface: ThemeColor(hex: "#F0EEE6"),
-        surfaceElevated: ThemeColor(hex: "#E6E3D8"),
-        textPrimary: ThemeColor(hex: "#3D3D3A"),
-        textSecondary: ThemeColor(hex: "#73726C"),
-        textTertiary: ThemeColor(hex: "#A3A29A"),
-        accent: ThemeColor(hex: "#C96442"),
-        success: ThemeColor(hex: "#6A8F5F"),
-        warning: ThemeColor(hex: "#A8742F"),
-        danger: ThemeColor(hex: "#BF4D43"),
-        chartGrid: ThemeColor(hex: "#000000", opacity: 0.05),
-        chartFill: [ThemeColor(hex: "#5F7DA8", opacity: 0.09), ThemeColor(hex: "#5F7DA8", opacity: 0.0)],
-        separator: ThemeColor(hex: "#E4E2D8"),
+        background: ThemeColor(light: "#FAF9F5", dark: "#262624"),
+        surface: ThemeColor(light: "#F0EEE6", dark: "#302F2C"),
+        surfaceElevated: ThemeColor(light: "#E6E3D8", dark: "#3B3A36"),
+        textPrimary: ThemeColor(light: "#3D3D3A", dark: "#ECEAE2"),
+        textSecondary: ThemeColor(light: "#73726C", dark: "#B3B0A5"),
+        textTertiary: ThemeColor(light: "#A3A29A", dark: "#817E74"),
+        accent: ThemeColor(light: "#C96442", dark: "#D97757"),
+        success: ThemeColor(light: "#6A8F5F", dark: "#8FB284"),
+        warning: ThemeColor(light: "#A8742F", dark: "#D3A458"),
+        danger: ThemeColor(light: "#BF4D43", dark: "#E68E82"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.05),
+        chartFill: [
+            ThemeColor(light: "#5F7DA8", dark: "#8BA7CE", opacity: 0.09),
+            ThemeColor(light: "#5F7DA8", dark: "#8BA7CE", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#E4E2D8", dark: "#3E3D38"),
         metricColors: [
-            "cpu.total_percent": ThemeColor(hex: "#5F7DA8"),
-            "gpu.utilization_percent": ThemeColor(hex: "#A86F8E"),
-            "memory.used_bytes": ThemeColor(hex: "#8A6FA8"),
-            "disk.read_bytes_per_sec": ThemeColor(hex: "#8A8778"),
-            "network.rx_bytes_per_sec": ThemeColor(hex: "#6A8F5F"),
-            "thermal.soc_temp_c": ThemeColor(hex: "#BF6A4D"),
+            "cpu.total_percent": ThemeColor(light: "#5F7DA8", dark: "#8BA7CE"),
+            "gpu.utilization_percent": ThemeColor(light: "#A86F8E", dark: "#C393AF"),
+            "memory.used_bytes": ThemeColor(light: "#8A6FA8", dark: "#AF94CC"),
+            "disk.read_bytes_per_sec": ThemeColor(light: "#8A8778", dark: "#A6A392"),
+            "network.rx_bytes_per_sec": ThemeColor(light: "#6A8F5F", dark: "#8FB284"),
+            "thermal.soc_temp_c": ThemeColor(light: "#BF6A4D", dark: "#D98E70"),
         ],
         fontFamily: .system,
         barFontSize: 11,
@@ -932,179 +822,35 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Nord — IDE-inspired.
-    public static let nord = Theme(
-        id: "builtin.nord",
-        name: "Nord",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#2E3440"),
-        surface: ThemeColor(hex: "#3B4252"),
-        surfaceElevated: ThemeColor(hex: "#434C5E"),
-        textPrimary: ThemeColor(hex: "#ECEFF4"),
-        textSecondary: ThemeColor(hex: "#D8DEE9"),
-        textTertiary: ThemeColor(hex: "#7B88A1"),
-        accent: ThemeColor(hex: "#88C0D0"),
-        success: ThemeColor(hex: "#A3BE8C"),
-        warning: ThemeColor(hex: "#EBCB8B"),
-        danger: ThemeColor(hex: "#BF616A"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        chartFill: [ThemeColor(hex: "#88C0D0", opacity: 0.35), ThemeColor(hex: "#88C0D0", opacity: 0.0)],
-        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#88C0D0"), success: ThemeColor(hex: "#A3BE8C"),
-            warning: ThemeColor(hex: "#EBCB8B"), danger: ThemeColor(hex: "#BF616A")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .area,
-        chartLineWidth: 1.0,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .menu,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// Dracula — IDE-inspired.
-    public static let dracula = Theme(
-        id: "builtin.dracula",
-        name: "Dracula",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#282A36"),
-        surface: ThemeColor(hex: "#343746"),
-        surfaceElevated: ThemeColor(hex: "#3D4052"),
-        textPrimary: ThemeColor(hex: "#F8F8F2"),
-        textSecondary: ThemeColor(hex: "#C7C9D1"),
-        textTertiary: ThemeColor(hex: "#6272A4"),
-        accent: ThemeColor(hex: "#BD93F9"),
-        success: ThemeColor(hex: "#50FA7B"),
-        warning: ThemeColor(hex: "#F1FA8C"),
-        danger: ThemeColor(hex: "#FF5555"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        chartFill: [ThemeColor(hex: "#BD93F9", opacity: 0.35), ThemeColor(hex: "#BD93F9", opacity: 0.0)],
-        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#BD93F9"), success: ThemeColor(hex: "#50FA7B"),
-            warning: ThemeColor(hex: "#F1FA8C"), danger: ThemeColor(hex: "#FF5555")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .area,
-        chartLineWidth: 1.0,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .menu,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// Solarized Dark — IDE-inspired.
-    public static let solarizedDark = Theme(
-        id: "builtin.solarizedDark",
-        name: "Solarized Dark",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#002B36"),
-        surface: ThemeColor(hex: "#073642"),
-        surfaceElevated: ThemeColor(hex: "#0A4A58"),
-        textPrimary: ThemeColor(hex: "#EEE8D5"),
-        textSecondary: ThemeColor(hex: "#93A1A1"),
-        textTertiary: ThemeColor(hex: "#586E75"),
-        accent: ThemeColor(hex: "#2AA198"),
-        success: ThemeColor(hex: "#859900"),
-        warning: ThemeColor(hex: "#B58900"),
-        danger: ThemeColor(hex: "#DC322F"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        chartFill: [ThemeColor(hex: "#2AA198", opacity: 0.35), ThemeColor(hex: "#2AA198", opacity: 0.0)],
-        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#2AA198"), success: ThemeColor(hex: "#859900"),
-            warning: ThemeColor(hex: "#B58900"), danger: ThemeColor(hex: "#DC322F")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .area,
-        chartLineWidth: 1.0,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .menu,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// Tokyo Night — IDE-inspired.
+    /// Tokyo Night — IDE-inspired; the light half follows Tokyo Night Day,
+    /// darkened where the published palette sits under AA on paper.
     public static let tokyoNight = Theme(
         id: "builtin.tokyoNight",
         name: "Tokyo Night",
         isBuiltIn: true,
-        background: ThemeColor(hex: "#1A1B26"),
-        surface: ThemeColor(hex: "#24283B"),
-        surfaceElevated: ThemeColor(hex: "#2C3149"),
-        textPrimary: ThemeColor(hex: "#C0CAF5"),
-        textSecondary: ThemeColor(hex: "#A9B1D6"),
-        textTertiary: ThemeColor(hex: "#565F89"),
-        accent: ThemeColor(hex: "#7AA2F7"),
-        success: ThemeColor(hex: "#9ECE6A"),
-        warning: ThemeColor(hex: "#E0AF68"),
-        danger: ThemeColor(hex: "#F7768E"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        chartFill: [ThemeColor(hex: "#7AA2F7", opacity: 0.35), ThemeColor(hex: "#7AA2F7", opacity: 0.0)],
-        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
+        background: ThemeColor(light: "#E1E2E7", dark: "#1A1B26"),
+        surface: ThemeColor(light: "#D6D8E3", dark: "#24283B"),
+        surfaceElevated: ThemeColor(light: "#CBCEDD", dark: "#2C3149"),
+        textPrimary: ThemeColor(light: "#343B58", dark: "#C0CAF5"),
+        textSecondary: ThemeColor(light: "#4E5573", dark: "#A9B1D6"),
+        textTertiary: ThemeColor(light: "#7A7F9E", dark: "#565F89"),
+        accent: ThemeColor(light: "#28479E", dark: "#7AA2F7"),
+        success: ThemeColor(light: "#42591E", dark: "#9ECE6A"),
+        warning: ThemeColor(light: "#775117", dark: "#E0AF68"),
+        danger: ThemeColor(light: "#9F2745", dark: "#F7768E"),
+        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
+        // Same alpha-byte trick as Slate: the shared opacity stays at the
+        // shipped dark 0.35, the light half's #…4D byte tames it to ≈ 0.10.
+        chartFill: [
+            ThemeColor(light: "#28479E4D", dark: "#7AA2F7", opacity: 0.35),
+            ThemeColor(light: "#28479E", dark: "#7AA2F7", opacity: 0.0),
+        ],
+        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
         metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#7AA2F7"), success: ThemeColor(hex: "#9ECE6A"),
-            warning: ThemeColor(hex: "#E0AF68"), danger: ThemeColor(hex: "#F7768E")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .area,
-        chartLineWidth: 1.0,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .menu,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// Monokai — IDE-inspired.
-    public static let monokai = Theme(
-        id: "builtin.monokai",
-        name: "Monokai",
-        isBuiltIn: true,
-        background: ThemeColor(hex: "#272822"),
-        surface: ThemeColor(hex: "#3E3D32"),
-        surfaceElevated: ThemeColor(hex: "#49483E"),
-        textPrimary: ThemeColor(hex: "#F8F8F2"),
-        textSecondary: ThemeColor(hex: "#A9A99C"),
-        textTertiary: ThemeColor(hex: "#75715E"),
-        accent: ThemeColor(hex: "#FD971F"),
-        success: ThemeColor(hex: "#A6E22E"),
-        warning: ThemeColor(hex: "#E6DB74"),
-        danger: ThemeColor(hex: "#F92672"),
-        chartGrid: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        chartFill: [ThemeColor(hex: "#FD971F", opacity: 0.35), ThemeColor(hex: "#FD971F", opacity: 0.0)],
-        separator: ThemeColor(hex: "#FFFFFF", opacity: 0.08),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(hex: "#FD971F"), success: ThemeColor(hex: "#A6E22E"),
-            warning: ThemeColor(hex: "#E6DB74"), danger: ThemeColor(hex: "#F92672")
+            accent: ThemeColor(light: "#28479E", dark: "#7AA2F7"),
+            success: ThemeColor(light: "#42591E", dark: "#9ECE6A"),
+            warning: ThemeColor(light: "#775117", dark: "#E0AF68"),
+            danger: ThemeColor(light: "#9F2745", dark: "#F7768E")
         ),
         fontFamily: .system,
         barFontSize: 11,
@@ -1167,92 +913,6 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// GitHub — Primer's palette, adaptive (github.com light / dark dimmed-free).
-    public static let github = Theme(
-        id: "builtin.github",
-        name: "GitHub",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#FFFFFF", dark: "#0D1117"),
-        surface: ThemeColor(light: "#F6F8FA", dark: "#161B22"),
-        surfaceElevated: ThemeColor(light: "#EFF2F5", dark: "#1C2129"),
-        textPrimary: ThemeColor(light: "#1F2328", dark: "#E6EDF3"),
-        textSecondary: ThemeColor(light: "#59636E", dark: "#8D96A0"),
-        textTertiary: ThemeColor(light: "#818B98", dark: "#6E7681"),
-        accent: ThemeColor(light: "#0969DA", dark: "#58A6FF"),
-        success: ThemeColor(light: "#1A7F37", dark: "#3FB950"),
-        warning: ThemeColor(light: "#9A6700", dark: "#D29922"),
-        danger: ThemeColor(light: "#CF222E", dark: "#F85149"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
-        chartFill: [
-            ThemeColor(light: "#0969DA", dark: "#58A6FF", opacity: 0.18),
-            ThemeColor(light: "#0969DA", dark: "#58A6FF", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#D1D9E0", dark: "#30363D"),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#0969DA", dark: "#58A6FF"),
-            success: ThemeColor(light: "#1A7F37", dark: "#3FB950"),
-            warning: ThemeColor(light: "#9A6700", dark: "#D29922"),
-            danger: ThemeColor(light: "#CF222E", dark: "#F85149")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .comfortable,
-        chartStyle: .area,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 36,
-        useMaterialBackground: false,
-        materialStyle: .popover,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// Xcode — the editor's default light/dark chrome and syntax accents.
-    public static let xcode = Theme(
-        id: "builtin.xcode",
-        name: "Xcode",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#FFFFFF", dark: "#1F1F24"),
-        surface: ThemeColor(light: "#F5F5F5", dark: "#292A30"),
-        surfaceElevated: ThemeColor(light: "#ECECEC", dark: "#313239"),
-        textPrimary: ThemeColor(light: "#262626", dark: "#DFDFE0"),
-        textSecondary: ThemeColor(light: "#6C6C6C", dark: "#A0A0A6"),
-        textTertiary: ThemeColor(light: "#9B9B9B", dark: "#6C6C73"),
-        accent: ThemeColor(light: "#0F68A0", dark: "#4FB0CC"),
-        success: ThemeColor(light: "#1C464A", dark: "#78C2B3"),
-        warning: ThemeColor(light: "#78492A", dark: "#FD8F3F"),
-        danger: ThemeColor(light: "#AD3DA4", dark: "#FC5FA3"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
-        chartFill: [
-            ThemeColor(light: "#0F68A0", dark: "#4FB0CC", opacity: 0.2),
-            ThemeColor(light: "#0F68A0", dark: "#4FB0CC", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.09),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#0F68A0", dark: "#4FB0CC"),
-            success: ThemeColor(light: "#1C464A", dark: "#78C2B3"),
-            warning: ThemeColor(light: "#78492A", dark: "#FD8F3F"),
-            danger: ThemeColor(light: "#AD3DA4", dark: "#FC5FA3")
-        ),
-        fontFamily: .systemMono,
-        barFontSize: 11,
-        barFontWeight: .regular,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .line,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .contentBackground,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
     /// Translucent — near-transparent surfaces over the popover material, so
     /// the dropdown reads as frosted glass over whatever is behind it.
     /// Everything structural is monochrome at low opacity; only semantic
@@ -1299,67 +959,19 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Liquid Glass — the heaviest glass treatment: ultra-thin material, a
-    /// bare wash of tint, large continuous radii, and a whisper of glow on
-    /// charts. Where Translucent is frosted, this is wet.
-    public static let liquidGlass = Theme(
-        id: "builtin.liquidGlass",
-        name: "Liquid Glass",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#FFFFFF", dark: "#101014", opacity: 0.2),
-        surface: ThemeColor(light: "#FFFFFF", dark: "#FFFFFF", opacity: 0.1),
-        surfaceElevated: ThemeColor(light: "#FFFFFF", dark: "#FFFFFF", opacity: 0.14),
-        textPrimary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.9),
-        textSecondary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.55),
-        textTertiary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.3),
-        accent: ThemeColor(light: "#0A84FF", dark: "#64D2FF"),
-        success: ThemeColor(light: "#30D158", dark: "#66E58C"),
-        warning: ThemeColor(light: "#FF9F0A", dark: "#FFC53F"),
-        danger: ThemeColor(light: "#FF453A", dark: "#FF7A70"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.05),
-        chartFill: [
-            ThemeColor(light: "#0A84FF", dark: "#64D2FF", opacity: 0.22),
-            ThemeColor(light: "#0A84FF", dark: "#64D2FF", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.12),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#0A84FF", dark: "#64D2FF"),
-            success: ThemeColor(light: "#30D158", dark: "#66E58C"),
-            warning: ThemeColor(light: "#FF9F0A", dark: "#FFC53F"),
-            danger: ThemeColor(light: "#FF453A", dark: "#FF7A70")
-        ),
-        fontFamily: .rounded,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 14,
-        density: .comfortable,
-        chartStyle: .area,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 36,
-        useMaterialBackground: true,
-        materialStyle: .hudWindow,
-        glowIntensity: 0.25,
-        scanlineOverlay: false
-    )
-
-    /// All built-in presets, in display order: the adaptive defaults first
-    /// (minimal → native → glass), then the redesign exploration trio
-    /// (Paper / One Dark / Ivory — see the design handoff), then the
-    /// remaining fixed-appearance and IDE/brand-inspired sets.
+    /// All built-in presets, in display order. Six themes, every one with a
+    /// real light/dark pair: the adaptive natives first (System, then the
+    /// warm Ivory), the glass treatment, then the three editor-heritage
+    /// palettes (One Dark, Slate, Tokyo Night).
     public static let builtInPresets: [Theme] = [
-        .notion, .system, .translucent, .liquidGlass,
-        .paper, .oneDark, .ivory,
-        .slate,
-        .github, .xcode, .nord, .dracula, .solarizedDark, .tokyoNight, .monokai,
+        .system, .ivory, .translucent, .oneDark, .slate, .tokyoNight,
     ]
 
     /// The single source of truth for "which theme when the user hasn't chosen
     /// one, or chose one that no longer exists". Call sites use this rather than
     /// naming a preset directly, so changing the default is a one-line edit
     /// here instead of a hunt through every `?? .slate` fallback.
-    public static let defaultTheme: Theme = .notion
+    public static let defaultTheme: Theme = .system
 }
 
 // MARK: - Typed metric-color lookup

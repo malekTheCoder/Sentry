@@ -949,9 +949,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the colours are: this is where `NSApp.effectiveAppearance` means
         // something. A theme with a light/dark pair therefore reaches the
         // wrist already showing the half this Mac is showing.
+        // The user's Light/Dark pin (if any) beats what this Mac's windows
+        // happen to be showing; `.auto` keeps the pre-existing behavior.
+        let relayedAppearance = settings.appearanceMode.fixedAppearance
+            ?? (NSApp.effectiveAppearance.sentryIsDark ? .dark : .light)
         coordinator.themePalette = RelayedPalette(
             theme: theme,
-            appearance: NSApp.effectiveAppearance.sentryIsDark ? .dark : .light
+            appearance: relayedAppearance
         )
 
         // Dashboard reads both live off the view model rather than a value
@@ -973,6 +977,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // The window chrome (nav bar, its hairline, the base fill behind
         // the titlebar) themes itself off this — see `MainWindowState`.
         mainWindowState.theme = theme
+        mainWindowState.appearanceMode = settings.appearanceMode
+
+        // The dropdown popover is its own window, outside the main window's
+        // `.preferredColorScheme` reach — pin its NSAppearance directly.
+        // The menu bar *item* is deliberately left alone: it follows the
+        // menu bar's own appearance (wallpaper-driven), not the app's.
+        switch settings.appearanceMode {
+        case .auto: popover.appearance = nil
+        case .light: popover.appearance = NSAppearance(named: .aqua)
+        case .dark: popover.appearance = NSAppearance(named: .darkAqua)
+        }
 
         // Remote (off-LAN) phone access: open/close the TLS-PSK listener
         // to match settings. `enableRemote` is idempotent per config, so
