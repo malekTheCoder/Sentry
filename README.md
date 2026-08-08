@@ -34,12 +34,19 @@ goes to your phone and your watch, never to a server.
 
 Requires macOS 14 (Sonoma) or later, Apple Silicon or Intel.
 
-> **First launch:** if macOS reports that it "cannot verify" the app, open
-> **System Settings ▸ Privacy & Security**, scroll down, and click
-> **Open Anyway** next to Sentry. This happens on builds that have not yet
-> been notarized by Apple; each release's notes state its notarization
-> status. Sentry ships outside the Mac App Store by necessity, not choice —
-> it reads low-level power and thermal interfaces (`libIOReport`,
+> **First launch:** on builds that have not yet been notarized by Apple
+> (each release's notes state its status), macOS will refuse to open the
+> download with *"Apple could not verify … is free of malware"* and offer
+> only **Move to Trash** or **Done**. The app is fine — approve it like
+> this:
+>
+> 1. Click **Done** (not Move to Trash).
+> 2. Open **System Settings ▸ Privacy & Security** and scroll to the
+>    **Security** section, where the blocked file is listed.
+> 3. Click **Open Anyway**, authenticate, and open the file again.
+>
+> Sentry ships outside the Mac App Store by necessity, not choice — it
+> reads low-level power and thermal interfaces (`libIOReport`,
 > `IOHIDEventSystemClient`) that do not exist inside the App Sandbox the
 > App Store requires.
 
