@@ -123,8 +123,10 @@ preflight() {
 
   if (( ! SKIP_NOTARIZE )); then
     # There is no `notarytool list-credentials`; the cheapest real check is a
-    # request that needs the stored credential and returns fast.
-    if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" --limit 1 >/dev/null 2>&1; then
+    # request that needs the stored credential and returns fast. No `--limit`:
+    # Xcode 26 beta's notarytool doesn't have the flag (observed 2026-08-08),
+    # and plain `history` is just as fast a validity probe.
+    if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
       die "notarytool profile '$NOTARY_PROFILE' is missing or invalid. See the header of this script for 'notarytool store-credentials'."
     fi
   fi
