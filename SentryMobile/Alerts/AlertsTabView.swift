@@ -148,6 +148,19 @@ struct AlertsTabView: View {
     /// reason once, up front; this row's hint restates it locally too, since
     /// a toggle someone just tapped (and felt not move) is the moment
     /// they're most likely to look for an explanation.
+    ///
+    /// **And therefore no haptic, which is the correct answer rather than an
+    /// omission.** Arming and disarming a rule is `SentryHaptic.begin`/`.end`
+    /// — that case's own doc comment names "arming a rule" as an example. But
+    /// the feedback in this app is attached to state that changed, and this
+    /// switch cannot change: it is `.disabled(true)` because there is no
+    /// channel to carry the change to the Mac. A buzz here would be the
+    /// haptic edition of the same lie the disabled state exists to stop —
+    /// telling the user's thumb that something was armed when nothing was.
+    /// The day a real round trip exists, this row wants the same two-beat
+    /// treatment `SleepStatusCard` uses (`.begin`/`.end` on the tap,
+    /// `.confirmed`/`.rejected` on the Mac's reply), not a haptic on the
+    /// local `@State` flip.
     private func ruleRow(_ rule: Binding<AlertRule>) -> some View {
         // A `Toggle` has a fixed ~51pt intrinsic width that never shrinks, so
         // at accessibility sizes the rule name and its condition summary get

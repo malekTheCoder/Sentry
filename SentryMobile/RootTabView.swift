@@ -65,26 +65,57 @@ struct RootTabView: View {
 
     @Environment(\.colorScheme) private var systemColorScheme
 
+    /// The four tabs, as a value the `TabView` below binds its selection to.
+    ///
+    /// **This exists for the haptic, and it is worth saying why that is a
+    /// good enough reason.** A `TabView` with no `selection:` binding keeps
+    /// its current tab entirely inside SwiftUI, where nothing in this file
+    /// can observe it — and the tab bar is the single most-used control in
+    /// the app, exactly the "moved between options in a set" that
+    /// `SentryHaptic.selection` names first. The alternative was hanging a
+    /// `.haptic(.selection, onTapOf:)` off each `tabItem`, which is worse in
+    /// the two ways `View.haptic(_:on:)`'s doc comment predicts: tapping the
+    /// tab you are already on would buzz for a no-op, and a switch made by
+    /// VoiceOver would feel like nothing. Binding the selection costs one
+    /// `@State` and four `.tag`s and gets both right.
+    ///
+    /// Not persisted: the app opens on Dashboard every launch, which is the
+    /// behaviour the unbound `TabView` already had, and restoring a tab is a
+    /// separate product decision this change has no business making.
+    @State private var selectedTab: Tab = .dashboard
+
+    private enum Tab: Hashable { case dashboard, history, alerts, settings }
+
     private var palette: ThemePalette {
         let theme = Theme.builtInPresets.first { $0.id == selectedThemeID } ?? .defaultTheme
         return ThemePalette(theme: theme, scheme: systemColorScheme)
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             DashboardTabView()
                 .tabItem { Label("Dashboard", systemImage: "gauge.with.dots.needle.50percent") }
+                .tag(Tab.dashboard)
 
             HistoryTabView()
                 .tabItem { Label("History", systemImage: "chart.xyaxis.line") }
+                .tag(Tab.history)
 
             AlertsTabView()
                 .tabItem { Label("Alerts", systemImage: "bell.badge") }
+                .tag(Tab.alerts)
 
             SettingsTabView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(Tab.settings)
         }
         .tint(palette.textPrimary)
+        // The tab bar is a picker over four options, so it gets the same
+        // feedback the module chips and the range selector do — see
+        // `SentryHaptic.selection`. Attached to the whole `TabView`, not to
+        // any one item, for the reason `PerMetricHistoryBrowser` attaches its
+        // copy to the chip row rather than to each chip.
+        .haptic(.selection, on: selectedTab)
         .environment(\.themePalette, palette)
         .onAppear {
             applyTabBarChrome()

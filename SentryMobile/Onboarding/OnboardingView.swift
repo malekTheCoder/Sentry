@@ -62,6 +62,20 @@ struct OnboardingView: View {
 
     @State private var flow = WalkthroughFlow<PhoneWalkthroughStep>()
 
+    /// Bumped by Skip and by Get Started, purely as a haptic trigger.
+    ///
+    /// **Why the two ways out share one counter, and why they need one at
+    /// all.** They share it because they mean the same thing — the
+    /// walkthrough is over — and this app's rule is that two controls
+    /// meaning the same thing feel the same; `WalkthroughGate.completedFlag
+    /// (after:)` already encodes that they agree, and giving Skip its own
+    /// flavour would contradict it by feel. They need a counter because the
+    /// state that records the outcome (`hasCompletedOnboarding`) belongs to
+    /// `SentryMobileApp`, one hierarchy up and behind a `.fullScreenCover`
+    /// — this view reports *how* the user left and owns nothing that
+    /// changes when they do.
+    @State private var finishTaps = 0
+
     private var step: PhoneWalkthroughStep { flow.step }
 
     var body: some View {
@@ -72,6 +86,21 @@ struct OnboardingView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .themedScreenBackground(palette)
+        // Next, Back, and the dot row all do one thing — move between the
+        // seven steps — so they share `.selection`, the same case the tab bar
+        // and every picker in the app use. One modifier on the flow's current
+        // step rather than three on three buttons is what guarantees that:
+        // it cannot fire twice for one move, and tapping the dot for the step
+        // you are already on changes nothing and so produces nothing.
+        //
+        // Next is a big accent-filled primary button and a dot is 7pt of
+        // outline, and they still feel identical, because the rule is what
+        // happened rather than what was pressed.
+        .haptic(.selection, on: step)
+        // Leaving the walkthrough is `.tap` — dismissing something, which is
+        // what that case is for. Not `.confirmed`: nothing was sent anywhere
+        // and nothing agreed.
+        .haptic(.tap, onTapOf: finishTaps)
     }
 
     // MARK: - Skip
@@ -79,7 +108,10 @@ struct OnboardingView: View {
     private var topBar: some View {
         HStack {
             Spacer(minLength: 0)
-            Button("Skip") { onFinish(.skipped) }
+            Button("Skip") {
+                finishTaps += 1
+                onFinish(.skipped)
+            }
                 .scaledFont(palette, size: 13, weight: .medium)
                 .foregroundStyle(palette.textSecondary)
                 .accessibilityLabel("Skip the walkthrough")
@@ -198,6 +230,7 @@ struct OnboardingView: View {
 
                 Button {
                     if flow.isLast {
+                        finishTaps += 1
                         onFinish(.finished)
                     } else {
                         withAnimation(ThemePalette.motion(reduceMotion: reduceMotion)) {
@@ -414,6 +447,15 @@ private struct ConnectionStatusCard: View {
         .padding(palette.spacingBlock)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(palette)
+        // The same `.tap` the Dashboard's Retry gets, because it is the same
+        // action — `retryConnection()`, reached from a second place. Keyed
+        // off `isRetrying` turning `true`, which happens synchronously in
+        // the button's action, rather than off the search's outcome: a
+        // connection that comes up (or doesn't) seconds later is not
+        // something to buzz about, for the reason `DashboardTabView
+        // .retryTaps` sets out at length. The `when:` clause is what keeps
+        // the search's *end* silent.
+        .haptic(.tap, on: isRetrying) { $0 }
     }
 
     private var isConnected: Bool {

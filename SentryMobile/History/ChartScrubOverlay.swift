@@ -16,6 +16,37 @@ import Charts
 /// 10pt is the same order as UIKit's own scroll slop, which is what makes the
 /// hand-off feel like the system's rather than like a fight.
 ///
+/// **Why scrubbing produces no haptic, decided rather than forgotten.**
+/// `SentryHaptic`'s header (`SentryMobile/Theme/Haptics.swift`) rules out
+/// anything continuous and then leaves this one case open: "chart scrubbing
+/// is the one place a *very* light tick is arguably right, and it is handled
+/// separately at that call site with its own throttling." This is that call
+/// site, and the answer is no — because the only throttle that would be
+/// principled here does not actually thin anything out.
+///
+/// The honest unit for a scrub tick is one per *data point crossed*, not one
+/// per touch-move event; a tick per event is a function of how fast a finger
+/// moves and means nothing. But count the points. `BatteryHealthTrendChart`
+/// draws up to ninety daily records across a plot roughly 330pt wide — a
+/// point every 3.7pt. `MobileActivityChart` draws a sixty-sample ring in
+/// about the same width — a point every 5.5pt. A finger crossing a plot in
+/// half a second would cross sixty to ninety points, so "one tick per point"
+/// *is* a continuous vibration, arriving at 120–180 Hz. That is precisely
+/// the "unpleasant within about two seconds" outcome the header rules out,
+/// reached by way of the throttle that was supposed to prevent it. Coarser
+/// throttles — every nth point, or a minimum interval — were rejected for
+/// the reason this codebase rejects most "make it fit" fixes: the tick would
+/// then correspond to nothing the reader can see, and a haptic that
+/// corresponds to nothing is noise.
+///
+/// Firing only at the edges of a gap (entering or leaving a stretch with no
+/// records) was the close runner-up: those are genuinely rare and discrete.
+/// It was rejected because a gap edge is not something the user *did* — it
+/// is a property of the data their finger happened to slide over — and
+/// because it would need a tenth meaning the vocabulary does not have. The
+/// readout already says "no reading for this day" in words, at the finger,
+/// which is the right channel for it.
+///
 /// **Why there is a macOS copy of this file.** See
 /// `Sentry/Dashboard/ChartScrubOverlay.swift` — the gesture tuning above and
 /// the Dynamic Type handling below are exactly the parts that differ per
