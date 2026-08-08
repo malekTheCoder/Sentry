@@ -15,8 +15,8 @@ configs:
   Debug: debug
   Release: release
 
-# Automatic signing everywhere with the paid Individual team (Aniketh
-# Bandlamudi, anikethdb1@gmail.com). Frameworks, CLI, and test bundles all sign
+# Automatic signing everywhere with the maintainers' Apple Developer team.
+# Frameworks, CLI, and test bundles all sign
 # with Apple Development; no target needs a provisioning profile unless it
 # carries restricted entitlements. The Release-configuration strictness that
 # notarization demands lives in the `DeveloperIDSigned` target template below
