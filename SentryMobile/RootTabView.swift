@@ -36,6 +36,16 @@ import SentryKit
 /// symbol elsewhere is a bigger footprint than this task's theme-plumbing
 /// mandate calls for. The literal must simply match in both places; if it
 /// ever drifts, the fix is one file, not an architectural one.
+///
+/// **The demo-data disclosure lives here for the same reason the theme
+/// does: this is the one view that is an ancestor of all four tabs.** See
+/// `Disclosure/DemoDataBanner.swift` for the full argument, and
+/// `SentryKit`'s `DemoDataDisclosure` for the decision and the wording. The
+/// short version: the app used to disclose fabricated readings in two tabs,
+/// in two different wordings, in two scrollable positions, and not at all in
+/// the other two. Mounting it as a `.safeAreaInset(edge: .top)` on the
+/// `TabView` makes it un-scrollable, present on every tab including any tab
+/// added later, and impossible to word two ways.
 struct RootTabView: View {
     /// Persisted locally on this phone only — see `SettingsTabView`'s theme
     /// section doc comment for why this is deliberately not synced to the
@@ -65,25 +75,104 @@ struct RootTabView: View {
 
     @Environment(\.colorScheme) private var systemColorScheme
 
+    /// The live data-source state the disclosure keys off. `@EnvironmentObject`
+    /// rather than `AppDataSource.shared` read directly, because this view
+    /// has to *re-render* when `transport` swaps from `MockDataSource` to a
+    /// real `LocalSyncClient` — the banner disappearing on that exact frame
+    /// is the honesty obligation running the other way (see
+    /// `DemoDataDisclosure.prominence(isShowingDemoData:isQuieted:)`), and a
+    /// plain singleton read would not observe it.
+    @EnvironmentObject private var appDataSource: AppDataSource
+
+    /// Whether the user has quieted the banner down to its permanent marker.
+    ///
+    /// **Deliberately `@State`, not `@AppStorage`.** Every other one-time
+    /// flag in this target is persisted (`hasCompletedOnboarding`,
+    /// `selectedThemeID`, `remoteSync.*`) and this one is the exception on
+    /// purpose: a quieted-forever disclosure is how an app ends up shipping
+    /// fabricated readings with nothing on screen admitting it, one launch
+    /// after the user tapped a control they have long since forgotten. Plain
+    /// view state means the full banner returns on the next launch, without
+    /// needing any code to remember to reset anything. Quieting still leaves
+    /// `.marker` behind within the session — `DemoDataDisclosure.Prominence`
+    /// has no reachable `hidden` case while demo data is on screen, so there
+    /// is no state in which the app is silently faking.
+    @State private var isDemoBannerQuieted = false
+
+    /// Written by the banner's "How to connect" action. Re-arms the *existing*
+    /// `fullScreenCover` in `SentryMobileApp` rather than presenting a second
+    /// copy of `OnboardingView` from here — the same mechanism, and the same
+    /// reasoning, as `SettingsTabView.walkthroughRow` (see its doc comment on
+    /// why there is exactly one presentation of that flow). The walkthrough's
+    /// pairing step carries `ConnectionStatusCard`, which is the closest thing
+    /// this app has to a pairing/setup flow.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var demoProminence: DemoDataDisclosure.Prominence {
+        DemoDataDisclosure.prominence(
+            isShowingDemoData: appDataSource.isShowingDemoData,
+            isQuieted: isDemoBannerQuieted
+        )
+    }
+
     private var palette: ThemePalette {
         let theme = Theme.builtInPresets.first { $0.id == selectedThemeID } ?? .defaultTheme
         return ThemePalette(theme: theme, scheme: systemColorScheme)
     }
 
     var body: some View {
-        TabView {
-            DashboardTabView()
-                .tabItem { Label("Dashboard", systemImage: "gauge.with.dots.needle.50percent") }
+        // **A `VStack` above the `TabView`, not `.safeAreaInset(edge: .top)`
+        // on it.** The inset version was written first, on the reasoning that
+        // it would both pin the banner and tell each tab's `ScrollView` to
+        // inset its content. Only the first half turned out to be true: run
+        // in the Simulator, the banner pinned correctly but every tab's
+        // scroll view kept its full height, so the Dashboard's "Mac" title
+        // and connection line sat permanently underneath the banner with no
+        // amount of scrolling able to bring them out — a `TabView` does not
+        // propagate its own reduced safe area into the tab content. Splitting
+        // the screen physically shrinks the `TabView` instead, which no
+        // amount of SwiftUI safe-area subtlety can get wrong: the tabs simply
+        // have less room. Verified by eye on all four tabs.
+        //
+        // `spacing: 0` because the banner brings its own padding and its own
+        // hairline; a system gap would leave a stripe of window background
+        // between the disclosure and the content it is about.
+        VStack(spacing: 0) {
+            DemoDataBanner(
+                prominence: demoProminence,
+                onQuiet: { isDemoBannerQuieted = true },
+                onExpand: { isDemoBannerQuieted = false },
+                onRetry: { Task { await appDataSource.retryConnection() } },
+                onSetUp: { hasCompletedOnboarding = false }
+            )
+            .environment(\.themePalette, palette)
+            // The most important thing on the screen, so it is announced
+            // first regardless of where it sits in the layout tree. Higher
+            // sort priority is traversed earlier; nothing else in this app
+            // sets one, so any positive value wins.
+            .accessibilitySortPriority(100)
 
-            HistoryTabView()
-                .tabItem { Label("History", systemImage: "chart.xyaxis.line") }
+            TabView {
+                DashboardTabView()
+                    .tabItem { Label("Dashboard", systemImage: "gauge.with.dots.needle.50percent") }
 
-            AlertsTabView()
-                .tabItem { Label("Alerts", systemImage: "bell.badge") }
+                HistoryTabView()
+                    .tabItem { Label("History", systemImage: "chart.xyaxis.line") }
 
-            SettingsTabView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                AlertsTabView()
+                    .tabItem { Label("Alerts", systemImage: "bell.badge") }
+
+                SettingsTabView()
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+            }
         }
+        // The strip behind the status bar. Without this the split above
+        // leaves the window's own background showing there, which reads as a
+        // white (or black) notch bar sitting on top of a themed app.
+        .background(palette.background.ignoresSafeArea())
+        .animation(ThemePalette.motion(reduceMotion: reduceMotion), value: demoProminence)
         .tint(palette.textPrimary)
         .environment(\.themePalette, palette)
         .onAppear {
