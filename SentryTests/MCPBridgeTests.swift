@@ -408,16 +408,27 @@ final class MCPEndpointPublisherTests: XCTestCase {
     /// asserts the property this whole change was designed around, which is
     /// that constructing the publisher on a machine where nobody has set
     /// command-line access up changes nothing and connects to nothing.
-    func testTheRealCompositionIsInertUntilSomebodySetsItUp() {
+    func testTheRealCompositionIsInertUntilSomebodySetsItUp() throws {
         let publisher = MCPEndpointPublisher(service: NullService())
 
         if publisher.registration.isUsable {
-            // Would mean the agent really is registered on this machine. Not a
-            // failure of the code, but it invalidates the premise of the rest
-            // of this test, so it stops here loudly rather than asserting
-            // something meaningless.
-            XCTFail("this suite assumes command-line access is not set up; the agent appears to be registered")
-            return
+            // The agent really is registered on this machine, which does not
+            // invalidate the code — it invalidates this test's *premise*, so
+            // there is nothing here left to assert.
+            //
+            // **This was `XCTFail`, and that was wrong.** The condition it
+            // fires on is "the developer running the suite has installed
+            // Sentry and set up command-line access" — i.e. the machine of
+            // anyone actually dogfooding the product, and of any CI that
+            // installs the app before testing. It went red the moment a
+            // build was installed to /Applications and launched, turning a
+            // green suite red for a reason that had nothing to do with any
+            // change in the diff, and it cost two separate agents time
+            // proving it was not theirs. A precondition a test cannot
+            // control is a skip, not a failure: `XCTSkip` reports the same
+            // fact, keeps it visible in the results, and does not accuse the
+            // code of being broken.
+            throw XCTSkip("command-line access is registered on this machine, so the inert-composition premise does not hold here")
         }
 
         publisher.publishIfRegistered()
