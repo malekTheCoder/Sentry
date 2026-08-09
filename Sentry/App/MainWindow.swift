@@ -46,6 +46,73 @@ final class MainWindowState: ObservableObject {
     @Published var tab: MainTab = .dashboard
     @Published var theme: Theme = .defaultTheme
     @Published var appearanceMode: AppearanceMode = .auto
+
+    /// Height of the window's own chrome band — titlebar plus the unified
+    /// toolbar row that holds the nav pill — as AppKit actually reports it,
+    /// pushed here by `MainWindowController`. Seeded with the compiled-in
+    /// default so the very first frame, drawn before the window has been
+    /// laid out and can be measured, reserves the right space anyway.
+    ///
+    /// This is a *measurement*, not a preference: `MainWindowView` clips its
+    /// tab content to everything below this line, so if the number were
+    /// wrong in either direction the clip would land in the wrong place —
+    /// too small and scrolled content still surfaces under the traffic
+    /// lights, too large and there's a dead strip of background nothing can
+    /// ever draw into. See `mainWindowChromeInset`.
+    @Published var chromeInset: CGFloat = MainWindowView.navHeight
+}
+
+/// The height of the band at the top of the main window that the system's
+/// own chrome owns, given what AppKit reports about the window.
+///
+/// **Why this is measured rather than assumed.** The reserved band used to
+/// be a flat 52pt — "per the redesign handoff's titlebar spec" — and on the
+/// current OS that constant happens to be exactly right (a `.unified`
+/// toolbar holding a 33pt pill measures 52.0pt of chrome, confirmed at
+/// runtime). But `MainWindowView` now *clips* its tab content to the region
+/// below this line, which turns a decorative constant into a load-bearing
+/// one: the clip and the chrome have to be the same line, or the bug this
+/// was written to fix comes back a few points lower. Anything that changes
+/// the toolbar's height — a taller pill, a system metrics change, a future
+/// macOS restyling the unified titlebar — silently breaks a constant and is
+/// silently absorbed by a measurement.
+///
+/// **Why full screen is zero and not `fallback`.** In full screen macOS
+/// takes the traffic lights away and auto-hides the toolbar; there is
+/// genuinely no chrome for content to hide under, and reserving 52pt anyway
+/// would leave a permanent dead strip of background at the top of a
+/// deliberately full-bleed presentation. It is passed in rather than
+/// inferred from a zero measurement because "zero" is also what a window
+/// that hasn't been laid out yet reports, and those two cases want opposite
+/// answers.
+///
+/// **Why two candidate measurements.** `safeAreaInsets.top` is the number
+/// SwiftUI itself lays out against, so preferring it keeps the clip and the
+/// content in agreement by construction. `frame.height -
+/// contentLayoutRect.height` is the AppKit-level statement of the same fact
+/// and covers the window states where the content view hasn't been given
+/// its safe area yet. Neither is trusted blindly: a value above `maximum`
+/// means we have read a window mid-teardown or mid-transition, and
+/// reserving a fifth of the window on the strength of a bad reading would
+/// be a worse failure than falling back to the constant that has shipped
+/// all along.
+///
+/// A free function, not a method, for exactly the reason
+/// `processMonitorShouldRun` above gives: it is the whole of the decision,
+/// and it is worth testing without a window on screen.
+func mainWindowChromeInset(
+    safeAreaTop: CGFloat,
+    contentLayoutInset: CGFloat,
+    isFullScreen: Bool,
+    fallback: CGFloat,
+    maximum: CGFloat = 200
+) -> CGFloat {
+    if isFullScreen { return 0 }
+    for candidate in [safeAreaTop, contentLayoutInset]
+    where candidate.isFinite && candidate > 0 && candidate <= maximum {
+        return candidate
+    }
+    return fallback
 }
 
 /// The pure rule behind `AppDelegate.updateProcessMonitorState()`: whether
@@ -135,8 +202,9 @@ struct MainWindowView: View {
             VStack(spacing: 0) {
                 // The switcher itself lives in the window's toolbar (see
                 // `NavSwitcherPill`); content just reserves its height so
-                // headers clear the title region.
-                Color.clear.frame(height: Self.navHeight)
+                // headers clear the title region. Measured rather than
+                // assumed — see `MainWindowState.chromeInset`.
+                Color.clear.frame(height: state.chromeInset)
 
                 ZStack {
                     // Both stay alive; the hidden one keeps its scroll
@@ -154,6 +222,60 @@ struct MainWindowView: View {
                         .allowsHitTesting(state.tab == .settings)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // **The one line that keeps content out of the titlebar.**
+                //
+                // Reserving the band above (the `Color.clear` spacer) is not
+                // enough, and the reason is specific to how SwiftUI bridges
+                // a `ScrollView` to AppKit on macOS. Dashboard and Insights
+                // are each a `ScrollView` at their root; SwiftUI backs those
+                // with an `NSScrollView` and then deliberately *promotes* it
+                // to cover the window's safe area — the backing scroll view
+                // is laid out over the full 700pt window, not the 648pt
+                // content band, and a `contentInsets.top` equal to the
+                // safe-area inset is what makes resting content still start
+                // below the chrome. That is the standard macOS "content
+                // scrolls under the translucent toolbar" effect, and it is
+                // the whole bug: this window's toolbar is not translucent
+                // glass over a blur, it is a themed opaque strip with the
+                // traffic lights and the nav pill sitting on it, so content
+                // sliding under it is not a depth cue, it is two things
+                // printed on top of each other. Measured before this fix:
+                // the first non-background pixel row of a scrolled Dashboard
+                // was row 0 — the very top of the window.
+                //
+                // Settings was never affected, and its immunity is the clue
+                // that named the mechanism: `SettingsView` is an `HStack` of
+                // two static columns, and its only `ScrollView` is the
+                // grouped form *inside* the detail column, whose backing
+                // `NSScrollView` measures out at 124pt down from the window
+                // top. It has nothing to promote into — it never touches the
+                // safe area, so AppKit never extends it. Settings isn't
+                // doing something extra; it is structurally unable to reach
+                // the titlebar. Clipping here gives every other tab that
+                // same structural guarantee.
+                //
+                // **Rejected: painting an opaque strip over the top.** The
+                // obvious alternative — draw the window backdrop again as
+                // the last child of the root `ZStack`, hiding whatever
+                // scrolled underneath — was rejected because it only works
+                // as long as the strip is a perfect copy of the backdrop
+                // beneath it. Material themes (`useMaterialBackground`) put
+                // a real behind-window `NSVisualEffectView` there, so the
+                // cover would have to be a second visual-effect view kept in
+                // sync with the first, and any drift between them shows up
+                // as a visible seam across the top of the window in exactly
+                // the themes whose whole point is that there is no seam.
+                // Clipping removes the content instead of hiding it, so the
+                // one backdrop that was always there is what shows through,
+                // in every theme, for free.
+                //
+                // **Rejected: per-tab fixes.** Adding a top inset or a clip
+                // inside `DashboardView` and `InsightsView` would fix the
+                // two tabs that exist and none of the ones that don't yet;
+                // the nav pill's own history (see `NavSwitcherPill`) is a
+                // record of what happens when window chrome is negotiated
+                // per-surface rather than owned by the shell.
+                .clipped()
             }
             .ignoresSafeArea()
 
@@ -293,16 +415,29 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
     private let onShow: (() -> Void)?
     private let onHide: (() -> Void)?
 
+    /// Reports the measured height of the window's own chrome band, so the
+    /// root view can reserve exactly that much and clip to it. A callback
+    /// rather than a `MainWindowState` reference, to keep this controller
+    /// ignorant of the view layer for the same reason `rootView` and
+    /// `navSwitcher` are closures: it owns a window, not a screen.
+    private let onChromeInset: ((CGFloat) -> Void)?
+
+    /// Last value handed to `onChromeInset`, so a live resize doesn't
+    /// republish the same number sixty times a second.
+    private var lastPublishedChromeInset: CGFloat?
+
     init(
         rootView: @escaping () -> AnyView,
         navSwitcher: @escaping () -> AnyView,
         onShow: (() -> Void)? = nil,
-        onHide: (() -> Void)? = nil
+        onHide: (() -> Void)? = nil,
+        onChromeInset: ((CGFloat) -> Void)? = nil
     ) {
         self.makeRootView = rootView
         self.makeNavSwitcher = navSwitcher
         self.onShow = onShow
         self.onHide = onHide
+        self.onChromeInset = onChromeInset
         super.init(window: nil)
     }
 
@@ -322,11 +457,44 @@ final class MainWindowController: NSWindowController, NSWindowDelegate {
         // fronts the window even when activation was denied.
         mainWindow.orderFrontRegardless()
         onShow?()
+        // The window's chrome band isn't measurable until AppKit has laid
+        // the window out; one turn of the run loop after ordering front is
+        // the first moment `contentLayoutRect` is truthful.
+        DispatchQueue.main.async { [weak self] in self?.publishChromeInset() }
+    }
+
+    /// Re-measures the window's own chrome band and pushes it to the root
+    /// view. Called on every event that can change it — see
+    /// `mainWindowChromeInset` for what "it" is and why the view needs to
+    /// know. Idempotent and guarded on change, because the value it
+    /// publishes drives a SwiftUI relayout and an unguarded write on
+    /// `windowDidResize` would republish an identical number on every frame
+    /// of a live resize.
+    private func publishChromeInset() {
+        guard let window else { return }
+        let inset = mainWindowChromeInset(
+            safeAreaTop: window.contentView?.safeAreaInsets.top ?? 0,
+            contentLayoutInset: window.frame.height - window.contentLayoutRect.height,
+            isFullScreen: window.styleMask.contains(.fullScreen),
+            fallback: MainWindowView.navHeight
+        )
+        guard inset != lastPublishedChromeInset else { return }
+        lastPublishedChromeInset = inset
+        onChromeInset?(inset)
     }
 
     func windowWillClose(_ notification: Notification) {
         onHide?()
     }
+
+    // Every event that can change the height of the chrome band. Resize is
+    // in the list because entering/leaving a display with a different
+    // backing scale, and the full-screen transitions themselves, arrive as
+    // resizes before the dedicated notifications do; `publishChromeInset`
+    // is guarded on change, so over-calling it is free.
+    func windowDidResize(_ notification: Notification) { publishChromeInset() }
+    func windowDidEnterFullScreen(_ notification: Notification) { publishChromeInset() }
+    func windowDidExitFullScreen(_ notification: Notification) { publishChromeInset() }
 
     private func makeWindow() -> NSWindow {
         let hosting = NSHostingController(rootView: makeRootView())

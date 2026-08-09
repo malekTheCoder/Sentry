@@ -236,6 +236,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // closing the window is exactly the moment "eventually" isn't
             // enough — carried over from the old SettingsWindowController.
             self?.settingsStore.save()
+        },
+        // The window measures its own chrome band and hands the number to
+        // the root view, which reserves exactly that much and clips its tab
+        // content to what's below it — see `mainWindowChromeInset`.
+        onChromeInset: { [weak self] inset in
+            self?.mainWindowState.chromeInset = inset
         }
     )
 
