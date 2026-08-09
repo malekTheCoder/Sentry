@@ -520,7 +520,7 @@ targets:
         # Localizable.xcstrings catalogs documented above).
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_MODULE_NAME: Sentry
-        MARKETING_VERSION: "1.1.0"
+        MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "3"
         # Signing is on in both configurations, but for different reasons and
         # with different identities (see `configs:` below and the
