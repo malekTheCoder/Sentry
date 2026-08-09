@@ -59,6 +59,12 @@ struct AIAccessPane: View {
 
     @Environment(\.themePalette) private var palette
 
+    /// Backs the "Connect Your AI Tools" section. A `@StateObject` because it
+    /// owns the connector and its cached statuses across the pane's redraws —
+    /// re-creating it on every body evaluation would re-probe the filesystem
+    /// several times a keystroke.
+    @StateObject private var clientSectionModel = AIClientSectionModel()
+
     @State private var copiedConfig = false
     @State private var copiedRemoteConfig = false
     @State private var remoteAPIKey: String?
@@ -155,6 +161,11 @@ struct AIAccessPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            AIClientConnectSection(
+                model: clientSectionModel,
+                bridge: endpointHolder.publisher?.registration
+            )
+
             Section {
                 Button {
                     copyMCPConfig()
@@ -163,7 +174,7 @@ struct AIAccessPane: View {
                 }
                 .accessibilityLabel("Copy MCP configuration JSON")
 
-                Text("Paste this into Claude Desktop's, Claude Code's, or Cursor's MCP server configuration to connect them to this Mac.")
+                Text("The generic `mcpServers` snippet, for any client not listed above. Each tool in that list shows its own exact file and format under “Set it up by hand”.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -625,20 +636,17 @@ struct AIAccessPane: View {
     /// rather than `command`-shaped, for a client that can only reach
     /// Sentry over the network (e.g. a web-based custom connector), not by
     /// spawning a local subprocess.
+    ///
+    /// Rendered through the same `MCPClientConfig` as everything else rather
+    /// than from its own string literal. There used to be two literals in this
+    /// file; the moment a Connect button started *writing* one of these
+    /// shapes, a second copy became a second source of truth, and the first
+    /// symptom of the two drifting would be a pane that verifies against
+    /// different bytes from the ones it wrote.
     private func remoteConfigJSON() -> String {
-        let key = remoteAPIKey ?? "<no key generated yet>"
-        return """
-        {
-          "mcpServers": {
-            "Sentry-Remote": {
-              "url": "\(remoteAddress)",
-              "headers": {
-                "Authorization": "Bearer \(key)"
-              }
-            }
-          }
-        }
-        """
+        MCPClientConfig
+            .remote(url: remoteAddress, apiKey: remoteAPIKey ?? "<no key generated yet>")
+            .snippetJSON(containerPath: ["mcpServers"], dialect: .inferredType)
     }
 
     // MARK: - Rows
@@ -756,25 +764,21 @@ struct AIAccessPane: View {
     /// same product directory as `Sentry.app`'s helper tools), so deriving
     /// it from `Bundle.main.executablePath` is both more honest and more
     /// useful than the plan's fixed path.
+    ///
+    /// The reasoning above is unchanged; the *implementation* moved to
+    /// `MCPClientConfig` (`SentryKit/AIClients/`) when the Connect buttons
+    /// started writing this same content into other applications' files. Two
+    /// renderers producing "the same" snippet is exactly the arrangement that
+    /// lets a pane verify against bytes it didn't write, so there is now one,
+    /// and this method is a thin call into it.
     static func mcpConfigJSON() -> String {
-        let mcpPath = resolvedMCPBinaryPath()
-        return """
-        {
-          "mcpServers": {
-            "Sentry": {
-              "command": "\(mcpPath)"
-            }
-          }
-        }
-        """
+        MCPClientConfig
+            .local(mcpBinaryPath: resolvedMCPBinaryPath())
+            .snippetJSON(containerPath: ["mcpServers"], dialect: .inferredType)
     }
 
     static func resolvedMCPBinaryPath() -> String {
-        guard let executablePath = Bundle.main.executablePath else {
-            return "/Applications/Sentry.app/Contents/MacOS/SentryMCP"
-        }
-        let macOSDir = (executablePath as NSString).deletingLastPathComponent
-        return (macOSDir as NSString).appendingPathComponent("SentryMCP")
+        MCPClientConfig.mcpBinaryPath(appExecutablePath: MCPClientConfig.currentAppBinaryPath())
     }
 }
 
