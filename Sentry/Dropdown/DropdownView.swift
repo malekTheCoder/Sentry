@@ -171,6 +171,11 @@ struct DropdownView: View {
         .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
+        // The dropdown's rows paint straight onto `background`, so that is
+        // what its switches are graded against. `SleepControlCard`'s Keep
+        // Awake row sits inside a card and overrides this with
+        // `surfaceElevated` — see there.
+        .themedToggles(on: .background)
         // `AppDelegate` gates its own `ProcessMonitor` instance off
         // `MainWindowController`'s `onShow`/`onHide` — this popover has no
         // equivalent AppKit-level hook available to this file (see

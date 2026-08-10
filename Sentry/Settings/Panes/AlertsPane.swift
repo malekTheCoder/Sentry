@@ -264,7 +264,16 @@ struct AlertsPane: View {
                 EmptyView()
             }
             .labelsHidden()
-            .toggleStyle(.checkbox)
+            // Was `.toggleStyle(.checkbox)`, which is the one place in the Mac
+            // app that *explicitly* overrode the inherited style and so would
+            // have stayed stock. A system checkbox is not as invisible as a
+            // system switch — it has a bezel — but its border is still an
+            // AppKit grey picked against AppKit's window colours, and it
+            // measures roughly 2.2:1 on Ivory's grouped rows: under the 3:1
+            // this branch is enforcing everywhere else. Dropping the override
+            // lets the rule list inherit `ThemedToggleStyle` along with the
+            // rest of the pane, which also makes the genuinely-disabled rules
+            // here the thing the disabled floor is graded on.
             .accessibilityLabel("Enable \(rule.name)")
 
             VStack(alignment: .leading, spacing: 1) {

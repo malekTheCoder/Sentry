@@ -271,9 +271,15 @@ struct SleepControlCard: View {
             Spacer(minLength: palette.spacingTight)
             Toggle("", isOn: toggleBinding)
                 .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .tint(palette.accent)
+                // The row this branch was opened about. It was
+                // `.toggleStyle(.switch).controlSize(.mini).tint(palette.accent)`
+                // — and `.tint` only ever reaches the *on* track, so the off
+                // state kept AppKit's system grey and disappeared into Ivory's
+                // `#E6E3D8` card. `ThemedToggleStyle` draws both states from
+                // the palette; this card is `surfaceElevated`, not the
+                // dropdown `background` that `DropdownView` applies, so the
+                // grading backdrop is overridden here.
+                .themedToggles(on: .surfaceElevated)
                 .accessibilityLabel("Keep awake")
                 // Two whole `Text`s rather than a String ternary: a ternary of
                 // two bare literals resolves to `String`, which silently picks

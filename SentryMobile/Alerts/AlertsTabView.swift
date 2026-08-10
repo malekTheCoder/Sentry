@@ -182,7 +182,11 @@ struct AlertsTabView: View {
         } trailing: {
             Toggle("", isOn: rule.isEnabled)
                 .labelsHidden()
-                .tint(palette.accent)
+                // `.tint(palette.accent)` used to live here and is gone
+                // rather than kept: under `ThemedToggleStyle` it affects
+                // nothing, and a tint that reads as "this control is themed"
+                // while the off state stays a system grey is precisely the
+                // misreading that let this bug survive on the Mac.
                 .disabled(true)
         }
         .padding(.vertical, palette.spacing * 0.6)

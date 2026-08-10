@@ -162,6 +162,12 @@ struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 500)
         .environment(\.themePalette, palette)
+        // One application covering all eleven panes. Every pane is
+        // `.formStyle(.grouped)`, whose rows paint on `surface`, and
+        // `.toggleStyle` rides the environment through the `switch`-based
+        // pane dispatch below — so panes this branch must not edit
+        // (`AIAccessPane`) are fixed without being opened.
+        .themedToggles(on: .surface)
     }
 
     // MARK: - Sidebar

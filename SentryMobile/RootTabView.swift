@@ -212,6 +212,10 @@ struct RootTabView: View {
         // copy to the chip row rather than to each chip.
         .haptic(.selection, on: selectedTab)
         .environment(\.themePalette, palette)
+        // Covers all four tabs. The phone's only switch is the Alerts rule
+        // row, which paints on a card — `surface` is the right grading
+        // backdrop for it and for anything added later.
+        .themedToggles(on: .surface)
         .onAppear {
             applyTabBarChrome()
             publishAppearanceForWatch()
