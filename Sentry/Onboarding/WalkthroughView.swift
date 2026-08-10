@@ -107,6 +107,9 @@ struct WalkthroughView: View {
         .frame(width: 400)
         .themedBackdrop(palette)
         .environment(\.themePalette, palette)
+        // Its own `NSPopover`, so it inherits nothing from the main window.
+        // The walkthrough's step content paints on the backdrop directly.
+        .themedToggles(on: .background)
     }
 
     private var separator: some View {

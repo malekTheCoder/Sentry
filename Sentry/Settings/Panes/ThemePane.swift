@@ -51,6 +51,10 @@ struct ThemePane: View {
             // exactly like the pane behind it. Its preview column overrides
             // this for its own subtree with the draft's palette.
             .environment(\.themePalette, palette)
+            // A `.sheet` starts a fresh environment, so `SettingsView`'s
+            // application does not reach in here — the editor's three
+            // switches would otherwise be the only stock ones left on the Mac.
+            .themedToggles(on: .surface)
         }
         .alert(
             "Theme problem",
