@@ -131,6 +131,18 @@ preflight() {
     fi
   fi
 
+  # A release built while SUPublicEDKey is still the placeholder ships with a
+  # dead updater — Sparkle can never verify an update it downloads, and v1.0
+  # proved this script will happily notarize such a build. project.yml is the
+  # exact value the built Info.plist will carry (archive() regenerates the
+  # project from it), so failing here costs seconds instead of a full
+  # archive+notarize cycle. The placeholder string is defined in
+  # SentryKit/Updates/UpdateFeedConfiguration.swift (placeholderPublicKey) and
+  # is deliberately non-base64 so this exact-match grep can't false-positive.
+  if grep -q 'SUPublicEDKey: "REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY"' project.yml; then
+    die "SUPublicEDKey in project.yml is still the placeholder — this build's updater would be permanently dead. Embed the real Sparkle public key (task B1) before cutting a release."
+  fi
+
   # Derived data and build output must live outside the repo when the repo sits
   # in an iCloud/FileProvider-synced directory: sync stamps com.apple.FinderInfo
   # xattrs onto build products and codesign then rejects them with "resource
@@ -312,6 +324,16 @@ verify() {
   # claim worth testing rather than trusting.
   if codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "get-task-allow"; then
     print -r -- "✗ com.apple.security.get-task-allow present in the Release app" >&2
+    (( failures++ ))
+  fi
+
+  # Belt-and-braces twin of the preflight placeholder check: verify the key
+  # that actually shipped inside the exported app, in case the plist was
+  # produced by something other than this run's xcodegen pass.
+  local built_key
+  built_key="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ -z "$built_key" || "$built_key" == "REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY" ]]; then
+    print -r -- "✗ built Info.plist has no real SUPublicEDKey (found: '${built_key:-<missing>}') — updater would be dead" >&2
     (( failures++ ))
   fi
 
