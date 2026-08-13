@@ -90,9 +90,13 @@ struct ProUpsellCard: View {
             // exists (`LicenseProEntitlementStore`), but no checkout does —
             // there is nowhere to buy a license yet, so a Buy button here
             // would still be the inert control this copy refuses to be.
-            return String(localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened, so there is deliberately no Buy button here that couldn't work. In the meantime you can unlock everything locally in Settings ▸ Advanced ▸ Developer.")
+            // Deliberately no pointer to the developer-override toggle:
+            // that UI exists only in DEBUG builds (AdvancedPane), and copy
+            // that names a control release users can't find is the exact
+            // bug this card exists to avoid.
+            return String(localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened, so there is deliberately no Buy button here that couldn't work. Checkout is coming in an update; everything above stays free.")
         case .developerOverride:
-            return String(localized: "Unlocked by the local developer override in Settings ▸ Advanced. This is not a purchase.")
+            return String(localized: "Unlocked by the local developer override. This is not a purchase.")
         case .license:
             return String(localized: "Unlocked by your Sentry Pro license.")
         }

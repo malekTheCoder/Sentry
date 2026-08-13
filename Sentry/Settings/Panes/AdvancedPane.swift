@@ -13,6 +13,19 @@ struct AdvancedPane: View {
     /// wired up (e.g. a future preview or test harness).
     var onShowDebugWindow: (() -> Void)?
 
+    /// Debug builds always show the Developer section (it carries the Pro
+    /// developer-override toggle even when no debug window is wired);
+    /// release builds show it only when there's a debug window to open —
+    /// today that means always, but an empty "Developer" header in some
+    /// future closure-less construction would be chrome with no content.
+    private var showDeveloperSection: Bool {
+        #if DEBUG
+        return true
+        #else
+        return onShowDebugWindow != nil
+        #endif
+    }
+
     @State private var isConfirmingReset = false
 
     var body: some View {
@@ -118,17 +131,33 @@ struct AdvancedPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let onShowDebugWindow {
+            if showDeveloperSection {
                 Section("Developer") {
-                    Button("Show Debug Window…") {
-                        onShowDebugWindow()
-                    }
-                    .accessibilityLabel("Show debug window")
+                    #if DEBUG
+                    // Debug builds only: a release user must never see an
+                    // "unlock everything" switch next to a real license flow.
+                    // The setting itself (`proUnlockOverrideEnabled`) exists
+                    // in every build — this is just the only UI for it.
+                    Toggle("Unlock Pro features (developer override)", isOn: $store.settings.proUnlockOverrideEnabled)
+                        .accessibilityLabel("Unlock Pro features with the developer override")
 
-                    Text("Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it.")
+                    Text("Debug builds only: flips every Pro gate on this Mac without a license so gated paths can be exercised end to end. The Insights header will say the unlock came from the developer override, not a purchase.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    #endif
+
+                    if let onShowDebugWindow {
+                        Button("Show Debug Window…") {
+                            onShowDebugWindow()
+                        }
+                        .accessibilityLabel("Show debug window")
+
+                        Text("Dumps every field of the current snapshot — every sub-struct, every raw value, nils shown as \"nil\" — for cross-checking against Activity Monitor, System Settings, or powermetrics. Not user-facing; nothing here is rounded or hidden the way the rest of the app formats it.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
