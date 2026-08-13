@@ -245,12 +245,14 @@ public enum AlertAction: Codable, Equatable, Sendable {
     /// `releaseSleepAssertion` below.
     case menuBarHighlight(String)
 
-    /// Remote push via CloudKit subscription (plan §11.3/§12). Delivered as
-    /// far as possible without real CloudKit infra: `AlertEngine.phonePushRecorder`
-    /// turns a fired action into a locally-queued `AlertPush`
-    /// (`PendingAlertPushStore`) rather than a true push — actual CloudKit
-    /// upload is blocked on Apple Developer Program enrollment (see that
-    /// store's doc comment), not silently dropped or guessed at.
+    /// **Decode-compatibility only — never delivered.** The planned
+    /// phone-push feature (plan §11.3/§12) was cut before any delivery path
+    /// existed; its local queue was deleted with it. This case survives
+    /// solely because rules persisted by earlier builds (including two
+    /// then-shipped default rules) carry it in `settings.json` — deleting
+    /// the case would make those users' stored rules fail to decode.
+    /// `AlertEngine` treats it as a documented no-op, `defaultRules` no
+    /// longer emits it, and `AlertsPane` filters it from display.
     case pushToPhone
 
     /// Shortcuts.app integration (plan §11.1). Delivered via

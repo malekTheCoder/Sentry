@@ -543,7 +543,6 @@
     "AI Agent Activity": {},
     "API Key": {},
     "Actions": {},
-    "Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless.": {},
     "Active": {
       "extractionState": "manual",
       "localizations": {
@@ -2400,6 +2399,17 @@
       }
     },
     "Not Find My. There is no way for a third-party app like Sentry to register a device with Apple's actual Find My network — that requires Apple's own devices or MFi-certified hardware. This is a simple, honest log of where Sentry last saw this Mac, nothing more.": {},
+    "Not delivered — this action remains from an earlier build": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not delivered — this action remains from an earlier build"
+          }
+        }
+      }
+    },
     "Not scored, for lack of data on this Mac: %@.": {
       "extractionState": "manual",
       "localizations": {
@@ -2801,17 +2811,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Push to iPhone"
-          }
-        }
-      }
-    },
-    "Queued on this Mac — reaches a phone only once device sync ships": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Queued on this Mac — reaches a phone only once device sync ships"
           }
         }
       }

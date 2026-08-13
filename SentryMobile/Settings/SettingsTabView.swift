@@ -793,9 +793,10 @@ struct SettingsTabView: View {
     /// Plan §12.1 wants "Notification preferences" here, but a preference
     /// only means something if it changes what happens later — and nothing
     /// can deliver a push notification in this build (no CloudKit
-    /// subscription, no APNs registration; `AlertAction.pushToPhone`,
-    /// `SentryKit/Services/AlertRule.swift`, is a documented no-op on the
-    /// Mac side for the identical reason). Building toggles that don't wire
+    /// subscription, no APNs registration; the Mac side's phone-push
+    /// feature was cut entirely, leaving `AlertAction.pushToPhone` in
+    /// `SentryKit/Services/AlertRule.swift` as a documented
+    /// decode-compatibility no-op). Building toggles that don't wire
     /// to anything would recreate the exact "slider that silently does
     /// nothing" bug `SyncPane`'s doc comment names as this codebase's own
     /// prior mistake. Instead this section lists the categories a real

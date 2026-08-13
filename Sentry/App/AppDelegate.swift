@@ -357,7 +357,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // before `self` fully exists.
     private let mcpAccessController = MCPAccessController()
     private let mcpActivityLog = MCPActivityLog()
-    private let pendingAlertPushStore = PendingAlertPushStore()
     private lazy var mcpXPCService = MCPXPCService(
         coordinator: coordinator,
         historyStore: historyStore,
@@ -587,13 +586,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                   let url = URL(string: "shortcuts://run-shortcut?name=\(encodedName)")
             else { return }
             NSWorkspace.shared.open(url)
-        }
-        // Activates `AlertAction.pushToPhone` as far as it can go without
-        // real CloudKit infra — see `PendingAlertPushStore`'s doc comment
-        // for what "activated" means here vs. what's still blocked on
-        // Apple Developer Program enrollment.
-        alertEngine.phonePushRecorder = { [weak self] push in
-            self?.pendingAlertPushStore.enqueue(push)
         }
         // Persistence pass (verified-bug fix: "cooldowns, sustained timers,
         // and the hourly rate cap all reset on relaunch"): mirrors

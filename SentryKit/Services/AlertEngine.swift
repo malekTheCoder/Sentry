@@ -87,13 +87,11 @@ import AppKit
 /// `.menuBarHighlight` go through injectable closures (`sleepAssertionReleaser`,
 /// `menuBarHighlighter`) rather than importing `PowerControlService` or a
 /// concrete menu-bar type — see `AlertAction`'s doc comment for the full
-/// reasoning. `.pushToPhone` and `.runShortcut` go through their own
-/// injectable closures (`phonePushRecorder`, `shortcutRunner`) —
-/// `.runShortcut` launches Shortcuts.app for real; `.pushToPhone` records an
-/// `AlertPush` locally pending a CloudKit upload path that doesn't exist yet
-/// (blocked on Apple Developer Program enrollment — see
-/// `PendingAlertPushStore`'s doc comment), so it's a real local effect today
-/// even though the phone never actually receives anything yet.
+/// reasoning. `.runShortcut` goes through its own injectable closure
+/// (`shortcutRunner`) and launches Shortcuts.app for real. `.pushToPhone`
+/// is a no-op — the case survives on `AlertAction` only so rules persisted
+/// by earlier builds still decode (see that case's doc comment); delivery
+/// never shipped and its local queue was deleted.
 /// `.logOnly` writes to `alert_log` and delivers nothing else.
 ///
 /// **Global rate cap (plan §11.3).** Independent of any single rule's
@@ -221,15 +219,6 @@ public final class AlertEngine {
     /// `sleepAssertionReleaser`/`menuBarHighlighter`; `nil` is a silent
     /// no-op.
     public var shortcutRunner: ((String) -> Void)?
-
-    /// Delivers `.pushToPhone`. Called with a locally-built `AlertPush`
-    /// record; `AppDelegate`'s composition root queues it for the next
-    /// `SyncService` upload once CloudKit is actually wired (blocked on
-    /// Apple Developer Program enrollment — see `SyncRecords.swift`'s
-    /// top-level doc comment). `nil` is a silent no-op, same as the other
-    /// injectable delivery hooks — expected in any composition root that
-    /// hasn't wired sync in yet, e.g. in unit tests.
-    public var phonePushRecorder: ((AlertPush) -> Void)?
 
     /// Fires whenever any field of `AlertEnginePersistedState` changes —
     /// the composition root's hook for writing `lastFired`/the rate-cap
@@ -820,15 +809,14 @@ public final class AlertEngine {
         // user-perceptible action, not once per action — a rule with both
         // a `.notification` and a `.menuBarHighlight` shouldn't cost twice
         // against the cap. `.logOnly` is silent by design, so it never
-        // counts. `.pushToPhone` and `.runShortcut` both count (a queued
-        // phone push and an external automation launch are each just as
-        // capable of being "intolerable" from a misconfigured, rapidly
-        // refiring rule as a notification would be), same as
+        // counts. `.runShortcut` counts (an external automation launch is
+        // just as capable of being "intolerable" from a misconfigured,
+        // rapidly refiring rule as a notification would be), same as
         // `.releaseSleepAssertion`.
         //
         // Closure-delivered actions only count when their closure is
         // actually wired: a `nil` `menuBarHighlighter` (or `shortcutRunner`,
-        // `sleepAssertionReleaser`, `phonePushRecorder`) delivers nothing to
+        // `sleepAssertionReleaser`) delivers nothing to
         // anyone, so treating it as a delivery would both lie in `alert_log`
         // ("Delivered" for something no one could have seen — the log's own
         // doc comment below says it must distinguish "we showed you
@@ -855,29 +843,14 @@ public final class AlertEngine {
                 didDeliver = true
 
             case .pushToPhone:
-                // Recorded locally, not yet actually pushed — see
-                // `phonePushRecorder`'s doc comment. Gated by
-                // `withinRateCap` and counts toward `didDeliver` like every
-                // other user-perceptible action (`.notification`,
-                // `.menuBarHighlight`, `.runShortcut`,
-                // `.releaseSleepAssertion`): once CloudKit upload is wired
-                // up, an unguarded push here would let a misconfigured,
-                // rapidly-refiring rule queue an unbounded stream of phone
-                // notifications even though its on-Mac `.notification`
-                // action was itself being suppressed by the same cap — an
-                // inconsistency worth closing off now rather than after
-                // the transport exists to make it user-visible.
-                guard withinRateCap, let phonePushRecorder else { continue }
-                if let (title, body) = notificationText(in: rule.actions) {
-                    phonePushRecorder(AlertPush(
-                        deviceID: snapshot.deviceID,
-                        ruleName: rule.name,
-                        title: title,
-                        body: dynamicBody(for: rule, fallback: body, snapshot: snapshot),
-                        firedAt: now
-                    ))
-                    didDeliver = true
-                }
+                // No-op. Recorded rules keep the action for decode
+                // compatibility (see `AlertAction.pushToPhone`'s doc
+                // comment); delivery never shipped and the local queue that
+                // once recorded these firings was deleted. Delivers nothing,
+                // so it neither counts toward `didDeliver` nor consumes a
+                // rate-cap slot — same contract as any other unwired
+                // delivery path.
+                break
 
             case .runShortcut(let name):
                 guard withinRateCap, let shortcutRunner else { continue }
@@ -922,22 +895,6 @@ public final class AlertEngine {
     /// body is used verbatim — most already read fine as static copy
     /// ("Consider unplugging for battery longevity" doesn't need a number
     /// in it).
-    /// `.pushToPhone` piggybacks on the same rule's `.notification` text
-    /// where one exists, rather than defining a second, parallel
-    /// title/body on `AlertAction.pushToPhone` itself — a rule author
-    /// already wrote the human-readable text once; the phone shouldn't need
-    /// a second copy that can drift from it. `nil` if the rule has no
-    /// `.notification` action at all (a `.pushToPhone`-only rule has no
-    /// text to send yet — rare, and better to skip than to fabricate one).
-    private func notificationText(in actions: [AlertAction]) -> (title: String, body: String)? {
-        for action in actions {
-            if case .notification(let title, let body, _) = action {
-                return (title, body)
-            }
-        }
-        return nil
-    }
-
     private func dynamicBody(for rule: AlertRule, fallback: String, snapshot: SystemSnapshot) -> String {
         if rule.id == Self.chargingPausedRuleID {
             let reasonText = snapshot.battery?.notChargingReasonText ?? "unknown reason"
@@ -1120,8 +1077,7 @@ extension AlertEngine {
                 cooldown: cooldown,
                 onlyWhen: [.onBattery],
                 actions: [
-                    .notification(title: "Low Battery", body: "Battery is below 20%.", sound: false),
-                    .pushToPhone
+                    .notification(title: "Low Battery", body: "Battery is below 20%.", sound: false)
                 ]
             ),
             AlertRule(
@@ -1133,8 +1089,7 @@ extension AlertEngine {
                 cooldown: cooldown,
                 onlyWhen: [.onBattery],
                 actions: [
-                    .notification(title: "Critical Battery", body: "Battery is below 10%.", sound: true),
-                    .pushToPhone
+                    .notification(title: "Critical Battery", body: "Battery is below 10%.", sound: true)
                 ]
             ),
             AlertRule(

@@ -723,38 +723,28 @@ final class AlertEngineTests: XCTestCase {
         // guard for evaluateSlowCharging's guard-let chain.
     }
 
-    // MARK: - pushToPhone / runShortcut (AI-agent-integration pass)
+    // MARK: - runShortcut (AI-agent-integration pass) / pushToPhone remnant
 
-    func testPushToPhoneCallsPhonePushRecorderWithNotificationText() {
-        let now = Date()
-        let rule = AlertRule(
-            name: "Critical battery",
-            metric: .cpuTotalPercent,
-            comparison: .above,
-            threshold: 90,
-            sustainedFor: 0,
-            cooldown: 60,
-            actions: [
-                .notification(title: "Critical Battery", body: "Battery is below 10%.", sound: true),
-                .pushToPhone
-            ]
-        )
-        let engine = AlertEngine(rules: [rule], clock: { now })
-        var recorded: AlertPush?
-        engine.phonePushRecorder = { recorded = $0 }
-
-        engine.evaluate(SystemSnapshot(deviceID: "device-42", cpu: CPUStats(totalPercent: 95)))
-
-        XCTAssertEqual(recorded?.deviceID, "device-42")
-        XCTAssertEqual(recorded?.ruleName, "Critical battery")
-        XCTAssertEqual(recorded?.title, "Critical Battery")
-        XCTAssertEqual(recorded?.body, "Battery is below 10%.")
+    /// `.pushToPhone` survives on `AlertAction` only so rules persisted by
+    /// earlier builds still decode — fresh installs must never carry it,
+    /// since the delivery path was deleted before it ever shipped.
+    func testDefaultRulesCarryNoPushToPhoneAction() {
+        for rule in AlertEngine.defaultRules(cooldown: 60) {
+            XCTAssertFalse(
+                rule.actions.contains(.pushToPhone),
+                "\(rule.name) must not ship the deleted pushToPhone action"
+            )
+        }
     }
 
-    func testPushToPhoneWithoutNotificationActionDoesNotRecord() {
+    /// A legacy rule that still carries `.pushToPhone` must evaluate as a
+    /// harmless no-op — no crash, and (because the action delivers nothing
+    /// to anyone) no `didDeliver` credit, so a pushToPhone-only rule never
+    /// consumes a rate-cap slot a real notification could have used.
+    func testLegacyPushToPhoneActionIsANoOp() {
         let now = Date()
         let rule = AlertRule(
-            name: "Silent push",
+            name: "Legacy push rule",
             metric: .cpuTotalPercent,
             comparison: .above,
             threshold: 90,
@@ -762,13 +752,17 @@ final class AlertEngineTests: XCTestCase {
             cooldown: 60,
             actions: [.pushToPhone]
         )
-        let engine = AlertEngine(rules: [rule], clock: { now })
-        var recordCount = 0
-        engine.phonePushRecorder = { _ in recordCount += 1 }
+        let engine = AlertEngine(rules: [rule], rateCapPerHour: 1, clock: { now })
 
         engine.evaluate(cpuSnapshot(95))
 
-        XCTAssertEqual(recordCount, 0, "a rule with no .notification action has no text to send yet")
+        var reported: AlertEnginePersistedState?
+        engine.onPersistedStateChanged = { reported = $0 }
+        engine.evaluate(cpuSnapshot(10))
+        XCTAssertEqual(
+            reported?.recentDeliveryTimestamps, [],
+            "a no-op action must not count as a delivery against the rate cap"
+        )
     }
 
     func testRunShortcutCallsShortcutRunnerWithName() {
@@ -791,35 +785,4 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(ranNames, ["Resume Build"])
     }
 
-    func testPushToPhoneRespectsGlobalRateCap() {
-        var now = Date()
-        // Same three-independent-rules shape as
-        // testGlobalRateCapSuppressesDeliveryButStillLogs, but with
-        // .pushToPhone actions — regression guard for the bug where
-        // .pushToPhone was exempted from withinRateCap entirely, so a
-        // misconfigured rapidly-refiring rule could queue an unbounded
-        // stream of phone pushes even while its .notification sibling was
-        // being suppressed by the same cap.
-        let rules = (0..<3).map { index in
-            AlertRule(
-                name: "Rate cap rule \(index)",
-                metric: .cpuTotalPercent,
-                comparison: .above,
-                threshold: Double(index),
-                sustainedFor: 0,
-                cooldown: 0,
-                actions: [
-                    .notification(title: "t", body: "b", sound: false),
-                    .pushToPhone
-                ]
-            )
-        }
-        let engine = AlertEngine(rules: rules, rateCapPerHour: 2, clock: { now })
-        var pushCount = 0
-        engine.phonePushRecorder = { _ in pushCount += 1 }
-
-        engine.evaluate(cpuSnapshot(95))
-
-        XCTAssertEqual(pushCount, 2, "pushToPhone must respect the same rate cap as every other user-perceptible action")
-    }
 }

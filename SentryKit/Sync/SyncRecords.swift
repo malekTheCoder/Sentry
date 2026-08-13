@@ -260,16 +260,12 @@ public struct ControlStatus: Codable, Sendable, Equatable {
 
 // MARK: - AlertPush
 
-/// Mac → iPhone: one record per fired `AlertAction.pushToPhone` (AI-agent-
-/// integration pass — see Sentry-AI-Features-Research.md item #7, "an
-/// agent starting a long job calls `create_alert_rule` for 'job finished'
-/// with a `.pushToPhone` action, so the user gets notified away from their
-/// desk"). Same "model layer is real, transport is gated on enrollment"
-/// split as every other type in this file: `AlertEngine.phonePushRecorder`
-/// (see its doc comment) already turns a fired `.pushToPhone` action into
-/// one of these locally today; only `SyncService` actually uploading it to
-/// CloudKit (so the iPhone app can turn it into a local notification on
-/// its next sync) is blocked on Apple Developer Program enrollment.
+/// Mac → iPhone: one record per fired `AlertAction.pushToPhone` — a
+/// planned feature that was cut before any delivery path existed (the
+/// engine hook and local queue that once recorded these were deleted;
+/// `AlertAction.pushToPhone` itself survives only for decode
+/// compatibility). This payload type remains solely because `CKMapper`
+/// still round-trips it; nothing constructs one at runtime.
 public struct AlertPush: Codable, Sendable, Equatable {
     /// Reference → `Device`.
     public var deviceID: String

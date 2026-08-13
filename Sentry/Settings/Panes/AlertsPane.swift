@@ -32,11 +32,11 @@ import SentryKit
 /// **Actions are shown but not edited.** A rule's `[AlertAction]` is
 /// summarized read-only. Editing it well means a UI for composing
 /// notification title/body copy plus per-action pickers. `.runShortcut` now
-/// launches Shortcuts.app for real. `.pushToPhone` is recorded to
-/// `PendingAlertPushStore` (see `AppDelegate`'s wiring) but nothing delivers
-/// the queue yet, so its row is filtered out of `actionsSection` entirely
-/// for 1.0 — an action the user can neither edit nor receive isn't worth a
-/// row that needs a disclaimer.
+/// launches Shortcuts.app for real. `.pushToPhone` is a deleted feature's
+/// decode-compatibility remnant (see `AlertAction.pushToPhone`'s doc
+/// comment) that delivers nothing, so its row is filtered out of
+/// `actionsSection` entirely — an action the user can neither edit nor
+/// receive isn't worth a row that needs a disclaimer.
 ///
 /// **Process-match rules are part of Sentry Pro**
 /// (`ProFeature.processMatchAlerts`), gated twice on purpose:
@@ -914,12 +914,12 @@ struct AlertsPane: View {
 
     @ViewBuilder
     private func actionsSection(_ rule: Binding<AlertRule>) -> some View {
-        // `.pushToPhone` is filtered from display for 1.0: nothing delivers
-        // the queued pushes yet, and a rule editor row for an action that
-        // can't act is the inert-control shape this pane refuses. The action
-        // stays in the store (two shipped default rules carry it) and keeps
-        // being recorded to `PendingAlertPushStore` — only the row is hidden,
-        // so delivery can ship later without a data migration.
+        // `.pushToPhone` is filtered from display: the feature was cut
+        // before any delivery path existed, and a rule editor row for an
+        // action that can't act is the inert-control shape this pane
+        // refuses. Rules persisted by earlier builds may still carry the
+        // action (see `AlertAction.pushToPhone`'s doc comment for why the
+        // case survives decode) — only the row is hidden.
         let visibleActions = rule.wrappedValue.actions.filter { $0 != .pushToPhone }
         Section {
             if visibleActions.isEmpty {
@@ -1487,9 +1487,10 @@ struct AlertsPane: View {
     }
 
     /// The detail column doubles as the honesty column. `.pushToPhone`'s
-    /// detail is unreachable while `actionsSection` filters that action out
-    /// for 1.0, but its case stays — the switch is exhaustive, and the
-    /// honest disclaimer is ready the moment the row returns.
+    /// detail is unreachable while `actionsSection` filters that action out,
+    /// but its case stays — the switch is exhaustive over a case that
+    /// survives only for decode compatibility (see `AlertAction.pushToPhone`),
+    /// and the text is honest should the filter ever be removed.
     static func actionDetail(_ action: AlertAction) -> String {
         switch action {
         case .notification(let title, _, let sound):
@@ -1499,7 +1500,7 @@ struct AlertsPane: View {
         case .menuBarHighlight(let token):
             return String(localized: "Token “\(token)”")
         case .pushToPhone:
-            return String(localized: "Queued on this Mac — reaches a phone only once device sync ships")
+            return String(localized: "Not delivered — this action remains from an earlier build")
         case .runShortcut(let name):
             return String(localized: "Runs “\(name)” in Shortcuts")
         case .releaseSleepAssertion:
