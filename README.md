@@ -3,18 +3,18 @@
 **A macOS menu bar system monitor with iPhone and Apple Watch companions —
 and a built-in manager for the AI agents running on your Mac.**
 
-Live charts, battery health trends, thermal insights, alert rules,
-conditional keep-awake, real fan control on Apple Silicon, and an MCP
-integration layer that lets coding agents check your Mac's capacity before
-they start heavy work. No cloud, no accounts, no telemetry: your Mac's data
-goes to your phone and your watch, never to a server.
+Live charts over a local history store, battery health trends, alert rules,
+keep-awake, fan monitoring and control, and an MCP integration layer that
+lets coding agents check your Mac's capacity before they start heavy work.
+No cloud, no accounts, no telemetry: your Mac's data goes to your phone and
+your watch, never to a server.
 
 [![Download](https://img.shields.io/github/v/release/malekTheCoder/Sentry?label=download&color=blue)](https://github.com/malekTheCoder/Sentry/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%2014%2B%20%7C%20iOS%2017%2B%20%7C%20watchOS%2010%2B-lightgrey)
 
 <p align="center">
-  <img src="docs/screenshots/macos-dashboard.png" alt="Sentry's macOS dashboard: live CPU, memory, and GPU charts over a 24-hour history, battery health, and keep-awake controls" width="840">
+  <img src="docs/screenshots/macos-dashboard.png" alt="The macOS dashboard: live CPU, memory, and GPU charts over a 24-hour history, battery health, and keep-awake controls" width="840">
 </p>
 
 <p align="center">
@@ -36,70 +36,82 @@ Requires macOS 14 (Sonoma) or later, Apple Silicon or Intel.
 
 Releases are signed with a Developer ID certificate and notarized by
 Apple, so the app opens with no security warnings. Each release's notes
-include a SHA-256 checksum for the DMG.
+include a SHA-256 checksum for the DMG. Starting with v1.0.1, installed
+copies update themselves through Sparkle from a signed appcast.
 
 > Sentry ships outside the Mac App Store by necessity, not choice — it
 > reads low-level power and thermal interfaces (`libIOReport`,
 > `IOHIDEventSystemClient`) that do not exist inside the App Sandbox the
 > App Store requires.
 
-**iPhone & Apple Watch:** the companion apps are built from this same repo
-(`SentryMobile`, `SentryWatch`) — the watch app installs automatically with
-the iPhone app. Open Sentry on the iPhone while the Mac app is running on
-the same Wi-Fi and they find each other over Bonjour; for away-from-home
-access, scan the pairing QR code in **Settings ▸ Sync** on the Mac.
+**iPhone & Apple Watch:** the companion app is coming to the App Store
+(link will land here when it's live) — the watch app installs automatically
+with the iPhone app. Both are built from this same repo (`SentryMobile`,
+`SentryWatch`). Open the app on the iPhone while the Mac app is running on
+the same Wi-Fi and they find each other over Bonjour; away-from-home
+access is a Pro feature (see below).
 
-## What it does
+## Features
 
-**On the Mac** — a menu bar readout (monochrome, layout-configurable) with a
-themed dropdown; a Dashboard of live charts backed by a GRDB history store
-with tiered rollups; Protection Insights (battery health trend with a
-degradation ETA, thermal cool-down estimates, energy use in kWh by day /
-week / month); alert rules with history; keep-awake with process-aware mode
-(hold until a named process exits); fan RPM readout everywhere and real fan
-*control* on Apple Silicon behind an explicitly-installed root helper
-(`SentryFanDaemon` — SMC writes live in that binary and nowhere else); a
-custom theme editor with WCAG contrast checking on top of six built-in
-themes, each with light, dark, and follow-the-system variants.
+Everything here is free unless marked **Pro**.
 
-**Companions** — an iPhone app and a three-page Watch app (overview,
-keep-awake, agent activity — with a kill-switch resume path and its own Siri
-intents), both fed over local-network sync (Bonjour) and, away from home, a
-TLS-PSK listener the user pairs with a QR code. Reconnection is
-keepalive-backed and sleep/wake-aware, and reconnects prefer the
-last-connected Mac rather than whichever one answers first. There is
-deliberately **no cloud**: your Mac's data goes to your phone and your
-watch, never to a server. Shortcuts/Siri work locally, in-process, with no
-network hop.
+**On the Mac** — a menu bar readout (monochrome, layout-configurable) with
+a themed dropdown; a Dashboard of live charts backed by a local GRDB
+history store with tiered rollups; alert rules with history; keep-awake
+timers; fan RPM readout everywhere; six built-in themes, each with light,
+dark, and follow-the-system variants; a security-posture check of your
+Mac's protections, read-only and local.
 
-**Keep-awake** goes beyond a duration: conditional release (battery below
-%, sustained CPU above %, while a named app or process runs, while a
-download is active, on a schedule) — `PowerControlService`'s
-`ReleaseCondition`.
+**On iPhone and Apple Watch** — a companion iPhone app and a three-page
+Watch app (overview, keep-awake, agent activity — with a kill-switch
+resume path and its own Siri intents), fed over local-network sync
+(Bonjour). Reconnection is keepalive-backed and sleep/wake-aware, and
+reconnects prefer the last-connected Mac rather than whichever one answers
+first. Shortcuts/Siri work locally, in-process, with no network hop.
 
 **For agents and scripts** — an MCP server in two transports (stdio via
 `SentryMCP` for Claude Desktop/Code/Cursor; optional LAN HTTP gated by an
-API key), with per-tool toggles, **per-client** rate limiting, and
+API key), with per-tool toggles, per-client rate limiting, and
 confirmation gates on write tools, all in Settings ▸ AI Access. Past
 permissions, this is a real agent *manager*: `preflight_check` returns a
 structured proceed/caution/wait/do-not-start verdict with reasons and a
-wait estimate before an agent starts heavy work; `get_agent_capacity` shows
-what other sessions are active so two agents don't contend; per-session
-resource attribution (`get_session_resource_report`) reports what a
-session actually cost in battery, thermals, and awake time; guardrails
-(battery floor, quiet hours, thermal auto-revoke) and a kill switch —
-global or per-client — keep an agent from running the Mac hot while nobody's
-watching, including `CaffeinateArbitrator`'s enforcement against a coding
-agent's own external `caffeinate` process, not just Sentry's own keep-awake.
-The `sentryctl` CLI (`check`, `wait`, `status`, `sessions`, `stop
-<client>`, `session-report`, streaming `watch`, `statusline` for
-tmux/Starship prompts, `hook pretooluse` for Claude Code's `PreToolUse`
-gate) mirrors the same controls from the shell — including a packaged
-Claude Code plugin bundle (MCP registration, the hook, and a
-`subagentStatusLine` script) under
+wait estimate before an agent starts heavy work; `get_agent_capacity`
+shows what other sessions are active so two agents don't contend;
+per-session resource attribution reports what a session actually cost in
+battery, thermals, and awake time; guardrails (battery floor, quiet hours,
+thermal auto-revoke) and a kill switch — global or per-client — keep an
+agent from running the Mac hot while nobody's watching. The `sentryctl`
+CLI mirrors the same controls from the shell, including a packaged Claude
+Code plugin bundle under
 [`integrations/claude-code/plugin/`](integrations/claude-code/plugin/README.md).
 Copy-pasteable configs live in
 [`docs/integrations/`](docs/integrations/README.md).
+
+### Pro
+
+Pro is a one-time purchase: **$14.99 launch price** ($19.99 after),
+licensed for 3 Macs, no subscription. It activates with a license key
+inside the app; checkout opens shortly after launch — watch the
+[releases page](https://github.com/malekTheCoder/Sentry/releases). Pro adds:
+
+- **Fan control** on Apple Silicon — real SMC writes behind an
+  explicitly-installed root helper (`SentryFanDaemon` — SMC writes live in
+  that binary and nowhere else). Fan RPM *readout* is free, on every Mac
+  with fans.
+- **Conditional keep-awake release rules** — release when battery falls
+  below a level, when sustained CPU drops, while a named app or process
+  runs, while a download is active, or on a schedule.
+- **Process-match alert rules** — trigger alerts on what's running, not
+  just on thresholds.
+- **Custom theme editor** with WCAG contrast checking, on top of the six
+  built-in themes.
+- **Off-LAN remote sync** — a TLS listener the iPhone pairs with via QR
+  code, so the companions work away from home. Same-Wi-Fi sync is free.
+- **History export and extended retention** beyond the default rollup
+  windows.
+- **Protection Insights** — battery health trend with a degradation ETA,
+  thermal cool-down estimates, and energy use in kWh by day / week /
+  month.
 
 ## Building from source
 
@@ -161,9 +173,15 @@ Claude Code, and Cursor.
 
 ## Privacy
 
-Everything stays on your devices. The full policy — what is collected,
-where it lives, and how to delete it — is
-[`docs/privacy-policy.md`](docs/privacy-policy.md).
+No telemetry, no analytics, no crash reporting, no accounts, no server.
+Everything stays on your devices; sync goes directly from your Mac to your
+phone and watch. The full policy — what is collected, where it lives, and
+how to delete it — is [`docs/privacy-policy.md`](docs/privacy-policy.md).
+
+## Support
+
+Questions and bug reports go to
+[GitHub Issues](https://github.com/malekTheCoder/Sentry/issues).
 
 ## Contributing
 
@@ -175,6 +193,8 @@ and run `scripts/release.sh`.
 
 ## License
 
-Sentry is open source under the [MIT License](LICENSE), © Malek Swilam &
-Aniketh Bandlamudi. Bundled open-source dependencies are acknowledged in
+The source code is open under the [MIT License](LICENSE), © Malek Swilam &
+Aniketh Bandlamudi. The Pro purchase unlocks the Pro features in the
+official builds and funds development. Bundled open-source dependencies
+are acknowledged in
 [`docs/third-party-licenses.md`](docs/third-party-licenses.md).

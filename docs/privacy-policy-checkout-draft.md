@@ -1,11 +1,28 @@
----
-layout: default
-title: Privacy Policy
+# Privacy policy — DRAFT revision for the checkout release
+
+> **DRAFT — NOT IN EFFECT.** This is the proposed revision of
+> [`privacy-policy.md`](privacy-policy.md) for the release that ships Pro
+> checkout. It must **not** replace the live policy, be published, or be
+> linked from the app until that release actually ships — the live policy
+> must always describe the build people are running. Until checkout ships,
+> [`privacy-policy.md`](privacy-policy.md) remains the policy.
+>
+> What changed from the live policy, in full: the "In one paragraph"
+> summary gained two sentences about buying Pro; a new "Buying Sentry Pro"
+> section was added; the "Where it is stored" and "Deleting your data"
+> sections now say what the licence file contains; and the "no server"
+> wording was tightened to stay true (a checkout service now exists — the
+> app still never talks to it). Nothing else was touched, deliberately:
+> checkout adds no network path to the app, so nothing else needed to
+> change. This draft describes a release with **paste-in activation only**
+> — if that release also confirms licences with a server ("revalidation"),
+> this draft is insufficient and must be revised again first.
+
 ---
 
 # Sentry Privacy Policy
 
-**Effective date:** August 17, 2026
+**Effective date:** [EFFECTIVE DATE — TO FILL IN]
 
 This policy covers the Sentry app for Mac, iPhone, and Apple Watch.
 
@@ -13,7 +30,7 @@ A quick note on the name: this app has nothing to do with Sentry.io, the error-m
 
 ## In one paragraph
 
-Sentry measures your own hardware — CPU, memory, disk, battery, temperature, network throughput — and shows it to you. There is no account to create, no server we run, and no analytics, telemetry, or crash reporting of any kind. Your readings are stored in a database file on your own Mac. Three things can send data off the Mac, and you control all three: live stats stream over your local Wi-Fi so your iPhone and Watch can show them; an optional AI-agent feature can hand your stats to a local AI tool such as Claude Code; and the Mac version checks a static file on the web for app updates. Nothing is sold, shared, or sent anywhere else. If you delete the app's data folder, the data is gone.
+Sentry measures your own hardware — CPU, memory, disk, battery, temperature, network throughput — and shows it to you. There is no account to create, no server the app talks to, and no analytics, telemetry, or crash reporting of any kind. Your readings are stored in a database file on your own Mac. Three things can send data off the Mac, and you control all three: live stats stream over your local Wi-Fi so your iPhone and Watch can show them; an optional AI-agent feature can hand your stats to a local AI tool such as Claude Code; and the Mac version checks a static file on the web for app updates. If you buy Sentry Pro, the purchase happens on our payment provider's website in your browser — the app takes no part in it, and activating your licence happens entirely on your Mac, offline. Nothing is sold, shared, or sent anywhere else. If you delete the app's data folder, the data is gone.
 
 ---
 
@@ -46,11 +63,11 @@ Sentry does **not** read your Mac's serial number or hardware UUID, your usernam
 
 ## Where it is stored
 
-Everything lives on your own device. Nothing is uploaded to any server we operate — we do not operate one.
+Everything lives on your own device. Nothing is uploaded to any server. The one piece of server-side machinery involved with Sentry at all — the checkout that issues Pro licences, described in "Buying Sentry Pro" below — never hears from the app.
 
 On the Mac:
 - `~/Library/Application Support/Sentry/history.sqlite` — the measurement history database
-- `~/Library/Application Support/Sentry/settings.json` — your settings, alert rules, custom themes, and (if you use them) the local-sync pairing code and Pro licence
+- `~/Library/Application Support/Sentry/settings.json` — your settings, alert rules, custom themes, and (if you use them) the local-sync pairing code and Pro licence. The licence includes a one-way hash of the email address you bought with, not the address itself — see "Buying Sentry Pro".
 - `~/Library/Caches/dev.malekswilam.sentry/statusline.json` — a short-lived cache of the most recent reading, used by the command-line status line
 - One item in your macOS Keychain, only if you turn on AI Remote Access: the access token for that feature
 
@@ -65,7 +82,7 @@ On iPhone and Watch, a small snapshot of the latest readings is kept in the app'
 
 ## What leaves your device, and when
 
-There are exactly four paths. Nothing else in the app can open a network connection.
+There are exactly four paths. Nothing else in the app can open a network connection. (Buying a Pro licence does not add one — the purchase happens in your web browser, not in the app; see "Buying Sentry Pro".)
 
 ### 1. Local network sync to your iPhone and Watch
 
@@ -126,6 +143,22 @@ Note that the AI client's name is whatever the client says it is. It is a label 
 
 Every remote call goes through exactly the same permission checks, rate limits, confirmation dialogs, and logging as a local one.
 
+## Buying Sentry Pro
+
+Sentry's paid tier is a one-time licence, and the honest summary is: the purchase involves a payment company and an email; the app involves neither.
+
+**The checkout is not part of the app.** You buy on the website of our payment provider — [MERCHANT OF RECORD — TO FILL IN], acting as the merchant of record — in your own web browser. During checkout that provider collects your email address and your payment details, under **its own privacy policy**, which is linked from its checkout page. Sentry the app plays no role in the purchase, and neither the app nor we ever see or store your card number or other payment details.
+
+**What the licence file contains.** After the purchase, our licensing service creates your licence and emails it to you. The licence is a short signed text file containing: a licence ID, the number of Macs it covers, the date it was issued, and a **SHA-256 hash of the email address you bought with** — a one-way fingerprint, not the address itself. The hash exists so that support can confirm a licence belongs to you if you ask for help, and so the file itself never carries your address: the licence sits in `settings.json`, a file people routinely paste into bug reports, and someone reading it there learns nothing about who bought it.
+
+**Activation happens on your Mac, offline.** You paste the licence into Settings, and the app checks its signature locally. Activating requires no network connection, creates no account, registers nothing anywhere, and sends nothing — not the licence, not the hash, not anything else. Once activated, the licence and the hash it contains are stored in `settings.json` on your Mac and stay there.
+
+**Nothing new leaves your device.** Buying and activating a licence add no network path to the app. The four paths listed under "What leaves your device, and when" remain the complete list.
+
+**Refunds and purchase questions** are handled by the payment provider, since it processed the payment. Questions about the app itself: see the Contact section.
+
+If a future version of Sentry ever needs to contact the licensing service — for example, to periodically confirm a licence is still in good standing — that would be a new network path, and this policy will be revised to describe it exactly, before that version ships.
+
 ## Third-party code
 
 Sentry includes four open-source libraries. None of them reports anything about you to anyone.
@@ -154,7 +187,7 @@ There is no account to close and no server-side copy to request, because neither
 To delete everything Sentry has stored on your Mac:
 
 1. Quit Sentry.
-2. Delete the folder `~/Library/Application Support/Sentry/` (this removes the history database and your settings).
+2. Delete the folder `~/Library/Application Support/Sentry/` (this removes the history database and your settings — including your Pro licence, so keep the licence email if you plan to reinstall).
 3. Delete `~/Library/Caches/dev.malekswilam.sentry/`.
 4. If you ever turned on AI Remote Access, open Keychain Access and delete the item named `dev.malekswilam.sentry.mcp.remotekey`. Turning the feature off in Settings also removes it.
 5. Delete the Sentry app itself.
@@ -162,6 +195,8 @@ To delete everything Sentry has stored on your Mac:
 To delete the iPhone or Watch data, delete the app from the device.
 
 You can also reduce what is kept without deleting anything: lower the retention settings, turn off Location Log, and turn off AI access.
+
+The record of your *purchase* — the order the payment provider holds — belongs to the payment provider and is governed by its policy and its legal retention obligations; deleting the app does not affect it.
 
 ## Children
 
