@@ -1262,8 +1262,9 @@ struct AlertsPane: View {
         }
     }
 
-    /// The detail column doubles as the honesty column: the two unimplemented
-    /// cases say so here rather than looking like working features.
+    /// The detail column doubles as the honesty column: the one unimplemented
+    /// case (`pushToPhone`) says so here rather than looking like a working
+    /// feature.
     static func actionDetail(_ action: AlertAction) -> String {
         switch action {
         case .notification(let title, _, let sound):

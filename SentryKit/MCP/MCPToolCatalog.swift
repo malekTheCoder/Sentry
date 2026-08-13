@@ -3,8 +3,9 @@ import Foundation
 #if os(macOS)
 import MCP
 
-/// Maps plan §13.3's 14-tool surface (`MCPToolID`, shared with
-/// `SentryKit`'s access-control layer) onto the MCP SDK's `Tool` schema
+/// Maps the full `MCPToolID` tool surface (20 tools today; plan §13.3 named
+/// the original 14, shared with `SentryKit`'s access-control layer) onto the
+/// MCP SDK's `Tool` schema
 /// type and dispatches `tools/call` requests to `SentryXPCServiceProtocol`.
 /// Kept as its own file/namespace rather than inlined in a server's entry
 /// point so the (fairly mechanical, but long) per-tool schema/dispatch pairs

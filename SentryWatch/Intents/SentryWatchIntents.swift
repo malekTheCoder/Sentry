@@ -242,8 +242,8 @@ struct WatchTruncateAwakeIntent: AppIntent {
 /// comment arguing resume belonged only where the paused state was visible
 /// — true when the watch had no way to know whether agent access was
 /// paused at all. Now that `WatchRelaySnapshot.agentAccessPaused` carries
-/// that state (once the Mac-side hook documented on
-/// `StatsCoordinator.agentAccessPaused` lands), the watch can render a
+/// that state (the Mac assigns it from the guardrails kill switch in
+/// `AppDelegate`), the watch can render a
 /// truthful resume control, and does: see `WatchResumeAgentsIntent` below
 /// and `AgentActivityPage`'s "Resume Agents" button.
 struct WatchStopAgentsIntent: AppIntent {

@@ -7,8 +7,8 @@ import Foundation
 /// One CloudKit save operation's worth of work, described declaratively so
 /// this file can be built and fully unit-tested with no real
 /// `CKModifyRecordsOperation` ever executing — same constraint as
-/// `CKMapper`/`SyncRecords.swift` (no enrolled Apple Developer Program
-/// account yet; see those files' doc comments). `SyncService` never saves a
+/// `CKMapper`/`SyncRecords.swift` (no iCloud container claimed in the
+/// entitlements yet; see those files' doc comments). `SyncService` never saves a
 /// record one at a time: every upload, whether it carries one queued
 /// snapshot or twenty, is expressed as exactly one `UploadBatch` and handed
 /// to `StatsTransport.upload(_:)` in a single call, matching plan §7.4's
@@ -109,9 +109,10 @@ public typealias UploadAttempt = @Sendable (UploadBatch) async -> UploadAttemptR
 /// **What this class does not do:** call CloudKit. Every upload attempt is
 /// routed through the injected `UploadAttempt` closure (see that typealias's
 /// doc comment) — there is no `CKContainer`/`CKDatabase` reference anywhere
-/// in this file, matching the project-wide constraint that there is no
-/// enrolled Apple Developer Program account yet (`project.yml`:
-/// `CODE_SIGNING_REQUIRED: NO`, `DEVELOPMENT_TEAM: ""`).
+/// in this file, matching the project-wide constraint that no iCloud
+/// container is claimed in the entitlements yet (see `Sentry.entitlements`'
+/// header for why entitlements for unwritten features aren't added
+/// speculatively).
 public final class SyncService: @unchecked Sendable {
 
     // MARK: - Cadence configuration (plan §7.4's table, as constructor knobs)

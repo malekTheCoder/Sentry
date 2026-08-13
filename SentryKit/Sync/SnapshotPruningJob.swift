@@ -11,7 +11,7 @@ import Foundation
 /// its retention enforcement — a small job type whose public methods take an
 /// injected `now` so tests can drive them deterministically instead of
 /// depending on the wall clock — except this job's "delete" step can't
-/// actually run yet: there's no enrolled Apple Developer account and no live
+/// actually run yet: there's no live
 /// `CKContainer`/`CKDatabase` (see `SyncRecords.swift`'s top-level doc
 /// comment), so unlike `RollupJob`'s `DELETE FROM sample_raw WHERE ts < ?`,
 /// this type only *decides* which record IDs are stale. The real

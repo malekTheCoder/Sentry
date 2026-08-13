@@ -23,8 +23,8 @@ import SentryKit
 /// working, "shares Theme tokens with the Mac app" feature.
 ///
 /// **What's honest-but-inert: devices & sync, notifications, widgets.** Each
-/// is gated on the same missing piece — no enrolled Apple Developer Program
-/// account, therefore no CloudKit container, therefore no push
+/// is gated on the same missing piece — no CloudKit container claimed in
+/// any entitlements, therefore no cloud device catalog, therefore no push
 /// infrastructure, therefore no real device catalog and no way to schedule a
 /// local notification that means anything (a notification with no upstream
 /// event to trigger it isn't a notification *preference*, it's dead UI).

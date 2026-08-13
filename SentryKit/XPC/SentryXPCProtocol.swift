@@ -197,8 +197,8 @@ public enum SentryXPCServiceName {
     /// muddying the very session list it would be asking about.
     ///
     /// **Deliberately not gated by `MCPAccessController.evaluate(tool:clientName:settings:)`.**
-    /// Every method above corresponds to an `MCPToolID` case — one of plan
-    /// §13's 14-tool surface an *MCP client* calls through `SentryMCP`. This
+    /// Every method above corresponds to an `MCPToolID` case — part of the
+    /// tool surface an *MCP client* calls through `SentryMCP`. This
     /// method and `revokeAgentSession` below exist for a different caller
     /// entirely: `sentryctl`, a plain XPC client with no MCP handshake and no
     /// tool ID of its own (see `SentryCLI/main.swift`'s header comment). There

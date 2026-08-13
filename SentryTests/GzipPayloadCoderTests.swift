@@ -4,8 +4,8 @@ import SentryKit
 
 /// Round-trip coverage for `GzipPayloadCoder` (`SentryKit/Sync/GzipPayloadCoder.swift`),
 /// which compresses `SnapshotRecord.payload` (plan §7.3). Pure in-memory
-/// transform — no CloudKit or network involvement, safe to test without an
-/// enrolled Apple Developer account.
+/// transform — no CloudKit or network involvement, safe to test without any
+/// iCloud container entitlement.
 final class GzipPayloadCoderTests: XCTestCase {
 
     // MARK: - Fixtures

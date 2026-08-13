@@ -142,12 +142,11 @@ final class WatchRelayManager: NSObject {
             // `WatchRelaySnapshot`'s doc comment used to describe as
             // permanent — see that type's field comments for the
             // nil-means-not-reported convention this keeps intact end to
-            // end. Until the Mac-side hook documented on
-            // `StatsCoordinator.agentActivitySummary` lands, `snapshot
-            // .agentActivitySummary` is `nil` for every real Mac, so these
-            // three still read as "not reported" on the watch — the same
-            // honest empty state as before, now driven by the summary's
-            // absence rather than by this call site never asking.
+            // end. The Mac assigns the summary on every MCP `authorize()`
+            // call (`MCPXPCService`), so these three carry real numbers
+            // once an agent has been active and read as "not reported"
+            // otherwise — driven by the summary's absence, not by this
+            // call site never asking.
             agentToolCallCount: snapshot.agentActivitySummary?.toolCallCount,
             agentLastActivityAt: snapshot.agentActivitySummary?.lastActivityAt,
             agentRecentToolNames: snapshot.agentActivitySummary?.recentToolNames,

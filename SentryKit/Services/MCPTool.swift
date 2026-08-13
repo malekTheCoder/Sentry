@@ -1,8 +1,9 @@
 import Foundation
 
 /// Stable identifier for every tool the MCP server (plan §13) can expose,
-/// shared by three call sites that all must agree on the same 14-tool
-/// surface: `MCPAccessController` (authorization decisions), the AI Access
+/// shared by three call sites that all must agree on the same tool surface
+/// (20 tools today — `MCPToolID.allCases` is the authoritative count):
+/// `MCPAccessController` (authorization decisions), the AI Access
 /// settings pane (per-tool toggles), and `SentryMCP`'s tool registration
 /// (`ListTools`/`CallTool` handlers). A single enum, rather than three
 /// independently-typed string constants, is what keeps those three from
@@ -76,7 +77,7 @@ public enum MCPToolID: String, CaseIterable, Codable, Sendable, Hashable {
     /// (plan §13.3: "safe, enabled by default") — this is the one place that
     /// distinction is encoded, and both `AppSettings.default` and
     /// `MCPAccessController.evaluate(tool:settings:)` read it from here
-    /// rather than each hardcoding their own copy of "which 5 are writes."
+    /// rather than each hardcoding their own copy of which tools are writes.
     public var isWrite: Bool {
         switch self {
         case .getSystemSnapshot, .getBatteryStatus, .getBatteryHealthHistory,

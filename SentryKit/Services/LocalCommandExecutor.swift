@@ -32,22 +32,19 @@ import IOKit
 /// doc comment) describes, so this type gates every command through it
 /// before touching `PowerControlService` at all.
 ///
-/// **Known scope simplification: no separate consent/permission gate.**
-/// `MCPXPCService`'s write tools sit behind `MCPAccessController` (a
-/// per-tool, user-configured allow/deny list) because an MCP client is an
-/// arbitrary, potentially-untrusted local process. A `ControlCommand`
-/// arriving over this channel can only come from a phone that already
-/// discovered this Mac's `_sentry._tcp` Bonjour advertisement and completed
-/// a TCP handshake on the same local Wi-Fi network — the same trust
-/// boundary `LocalSyncServer` already accepts unconditionally for the
-/// snapshot broadcast direction (see that type's doc comment: "an
-/// inert, harmless listener" the Mac advertises regardless of settings).
-/// Extending that same boundary to also accept sleep-control commands is a
-/// deliberate, documented scope decision, not an oversight — a dedicated
-/// "accept remote commands from my iPhone" settings toggle (mirroring
-/// `mcpRemoteAccessEnabled`'s pattern) is reasonable future work if a
-/// household's trust model ever needs it to be narrower than "anyone on my
-/// LAN who already has the app."
+/// **The consent/permission gate lives one layer down.** `MCPXPCService`'s
+/// write tools sit behind `MCPAccessController` (a per-tool,
+/// user-configured allow/deny list) because an MCP client is an arbitrary,
+/// potentially-untrusted local process. A `ControlCommand` arriving over
+/// this channel has already cleared a stricter bar: `LocalSyncServer`
+/// refuses commands on unauthenticated connections (see its
+/// `handle(_:from:)` guard) — only a device that proved the pairing code
+/// in a TLS-PSK handshake may issue one, on the LAN or, with Remote Access
+/// enabled in Settings ▸ Sync, from anywhere — while the plaintext Bonjour
+/// path stays snapshot-broadcast-only. The dedicated consent surface an
+/// earlier revision of this header called "reasonable future work"
+/// therefore exists today: the Remote Access toggle plus the pairing code
+/// itself.
 @MainActor
 public final class LocalCommandExecutor {
 

@@ -7,7 +7,7 @@ import Foundation
 ///
 /// **Why this exists at all.** CloudKit sync (`StatsTransport`, `SyncRecords.swift`)
 /// is eventually-consistent by construction, and — separately, today — doesn't
-/// exist yet (no enrolled Apple Developer Program account; see
+/// exist yet (no CloudKit conformer or container entitlement; see
 /// `StatsTransport.swift`'s doc comment). Either way, any number the iPhone
 /// shows (battery %, CPU load, whether the Mac is asleep) is a *claim about
 /// the past*, not a live reading. Plan §12.2 is explicit that the fix isn't

@@ -3,13 +3,12 @@ import CoreImage.CIFilterBuiltins
 import SwiftUI
 import SentryKit
 
-/// The plan §7 sync surface — but for a feature that cannot exist yet, not a
-/// dashboard for one that does.
+/// The sync surface: a real dashboard for the device sync that exists — LAN
+/// discovery plus the TLS-PSK Remote Access listener configured right here —
+/// and an honest disclosure for the cloud sync that doesn't.
 ///
-/// **Why this pane exists at all when there is nothing to show.** Plan §7's
-/// CloudKit sync is blocked on an enrolled Apple Developer Program account.
-/// `project.yml` now names a team for Release builds and the app has a real
-/// `Sentry.entitlements`, but neither buys CloudKit: that file deliberately
+/// **Why the cloud half is disclosure rather than UI.** Plan §7's CloudKit
+/// sync has no implementation: `Sentry.entitlements` deliberately
 /// claims no iCloud container and no `aps-environment` (see its header for
 /// why entitlements for unwritten features are not added speculatively), and
 /// there is still no `CKContainer`, no push subscription, and no schema
@@ -95,7 +94,7 @@ struct SyncPane: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text("Sentry isn't enrolled in the Apple Developer Program yet, so it has no iCloud container to sync through — no account, no server, no network connection. Nothing has ever synced on this Mac, and nothing is attempting to. This isn't a per-user setting or a bug to troubleshoot; it's true for every copy of this build.")
+                Text("iCloud sync doesn't exist in this build — no iCloud container, no account, no server. Nothing has ever cloud-synced on this Mac, and nothing is attempting to; that's true for every copy of this build, not a per-user setting or a bug to troubleshoot. Syncing to your iPhone and Apple Watch is separate: it runs directly over your network — automatic on the same Wi-Fi, and via Remote Access above from anywhere else.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

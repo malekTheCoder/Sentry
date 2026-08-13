@@ -180,13 +180,15 @@ public struct FanDaemonFailSafe: Equatable, Sendable {
 
     /// Which fans must be written back to `F{i}Md = 0` for this trigger.
     ///
-    /// Every trigger reverts **everything held**, not a subset, with one
-    /// exception: `.clientAskedForFirmware` is the user's explicit,
-    /// per-fan Return to Auto and is handled by the caller passing the one
-    /// ordinal it means. There is no partial-revert failure path — a
-    /// trigger that reverted "the fans this client took" would need to
-    /// trust a client-supplied list on exactly the code path where the
-    /// client has already proven unreliable.
+    /// Every trigger reverts **everything held**, no exceptions —
+    /// `.clientAskedForFirmware` included (`FanDaemonFailSafeTests` pins
+    /// this). The user's explicit per-fan Return to Auto never routes
+    /// through here at all: `FanDaemonService` handles it directly, writing
+    /// that one fan's `F{i}Md = 0` and calling `noteReleasedFan`. There is
+    /// no partial-revert failure path — a trigger that reverted "the fans
+    /// this client took" would need to trust a client-supplied list on
+    /// exactly the code path where the client has already proven
+    /// unreliable.
     public func fansToRevert(on trigger: FanDaemonRevertTrigger) -> [Int] {
         switch trigger {
         case .clientDisconnected,

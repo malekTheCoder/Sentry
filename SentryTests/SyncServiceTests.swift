@@ -7,8 +7,8 @@ import SentryKit
 /// forces immediate upload" override, and the exponential-backoff-with-jitter
 /// math. No real `CKContainer`/`CKDatabase` is ever touched: every upload
 /// attempt is routed through an injected `UploadAttempt` closure (see
-/// `SyncService.swift`'s doc comment for why — no enrolled Apple Developer
-/// Program account exists for this project yet).
+/// `SyncService.swift`'s doc comment for why — no iCloud container is
+/// claimed in the entitlements yet).
 final class SyncServiceTests: XCTestCase {
 
     private let zoneID = CKRecordZone.ID(zoneName: "SentryZone", ownerName: CKCurrentUserDefaultName)

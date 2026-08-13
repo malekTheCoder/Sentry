@@ -385,23 +385,15 @@ public final class StatsCoordinator: @unchecked Sendable {
     /// truthful resume control for the kill switch — see that field's doc
     /// comment.
     ///
-    /// **This property is wired end-to-end and, as of this branch, never
-    /// actually assigned — the same honest, deliberately-incomplete state
-    /// `sleepAssertionState` was in before `AppDelegate` was taught to push
-    /// it (`Sentry/App/AppDelegate.swift:591-595`,
-    /// `powerControl.$state.sink { ... self?.coordinator.sleepAssertionState
-    /// = state }`).** The composition root that would do the equivalent for
-    /// this property — `SettingsStore`'s `$settings.sink { ...
-    /// self?.coordinator.agentAccessPaused = $0.agentGuardrails
-    /// .killSwitchEngaged }`, wired next to `applySettings(_:)` — lives in
-    /// `Sentry/App/AppDelegate.swift`, which is owned by other agents
-    /// working in parallel on this codebase and is explicitly off-limits to
-    /// this branch. Until that one-line hook lands, `SystemSnapshot
-    /// .agentAccessPaused` stays `nil` for every real Mac, and every
+    /// **Assigned by the composition root:** `Sentry/App/AppDelegate.swift`
+    /// pushes `guardrails.killSwitchEngaged` into this property when the
+    /// guardrails state changes — the same push-don't-poll shape
+    /// `sleepAssertionState` uses, and for the same actor-mismatch reason
+    /// (settings are read on the main actor; provider closures here run on
+    /// a background queue). `nil` still means "not reported", and every
     /// consumer down the chain (the phone's relay, the watch's button,
-    /// `GetAgentGuardrailsStatusIntent`) already renders that `nil` as "not
-    /// reported" rather than guessing — so nothing downstream lies while
-    /// this one line is outstanding.
+    /// `GetAgentGuardrailsStatusIntent`) renders it that way rather than
+    /// guessing.
     public var agentAccessPaused: Bool? {
         get { queue.sync { agentAccessPausedStorage } }
         set { queue.async { [weak self] in self?.agentAccessPausedStorage = newValue } }
@@ -466,30 +458,15 @@ public final class StatsCoordinator: @unchecked Sendable {
     /// instead of the permanent "not reported" state those fields' doc
     /// comments describe.
     ///
-    /// **Wired end-to-end and, as of this branch, never actually assigned —
-    /// the same honest, deliberately-incomplete state `agentAccessPaused` and
-    /// `protectionScore` are in above.** Unlike those two, the hook this
-    /// property needs does not live in `AppDelegate` at all:
-    /// `MCPXPCService` (`Sentry/App/MCPXPCService.swift`) already holds both
-    /// `coordinator` and `sessionRegistry` as its own instance properties, and
-    /// every MCP call already funnels through one method,
-    /// `authorize(tool:clientName:argumentsSummary:)`, which already calls
-    /// `sessionRegistry.recordCall(clientName:tool:)` right before it returns
-    /// a decision (`Sentry/App/MCPXPCService.swift:143`). The one line this
-    /// branch cannot add, immediately after that call:
-    ///
-    /// ```swift
-    /// coordinator.agentActivitySummary = sessionRegistry.activitySummary()
-    /// ```
-    ///
-    /// `MCPXPCService.swift` is explicitly read-only to this branch (owned by
-    /// other agents working in parallel on this codebase), the same
-    /// off-limits reasoning `agentAccessPaused`'s doc comment gives for
-    /// `AppDelegate.swift` — so this is documented rather than applied. Until
-    /// that one line lands, `SystemSnapshot.agentActivitySummary` stays `nil`
-    /// for every real Mac, and every consumer down the chain already renders
-    /// that `nil` as "not reported" (see `AgentActivityPage`'s `nil`-vs-`0`
-    /// discipline) rather than guessing.
+    /// **Assigned by `MCPXPCService`:** every MCP call funnels through
+    /// `authorize(tool:clientName:argumentsSummary:)`, which records the
+    /// call via `sessionRegistry.recordCall(clientName:tool:)` and then
+    /// pushes `sessionRegistry.activitySummary()` into this property
+    /// (`Sentry/App/MCPXPCService.swift`). Between calls the last summary
+    /// rides along on the ordinary snapshot cadence; a Mac that has never
+    /// seen an MCP call reports `nil`, and every consumer down the chain
+    /// renders that as "not reported" (see `AgentActivityPage`'s
+    /// `nil`-vs-`0` discipline) rather than guessing.
     public var agentActivitySummary: AgentActivitySummary? {
         get { queue.sync { agentActivitySummaryStorage } }
         set { queue.async { [weak self] in self?.agentActivitySummaryStorage = newValue } }
