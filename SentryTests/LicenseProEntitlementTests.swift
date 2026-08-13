@@ -378,6 +378,64 @@ final class LicenseProEntitlementTests: XCTestCase {
         XCTAssertEqual(store.unlockSource, .developerOverride)
     }
 
+    /// Sentry Pro is one product: every `ProFeature` case must answer the
+    /// entitlement question identically — locked denies all, a license or
+    /// the override unlocks all. Iterating `allCases` means a feature added
+    /// to the enum joins this assertion automatically, so a future
+    /// per-feature carve-out has to be a deliberate edit here, not a drift.
+    @MainActor
+    func testEveryProFeatureAnswersIdenticallyUnderEveryUnlockSource() throws {
+        let settingsStore = makeSettingsStore()
+        let pinned = now
+        let store = LicenseProEntitlementStore(
+            settingsStore: settingsStore,
+            publicKey: testKey.publicKey,
+            now: { pinned }
+        )
+
+        for feature in ProFeature.allCases {
+            XCTAssertFalse(store.isUnlocked(feature), "locked must deny \(feature)")
+        }
+
+        var settings = settingsStore.settings
+        settings.proUnlockOverrideEnabled = true
+        store.applySettings(settings)
+        for feature in ProFeature.allCases {
+            XCTAssertTrue(store.isUnlocked(feature), "override must unlock \(feature)")
+        }
+
+        settings.proUnlockOverrideEnabled = false
+        store.applySettings(settings)
+        store.installLicense(try signedBlob(makePayload()))
+        for feature in ProFeature.allCases {
+            XCTAssertTrue(store.isUnlocked(feature), "a license must unlock \(feature)")
+        }
+    }
+
+    /// Same parity contract for the override-only reference conformer.
+    @MainActor
+    func testReferenceStoreAnswersEveryFeatureIdenticallyToo() {
+        let settingsStore = makeSettingsStore()
+        let store = ProEntitlementStore(settingsStore: settingsStore)
+
+        for feature in ProFeature.allCases {
+            XCTAssertFalse(store.isUnlocked(feature), "locked must deny \(feature)")
+        }
+        store.setDeveloperOverride(true)
+        for feature in ProFeature.allCases {
+            XCTAssertTrue(store.isUnlocked(feature), "override must unlock \(feature)")
+        }
+    }
+
+    /// Every paid feature must be able to say what it is on a locked
+    /// screen — same no-empty-strings rule `LicenseDenialReason` follows.
+    func testEveryProFeatureHasDisplayCopy() {
+        for feature in ProFeature.allCases {
+            XCTAssertFalse(feature.displayName.isEmpty, "\(feature)")
+            XCTAssertFalse(feature.summary.isEmpty, "\(feature)")
+        }
+    }
+
     @MainActor
     func testLicenseOutranksOverrideAsTheReportedSource() throws {
         let settingsStore = makeSettingsStore()

@@ -174,6 +174,10 @@ final class FanControlServiceTests: XCTestCase {
     func testApplyingAPolicyThrowsBecauseNoBackendCanWrite() {
         let backend = FakeBackend(capability: twoFans)
         let service = FanControlService(backend: backend)
+        // Entitled: this test (and the write-path tests below) exercises
+        // what happens *after* the Pro gate — the gate itself is covered in
+        // the "Pro gate" section at the end of this file.
+        service.isProUnlocked = true
         service.settings.defaultPolicy = FanControlPolicy(mode: .manual, manualTargetRPM: 3000)
 
         XCTAssertThrowsError(try service.applyPolicy(forFan: 0)) { error in
@@ -198,6 +202,7 @@ final class FanControlServiceTests: XCTestCase {
         // success.
         let backend = FakeBackend(capability: twoFans)
         let service = FanControlService(backend: backend)
+        service.isProUnlocked = true
         service.settings.defaultPolicy = FanControlPolicy(mode: .auto)
         XCTAssertThrowsError(try service.applyPolicy(forFan: 0))
         XCTAssertEqual(backend.revertCallCount, 1)
@@ -206,6 +211,7 @@ final class FanControlServiceTests: XCTestCase {
 
     func testApplyingToAFanThatDoesNotExistIsItsOwnError() {
         let service = FanControlService(backend: FakeBackend(capability: twoFans))
+        service.isProUnlocked = true
         XCTAssertThrowsError(try service.applyPolicy(forFan: 7)) { error in
             XCTAssertEqual(error as? FanControlWriteError, .unknownFan(index: 7))
         }
@@ -216,6 +222,7 @@ final class FanControlServiceTests: XCTestCase {
         // fixes; conflating them would send a user hunting for a helper
         // when they just never picked a speed.
         let service = FanControlService(backend: FakeBackend(capability: twoFans))
+        service.isProUnlocked = true
         service.settings.defaultPolicy = FanControlPolicy(mode: .manual, manualTargetRPM: nil)
         XCTAssertThrowsError(try service.applyPolicy(forFan: 0)) { error in
             guard case .policyProducedNoTarget = (error as? FanControlWriteError) else {
@@ -430,7 +437,8 @@ final class FanControlServiceTests: XCTestCase {
             .helperAwaitingApproval,
             .helperUnreachable(reason: "The connection dropped."),
             .noFans,
-            .hardwareUnreadable
+            .hardwareUnreadable,
+            .requiresPro
         ]
         for availability in all {
             XCTAssertFalse(availability.explanation.isEmpty, "\(availability)")
@@ -494,5 +502,126 @@ final class FanControlServiceTests: XCTestCase {
             FanControlPane.targetLabel(FanControlPolicy(mode: .manual, manualTargetRPM: .nan)),
             "No fixed speed set"
         )
+    }
+
+    // MARK: - Pro gate (ProFeature.fanControl)
+    //
+    // The service defaults to locked and the composition root pushes the
+    // entitlement in, so every test above that exercises the write path
+    // sets `isProUnlocked = true` explicitly. These tests pin the gate
+    // itself: what locked withholds, and — just as load-bearing — what it
+    // must never withhold (the revert/remove escape hatches).
+
+    func testLockedServiceMapsEveryHelperFlavoredStateToRequiresPro() {
+        for helperState: FanWriteAvailability in [
+            .available,
+            .needsPrivilegedHelper,
+            .helperAwaitingApproval,
+            .helperUnreachable(reason: "The connection dropped.")
+        ] {
+            let service = FanControlService(
+                backend: FakeBackend(capability: twoFans, availability: helperState)
+            )
+            XCTAssertEqual(service.writeAvailability, .requiresPro, "\(helperState)")
+        }
+    }
+
+    func testLockedServicePassesHardwareFactsThroughUntouched() {
+        // A fanless Mac has nothing to sell — hardware truths outrank the
+        // paywall, same precedence PrivilegedFanControlBackend gives them
+        // over helper states.
+        for hardwareState: FanWriteAvailability in [.noFans, .hardwareUnreadable] {
+            let service = FanControlService(
+                backend: FakeBackend(capability: twoFans, availability: hardwareState)
+            )
+            XCTAssertEqual(service.writeAvailability, hardwareState, "\(hardwareState)")
+        }
+    }
+
+    func testLockedApplyThrowsRequiresProWithoutReachingTheBackend() {
+        let backend = FakeBackend(capability: twoFans, availability: .available)
+        let service = FanControlService(backend: backend)
+        service.settings.defaultPolicy = FanControlPolicy(mode: .manual, manualTargetRPM: 3000)
+        XCTAssertThrowsError(try service.applyPolicy(forFan: 0)) { error in
+            XCTAssertEqual(error as? FanControlWriteError, .writesUnavailable(.requiresPro))
+        }
+        XCTAssertEqual(backend.applyCallCount, 0, "a locked copy must not even attempt the write")
+    }
+
+    func testLockedInstallThrowsRequiresProAndUnlockedInstallReachesTheBackend() {
+        let backend = FakeBackend(capability: twoFans, availability: .needsPrivilegedHelper)
+        let service = FanControlService(backend: backend)
+        XCTAssertThrowsError(try service.installPrivilegedHelper()) { error in
+            XCTAssertEqual(error as? FanControlWriteError, .writesUnavailable(.requiresPro))
+        }
+
+        service.isProUnlocked = true
+        // FakeBackend has no helper of its own, so the default protocol
+        // implementation throws the backend's availability — which proves
+        // the call passed the gate and reached the backend.
+        XCTAssertThrowsError(try service.installPrivilegedHelper()) { error in
+            XCTAssertEqual(error as? FanControlWriteError, .writesUnavailable(.needsPrivilegedHelper))
+        }
+    }
+
+    func testLockedRevertPathsStillReachTheBackend() {
+        // The plan-§8 escape hatches survive a lapsed license: reverting a
+        // held fan and removing the helper are exactly the affordances a
+        // paywall must never take hostage.
+        let backend = FakeBackend(capability: twoFans, availability: .available)
+        let service = FanControlService(backend: backend)
+
+        XCTAssertThrowsError(try service.revertToAuto(fan: 0))
+        XCTAssertEqual(backend.revertCallCount, 1, "locked revert must still be attempted")
+
+        backend.revertSucceeds = true
+        let failures = service.revertAllToAuto()
+        XCTAssertTrue(failures.isEmpty, "locked revert-all must still revert every fan")
+
+        XCTAssertThrowsError(try service.removePrivilegedHelper()) { error in
+            XCTAssertNotEqual(
+                error as? FanControlWriteError,
+                .writesUnavailable(.requiresPro),
+                "removal is never Pro-gated; this error is the fake backend's own"
+            )
+        }
+    }
+
+    func testUnlockingFlipsAvailabilityLive() {
+        let service = FanControlService(
+            backend: FakeBackend(capability: twoFans, availability: .needsPrivilegedHelper)
+        )
+        XCTAssertEqual(service.writeAvailability, .requiresPro)
+        service.isProUnlocked = true
+        XCTAssertEqual(service.writeAvailability, .needsPrivilegedHelper)
+        service.isProUnlocked = false
+        XCTAssertEqual(service.writeAvailability, .requiresPro)
+    }
+
+    func testHelperInstalledSurvivesTheGateForTheRemoveAffordance() {
+        // The pane's locked state keeps "Remove fan helper" visible only
+        // when the helper is actually registered — judged from the
+        // backend's own availability, not the gated one.
+        let installed: [FanWriteAvailability] = [
+            .available, .helperAwaitingApproval, .helperUnreachable(reason: "gone")
+        ]
+        for state in installed {
+            let service = FanControlService(backend: FakeBackend(capability: twoFans, availability: state))
+            XCTAssertTrue(service.helperAppearsInstalled, "\(state)")
+            XCTAssertEqual(service.writeAvailability, .requiresPro, "\(state)")
+        }
+        let notInstalled = FanControlService(
+            backend: FakeBackend(capability: twoFans, availability: .needsPrivilegedHelper)
+        )
+        XCTAssertFalse(notInstalled.helperAppearsInstalled)
+    }
+
+    func testRequiresProCopyNamesTheLicenseNotTheHardware() {
+        // The locked sentence must send the user toward a license, never
+        // toward System Settings or a helper install they can't use.
+        let copy = FanWriteAvailability.requiresPro.explanation
+        XCTAssertTrue(copy.contains("Pro"))
+        XCTAssertFalse(copy.contains("System Settings"))
+        XCTAssertFalse(FanWriteAvailability.requiresPro.canWrite)
     }
 }

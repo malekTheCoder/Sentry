@@ -666,8 +666,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Seed the fan-control service with the persisted policy block so
         // its resolution preview matches what's on disk from the first
         // sample, not from the second. `applySettings` keeps it current
-        // after that.
+        // after that. The entitlement seed rides the same moment for the
+        // same first-tick reason — the service defaults to locked, and a
+        // licensed user's pane must not flash the Pro gate at launch.
         fanControlService.settings = settings.fanControl
+        fanControlService.isProUnlocked = proEntitlementStore.isUnlocked(.fanControl)
 
         locationService.$lastLocation
             .sink { [weak self] location in
@@ -1023,9 +1026,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Entitlement resolution first: `insightsViewModel.applySettings`
         // reads `proEntitlementStore.isUnlocked` synchronously below, so the
-        // override toggle must already reflect the delivered value.
+        // override toggle must already reflect the delivered value. The fan
+        // service takes its entitlement the same tick for the same reason —
+        // a license paste or override flip must gate/ungate fan writes
+        // before the next control interaction, not after the next unrelated
+        // settings change.
         proEntitlementStore.applySettings(settings)
         insightsViewModel.applySettings(settings)
+        fanControlService.isProUnlocked = proEntitlementStore.isUnlocked(.fanControl)
 
         // Settings that must actually reach the services behind them —
         // these sliders/toggles were previously wired to nothing.

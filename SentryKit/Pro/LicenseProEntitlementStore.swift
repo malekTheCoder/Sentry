@@ -116,10 +116,11 @@ public final class LicenseProEntitlementStore: ProEntitlementProviding {
         // sold as one product, not per-feature (see `LicensePayload`; there
         // is deliberately no feature list in the payload to get out of sync
         // with `ProFeature`). The switch is still written out per-case so a
-        // second feature is a compiler-forced decision here, exactly as in
+        // new feature is a compiler-forced decision here, exactly as in
         // `ProEntitlementStore.isUnlocked`.
         switch feature {
-        case .protectionInsights:
+        case .protectionInsights, .fanControl, .conditionalKeepAwake,
+             .processMatchAlerts, .customThemes, .remoteSync, .historyExport:
             return unlockSource != .locked
         }
     }

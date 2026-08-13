@@ -78,12 +78,13 @@ public enum FanControlCapability: Equatable, Sendable {
 
 /// Whether a write can happen, and if not, why not.
 ///
-/// Exactly one case says yes. The other five are all the ways the answer is
+/// Exactly one case says yes. The rest are all the ways the answer is
 /// no, kept distinct because the *fix* differs for every one of them: one
 /// needs a click, one needs a trip to System Settings, one needs a bug
-/// report, one is a permanent fact about the hardware, and one is a
-/// transient read failure worth retrying. Collapsing any pair would produce
-/// a screen that tells at least one user the wrong thing to do next.
+/// report, one is a permanent fact about the hardware, one is a
+/// transient read failure worth retrying, and one needs a Pro license.
+/// Collapsing any pair would produce a screen that tells at least one
+/// user the wrong thing to do next.
 public enum FanWriteAvailability: Equatable, Sendable {
 
     /// The privileged helper is registered, reachable, and has accepted
@@ -128,6 +129,16 @@ public enum FanWriteAvailability: Equatable, Sendable {
     /// them either.
     case hardwareUnreadable
 
+    /// The hardware could write, but fan control is a Sentry Pro feature
+    /// and this copy isn't entitled. Produced by `FanControlService`'s
+    /// entitlement interception, never by a backend — backends state
+    /// hardware and helper facts only, and the two hardware cases above
+    /// deliberately keep outranking this one (a Mac with no fans has
+    /// nothing to sell). Its own case, not a flavor of unavailable,
+    /// because the fix is different from every other "no": not a click,
+    /// not System Settings — a license.
+    case requiresPro
+
     /// Whether write controls should be live. The single place the UI asks
     /// this question, so a future case cannot accidentally default to
     /// "enabled" by being forgotten in a view.
@@ -153,6 +164,8 @@ public enum FanWriteAvailability: Equatable, Sendable {
             return "This Mac has no fans, so there's nothing to control."
         case .hardwareUnreadable:
             return "Sentry couldn't read this Mac's fan hardware, so it won't offer to change something it can't see."
+        case .requiresPro:
+            return "Changing fan speed is part of Sentry Pro. Fan readouts stay free — every RPM you see here is real — but installing the helper and holding a fan at a fixed speed need a Pro license."
         }
     }
 
@@ -165,6 +178,7 @@ public enum FanWriteAvailability: Equatable, Sendable {
         case .helperUnreachable: return "Helper unreachable"
         case .noFans: return "No fans on this Mac"
         case .hardwareUnreadable: return "Fan hardware unreadable"
+        case .requiresPro: return "Part of Sentry Pro"
         }
     }
 }

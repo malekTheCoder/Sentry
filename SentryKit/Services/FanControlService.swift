@@ -137,6 +137,14 @@ public final class FanControlService: ObservableObject {
     /// no persistence.
     @Published public var settings: FanControlSettings
 
+    /// Whether this copy is entitled to `ProFeature.fanControl`. Pushed in
+    /// by the composition root from `LicenseProEntitlementStore` on every
+    /// settings tick (same one-way flow as `settings` above) — this type
+    /// never queries entitlement itself, so tests drive the gate with a
+    /// plain boolean. Defaults locked: a service nobody seeded must not
+    /// offer writes.
+    @Published public var isProUnlocked = false
+
     /// Hysteresis memory, per fan index. Kept here rather than in
     /// `FanControlResolver` so the resolver stays a pure function of its
     /// inputs (see its doc comment).
@@ -148,11 +156,42 @@ public final class FanControlService: ObservableObject {
         self.capability = backend.capability()
     }
 
-    /// The backend's own answer about writes, forwarded unchanged. The
-    /// Settings pane renders `writeAvailability.explanation` verbatim next
-    /// to every disabled control.
+    /// The backend's answer about writes, filtered through the Pro gate.
+    /// The Settings pane renders `writeAvailability.explanation` verbatim
+    /// next to every disabled control.
+    ///
+    /// Hardware facts pass through untouched — a fanless Mac has nothing
+    /// to sell — but every helper-flavored state collapses to
+    /// `.requiresPro` until this copy is entitled: the pane must not walk
+    /// a free user through installing a root helper whose writes would
+    /// then be refused. The backend itself stays entitlement-ignorant on
+    /// purpose, so the revert paths (which consult the backend's own
+    /// availability) keep working after a license lapses.
     public var writeAvailability: FanWriteAvailability {
-        backend.writeAvailability
+        let real = backend.writeAvailability
+        guard !isProUnlocked else { return real }
+        switch real {
+        case .noFans, .hardwareUnreadable:
+            return real
+        case .available, .needsPrivilegedHelper, .helperAwaitingApproval,
+             .helperUnreachable, .requiresPro:
+            return .requiresPro
+        }
+    }
+
+    /// Whether the privileged helper is actually registered, judged from
+    /// the backend's own un-gated availability. Exists for one consumer:
+    /// the pane's locked state must keep "Remove fan helper" reachable when
+    /// a license lapses with the helper installed — removal reverts every
+    /// held fan first, and an escape hatch that disappears behind a paywall
+    /// would be the worst possible lapse behavior.
+    public var helperAppearsInstalled: Bool {
+        switch backend.writeAvailability {
+        case .available, .helperAwaitingApproval, .helperUnreachable:
+            return true
+        case .needsPrivilegedHelper, .noFans, .hardwareUnreadable, .requiresPro:
+            return false
+        }
     }
 
     public var backendIdentifier: String { backend.identifier }
@@ -167,18 +206,27 @@ public final class FanControlService: ObservableObject {
     /// action** — there is no path from launch, from `ingest`, or from
     /// `applyPolicy` to here, and adding one would mean an app that
     /// registers a root LaunchDaemon as a side effect of something else.
+    /// Pro-gated (defense in depth with the pane's locked UI): a free copy
+    /// must not install a root daemon it could never use.
     public func installPrivilegedHelper() throws {
+        guard isProUnlocked else {
+            throw FanControlWriteError.writesUnavailable(.requiresPro)
+        }
         try backend.installPrivilegedHelper()
     }
 
     /// Removes the privileged helper. The backend hands every held fan back
     /// to the firmware before unregistering; see
-    /// `PrivilegedFanControlBackend.removePrivilegedHelper`.
+    /// `PrivilegedFanControlBackend.removePrivilegedHelper`. Deliberately
+    /// NOT Pro-gated — removal must survive a lapsed license.
     public func removePrivilegedHelper() throws {
         try backend.removePrivilegedHelper()
     }
 
     /// Plan §8's mandatory escape hatch, across every fan at once.
+    /// Deliberately NOT Pro-gated — handing fans back to the firmware must
+    /// survive a lapsed license (the backend's own availability, not the
+    /// gated one, decides whether each revert can happen).
     ///
     /// Collects failures rather than throwing on the first one. "Return
     /// everything to Auto" that gave up halfway because fan 1 errored,
@@ -291,14 +339,18 @@ public final class FanControlService: ObservableObject {
         return availableSensors.map(\.celsius).max() ?? fallback
     }
 
-    // MARK: - Apply (throws, always, in this build)
+    // MARK: - Apply
 
-    /// Would apply one fan's resolved policy. Throws in this build, always.
-    ///
-    /// The error carries the backend's own `FanWriteAvailability`, so the
-    /// reason a user sees is produced by the layer that actually knows it
-    /// rather than by a string in the view.
+    /// Applies one fan's resolved policy through the backend — a real SMC
+    /// write when the privileged helper is live. Pro-gated first: the
+    /// entitlement question outranks every parameter question, and the
+    /// error carries the availability so the reason a user sees is
+    /// produced by the layer that actually knows it rather than by a
+    /// string in the view.
     public func applyPolicy(forFan index: Int) throws {
+        guard isProUnlocked else {
+            throw FanControlWriteError.writesUnavailable(.requiresPro)
+        }
         guard capability.fans.contains(where: { $0.index == index }) else {
             throw FanControlWriteError.unknownFan(index: index)
         }
@@ -325,9 +377,8 @@ public final class FanControlService: ObservableObject {
         }
     }
 
-    /// Would hand one fan back to the firmware. Throws in this build,
-    /// always — and note that on this build the fans have never left the
-    /// firmware's control, so there is nothing to hand back.
+    /// Hands one fan back to the firmware. Deliberately NOT Pro-gated —
+    /// same lapse-survival reason as `revertAllToAuto`.
     public func revertToAuto(fan index: Int) throws {
         guard capability.fans.contains(where: { $0.index == index }) else {
             throw FanControlWriteError.unknownFan(index: index)

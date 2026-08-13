@@ -2,10 +2,13 @@ import Foundation
 
 /// The features Sentry charges for.
 ///
-/// One case today. It is an enum rather than a `Bool` on purpose: the
-/// entitlement check at every call site is `isUnlocked(.protectionInsights)`,
-/// so adding a second paid feature later is a new case, not a hunt through
-/// the app for `isPro` booleans that all meant slightly different things.
+/// It is an enum rather than a `Bool` on purpose: the entitlement check at
+/// every call site names its feature — `isUnlocked(.fanControl)` — so
+/// adding a paid feature is a new case, not a hunt through the app for
+/// `isPro` booleans that all meant slightly different things. The
+/// exhaustive `isUnlocked` switches in `ProEntitlementStore` and
+/// `LicenseProEntitlementStore` make each new case a compiler-forced
+/// decision.
 ///
 /// There is deliberately no per-feature product identifier here anymore.
 /// The one that used to exist was vocabulary for the StoreKit
@@ -18,10 +21,22 @@ import Foundation
 /// for a thing that cannot happen reads as a thing that might.
 public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
     case protectionInsights
+    case fanControl
+    case conditionalKeepAwake
+    case processMatchAlerts
+    case customThemes
+    case remoteSync
+    case historyExport
 
     public var displayName: String {
         switch self {
         case .protectionInsights: return String(localized: "Protection Insights")
+        case .fanControl: return String(localized: "Fan Control")
+        case .conditionalKeepAwake: return String(localized: "Conditional Keep-Awake")
+        case .processMatchAlerts: return String(localized: "Process-Match Alerts")
+        case .customThemes: return String(localized: "Custom Themes")
+        case .remoteSync: return String(localized: "Remote Access")
+        case .historyExport: return String(localized: "History Export & Retention")
         }
     }
 
@@ -29,6 +44,18 @@ public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
         switch self {
         case .protectionInsights:
             return String(localized: "Personalised, evidence-backed recommendations built from this Mac's own measured history and security posture.")
+        case .fanControl:
+            return String(localized: "Hold a fan at a fixed speed through the explicitly-installed root helper. Fan RPM readout stays free on every Mac with fans.")
+        case .conditionalKeepAwake:
+            return String(localized: "Release rules that end a keep-awake on their own — battery level, sustained CPU, a named app or process, an active download, or a schedule. Timed keep-awake stays free.")
+        case .processMatchAlerts:
+            return String(localized: "Alert rules that trigger on what's running, not just on metric thresholds.")
+        case .customThemes:
+            return String(localized: "Fork, edit, import, and export themes with WCAG contrast checking. The six built-in themes stay free.")
+        case .remoteSync:
+            return String(localized: "Pair an iPhone over an encrypted connection from outside your Wi-Fi network. Same-network sync stays free.")
+        case .historyExport:
+            return String(localized: "Export recorded history and keep it beyond the default retention windows.")
         }
     }
 }
@@ -145,12 +172,14 @@ public final class ProEntitlementStore: ProEntitlementProviding {
         overrideEnabled = settings.proUnlockOverrideEnabled
     }
 
-    /// Today the override unlocks everything, because there is one feature.
-    /// The `switch` is written out anyway so adding a second feature is a
-    /// compiler error here rather than a silent grant.
+    /// The override unlocks everything — Sentry Pro is one product, so
+    /// every feature answers the same question. The `switch` stays
+    /// exhaustive anyway so adding a feature is a compiler error here
+    /// rather than a silent grant.
     public func isUnlocked(_ feature: ProFeature) -> Bool {
         switch feature {
-        case .protectionInsights:
+        case .protectionInsights, .fanControl, .conditionalKeepAwake,
+             .processMatchAlerts, .customThemes, .remoteSync, .historyExport:
             return unlockSource != .locked
         }
     }

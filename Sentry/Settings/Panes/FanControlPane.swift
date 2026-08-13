@@ -161,7 +161,21 @@ struct FanControlPane: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if service.writeAvailability.canWrite {
+                if case .requiresPro = service.writeAvailability {
+                    // Locked: no Install button is ever constructed — a free
+                    // copy must not be walked into registering a root daemon
+                    // whose writes would then be refused. No Buy button
+                    // either (checkout doesn't exist; see ProUpsellCard).
+                    // The one affordance that must survive a lapse is
+                    // removal, which reverts every held fan first.
+                    Text("Purchasing isn't available yet — Sentry's license checkout hasn't opened. Checkout is coming in an update.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if service.helperAppearsInstalled {
+                        Button("Remove fan helper") { removeHelper() }
+                    }
+                } else if service.writeAvailability.canWrite {
                     Button("Remove fan helper") { removeHelper() }
                 } else {
                     Button("Install fan helper…") { installHelper() }
@@ -366,21 +380,33 @@ struct FanControlPane: View {
         } header: {
             Text("Control Mode")
         } footer: {
-            Text(canChangeMode
-                ? "Applies to every fan unless one has its own setting below. Changing the mode saves your choice; it doesn't move a fan on its own — use Apply, below, for that."
-                : "The mode is locked to Automatic because Sentry currently has no way to change fan speed on this Mac. It's shown rather than hidden so you can see what the feature offers — and so nothing here pretends to be in effect.")
+            Text(modeFooterText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// True only if the backend says a write could actually happen.
+    /// Three honest states, because two different "locked" reasons need two
+    /// different sentences: a hardware/helper limitation is "this Mac can't"
+    /// while `.requiresPro` is "this copy isn't licensed" — telling a Pro
+    /// prospect their Mac can't change fan speed would be flatly false.
+    private var modeFooterText: String {
+        if canChangeMode {
+            return String(localized: "Applies to every fan unless one has its own setting below. Changing the mode saves your choice; it doesn't move a fan on its own — use Apply, below, for that.")
+        }
+        if case .requiresPro = service.writeAvailability {
+            return String(localized: "The mode is locked to Automatic because fan control is part of Sentry Pro. It's shown rather than hidden so you can see what the feature offers — and so nothing here pretends to be in effect.")
+        }
+        return String(localized: "The mode is locked to Automatic because Sentry currently has no way to change fan speed on this Mac. It's shown rather than hidden so you can see what the feature offers — and so nothing here pretends to be in effect.")
+    }
+
+    /// True only if the service says a write could actually happen.
     ///
     /// Routed through `FanWriteAvailability.canWrite` rather than
-    /// re-switching over the cases here: there is now exactly one case that
-    /// means yes and five that mean no, and a `switch` in a view is a
-    /// `switch` that a sixth case could be added to with the wrong default.
+    /// re-switching over the cases here: there is exactly one case that
+    /// means yes and six that mean no, and a `switch` in a view is a
+    /// `switch` that another case could be added to with the wrong default.
     /// The model answers; the view asks.
     private var canChangeMode: Bool {
         service.writeAvailability.canWrite
