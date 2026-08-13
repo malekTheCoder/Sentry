@@ -187,11 +187,12 @@ public final class StatsCoordinator: @unchecked Sendable {
 
     // MARK: - Identity
 
-    /// Stable per-Mac identifier (plan §6.1: "stable per-Mac UUID"). Phase 1
-    /// keeps this in memory only — the plan wants it persisted under the app
-    /// support directory, but `SettingsStore`/persistence doesn't exist yet
-    /// (out of scope here). TODO(later phase): persist and reload this
-    /// instead of minting a fresh UUID every launch.
+    /// Stable per-Mac identifier (plan §6.1: "stable per-Mac UUID").
+    /// Persisted as `AppSettings.deviceID` and injected by the composition
+    /// root (`AppDelegate`'s `StatsCoordinator` construction), so it
+    /// survives relaunches. The init's default parameter still mints a
+    /// fresh UUID — tests and previews that don't care about identity keep
+    /// constructing coordinators with no extra ceremony.
     public let deviceID: String
 
     // MARK: - Scheduling configuration
@@ -431,13 +432,13 @@ public final class StatsCoordinator: @unchecked Sendable {
     /// for why a stale score riding along on the ordinary snapshot cadence
     /// is the correct trade here, not a shortcut.
     ///
-    /// **Also wired end-to-end and, as of this branch, never assigned —
-    /// same reason as `agentAccessPaused` above.** The composition-root
-    /// hook this needs is one line in `InsightsViewModel.apply(_:)`
-    /// (`Sentry/Insights/InsightsViewModel.swift`, where `report` is
-    /// published) or in whatever observes it from `AppDelegate` —
-    /// `coordinator.protectionScore = report.score.overall` — and `AppDelegate`
-    /// is off-limits to this branch for the same reason described above.
+    /// **Assigned by `InsightsViewModel.apply(_:)`** through the
+    /// `onScoreComputed` closure the composition root injects
+    /// (`Sentry/App/AppDelegate.swift`'s `insightsViewModel` construction):
+    /// every finished `refresh()` pushes `report.score.overall` here. A Mac
+    /// whose Insights tab has never computed a report reports `nil`, and
+    /// consumers (`GetProtectionScoreIntent` among them) render that as
+    /// "no score yet" rather than guessing.
     public var protectionScore: Int? {
         get { queue.sync { protectionScoreStorage } }
         set { queue.async { [weak self] in self?.protectionScoreStorage = newValue } }

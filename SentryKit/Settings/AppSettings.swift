@@ -337,6 +337,23 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// local timestamp could be tamper-proof would be theater.
     public var proLicenseLastVerifiedAt: Date?
 
+    // MARK: - Device identity
+
+    /// A stable identifier for this Mac, minted on first launch and
+    /// persisted so the identity every snapshot carries
+    /// (`StatsCoordinator.deviceID`, which minted a fresh `UUID()` per
+    /// process before this field existed) survives relaunches — the phone's
+    /// reconnect-to-the-last-Mac preference and any future CloudKit record
+    /// naming both depend on it not rotating. Minted here as a default
+    /// rather than by the composition root so every construction path
+    /// (fresh install, corrupt-file fallback, tests) gets one the same way.
+    /// One caveat, accepted: `settings.json` copied wholesale to a second
+    /// Mac carries the ID with it, and the two Macs then report the same
+    /// identity until one of them edits or resets its settings — the same
+    /// copy-the-file behavior every other field has, and a per-machine
+    /// store can split it out later without a format change.
+    public var deviceID: String
+
     // MARK: - Fan control (fan-control plan §5.2)
 
     /// Modes, curves, per-fan overrides, hysteresis, safety ceiling, and
@@ -473,6 +490,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         proUnlockOverrideEnabled: Bool = false,
         proLicenseBlob: String? = nil,
         proLicenseLastVerifiedAt: Date? = nil,
+        deviceID: String = UUID().uuidString,
         fanControl: FanControlSettings = FanControlSettings(),
         agentGuardrails: AgentGuardrailSettings = AgentGuardrailSettings(),
         hasSeenWelcome: Bool = false,
@@ -516,6 +534,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
         self.proLicenseBlob = proLicenseBlob
         self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
+        self.deviceID = deviceID
         self.fanControl = fanControl
         self.agentGuardrails = agentGuardrails
         self.hasSeenWelcome = hasSeenWelcome
@@ -601,6 +620,12 @@ extension AppSettings {
         // same principle as proUnlockOverrideEnabled below.
         case proLicenseBlob
         case proLicenseLastVerifiedAt
+        // Device identity, additive: absent in any settings.json written
+        // before the ID was persisted. The fallback mints a fresh UUID —
+        // correct for an upgrading install (its old IDs were per-launch
+        // anyway), and the composition root saves settings once at startup
+        // so the minted ID is stable from the second launch on.
+        case deviceID
         // Fan control, additive: absent in any settings.json written before
         // the fan-control shell existed, and its fallback is a fully inert
         // block (auto mode, control not enabled on launch) — an upgrading
@@ -749,6 +774,8 @@ extension AppSettings {
                 ?? fallback.proLicenseBlob,
             proLicenseLastVerifiedAt: try container.decodeIfPresent(Date.self, forKey: .proLicenseLastVerifiedAt)
                 ?? fallback.proLicenseLastVerifiedAt,
+            deviceID: try container.decodeIfPresent(String.self, forKey: .deviceID)
+                ?? fallback.deviceID,
             fanControl: try container.decodeIfPresent(FanControlSettings.self, forKey: .fanControl)
                 ?? fallback.fanControl,
             // `AgentGuardrailSettings` has its own additive-tolerant decoder

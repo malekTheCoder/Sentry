@@ -43,7 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         thermalProvider: thermalCollector.collect,
         gpuProvider: gpuCollector.collect,
         aneProvider: aneCollector.collect,
-        processProvider: { [processCollector] in processCollector.collectTopProcesses(limit: 20) }
+        processProvider: { [processCollector] in processCollector.collectTopProcesses(limit: 20) },
+        // The persisted per-Mac identity (AppSettings.deviceID) — without
+        // this argument the coordinator mints a fresh UUID every launch and
+        // the phone's reconnect-to-the-last-Mac preference can never match.
+        deviceID: settingsStore.settings.deviceID
     )
 
     // MARK: - Storage
@@ -319,7 +323,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         entitlements: proEntitlementStore,
         postureProvider: securityPostureCollector,
         theme: settingsStore.resolvedTheme(),
-        onOpenAppSettings: { [weak self] in self?.openMainWindow(tab: .settings) }
+        onOpenAppSettings: { [weak self] in self?.openMainWindow(tab: .settings) },
+        // The one-line hook StatsCoordinator.protectionScore's doc comment
+        // asked for: each computed score rides the snapshot cadence out to
+        // the phone/watch and `GetProtectionScoreIntent`.
+        onScoreComputed: { [weak self] score in self?.coordinator.protectionScore = score }
     )
 
     /// Backs the Dashboard's "Top Processes" card (plan §17 Phase 8). Lazy
@@ -477,6 +485,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let settings = settingsStore.settings
         let theme = settingsStore.resolvedTheme()
+
+        // Persist once at startup: a first launch (or a pre-deviceID
+        // settings.json) has just minted this Mac's deviceID in memory, and
+        // SettingsStore never writes at load time — without this save the ID
+        // would re-mint on every launch until the user happened to change
+        // some other setting.
+        settingsStore.save()
 
         let controller = StatusItemController(layout: settings.menuBarLayout, theme: theme)
         controller.onClick = { [weak self] in self?.togglePopover() }

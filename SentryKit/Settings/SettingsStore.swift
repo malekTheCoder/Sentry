@@ -179,8 +179,15 @@ public final class SettingsStore: ObservableObject {
 
     /// Restores Appendix B defaults and persists them immediately, so "Reset"
     /// survives a crash that beats the debounce timer.
+    ///
+    /// The deviceID survives the reset: it is this Mac's identity, not a
+    /// preference — rotating it would silently break the phone's
+    /// reconnect-to-the-last-Mac matching for a user who only wanted their
+    /// sliders back.
     public func resetToDefaults() {
-        settings = AppSettings()
+        var defaults = AppSettings()
+        defaults.deviceID = settings.deviceID
+        settings = defaults
         save()
     }
 

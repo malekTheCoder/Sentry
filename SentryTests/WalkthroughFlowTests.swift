@@ -25,9 +25,10 @@ final class WalkthroughFlowTests: XCTestCase {
     /// Spelled out rather than asserted structurally, because the *order* is
     /// the design. The Mac flow opens with where the app is (a user can use
     /// nothing else until they know), then the three undiscoverable
-    /// features, then the two permission asks inside the steps that motivate
-    /// them, with the optional one — the location log, which most users will
-    /// decline — last of the substantive steps. Reordering any of that
+    /// features, then the permission ask inside the step that motivates it.
+    /// `.locationLog` is deliberately absent for 1.0 — the Location Log pane
+    /// is hidden this release, so its permission step is excluded from
+    /// `allCases` (see that property's doc comment). Reordering any of this
     /// should be a deliberate edit that breaks this assertion, not a silent
     /// consequence of moving a `case` while editing something else.
     func testMacStepsAreInTheDesignedOrder() {
@@ -39,7 +40,6 @@ final class WalkthroughFlowTests: XCTestCase {
             .insights,
             .agents,
             .companion,
-            .locationLog,
             .done,
         ])
     }
@@ -71,7 +71,7 @@ final class WalkthroughFlowTests: XCTestCase {
     /// This assertion is the thing that makes that a compile-then-fail
     /// rather than a ship.
     func testStepCountsMatchTheCountsQuotedInSettingsCopy() {
-        XCTAssertEqual(MacWalkthroughStep.allCases.count, 9)
+        XCTAssertEqual(MacWalkthroughStep.allCases.count, 8)
         XCTAssertEqual(PhoneWalkthroughStep.allCases.count, 7)
     }
 

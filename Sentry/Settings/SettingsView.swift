@@ -183,8 +183,21 @@ struct SettingsView: View {
             switch pane {
             case .general, .modules, .menuBar, .theme:
                 groups[0].append(pane)
-            case .alerts, .fans, .aiAccess, .sync, .location:
+            case .alerts, .fans, .aiAccess, .sync:
                 groups[1].append(pane)
+            case .location:
+                // Hidden for 1.0 — the Location Log ships in a later release.
+                // Everything else about the pane (the enum case, LocationPane,
+                // LocationService plumbing, tests) stays compiled and green;
+                // omitting it from the sidebar is the entire cut, and this
+                // switch is exhaustive so restoring it is a one-line change.
+                // The one exception: a user who already enabled the log keeps
+                // the pane — hiding the only view/disable surface for a
+                // location log that's actively recording would be the exact
+                // silent-data-collection shape this app exists to refuse.
+                if store.settings.locationLogEnabled {
+                    groups[1].append(pane)
+                }
             case .advanced, .about:
                 groups[2].append(pane)
             }

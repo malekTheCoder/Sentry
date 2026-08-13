@@ -214,7 +214,7 @@ struct GeneralPane: View {
             Button("Show Walkthrough") { walkthrough.replay() }
                 .disabled(!walkthrough.canReplay || walkthrough.isShowing)
                 .accessibilityLabel("Show the walkthrough again")
-                .accessibilityHint("Opens the nine-step introduction next to Sentry's menu bar icon.")
+                .accessibilityHint("Opens the eight-step introduction next to Sentry's menu bar icon.")
 
             if walkthrough.isShowing {
                 Text("It's open now, next to the menu bar icon.")
@@ -234,7 +234,7 @@ struct GeneralPane: View {
         } header: {
             Text("Walkthrough")
         } footer: {
-            Text("The nine-step introduction Sentry shows once on a fresh install — the menu bar item, the sleep controls, Insights, agent access, and pairing a phone. Running it again changes nothing on its own; every switch it offers is also here in Settings.")
+            Text("The eight-step introduction Sentry shows once on a fresh install — the menu bar item, the sleep controls, Insights, agent access, and pairing a phone. Running it again changes nothing on its own; every switch it offers is also here in Settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

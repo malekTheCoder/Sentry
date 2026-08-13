@@ -84,6 +84,15 @@ final class InsightsViewModel: ObservableObject {
     /// than reached for, so this type never touches `MainWindowState`.
     private let onOpenAppSettings: () -> Void
 
+    /// Publishes each freshly computed `ProtectionScore.overall` outward —
+    /// the composition root points this at
+    /// `StatsCoordinator.protectionScore` so the score rides the snapshot
+    /// cadence to the phone, the watch, and `GetProtectionScoreIntent`.
+    /// A closure for the same reason as `onOpenAppSettings`: this type
+    /// holds no coordinator reference and shouldn't grow one for a
+    /// one-way, fire-and-forget assignment.
+    private let onScoreComputed: (Int) -> Void
+
     private var snapshot: SystemSnapshot?
     private var settingsSnapshot: InsightSettingsSnapshot
     private var refreshTask: Task<Void, Never>?
@@ -95,7 +104,8 @@ final class InsightsViewModel: ObservableObject {
         postureProvider: any SecurityPostureProviding,
         theme: Theme = .defaultTheme,
         engine: ProtectionInsightsEngine = ProtectionInsightsEngine(),
-        onOpenAppSettings: @escaping () -> Void = {}
+        onOpenAppSettings: @escaping () -> Void = {},
+        onScoreComputed: @escaping (Int) -> Void = { _ in }
     ) {
         self.settingsStore = settingsStore
         self.entitlements = entitlements
@@ -104,6 +114,7 @@ final class InsightsViewModel: ObservableObject {
         self.engine = engine
         self.theme = theme
         self.onOpenAppSettings = onOpenAppSettings
+        self.onScoreComputed = onScoreComputed
         self.settingsSnapshot = InsightSettingsSnapshot(settingsStore.settings)
         self.suppressions = settingsStore.settings.protectionInsightSuppressions
         self.isProUnlocked = entitlements.isUnlocked(.protectionInsights)
@@ -204,6 +215,7 @@ final class InsightsViewModel: ObservableObject {
         self.report = report
         self.gated = ProGate.apply(isUnlocked: isProUnlocked, to: report.insights)
         self.isRefreshing = false
+        onScoreComputed(report.score.overall)
     }
 
     // MARK: - Suppression

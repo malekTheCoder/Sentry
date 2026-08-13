@@ -29,7 +29,7 @@ import SentryKit
 /// **Why the popover is a fixed size.** The steps' content varies from one
 /// paragraph to a QR code, and an `NSPopover` that resizes between steps
 /// re-anchors and visibly jumps under the menu bar. A fixed frame with the
-/// body in a `ScrollView` trades a scroll bar on two of the nine steps for a
+/// body in a `ScrollView` trades a scroll bar on a couple of steps for a
 /// window that stays still, which is the better trade when the thing being
 /// explained is *where things are*.
 ///

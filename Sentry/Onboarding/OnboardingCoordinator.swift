@@ -44,7 +44,7 @@ import SentryKit
 /// Unchanged from this file's first version, and worth restating because
 /// the walkthrough is now long-lived enough for it to matter more:
 /// `AppDelegate.popover` is a stored, reused instance whose content view
-/// controller `configurePopover` rebuilds in place. Routing a nine-step
+/// controller `configurePopover` rebuilds in place. Routing an eight-step
 /// walkthrough through it would mean either mutating that shared popover's
 /// content (racy against a real click landing mid-walkthrough) or teaching
 /// `togglePopover` about onboarding. A second popover that this coordinator
@@ -182,7 +182,7 @@ final class OnboardingCoordinator: ObservableObject {
         // behavioural regression risk in the whole file, so: a `.transient`
         // popover closes the moment the user clicks anywhere else, which was
         // right for a single "here's your icon" sentence and is wrong for a
-        // nine-step flow that spends several of those steps telling the user
+        // multi-step flow that spends several of those steps telling the user
         // to look at things. Losing the walkthrough to a stray click on
         // another window, with no way back except a Settings pane they have
         // not been shown yet, is a worse failure than the one

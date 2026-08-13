@@ -32,11 +32,11 @@ import SentryKit
 /// **Actions are shown but not edited.** A rule's `[AlertAction]` is
 /// summarized read-only. Editing it well means a UI for composing
 /// notification title/body copy plus per-action pickers. `.runShortcut` now
-/// launches Shortcuts.app for real and `.pushToPhone` is recorded to
-/// `PendingAlertPushStore` (see `AppDelegate`'s wiring), but phone *delivery*
-/// is still blocked on device sync — the summary text says exactly which
-/// half of that works. Showing the shipped actions honestly is the smaller
-/// lie than none at all.
+/// launches Shortcuts.app for real. `.pushToPhone` is recorded to
+/// `PendingAlertPushStore` (see `AppDelegate`'s wiring) but nothing delivers
+/// the queue yet, so its row is filtered out of `actionsSection` entirely
+/// for 1.0 — an action the user can neither edit nor receive isn't worth a
+/// row that needs a disclaimer.
 struct AlertsPane: View {
 
     @ObservedObject var store: SettingsStore
@@ -772,14 +772,21 @@ struct AlertsPane: View {
 
     @ViewBuilder
     private func actionsSection(_ rule: Binding<AlertRule>) -> some View {
+        // `.pushToPhone` is filtered from display for 1.0: nothing delivers
+        // the queued pushes yet, and a rule editor row for an action that
+        // can't act is the inert-control shape this pane refuses. The action
+        // stays in the store (two shipped default rules carry it) and keeps
+        // being recorded to `PendingAlertPushStore` — only the row is hidden,
+        // so delivery can ship later without a data migration.
+        let visibleActions = rule.wrappedValue.actions.filter { $0 != .pushToPhone }
         Section {
-            if rule.wrappedValue.actions.isEmpty {
+            if visibleActions.isEmpty {
                 Text("This rule has no actions and will only be recorded in history.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                ForEach(Array(rule.wrappedValue.actions.enumerated()), id: \.offset) { _, action in
+                ForEach(Array(visibleActions.enumerated()), id: \.offset) { _, action in
                     LabeledContent(Self.actionTitle(action)) {
                         Text(Self.actionDetail(action))
                             .foregroundStyle(.secondary)
@@ -790,7 +797,7 @@ struct AlertsPane: View {
         } header: {
             Text("Actions")
         } footer: {
-            Text("Actions aren't editable yet. “Push to iPhone” is queued on this Mac but can't reach a phone until device sync ships. Every firing is still written to history regardless.")
+            Text("Actions aren't editable yet. Every firing is still written to history regardless.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1262,9 +1269,10 @@ struct AlertsPane: View {
         }
     }
 
-    /// The detail column doubles as the honesty column: the one unimplemented
-    /// case (`pushToPhone`) says so here rather than looking like a working
-    /// feature.
+    /// The detail column doubles as the honesty column. `.pushToPhone`'s
+    /// detail is unreachable while `actionsSection` filters that action out
+    /// for 1.0, but its case stays — the switch is exhaustive, and the
+    /// honest disclaimer is ready the moment the row returns.
     static func actionDetail(_ action: AlertAction) -> String {
         switch action {
         case .notification(let title, _, let sound):

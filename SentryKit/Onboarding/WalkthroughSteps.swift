@@ -82,6 +82,22 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
     case locationLog
     case done
 
+    /// The flow order — `allCases` *is* the sequence (`WalkthroughFlow`
+    /// indexes into it), and this hand-written list exists to exclude
+    /// `.locationLog` for 1.0: the Location Log pane is hidden this release,
+    /// and a walkthrough step that requests location permission for a log
+    /// the user then has no surface to view or manage would be exactly the
+    /// permission-without-a-feature flow `AppSettings.locationLogEnabled`'s
+    /// doc comment forbids. The case, its copy, `LocationLogControl`, and
+    /// the pane all stay compiled — restoring the feature in 1.1 is
+    /// reinserting `.locationLog` here (and updating the step count quoted
+    /// in `GeneralPane`'s walkthrough copy, which
+    /// `WalkthroughFlowTests.testStepCountsMatchTheCountsQuotedInSettingsCopy`
+    /// will force).
+    public static var allCases: [MacWalkthroughStep] {
+        [.menuBar, .composeBar, .keepAwake, .alerts, .insights, .agents, .companion, .done]
+    }
+
     public var role: WalkthroughStepRole {
         switch self {
         case .menuBar, .composeBar, .insights: return .teach
