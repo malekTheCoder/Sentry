@@ -5,9 +5,10 @@ Every text field the human will paste into App Store Connect for
 the watch app, and the complication in one upload). Paste-ready values are in
 fenced blocks; everything outside a block is drafting rationale, not copy.
 
-Grounding: the App Privacy answers are transcribed from
-`docs/appstore-review-readiness.md` §8, which is the source of truth — if the
-two ever disagree, that document wins and this one is stale. URLs were
+Grounding: the App Privacy answers were originally transcribed from
+`docs/appstore-review-readiness.md` §8; since the Location Log feature was
+deleted (13 Aug 2026) this draft supersedes §8's location answer — that
+document is a historical audit and carries an editor's note saying so. URLs were
 verified against what the app actually compiles in: the Sparkle feed is
 `https://malekthecoder.github.io/Sentry/appcast.xml` (`project.yml:609`, read
 by `SentryKit/Updates/UpdateFeedConfiguration.swift` via `SUFeedURL`) and the
@@ -215,41 +216,33 @@ web view, no ads, and no purchases.
 
 ## App Privacy questionnaire
 
-Transcribed exactly from `docs/appstore-review-readiness.md` §8. **Enter
-exactly this; do not let App Store Connect's defaults stand.**
+Originally transcribed from `docs/appstore-review-readiness.md` §8, then
+updated on 13 Aug 2026 when the Location Log feature was deleted from the
+product entirely — this draft now supersedes §8's location answer (see the
+editor's note there). **Enter exactly this; do not let App Store Connect's
+defaults stand.**
 
 | App Store Connect question | Answer |
 |---|---|
-| Do you or your third-party partners collect data from this app? | **Yes** |
-| **Contact Info** (name, email, phone, address, other) | **Not collected** |
-| **Health & Fitness** | **Not collected** |
-| **Financial Info** | **Not collected** |
-| **Location → Precise Location** | **Collected** · Linked to user: **No** · Used for tracking: **No** · Purpose: **App Functionality** |
-| **Location → Coarse Location** | **Not collected** |
-| **Sensitive Info** | **Not collected** |
-| **Contacts** | **Not collected** |
-| **User Content** | **Not collected** |
-| **Browsing History** | **Not collected** |
-| **Search History** | **Not collected** |
-| **Identifiers** (User ID, Device ID) | **Not collected** |
-| **Purchases** | **Not collected** |
-| **Usage Data** | **Not collected** |
-| **Diagnostics** | **Not collected** |
-| **Other Data** | **Not collected** |
-| Data Types Used to Track You | **None** |
+| Do you or your third-party partners collect data from this app? | **No** |
 
-Three directives from §8 that travel with the table:
+Answering **No** to the gate question is the whole questionnaire: ASC only
+expands the per-category table when the answer is Yes. Nothing is collected
+in any category — no contact info, no location (the Location Log feature
+was removed; no CoreLocation call exists anywhere in the app or the Mac
+app), no identifiers, no usage data, no diagnostics — and nothing is used
+for tracking. The expected label is **"Data Not Collected."**
 
-- **Declare Precise, not Coarse.** The Mac requests reduced accuracy, but
-  that is a request, not a guarantee, and the raw coordinate doubles travel
-  unrounded. The stronger category is the honest worst case and matches
-  `SentryMobile/PrivacyInfo.xcprivacy`.
-- **Keep the manifest and the label consistent.** ASC cross-checks them. The
-  manifest declares exactly one collected type — Precise Location, not
-  linked, not tracking, App Functionality — so this table must match it.
-  Change one and you must change the other.
-- **Expect a question about this** — location declared with no visible
-  prompt is unusual. The review notes below pre-empt it with §8's wording.
+Two directives that travel with the answer:
+
+- **Keep the manifest and the label consistent.** ASC cross-checks them.
+  `SentryMobile/PrivacyInfo.xcprivacy` declares an empty
+  `NSPrivacyCollectedDataTypes` array — no collected types — so this
+  answer must match it. Change one and you must change the other.
+- System metrics from the user's own Mac (battery, CPU, temperatures)
+  travel only between the user's own devices over their own network, are
+  never sent to any server, and are not accessible to the developer —
+  which is not "collection" under Apple's definition.
 
 ## App Review notes
 
@@ -303,13 +296,6 @@ REVIEWING WITHOUT A MAC — DEMO MODE WALKTHROUGH
    then shows the same vitals with an explicit "Demo" chip, and the watch
    complication appends "· Demo" to its freshness line. The watch also has
    a Keep Awake page and an agent-activity page fed the same way.
-
-LOCATION — WHY THE PRIVACY LABEL DECLARES IT WITH NO PROMPT IN THE APP
-
-Location is read by the user's Mac, not by this app. This app has no
-CLLocationManager and requests no location permission; it receives a
-coordinate over the local network and displays it. The feature is off by
-default.
 
 PRIVACY, GENERALLY
 

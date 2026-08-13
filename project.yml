@@ -635,26 +635,17 @@ targets:
         # in `docs/sparkle-release-signing.md`.
         # ---------------------------------------------------------------
         SUPublicEDKey: "REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY"
-        # Required for `LocationService` (`SentryKit/Services/LocationService.swift`)
-        # — the honest "Location Log" feature (never "Find My," see that
-        # type's doc comment). Only ever triggers a permission prompt when
-        # the user explicitly enables the feature in Settings ▸ Location
-        # (`LocationPane`), never at launch. `NSLocationUsageDescription` is
-        # the legacy key macOS's TCC prompt still reads; both are set to the
-        # same text for safety across macOS versions.
-        #
-        # The wording covers the Location Log and nothing else, which is
-        # exactly what this build can do with location. The other macOS API
-        # that would pull location into TCC — `CWInterface.ssid()` in
+        # No NSLocation* usage strings, deliberately: the Location Log
+        # feature was deleted (see git history) and nothing in this app
+        # touches CoreLocation. The one macOS API that would pull location
+        # into TCC — `CWInterface.ssid()` in
         # SystemMetricsKit/Collectors/NetworkCollector.swift, which trips the
         # Location Services prompt on Sonoma+ — is behind that collector's
         # `includeSSID` flag, and `AppDelegate` constructs
         # `NetworkCollector()` with the flag at its `false` default, so no
-        # shipping code path reads an SSID. Naming Wi-Fi network names here
-        # would therefore be an overclaim; if `includeSSID` ever becomes
-        # reachable from the UI, this string has to grow a clause.
-        NSLocationUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while Sentry is running, and only if you turn it on in Settings."
-        NSLocationWhenInUseUsageDescription: "Sentry can periodically log this Mac's approximate location so your iPhone can show where it was last seen. This only runs while Sentry is running, and only if you turn it on in Settings."
+        # shipping code path reads an SSID. If `includeSSID` ever becomes
+        # reachable from the UI, the usage strings have to come back with a
+        # Wi-Fi clause.
         # macOS 15 gates the local network the way iOS has for years, and this
         # app is squarely inside that gate on two counts: `LocalSyncServer`
         # (SentryKit/LocalSync/LocalSyncServer.swift) advertises
@@ -673,9 +664,8 @@ targets:
         # (an unused listener should be inert, not unreachable), but a real
         # exception to plan §14.2's "ask late, ask contextually, never at
         # launch." Adding these keys does not create the prompt; it gives the
-        # prompt an honest sentence instead of a blank one. Location and
-        # notifications remain strictly opt-in and are still never requested
-        # at launch.
+        # prompt an honest sentence instead of a blank one. Notifications
+        # remain strictly opt-in and are still never requested at launch.
         NSLocalNetworkUsageDescription: "Sentry advertises this Mac on your local network so your iPhone and Apple Watch can find it and show its live stats over Wi-Fi, and — only if you turn on Remote Access — answers requests on the port you choose. None of this data is sent to any server."
         NSBonjourServices:
           - "_sentry._tcp"

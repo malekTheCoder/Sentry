@@ -187,7 +187,7 @@ struct AdaptiveStack<Content: View>: View {
 ///
 /// **Why a shape change and not just smaller text.** The horizontal
 /// `label … value` idiom is used all over this app (battery detail rows, the
-/// per-metric browser, the location card's timestamp). It works because the
+/// per-metric browser). It works because the
 /// label and the value each need a fraction of the width. At an accessibility
 /// size both roughly triple, the `Spacer` collapses, and the two sides start
 /// fighting: SwiftUI resolves that by truncating one of them, which on a

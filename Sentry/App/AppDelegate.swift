@@ -80,16 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var intentAccessibleCoordinator: StatsCoordinator { coordinator }
     var intentAccessibleSettingsStore: SettingsStore { settingsStore }
 
-    /// The "Location Log" feature (plan-external addition; see
-    /// `LocationService`'s doc comment for why this is deliberately not
-    /// "Find My"). Constructed unconditionally, like `powerControl` above —
-    /// it does nothing observable (no permission prompt, no timer, no
-    /// `CLLocationManager` activity beyond reading the already-cached
-    /// `authorizationStatus`) until `applySettings` sees
-    /// `AppSettings.locationLogEnabled == true`, which is also the only
-    /// path that ever calls `requestAuthorization()`.
-    private let locationService = LocationService()
-
     /// Backs Settings ▸ Fans.
     ///
     /// `PrivilegedFanControlBackend` **wrapping** the read-only SMC one, not
@@ -206,7 +196,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
                             endpointPublisher: self.mcpEndpointPublisher,
-                            locationService: self.locationService,
                             fanControlService: self.fanControlService,
                             updateController: self.updateController,
                             // The panes' Pro gates (process-match rules,
@@ -424,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // Sparkle persists its check schedule in `UserDefaults`, so a second
     // updater would reconcile against the first's record.
     //
-    // Non-lazy and unconditional, like `locationService`/`fanControlService`
+    // Non-lazy and unconditional, like `fanControlService`
     // above: construction reads two `Info.plist` keys and, when they don't
     // describe a working channel, deliberately builds no Sparkle object at
     // all. That last part is the whole design — see `UpdateController`'s doc
@@ -677,12 +666,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // Mirrors `powerControl.$state` immediately above, same reasoning:
-        // `LocationService` is `@MainActor`-isolated and changes on its own
-        // multi-minute capture cadence, not a poll tick, so pushing on
-        // change (not polling from `StatsCoordinator`) is both correct and
-        // cheap. `sink` (not `AsyncPublisher`) for the same "never drop an
-        // emission" reasoning documented on the settings sink below.
         // Seed the fan-control service with the persisted policy block so
         // its resolution preview matches what's on disk from the first
         // sample, not from the second. `applySettings` keeps it current
@@ -715,12 +698,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         dashboardViewModel.isProUnlocked = proEntitlementStore.isUnlocked(.historyExport)
         localSyncServer.setRemoteAccessUnlocked(proEntitlementStore.isUnlocked(.remoteSync))
 
-        locationService.$lastLocation
-            .sink { [weak self] location in
-                self?.coordinator.location = location
-            }
-            .store(in: &cancellables)
-
         // Tab-gates `ProcessMonitor` (see `updateProcessMonitorState`'s doc
         // comment) — the nav switcher writes `mainWindowState.tab` on every
         // click, and that's the only way the Dashboard tab is deselected
@@ -735,17 +712,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self?.updateProcessMonitorState()
             }
             .store(in: &cancellables)
-
-        // If Location Log was already enabled and authorized on a previous
-        // run (persisted in settings.json + macOS's own permission
-        // bookkeeping), resume capturing on this launch without re-prompting
-        // — `start()` itself no-ops unless `permissionState == .authorized`,
-        // so this is safe to call unconditionally even if the user never
-        // enabled the feature or later revoked permission in System
-        // Settings.
-        if settings.locationLogEnabled {
-            locationService.start()
-        }
 
         // Live-apply theme/layout changes made in Settings without a restart.
         //
@@ -1166,19 +1132,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 // fresh one instead of resurrecting a possibly-shared one.
                 MCPRemoteAccessKey.clear()
             }
-        }
-
-        // Location Log: request permission (if not already decided) and
-        // start capturing only in direct response to the toggle turning on
-        // — never at launch, never as a side effect of any other settings
-        // change. `requestAuthorization()` itself no-ops once macOS has
-        // already recorded a decision, so a re-toggle after a prior grant
-        // just resumes capturing without a second prompt.
-        if settings.locationLogEnabled {
-            locationService.requestAuthorization()
-            locationService.start()
-        } else {
-            locationService.stop()
         }
 
         // Agent termination controls (see AgentGuardrails): every surface —

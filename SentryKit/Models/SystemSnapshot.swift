@@ -19,16 +19,6 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
     public var thermal: ThermalStats?
     public var sleepAssertion: SleepAssertionState?
 
-    /// The Mac's last-captured approximate location (plan §3.2 P5's honesty
-    /// discipline applies here same as everywhere else — see
-    /// `MacLocation`'s and `LocationService`'s doc comments). `nil` covers
-    /// every one of: location permission not granted, the feature toggled
-    /// off, or no fix captured yet — `SystemSnapshot`'s consumers can't tell
-    /// those apart from this field alone, which is fine, since none of them
-    /// change what the UI should show ("no known location," worded
-    /// specifically, not a blank/fake map pin).
-    public var location: MacLocation?
-
     /// Whether all AI agent access is currently paused — mirrors
     /// `AppSettings.agentGuardrails.killSwitchEngaged`
     /// (`SentryKit/Services/AgentGuardrails.swift`), pushed in the same
@@ -174,7 +164,6 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         network: NetworkStats? = nil,
         thermal: ThermalStats? = nil,
         sleepAssertion: SleepAssertionState? = nil,
-        location: MacLocation? = nil,
         agentAccessPaused: Bool? = nil,
         themePalette: RelayedPalette? = nil,
         protectionScore: Int? = nil,
@@ -194,7 +183,6 @@ public struct SystemSnapshot: Codable, Sendable, Identifiable {
         self.network = network
         self.thermal = thermal
         self.sleepAssertion = sleepAssertion
-        self.location = location
         self.agentAccessPaused = agentAccessPaused
         self.themePalette = themePalette
         self.protectionScore = protectionScore

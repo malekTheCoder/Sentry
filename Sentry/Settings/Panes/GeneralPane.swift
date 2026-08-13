@@ -183,8 +183,8 @@ struct GeneralPane: View {
     /// **Why this pane and not About.** About was the other candidate — it
     /// is where "what is this app" material usually goes. General wins on
     /// one argument: the walkthrough is not reference material, it is a
-    /// *setup* flow (it asks for notification permission, offers the
-    /// location log, mints a pairing code, installs the command-line
+    /// *setup* flow (it asks for notification permission, mints a pairing
+    /// code, installs the command-line
     /// helper), and General is already the pane that owns startup and
     /// first-run behaviour. Someone looking for "show me that again" checks
     /// the first pane in the list before the last one, too.

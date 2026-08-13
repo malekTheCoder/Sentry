@@ -55,7 +55,7 @@
 	  Nothing. `WatchRelaySnapshot` (SentryKit/Watch/WatchRelaySnapshot.swift)
 	  is a device name, two timestamps, a demo-data flag, battery
 	  percent/charging/plugged-in, and a thermal-pressure summary. It carries
-	  no location — the Location Log is not relayed to the watch — and no
+	  no location (the app collects none at all) and no
 	  identifier of any kind.
 	-->
 	<key>NSPrivacyCollectedDataTypes</key>

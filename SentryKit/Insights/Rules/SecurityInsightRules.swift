@@ -33,18 +33,6 @@ enum SecurityEvidence {
         return String(localized: "Its startup volume is holding \(usedText) of data on a \(totalText) drive.")
     }
 
-    /// "Sentry's Location Log last placed this Mac somewhere on 3 Jun."
-    /// Only ever built when the user has explicitly enabled the Location
-    /// Log — this feature never turns it on, prompts for it, or implies it
-    /// should be on.
-    static func locationDescription(_ context: InsightContext) -> String? {
-        guard context.settings.locationLogEnabled,
-              let location = context.snapshot?.location
-        else { return nil }
-        let whenText = location.timestamp.formatted(date: .abbreviated, time: .shortened)
-        return String(localized: "Sentry's Location Log last recorded a position for this Mac on \(whenText), so it does move around.")
-    }
-
     /// "It's currently on the Wi-Fi network \"Cafe Guest\"."
     static func networkDescription(_ context: InsightContext) -> String? {
         guard let network = context.snapshot?.network, network.isWiFi, let ssid = network.wifiSSID, !ssid.isEmpty else {
@@ -71,7 +59,6 @@ public struct FileVaultOffRule: ProtectionInsightRule, Sendable {
         ]
         if let machine = SecurityEvidence.machineDescription(context) { evidence.append(machine) }
         if let data = SecurityEvidence.dataAtRiskDescription(context) { evidence.append(data) }
-        if let location = SecurityEvidence.locationDescription(context) { evidence.append(location) }
 
         // A portable Mac that goes places is a materially worse case than a
         // desktop that never leaves a locked room — but both are critical,

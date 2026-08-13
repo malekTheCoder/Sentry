@@ -21,8 +21,6 @@ public struct InsightSettingsSnapshot: Sendable, Equatable {
     /// power state, not merely read stats.
     public var mcpWriteToolsEnabled: Bool
 
-    public var locationLogEnabled: Bool
-
     /// `AppSettings.rawRetentionHours` / `hourlyRetentionDays`. Used only by
     /// the "not enough history yet" honesty path, so it can say *why* a
     /// window is short when the reason is a retention setting rather than a
@@ -34,14 +32,12 @@ public struct InsightSettingsSnapshot: Sendable, Equatable {
         mcpRemoteAccessEnabled: Bool = false,
         mcpRemotePort: Int = 8642,
         mcpWriteToolsEnabled: Bool = false,
-        locationLogEnabled: Bool = false,
         rawRetentionHours: Int = 48,
         hourlyRetentionDays: Int = 90
     ) {
         self.mcpRemoteAccessEnabled = mcpRemoteAccessEnabled
         self.mcpRemotePort = mcpRemotePort
         self.mcpWriteToolsEnabled = mcpWriteToolsEnabled
-        self.locationLogEnabled = locationLogEnabled
         self.rawRetentionHours = rawRetentionHours
         self.hourlyRetentionDays = hourlyRetentionDays
     }
@@ -51,7 +47,6 @@ public struct InsightSettingsSnapshot: Sendable, Equatable {
             mcpRemoteAccessEnabled: settings.mcpRemoteAccessEnabled,
             mcpRemotePort: settings.mcpRemotePort,
             mcpWriteToolsEnabled: settings.mcpWriteToolsEnabled,
-            locationLogEnabled: settings.locationLogEnabled,
             rawRetentionHours: settings.rawRetentionHours,
             hourlyRetentionDays: settings.hourlyRetentionDays
         )

@@ -26,9 +26,9 @@ final class WalkthroughFlowTests: XCTestCase {
     /// the design. The Mac flow opens with where the app is (a user can use
     /// nothing else until they know), then the three undiscoverable
     /// features, then the permission ask inside the step that motivates it.
-    /// `.locationLog` is deliberately absent for 1.0 — the Location Log pane
-    /// is hidden this release, so its permission step is excluded from
-    /// `allCases` (see that property's doc comment). Reordering any of this
+    /// (A `.locationLog` permission step existed here once, first excluded
+    /// from `allCases` for 1.0 and then deleted with the whole Location Log
+    /// feature — see git history.) Reordering any of this
     /// should be a deliberate edit that breaks this assertion, not a silent
     /// consequence of moving a `case` while editing something else.
     func testMacStepsAreInTheDesignedOrder() {
@@ -61,7 +61,7 @@ final class WalkthroughFlowTests: XCTestCase {
         ])
     }
 
-    /// The counts are quoted in user-facing copy — "the nine-step
+    /// The counts are quoted in user-facing copy — "the eight-step
     /// introduction" in `Sentry/Settings/Panes/GeneralPane.swift`'s
     /// walkthrough section, "The seven-step introduction, again." in
     /// `SentryMobile/Settings/SettingsTabView.swift`'s walkthrough row, and
@@ -137,22 +137,18 @@ final class WalkthroughFlowTests: XCTestCase {
 
     /// The phone genuinely has nothing to ask for — no notifications of its
     /// own, no camera (pairing goes through the system Camera app via a
-    /// `sentry://pair` deep link precisely so it doesn't), no location (the
-    /// Mac collects that). If a `.permission` step ever appears in this
+    /// `sentry://pair` deep link precisely so it doesn't), no location.
+    /// If a `.permission` step ever appears in this
     /// flow, either the app grew a real permission or somebody added a
     /// prompt for nothing; both deserve a failing test and a second look.
     func testPhoneFlowRequestsNoSystemPermissions() {
         XCTAssertFalse(PhoneWalkthroughStep.allCases.contains { $0.role == .permission })
     }
 
-    /// The Mac's two permission asks, pinned to the steps that motivate
-    /// them. Moving the notification request out of the alerts step (or the
-    /// location request out of the location-log step) would put a prompt in
-    /// front of a user who has not been told why.
+    /// The Mac's one permission ask, pinned to the step that motivates
+    /// it. Moving the notification request out of the alerts step would put
+    /// a prompt in front of a user who has not been told why.
     func testMacPermissionStepsAreTheOnesThatExplainThem() {
-        // `.locationLog` is also a `.permission` step by role, but it is
-        // excluded from `allCases` for 1.0 along with its pane — see the
-        // ordering test above.
         XCTAssertEqual(
             MacWalkthroughStep.allCases.filter { $0.role == .permission },
             [.alerts]
@@ -255,7 +251,7 @@ final class WalkthroughFlowTests: XCTestCase {
     /// assertion that keeps it doing so.
     func testRestartIsWhatMakesAReplayStartFromTheBeginning() {
         var flow = WalkthroughFlow<MacWalkthroughStep>(presentation: .replay)
-        flow.go(to: .locationLog)
+        flow.go(to: .companion)
         flow.restart()
         XCTAssertEqual(flow.stepIndex, 0)
         XCTAssertEqual(flow.presentation, .replay, "restart must not change why the flow is on screen")

@@ -39,7 +39,7 @@
 	  memory fraction, sleep-assertion state and a short battery history —
 	  facts about the user's own Mac, read from a container on the user's own
 	  phone, drawn on the user's own home screen. No location field exists on
-	  `WidgetSnapshot`; the Location Log never reaches this extension.
+	  `WidgetSnapshot` (the app collects no location at all).
 	-->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array/>

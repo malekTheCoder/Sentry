@@ -1,5 +1,4 @@
 import AppKit
-import CoreLocation
 import SwiftUI
 import UserNotifications
 import SentryKit
@@ -37,17 +36,6 @@ import SentryKit
 ///   is private). Asking for a *different* option set than the engine later
 ///   asks for would be the real bug, and this avoids it by using the same
 ///   one.
-///
-/// - **Location** writes `AppSettings.locationLogEnabled`, and that is the
-///   whole mechanism: `AppDelegate.applySettings` — which is subscribed to
-///   `settingsStore.$settings` — calls `LocationService.requestAuthorization()`
-///   and `start()` in direct response to that flag going true. So this
-///   toggle produces a genuine CoreLocation prompt through the app's own
-///   opt-in path rather than a parallel one, which is exactly what
-///   `AppSettings.locationLogEnabled`'s doc comment requires ("in direct
-///   response to this flipping to `true` from a user tapping the toggle").
-///   The status line beside it reads `CLLocationManager.authorizationStatus`
-///   from a throwaway manager — a read, which prompts nothing.
 ///
 /// - **Agent access** writes `AppSettings.mcpServerEnabled`, the master
 ///   switch `MCPXPCService`/`SentryMCP` gate on, and shows the live count of
@@ -103,8 +91,6 @@ struct WalkthroughStepContent: View {
             agentAccessControls
         case .companion:
             PairingControls(store: store, isProUnlocked: isRemoteSyncUnlocked)
-        case .locationLog:
-            LocationLogControl(store: store)
         case .done:
             doneHint
         }
@@ -540,76 +526,6 @@ private struct PairingControls: View {
         )
         if !hostCandidates.contains(where: { $0.address == selectedHost }) {
             selectedHost = hostCandidates.first?.address ?? ""
-        }
-    }
-}
-
-// MARK: - Location log
-
-/// The optional step. Writes `AppSettings.locationLogEnabled` and lets
-/// `AppDelegate.applySettings` do the CoreLocation work — see this file's
-/// header for why that indirection is the correct wiring and not a
-/// shortcut.
-private struct LocationLogControl: View {
-
-    @ObservedObject var store: SettingsStore
-
-    @Environment(\.themePalette) private var palette
-
-    /// A throwaway manager, used only to *read* `authorizationStatus`.
-    /// Constructing one prompts nothing (`LocationService`'s own init relies
-    /// on the same fact), and this view deliberately does not construct a
-    /// second `LocationService` — the app already owns one, and two
-    /// instances racing to `start()` the same hardware would be a genuine
-    /// bug rather than a duplicated read.
-    @State private var manager = CLLocationManager()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacingTight) {
-            Toggle("Keep a location log for this Mac", isOn: $store.settings.locationLogEnabled)
-                .accessibilityLabel("Keep a location log for this Mac")
-                .accessibilityHint("macOS will ask for location permission. Also in Settings, Location Log.")
-
-            Label {
-                Text(statusText)
-                    .font(palette.font(size: 10.5))
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: statusSymbol).foregroundStyle(statusTint)
-            }
-            .foregroundStyle(palette.textTertiary)
-            .accessibilityElement(children: .combine)
-        }
-    }
-
-    private var statusText: String {
-        switch manager.authorizationStatus {
-        case .notDetermined:
-            return String(localized: "macOS hasn't been asked yet. Turning this on is what asks.")
-        case .denied:
-            return String(localized: "Location is denied for Sentry, so this will stay empty until it's allowed in System Settings ▸ Privacy & Security.")
-        case .restricted:
-            return String(localized: "Location is restricted on this Mac by a policy Sentry can't change.")
-        case .authorized, .authorizedAlways:
-            return String(localized: "Location is allowed. Sentry records a coarse position about every half hour while this is on.")
-        @unknown default:
-            return String(localized: "Location permission is in a state this version of Sentry doesn't recognise.")
-        }
-    }
-
-    private var statusSymbol: String {
-        switch manager.authorizationStatus {
-        case .authorized, .authorizedAlways: return "location.fill"
-        case .denied, .restricted: return "location.slash"
-        default: return "location"
-        }
-    }
-
-    private var statusTint: Color {
-        switch manager.authorizationStatus {
-        case .authorized, .authorizedAlways: return palette.success
-        case .denied, .restricted: return palette.warning
-        default: return palette.textTertiary
         }
     }
 }

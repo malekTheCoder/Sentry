@@ -327,6 +327,11 @@ which are system-scheduled and need no declaration.
 
 ### 8. App Privacy "nutrition label" — answers to enter in App Store Connect
 
+> **Editor's note (13 Aug 2026):** the Location Log feature this section's
+> location answer describes was removed from the product on this date; the
+> current answers live in `docs/asc-metadata-draft.md`, which supersedes
+> this section. The text below is kept as the audit's historical record.
+
 **Requirement:** [App privacy details on the App
 Store](https://developer.apple.com/app-store/app-privacy-details/). Apple's
 definition of *collect* is "transmitting data off the device in a way that

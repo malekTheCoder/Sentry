@@ -173,12 +173,6 @@ struct SettingsTabView: View {
     /// for. The counter is observed from `remoteMacSection`, which survives.
     @State private var remoteMacsForgotten = 0
 
-    /// Drives `locationLogSection` below — see `LocationLogViewModel`'s doc
-    /// comment for why this follows `AppDataSource.shared`'s snapshot stream
-    /// independently of `DashboardViewModel` rather than sharing that view
-    /// model's `latestSnapshot`.
-    @StateObject private var locationLogViewModel = LocationLogViewModel()
-
     /// Falls back to `MockDataSource`'s own fixed mock device whenever
     /// nothing has loaded yet (first frame, before `.task` below has run) —
     /// keeps this section rendering something plausible immediately, same
@@ -197,7 +191,6 @@ struct SettingsTabView: View {
                 deviceCard
                 macPickerSection
                 remoteMacSection
-                LocationLogSection(viewModel: locationLogViewModel)
                 widgetsSection
                 walkthroughRow
                 aboutRow

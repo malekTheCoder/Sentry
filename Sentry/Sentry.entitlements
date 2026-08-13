@@ -69,9 +69,6 @@
       Sandbox-only keys. Outside the sandbox they grant nothing, so listing
       them would be decoration that reads like a security posture.
 
-  CoreLocation (LocationService) needs no entitlement on unsandboxed macOS —
-  it is gated by TCC and the NSLocation*UsageDescription strings in
-  Sentry/Resources/Info.plist, which are already set.
 -->
 <plist version="1.0">
 <dict>

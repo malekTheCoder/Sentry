@@ -77,14 +77,13 @@ public struct FreshnessBadge: View {
     /// instead, which is the general-purpose version of the same idea.
     ///
     /// **Why an opt-in initializer rather than making every badge tick.**
-    /// `FreshnessBadge` is used from a `List` row (`LocationLogSection`,
-    /// `SentryMobile/Settings/`) and inside a widget's timeline entry
+    /// `FreshnessBadge` is used inside a widget's timeline entry
     /// (`LargeWidgetView`, `SentryWidget/Views/`), where an unconditional
-    /// internal timer would mean N redundant `TimelineView`s ticking in a
-    /// scrollable list, or a widget extension redrawing itself between the
-    /// timeline reloads that are its actual update mechanism. Neither of
-    /// those callers has this problem — they already get a fresh `now` from
-    /// outside — so forcing the behavior on them would trade a real bug on
+    /// internal timer would mean a widget extension redrawing itself between
+    /// the
+    /// timeline reloads that are its actual update mechanism. A caller like
+    /// that doesn't have this problem — it already gets a fresh `now` from
+    /// outside — so forcing the behavior on it would trade a real bug on
     /// one screen for a needless one everywhere else. This initializer is
     /// therefore the only way to opt in; the default initializer's behavior
     /// is unchanged, and no existing call site needs to change.

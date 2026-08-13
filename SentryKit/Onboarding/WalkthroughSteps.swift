@@ -57,19 +57,9 @@ import Foundation
 /// until they know. Then the three features they would otherwise never find
 /// (Keep Awake lives only in the dropdown; Insights is a window behind a
 /// settings tab; the MCP server is off by default). Permissions are asked
-/// *inside* the step that explains why they're wanted — notifications on the
-/// alerts step, location on the location-log step — rather than in an
-/// up-front block, which is the pattern `AppSettings.locationLogEnabled`'s
-/// doc comment already insists on for that permission specifically ("a
-/// permission prompt a user didn't ask for, tied to a setting they didn't
-/// know existed, is the opposite of the explicit, user-initiated permission
-/// flow this feature requires").
-///
-/// **Why the optional permission is last of the substantive steps.**
-/// `.locationLog` is the only step whose feature most users will not want.
-/// Putting it ninth means someone who abandons the flow early has still been
-/// taught everything that isn't optional; putting it third would mean the
-/// most-declined prompt lands before the most interesting content.
+/// *inside* the step that explains why they're wanted — notifications on
+/// the alerts step — rather than in an up-front block, so a prompt never
+/// lands before the sentence that explains what it is for.
 public enum MacWalkthroughStep: String, WalkthroughStep {
 
     case menuBar
@@ -79,30 +69,13 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
     case insights
     case agents
     case companion
-    case locationLog
     case done
-
-    /// The flow order — `allCases` *is* the sequence (`WalkthroughFlow`
-    /// indexes into it), and this hand-written list exists to exclude
-    /// `.locationLog` for 1.0: the Location Log pane is hidden this release,
-    /// and a walkthrough step that requests location permission for a log
-    /// the user then has no surface to view or manage would be exactly the
-    /// permission-without-a-feature flow `AppSettings.locationLogEnabled`'s
-    /// doc comment forbids. The case, its copy, `LocationLogControl`, and
-    /// the pane all stay compiled — restoring the feature in 1.1 is
-    /// reinserting `.locationLog` here (and updating the step count quoted
-    /// in `GeneralPane`'s walkthrough copy, which
-    /// `WalkthroughFlowTests.testStepCountsMatchTheCountsQuotedInSettingsCopy`
-    /// will force).
-    public static var allCases: [MacWalkthroughStep] {
-        [.menuBar, .composeBar, .keepAwake, .alerts, .insights, .agents, .companion, .done]
-    }
 
     public var role: WalkthroughStepRole {
         switch self {
         case .menuBar, .composeBar, .insights: return .teach
         case .keepAwake, .agents, .companion: return .setup
-        case .alerts, .locationLog: return .permission
+        case .alerts: return .permission
         case .done: return .finish
         }
     }
@@ -116,7 +89,6 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
         case .insights: return "checkmark.shield"
         case .agents: return "bolt.shield"
         case .companion: return "laptopcomputer.and.iphone"
-        case .locationLog: return "location"
         case .done: return "checkmark.circle"
         }
     }
@@ -137,8 +109,6 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
             return String(localized: "Coding agents can ask this Mac how it's doing")
         case .companion:
             return String(localized: "Your phone and watch can see all of this")
-        case .locationLog:
-            return String(localized: "Optional: remember where this Mac was")
         case .done:
             return String(localized: "That's the tour")
         }
@@ -160,8 +130,6 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
             return String(localized: "Sentry speaks MCP, so a coding agent can check this machine is fit before starting a long build — and hold it awake while it runs.")
         case .companion:
             return String(localized: "On your own Wi-Fi the iPhone app finds this Mac by itself. Pairing is one QR code, and connecting from other networks is part of Sentry Pro.")
-        case .locationLog:
-            return String(localized: "A coarse location, recorded every half hour, readable from your iPhone over your own network. Off unless you turn it on.")
         case .done:
             return String(localized: "Nothing you have just seen is required — Sentry works with all of it switched off.")
         }
@@ -183,8 +151,6 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
             return String(localized: "Read tools are on by default; the ones that change something are off until you enable them individually. Guardrails ship on: an agent's request to keep this Mac awake is refused below 20% battery, and an agent-held assertion is released automatically when the machine gets hot. And there is a kill switch — one toggle that declines every agent call, read and write, from every client, and it survives a relaunch.")
         case .companion:
             return String(localized: "Same network needs nothing turned on to watch this Mac. Pairing mints a code and draws a QR holding this Mac's address, port and code — point the iPhone's Camera app at it and the app fills the connection in, then asks you to confirm. Pairing is free, and is what lets the phone control this Mac on this Wi-Fi; reaching this Mac from other networks is part of Sentry Pro. The Apple Watch app rides along with the phone and pairs the ordinary way; there is nothing Sentry-specific to set up on the watch.")
-        case .locationLog:
-            return String(localized: "This is a location log, not Find My, and Sentry will not pretend otherwise: it records the last place this Mac reported, at reduced accuracy, keeps it on this Mac, and sends it only to a phone you have paired. macOS asks for permission the moment you switch it on. Skipping is a perfectly ordinary answer.")
         case .done:
             return String(localized: "Everything here lives in Settings, and so does this walkthrough — General ▸ Walkthrough runs it again whenever you want.")
         }
@@ -209,8 +175,7 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
 /// delivery path existed); pairing uses the system
 /// Camera app via a `sentry://pair` deep link specifically so that no camera
 /// permission is needed (`RemotePairing`'s doc comment argues that choice);
-/// and the location log is collected by the *Mac*, so the phone reads it
-/// without any location authorisation of its own. A walkthrough that
+/// and it reads no location. A walkthrough that
 /// prompted for something here would be prompting for nothing.
 public enum PhoneWalkthroughStep: String, WalkthroughStep {
 

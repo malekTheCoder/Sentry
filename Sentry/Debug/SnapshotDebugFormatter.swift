@@ -46,16 +46,14 @@ public enum SnapshotDebugFormatter {
 
     /// The sub-struct properties on `SystemSnapshot`, in the order the plan
     /// lists them ("battery, cpu, gpu, ane, memory, disk, network, thermal,
-    /// sleepAssertion"), plus `location` appended at the end (added after the
-    /// plan was written, for the "Location Log" feature — see
-    /// `MacLocation`'s doc comment) — listed explicitly, rather than
+    /// sleepAssertion") — listed explicitly, rather than
     /// discovered purely via `Mirror`, so the section order in the window is
     /// stable and matches the plan even though `Mirror`'s child order
     /// already happens to follow declaration order (an implementation
     /// detail `Mirror`'s docs don't actually guarantee). `topProcesses`
     /// (added alongside process-scoped alert rules — see
     /// `SystemSnapshot.topProcesses`'s doc comment) is appended last,
-    /// after `location`, for the same "added after the plan was written"
+    /// on "added after the plan was written"
     /// reasoning, with `agentActivitySummary` appended after that for the
     /// identical reason — it is a genuine struct with named fields
     /// (`toolCallCount`, `lastActivityAt`, `recentToolNames`), the same shape
@@ -63,7 +61,7 @@ public enum SnapshotDebugFormatter {
     /// that belongs lumped into "Snapshot" the way `agentAccessPaused`/
     /// `protectionScore` are below.
     private static let subStructKeys = [
-        "battery", "cpu", "gpu", "ane", "memory", "disk", "network", "thermal", "sleepAssertion", "location",
+        "battery", "cpu", "gpu", "ane", "memory", "disk", "network", "thermal", "sleepAssertion",
         "topProcesses", "agentActivitySummary",
     ]
 
@@ -185,7 +183,6 @@ public enum SnapshotDebugFormatter {
         case "gpu": return "GPU"
         case "ane": return "ANE"
         case "sleepAssertion": return "Sleep Assertion"
-        case "location": return "Location"
         case "topProcesses": return "Top Processes"
         case "agentActivitySummary": return "Agent Activity"
         default: return key.prefix(1).uppercased() + key.dropFirst()

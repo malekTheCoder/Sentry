@@ -40,7 +40,7 @@ Sentry does **not** read your Mac's serial number or hardware UUID, your usernam
 
 **Security posture.** Sentry can check how your Mac is protected: FileVault, System Integrity Protection, Gatekeeper, the firewall and stealth mode, automatic-update settings, screen-lock settings, whether the guest account is on, and which network ports are listening. It does this by running Apple's own read-only status commands (`fdesetup status`, `csrutil status`, `spctl --status`, `socketfilterfw`, `defaults read`, `netstat`). It never asks for your password, never elevates privileges, never changes a setting, and never contacts the network to do it. The results stay on your Mac and are used only to show you your own protection score.
 
-**Location — off by default.** If you turn on Location Log, Sentry records where the Mac was last seen, so you can find it from your iPhone. It uses reduced accuracy (roughly Wi-Fi-level, not GPS-level), checks about every 30 minutes, and stores only latitude, longitude, a timestamp, and an accuracy figure. Turning the feature off deletes the stored location immediately. This feature exists only on the Mac; the iPhone and Watch apps contain no location code at all.
+**Location.** Sentry does not read your location. No app in the family — Mac, iPhone, or Watch — contains any location code. (An earlier opt-in "Location Log" feature was removed before release; nothing collects, stores, or transmits a coordinate.)
 
 **Wi-Fi network name.** Sentry does not read your Wi-Fi network name. The capability exists in the code but is switched off in the shipping app.
 
@@ -54,7 +54,7 @@ On the Mac:
 - `~/Library/Caches/dev.malekswilam.sentry/statusline.json` — a short-lived cache of the most recent reading, used by the command-line status line
 - One item in your macOS Keychain, only if you turn on AI Remote Access: the access token for that feature
 
-On iPhone and Watch, a small snapshot of the latest readings is kept in the app's own storage so widgets and complications can draw without waking the app. It contains the Mac's name, battery, charge state, CPU, memory and thermal figures, keep-awake state, and — on the Watch — the names of recent AI tool calls. No location, no IP address, no network name.
+On iPhone and Watch, a small snapshot of the latest readings is kept in the app's own storage so widgets and complications can draw without waking the app. It contains the Mac's name, battery, charge state, CPU, memory and thermal figures, keep-awake state, and — on the Watch — the names of recent AI tool calls. No IP address, no network name.
 
 ## How long it is kept
 
@@ -75,10 +75,10 @@ Please read this part carefully, because it is the one place Sentry is more open
 
 - This local listener starts whenever the Mac app is running. It is not something you switch on.
 - It streams live readings — about once a second — to **any device on the same network that connects to it**. There is no pairing step for reading. The traffic is not encrypted on the local network.
-- That stream is the full snapshot: battery, CPU, memory, disk, thermals, network throughput, **your Mac's local IP address**, and, **if you have turned Location Log on, its coordinates**.
+- That stream is the full snapshot: battery, CPU, memory, disk, thermals, network throughput, and **your Mac's local IP address**.
 - Sending *commands* to the Mac (keep-awake, release, pause agent access) is different: that requires the paired connection described below.
 
-In practice this means: on your own home or personal Wi-Fi, your stats are visible to your own devices. On a shared, public, or office network, treat those readings as visible to that network. If that is not what you want, quit the Mac app on untrusted networks, and leave Location Log off.
+In practice this means: on your own home or personal Wi-Fi, your stats are visible to your own devices. On a shared, public, or office network, treat those readings as visible to that network. If that is not what you want, quit the Mac app on untrusted networks.
 
 **Remote Access pairing (off by default).** If you turn on Remote Sync, the Mac opens a second, encrypted listener (TLS with a pre-shared key derived from a pairing code you scan or type, port 8643 by default). Only devices that know the pairing code can connect to it, and only those devices may send commands. Sentry does not use any relay, rendezvous, or hole-punching service to reach your Mac from outside your network — reaching it from elsewhere is something you would have to arrange yourself, for example with your own VPN.
 
@@ -86,7 +86,7 @@ Nothing on this path touches the internet or any third party. Data goes directly
 
 ### 2. iPhone to Apple Watch
 
-The iPhone app hands a small snapshot to the Watch app using Apple's WatchConnectivity, which is a direct link between your own phone and your own watch. It carries the Mac's name, battery, charge state, CPU, thermal and memory pressure, and keep-awake state. It does not carry location, IP address, or network name.
+The iPhone app hands a small snapshot to the Watch app using Apple's WatchConnectivity, which is a direct link between your own phone and your own watch. It carries the Mac's name, battery, charge state, CPU, thermal and memory pressure, and keep-awake state. It does not carry IP address or network name.
 
 ### 3. AI agent access (off by default)
 
@@ -108,7 +108,7 @@ Sentry can act as an MCP (Model Context Protocol) server, which lets a local AI 
 
 **It is off by default.** Nothing is exposed to any AI tool until you turn on the AI Access setting yourself.
 
-**What an agent can read when you turn it on:** the same measurements described above — current snapshot, battery status and health history, metric history, thermal status, resource usage, alert history, device info (model, chip, macOS version, app version), sleep state, and agent-activity summaries. Because the snapshot is the same one used everywhere else, an agent can also see your Mac's local IP address, and its coordinates if Location Log is on.
+**What an agent can read when you turn it on:** the same measurements described above — current snapshot, battery status and health history, metric history, thermal status, resource usage, alert history, device info (model, chip, macOS version, app version), sleep state, and agent-activity summaries. Because the snapshot is the same one used everywhere else, an agent can also see your Mac's local IP address.
 
 **What an agent cannot read:** your running process list, your files, your keystrokes, your screen, or anything outside the measurements Sentry collects.
 
@@ -143,9 +143,8 @@ Sentry does not use iCloud, and the app has no iCloud entitlement, so it cannot 
 
 - **Local network.** Needed so your iPhone and Watch can find your Mac and show its stats over Wi-Fi. On the Mac this prompt appears when the app starts, because the local listener starts with the app. On iPhone it appears when the app looks for your Mac.
 - **Notifications.** Asked for only when you enable an alert rule, or the first time an alert would actually be delivered. Never at launch. Used only to show you your own alerts, on your own device.
-- **Location (Mac only).** Asked for only at the moment you turn on Location Log. Never at launch. Declining it simply means the feature stays off.
 
-Sentry never asks for camera, microphone, contacts, photos, calendar, or health access, and contains no code that could use them.
+Sentry never asks for camera, microphone, contacts, photos, calendar, location, or health access, and contains no code that could use them.
 
 ## Deleting your data
 
@@ -161,7 +160,7 @@ To delete everything Sentry has stored on your Mac:
 
 To delete the iPhone or Watch data, delete the app from the device.
 
-You can also reduce what is kept without deleting anything: lower the retention settings, turn off Location Log, and turn off AI access.
+You can also reduce what is kept without deleting anything: lower the retention settings and turn off AI access.
 
 ## Children
 

@@ -61,7 +61,7 @@ For **both** the iOS app and the watchOS app (a watch app bundled with an iOS ap
 - App Store Connect → your app → **App Privacy** → **Privacy Policy** → Edit → paste the URL.
 - It is set per-localization. If you ship more than one language, each localization has its own field and each must be filled.
 
-While you are in App Privacy, you also have to complete the **data collection questionnaire**. Based on the code, the honest answers are: no data is collected, no data is linked to the user, and no data is used for tracking — *unless* you decide the precise-location capability needs declaring. See the open questions in the accompanying report. The iOS `PrivacyInfo.xcprivacy` currently declares Precise Location as collected-but-not-linked-and-not-tracked, so the questionnaire answer must match that manifest.
+While you are in App Privacy, you also have to complete the **data collection questionnaire**. Based on the code, the honest answers are: no data is collected, no data is linked to the user, and no data is used for tracking. (The precise-location question resolved itself on 13 Aug 2026 when the Location Log feature was deleted — the iOS `PrivacyInfo.xcprivacy` now declares no collected data types, and the questionnaire answer must match that manifest. `docs/asc-metadata-draft.md` carries the current answers.)
 
 ### 2. In the app — Settings or About
 

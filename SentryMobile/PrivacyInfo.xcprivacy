@@ -41,60 +41,21 @@
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
 
+	<!--
+	  Empty, deliberately. This entry once declared
+	  NSPrivacyCollectedDataTypePreciseLocation for the "Location Log"
+	  feature (a Mac-collected coordinate this app displayed on a map). That
+	  feature was deleted outright — no CoreLocation call remains anywhere in
+	  this bundle or in the SentryKit framework it embeds, `SystemSnapshot`
+	  carries no location field, and nothing in this app handles a
+	  coordinate. Everything else the app displays (battery, CPU, memory,
+	  thermal readings from the user's own Mac) travels between two of the
+	  user's own devices over their own network, is never sent to any server,
+	  and is not accessible to the developer — which is not "collection"
+	  under Apple's definition.
+	-->
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array>
-		<!--
-		  The "Location Log" feature, and only that.
-
-		  What actually happens: the *Mac* (SentryKit/Services/LocationService.swift,
-		  which is `#if os(macOS)` — this phone never opens a CLLocationManager
-		  and never asks for location permission) can, if the user turns the
-		  feature on in Settings ▸ Location, ask CoreLocation for an
-		  approximate fix every 30 minutes and put it in the `SystemSnapshot`
-		  it streams over the LAN. This app receives that fix and draws it on
-		  a Map in Settings (SentryMobile/Settings/LocationLogSection.swift).
-		  Off by default; a user who never enables it never sees a coordinate
-		  here at all.
-
-		  A strict reading of Apple's definition of "collect" — transmitting
-		  data off the device in a way that lets the developer access it —
-		  would let this array be empty: the coordinate travels between two of
-		  the user's own devices over their own Wi-Fi, is never sent to any
-		  server, and we have no way to read it. It is declared anyway
-		  because the app genuinely handles real coordinates and displays them
-		  on a map, and under-declaring is the failure mode with consequences.
-
-		  Precise rather than Coarse: `LocationService` sets
-		  `desiredAccuracy = kCLLocationAccuracyReduced`, but that is a
-		  request, not a guarantee, and `MacLocation` carries the raw
-		  latitude/longitude doubles CoreLocation handed back with no rounding
-		  anywhere in the pipeline. Declaring the stronger of the two
-		  categories is the honest worst case.
-
-		  Linked = false: the payload is a coordinate, a timestamp and a
-		  horizontal-accuracy radius. There is no account, no user ID, no
-		  device advertising identifier, and no login in this app — see
-		  `MacLocation` and `SystemSnapshot`.
-
-		  Tracking = false: this is emphatically NOT Find My and must never be
-		  presented as such (LocationService's doc comment, and the on-screen
-		  disclaimer in LocationLogSection). It cannot locate a Mac that is
-		  off, asleep or offline; it is never combined with data from other
-		  companies; it is never used for advertising.
-		-->
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-	</array>
+	<array/>
 
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>

@@ -3,7 +3,7 @@ import SentryKit
 
 /// The settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, fans, aiAccess, sync, location, advanced, about
+    case general, modules, menuBar, theme, alerts, fans, aiAccess, sync, advanced, about
 
     var id: String { rawValue }
 
@@ -17,7 +17,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .fans: return String(localized: "Fans")
         case .aiAccess: return String(localized: "AI Access")
         case .sync: return String(localized: "Sync")
-        case .location: return String(localized: "Location Log")
         case .advanced: return String(localized: "Advanced")
         case .about: return String(localized: "About")
         }
@@ -33,7 +32,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .fans: return "fan"
         case .aiAccess: return "bolt.shield"
         case .sync: return "arrow.triangle.2.circlepath.icloud"
-        case .location: return "location"
         case .advanced: return "wrench.and.screwdriver"
         case .about: return "info.circle"
         }
@@ -51,7 +49,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .fans: return String(localized: "Live fan speeds, and what fan control would need to work.")
         case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
         case .sync: return String(localized: "iPhone companion and device sync.")
-        case .location: return String(localized: "An opt-in log of where this Mac last was, sent to your iPhone over local Wi-Fi.")
         case .advanced: return String(localized: "Diagnostics and debugging.")
         case .about: return String(localized: "Version, credits, and licenses.")
         }
@@ -100,20 +97,13 @@ struct SettingsView: View {
     /// reasonably conclude the feature had been removed.
     let endpointPublisher: MCPEndpointPublisher?
 
-    /// Backs `FanControlPane`. Not optional, for the same reason
-    /// `locationService` isn't: `FanControlService` has a real, meaningful
+    /// Backs `FanControlPane`. Not optional, unlike the stores above:
+    /// `FanControlService` has a real, meaningful
     /// answer for every hardware situation it can encounter (including "no
     /// fans" and "couldn't read"), so there is no genuine "unavailable"
     /// state that a `nil` would represent — and inventing one would give
     /// that pane a fourth empty state that can never actually occur.
     @ObservedObject var fanControlService: FanControlService
-
-    /// Backs `LocationPane`. Unlike `historyStore`/`mcpActivityLog`, this
-    /// isn't optional — `LocationService` has no meaningful "unavailable"
-    /// state of its own (unlike a database that can fail to open), so
-    /// `AppDelegate` always constructs a real instance and this view always
-    /// has one to observe.
-    @ObservedObject var locationService: LocationService
 
     /// Backs `GeneralPane`'s Updates section. Optional, like `historyStore`
     /// and `mcpActivityLog` and unlike the two services above: this view is
@@ -140,7 +130,6 @@ struct SettingsView: View {
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
         endpointPublisher: MCPEndpointPublisher? = nil,
-        locationService: LocationService,
         fanControlService: FanControlService,
         updateController: UpdateController? = nil,
         proEntitlements: (any ProEntitlementProviding)? = nil
@@ -150,7 +139,6 @@ struct SettingsView: View {
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
         self.endpointPublisher = endpointPublisher
-        self.locationService = locationService
         self.fanControlService = fanControlService
         self.updateController = updateController
         self.proEntitlements = proEntitlements
@@ -174,7 +162,7 @@ struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 500)
         .environment(\.themePalette, palette)
-        // One application covering all eleven panes. Every pane is
+        // One application covering all ten panes. Every pane is
         // `.formStyle(.grouped)`, whose rows paint on `surface`, and
         // `.toggleStyle` rides the environment through the `switch`-based
         // pane dispatch below — so panes this branch must not edit
@@ -186,7 +174,7 @@ struct SettingsView: View {
 
     /// The pane list, in three visual groups: appearance-and-layout,
     /// features-that-talk-to-things, and the escape hatch. Grouping is
-    /// spacing-only — no headers, which would be chrome for nine rows —
+    /// spacing-only — no headers, which would be chrome for ten rows —
     /// and lives in a switch so adding a `SettingsPane` case fails to
     /// compile until it's placed, rather than silently landing nowhere.
     private var paneGroups: [[SettingsPane]] {
@@ -197,19 +185,6 @@ struct SettingsView: View {
                 groups[0].append(pane)
             case .alerts, .fans, .aiAccess, .sync:
                 groups[1].append(pane)
-            case .location:
-                // Hidden for 1.0 — the Location Log ships in a later release.
-                // Everything else about the pane (the enum case, LocationPane,
-                // LocationService plumbing, tests) stays compiled and green;
-                // omitting it from the sidebar is the entire cut, and this
-                // switch is exhaustive so restoring it is a one-line change.
-                // The one exception: a user who already enabled the log keeps
-                // the pane — hiding the only view/disable surface for a
-                // location log that's actively recording would be the exact
-                // silent-data-collection shape this app exists to refuse.
-                if store.settings.locationLogEnabled {
-                    groups[1].append(pane)
-                }
             case .advanced, .about:
                 groups[2].append(pane)
             }
@@ -368,8 +343,6 @@ struct SettingsView: View {
                 store: store,
                 isProUnlocked: proEntitlements?.isUnlocked(.remoteSync) ?? false
             ).formStyle(.grouped)
-        case .location:
-            LocationPane(store: store, locationService: locationService).formStyle(.grouped)
         case .advanced:
             AdvancedPane(
                 store: store,

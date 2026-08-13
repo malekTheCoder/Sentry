@@ -193,8 +193,8 @@ public struct InsightAction: Codable, Sendable, Equatable {
 /// **The evidence array is the point of the whole feature.** A
 /// `ProtectionInsight` with an empty `evidence` is generic advice that could
 /// have been printed on a poster, and this codebase's honesty rules (see
-/// `PROGRESS.md`, and `LocationService`'s doc comment for the register)
-/// treat that as a defect rather than a lesser version of the feature. Every
+/// `PROGRESS.md`) treat that as a defect rather than a lesser version of
+/// the feature. Every
 /// rule that fires must be able to quote at least one number it actually
 /// measured on *this* machine — a percentage of samples, a day count, a
 /// capacity delta, a posture command's real output. `ProtectionInsightsEngine`

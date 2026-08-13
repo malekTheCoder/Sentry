@@ -276,21 +276,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// `MCPRemoteServer` owns validating this at bind time.
     public var mcpRemotePort: Int
 
-    // MARK: - Location Log
-
-    /// Master switch for `LocationService` (`SentryKit/Services/LocationService.swift`)
-    /// — the honest "Location Log" feature (never "Find My," see that type's
-    /// doc comment). Off by default and, critically, **not** what actually
-    /// requests macOS location permission: `AppDelegate` only calls
-    /// `LocationService.requestAuthorization()` in direct response to this
-    /// flipping to `true` from a user tapping the toggle in `LocationPane`,
-    /// matching `AlertEngine`'s existing "request authorization lazily, on
-    /// explicit user action, never at launch" convention (plan §11.3) for
-    /// the same reason: a permission prompt a user didn't ask for, tied to a
-    /// setting they didn't know existed, is the opposite of the explicit,
-    /// user-initiated permission flow this feature requires.
-    public var locationLogEnabled: Bool
-
     // MARK: - Protection Insights
 
     /// Per-insight dismissals and snoozes (see `InsightSuppression`).
@@ -481,7 +466,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mcpRateLimitPerMinute: Int = 20,
         mcpRemoteAccessEnabled: Bool = false,
         mcpRemotePort: Int = 8642,
-        locationLogEnabled: Bool = false,
         protectionInsightSuppressions: [InsightSuppression] = [],
         proUnlockOverrideEnabled: Bool = false,
         proLicenseBlob: String? = nil,
@@ -524,7 +508,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mcpRateLimitPerMinute = mcpRateLimitPerMinute
         self.mcpRemoteAccessEnabled = mcpRemoteAccessEnabled
         self.mcpRemotePort = mcpRemotePort
-        self.locationLogEnabled = locationLogEnabled
         self.protectionInsightSuppressions = protectionInsightSuppressions
         self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
         self.proLicenseBlob = proLicenseBlob
@@ -598,11 +581,6 @@ extension AppSettings {
         case mcpRateLimitPerMinute
         case mcpRemoteAccessEnabled
         case mcpRemotePort
-        // Additive, same decodeIfPresent ?? fallback contract as every other
-        // field here — a settings file written before Location Log existed
-        // must upgrade to `false` (off), never implicitly opt a pre-existing
-        // install into a permission-gated feature it never asked for.
-        case locationLogEnabled
         // Protection Insights, additive: absent in any settings.json written
         // before this feature existed, so both decode via the same
         // decodeIfPresent ?? fallback pattern as every other field.
@@ -747,8 +725,6 @@ extension AppSettings {
                 ?? fallback.mcpRemoteAccessEnabled,
             mcpRemotePort: try container.decodeIfPresent(Int.self, forKey: .mcpRemotePort)
                 ?? fallback.mcpRemotePort,
-            locationLogEnabled: try container.decodeIfPresent(Bool.self, forKey: .locationLogEnabled)
-                ?? fallback.locationLogEnabled,
             // Unlike `alertRules`/`mcpEnabledToolIDs` above, "missing" and
             // "explicitly empty" mean the same thing here — the shipped
             // default is genuinely nothing suppressed — so there is no
