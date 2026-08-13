@@ -70,6 +70,13 @@ struct DropdownView: View {
     /// Section visibility, user-configurable in Settings → Menu Bar.
     private let showsKeepAwake: Bool
     private let showsAgentActivitySetting: Bool
+    /// `ProFeature.conditionalKeepAwake`, resolved by the composition root
+    /// (`AppDelegate.configurePopover`) and passed straight through to
+    /// `SleepControlCard` — this view neither reads entitlements nor makes
+    /// gate decisions of its own. Defaults locked, matching the card, so
+    /// previews and any construction site that doesn't name it withhold
+    /// rather than leak.
+    private let isConditionalKeepAwakeUnlocked: Bool
     private let onOpenSettings: () -> Void
     private let onOpenHistory: () -> Void
     private let onQuit: () -> Void
@@ -115,6 +122,7 @@ struct DropdownView: View {
         cardListMaxHeight: CGFloat = 480,
         showsKeepAwake: Bool = true,
         showsAgentActivity: Bool = true,
+        isConditionalKeepAwakeUnlocked: Bool = false,
         onOpenSettings: @escaping () -> Void,
         onOpenHistory: @escaping () -> Void,
         onQuit: @escaping () -> Void,
@@ -131,6 +139,7 @@ struct DropdownView: View {
         self.cardListMaxHeight = cardListMaxHeight
         self.showsKeepAwake = showsKeepAwake
         self.showsAgentActivitySetting = showsAgentActivity
+        self.isConditionalKeepAwakeUnlocked = isConditionalKeepAwakeUnlocked
         self.onOpenSettings = onOpenSettings
         self.onOpenHistory = onOpenHistory
         self.onQuit = onQuit
@@ -227,7 +236,10 @@ struct DropdownView: View {
             // is state the popover must always be able to show and end, so
             // the card overrides the setting for exactly as long as one is on.
             if showsKeepAwake || powerControl.state != .inactive {
-                SleepControlCard(powerControl: powerControl)
+                SleepControlCard(
+                    powerControl: powerControl,
+                    isConditionalKeepAwakeUnlocked: isConditionalKeepAwakeUnlocked
+                )
                     .padding(.horizontal, rowInset)
                     .padding(.vertical, palette.spacingTight)
 

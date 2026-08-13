@@ -81,6 +81,17 @@ struct SyncPane: View {
 
     @ObservedObject var store: SettingsStore
 
+    /// Whether this copy is entitled to `ProFeature.remoteSync`. Resolved by
+    /// the composition root's `LicenseProEntitlementStore` and passed down
+    /// through `SettingsView` per render — this pane never queries an
+    /// entitlement store itself, matching how `FanControlPane` reads its
+    /// gate off `FanControlService.isProUnlocked` rather than owning one.
+    /// Defaults locked: a pane nobody seeded must not offer the Pro
+    /// surface, and every entitlement input (override flip, license paste)
+    /// rides a settings emission that re-renders `SettingsView`, so the
+    /// value here is never stale.
+    var isProUnlocked: Bool = false
+
     var body: some View {
         Form {
             remoteAccessSection
@@ -94,7 +105,11 @@ struct SyncPane: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text("iCloud sync doesn't exist in this build — no iCloud container, no account, no server. Nothing has ever cloud-synced on this Mac, and nothing is attempting to; that's true for every copy of this build, not a per-user setting or a bug to troubleshoot. Syncing to your iPhone and Apple Watch is separate: it runs directly over your network — automatic on the same Wi-Fi, and via Remote Access above from anywhere else.")
+                // "Part of Sentry Pro" is true in every entitlement state —
+                // an unlocked copy owns it, a locked copy is told the same
+                // thing the section above says — so one string serves both
+                // without overclaiming to a free user.
+                Text("iCloud sync doesn't exist in this build — no iCloud container, no account, no server. Nothing has ever cloud-synced on this Mac, and nothing is attempting to; that's true for every copy of this build, not a per-user setting or a bug to troubleshoot. Syncing to your iPhone and Apple Watch is separate: it runs directly over your network — automatic on the same Wi-Fi, and from anywhere else via Remote Access above, which is part of Sentry Pro.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -127,10 +142,28 @@ struct SyncPane: View {
     /// Reachability is the user's network arrangement (Tailscale is the
     /// no-configuration way; a router port-forward also works), and the
     /// footer says so instead of pretending a toggle can do it.
+    ///
+    /// **The `ProFeature.remoteSync` gate splits this section, not hides
+    /// it.** The toggle, code, and QR stay constructible while locked
+    /// because the listener's trust model (`LocalSyncServer`'s doc comment)
+    /// gives them a free job: commands from the phone — the sleep card,
+    /// ending a keep-awake — are only accepted over this authenticated
+    /// path, *even on the LAN*, and an affordance that releases must never
+    /// sit behind the paywall. What Sentry Pro sells is reachability from
+    /// other networks, and while locked that is exactly what's withheld:
+    /// `LocalSyncServer` refuses off-LAN peers at accept time
+    /// (`RemoteAccessGate`), the QR never encodes a tunnel address
+    /// (`refreshHostCandidates`), the toggle's label stops claiming "other
+    /// networks", and `lockedOffLANRow` says all of this in words — a
+    /// locked row, not a disabled control, per house rule P5 and the
+    /// `LockedInsightRowView` precedent. A license that lapses with this
+    /// already enabled gets the same treatment, disclosed on this screen
+    /// rather than silently: LAN pairing keeps working, off-LAN peers are
+    /// turned away.
     private var remoteAccessSection: some View {
         Section {
-            Toggle("Allow connections from other networks", isOn: remoteEnabledBinding)
-                .accessibilityLabel("Allow connections from other networks")
+            Toggle(Self.remoteToggleLabel(isProUnlocked: isProUnlocked), isOn: remoteEnabledBinding)
+                .accessibilityLabel(Self.remoteToggleLabel(isProUnlocked: isProUnlocked))
 
             if store.settings.remoteSyncEnabled {
                 pairingQRRow
@@ -155,15 +188,92 @@ struct SyncPane: View {
                     }
                 }
             }
+
+            if !isProUnlocked {
+                lockedOffLANRow
+            }
         } header: {
             Text("Remote Access")
         } footer: {
-            Text(store.settings.remoteSyncEnabled
-                ? "Scan the QR code with your iPhone's Camera app to pair in one step — or enter this Mac's address, the port, and the pairing code in the iPhone app's Settings by hand. The connection is encrypted and refuses any client without the code. Reaching this Mac from another network is up to your network: a VPN like Tailscale needs no configuration (the QR uses the Mac's Tailscale address automatically when it has one); otherwise forward the port on your router. Regenerating the code disconnects any paired phone until it's updated."
-                : "Lets the Sentry iPhone app connect when it isn't on this Wi-Fi — encrypted, and only with the pairing code shown here after enabling. Off means the Mac only answers phones on the local network, as before.")
+            Text(Self.remoteAccessFooter(
+                enabled: store.settings.remoteSyncEnabled,
+                isProUnlocked: isProUnlocked
+            ))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The locked half of the section: the off-LAN grant, shown as a row
+    /// rather than a disabled toggle (`LockedInsightRowView` /
+    /// `FanControlPane.helperSection`'s `.requiresPro` branch are the
+    /// precedents — a greyed-out "Allow connections from other networks"
+    /// would be a confident-looking control describing a reality that isn't
+    /// true). No Buy button, ever: checkout does not exist, and the copy
+    /// admits it in the same words the fan pane uses.
+    private var lockedOffLANRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text("Connections from other networks")
+                    .fontWeight(.semibold)
+            } icon: {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundStyle(.secondary)
+            }
+            Text(Self.lockedOffLANExplanation)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(Self.lockedPurchaseNotice)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Remote-access copy (pure, testable — same convention as cadenceRows)
+
+    /// The toggle names what it actually does in each entitlement state.
+    /// Unlocked, it grants what it always granted. Locked, the listener it
+    /// opens only answers this network (`LocalSyncServer`'s accept gate),
+    /// so a label claiming "other networks" would be false the moment it
+    /// was read — the control is relabeled to its true, free scope rather
+    /// than disabled or hidden.
+    static func remoteToggleLabel(isProUnlocked: Bool) -> String {
+        isProUnlocked
+            ? String(localized: "Allow connections from other networks")
+            : String(localized: "Allow a paired iPhone to control this Mac")
+    }
+
+    /// True in every entitlement state: while locked, off-LAN peers are
+    /// refused at accept time even when `remoteSyncEnabled` is on — which
+    /// is exactly the lapsed-license case, disclosed here rather than
+    /// silently enforced.
+    static let lockedOffLANExplanation = String(
+        localized: "Connecting from outside this Mac's own network is part of Sentry Pro. While it's locked, this Mac turns away connections from other networks even when they hold the pairing code; pairing and control on this Wi-Fi stay free."
+    )
+
+    /// Verbatim the fan pane's admission — one sentence, no Buy button
+    /// wired to a checkout that doesn't exist.
+    static let lockedPurchaseNotice = String(
+        localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened. Checkout is coming in an update."
+    )
+
+    /// Four honest footers. The unlocked pair is unchanged from before the
+    /// gate; the locked pair stops promising Tailscale/port-forward
+    /// reachability (that is the withheld feature) and states the
+    /// this-network-only scope plainly.
+    static func remoteAccessFooter(enabled: Bool, isProUnlocked: Bool) -> String {
+        switch (isProUnlocked, enabled) {
+        case (true, true):
+            return String(localized: "Scan the QR code with your iPhone's Camera app to pair in one step — or enter this Mac's address, the port, and the pairing code in the iPhone app's Settings by hand. The connection is encrypted and refuses any client without the code. Reaching this Mac from another network is up to your network: a VPN like Tailscale needs no configuration (the QR uses the Mac's Tailscale address automatically when it has one); otherwise forward the port on your router. Regenerating the code disconnects any paired phone until it's updated.")
+        case (true, false):
+            return String(localized: "Lets the Sentry iPhone app connect when it isn't on this Wi-Fi — encrypted, and only with the pairing code shown here after enabling. Off means the Mac only answers phones on the local network, as before.")
+        case (false, true):
+            return String(localized: "Scan the QR code with your iPhone's Camera app to pair in one step — or enter this Mac's address, the port, and the pairing code in the iPhone app's Settings by hand. The connection is encrypted, refuses any client without the code, and — while Sentry Pro is locked — only answers devices on this network. Regenerating the code disconnects any paired phone until it's updated.")
+        case (false, false):
+            return String(localized: "Pairing lets the Sentry iPhone app control this Mac — extend, shorten or end a keep-awake — over an encrypted connection on this Wi-Fi. Off means the Mac only streams read-only vitals, as before. Connecting from other networks is part of Sentry Pro.")
         }
     }
 
@@ -226,6 +336,12 @@ struct SyncPane: View {
             }
         }
         .onAppear(perform: refreshHostCandidates)
+        // An entitlement flip while this row is on screen (license pasted,
+        // override toggled, lapse landing via a settings reload) must
+        // re-filter the candidates immediately — a locked copy showing a
+        // tunnel address until the pane is next reopened would leak the
+        // withheld value.
+        .onChange(of: isProUnlocked) { _, _ in refreshHostCandidates() }
     }
 
     private func candidateLabel(_ candidate: RemotePairing.HostCandidate) -> String {
@@ -236,7 +352,15 @@ struct SyncPane: View {
     }
 
     private func refreshHostCandidates() {
-        hostCandidates = RemotePairing.hostCandidates()
+        // Locked copies never see a Tailscale/VPN candidate: the tunnel
+        // address is the off-LAN value the Pro gate withholds, and a QR
+        // encoding it would walk a free user into a connection the Mac
+        // then refuses at accept time. See `RemoteAccessGate
+        // .visibleHostCandidates`.
+        hostCandidates = RemoteAccessGate.visibleHostCandidates(
+            RemotePairing.hostCandidates(),
+            isProUnlocked: isProUnlocked
+        )
         if !hostCandidates.contains(where: { $0.address == selectedHost }) {
             selectedHost = hostCandidates.first?.address ?? ""
         }
@@ -263,6 +387,11 @@ struct SyncPane: View {
 
     /// Enabling for the first time mints the pairing code — a toggle that
     /// opened a listener with no code would be a lock with no key.
+    ///
+    /// Minting is deliberately not Pro-gated: the code is the free tier's
+    /// LAN pairing secret (command auth on this Wi-Fi rides the same
+    /// TLS-PSK listener — see `remoteAccessSection`'s doc comment), not
+    /// the withheld off-LAN grant.
     private var remoteEnabledBinding: Binding<Bool> {
         Binding(
             get: { store.settings.remoteSyncEnabled },

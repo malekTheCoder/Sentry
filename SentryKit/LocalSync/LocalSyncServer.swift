@@ -65,7 +65,11 @@ import os.log
 /// observation, so it requires proof of the pairing code even on the LAN.
 /// Users who want control at home turn on Remote Access and pair once; that
 /// listener is reachable over the local network too, not only from outside
-/// it.
+/// it. That double duty is why the `ProFeature.remoteSync` gate lives at
+/// accept time (per-peer, see `accept(_:isAuthenticated:)` and
+/// `RemoteAccessGate`) rather than on the listener itself: pairing and
+/// LAN control are free, and only the from-another-network reachability is
+/// Sentry Pro's.
 /// **Sleep/wake (connection-honesty review gap #4).** Before
 /// `registerSleepWakeObservers()` existed, a phone connected before the Mac
 /// slept had no reliable way to learn the Mac went away until a send
@@ -328,6 +332,12 @@ public final class LocalSyncServer: @unchecked Sendable {
     /// holes or talks to any relay. Idempotent per configuration: calling
     /// again with the same port+code is a no-op, a changed configuration
     /// tears the old listener down first.
+    ///
+    /// Deliberately not entitlement-gated: this listener is also the free
+    /// tier's LAN command-auth path (see the trust-model paragraph in this
+    /// type's doc comment), so it opens for locked copies too. The
+    /// `ProFeature.remoteSync` gate is applied per-peer at accept time —
+    /// see `accept(_:isAuthenticated:)` and `RemoteAccessGate`.
     public func enableRemote(port: UInt16, pairingCode: String) {
         let normalized = SyncSecurity.normalize(pairingCode)
         guard !normalized.isEmpty else {
@@ -375,6 +385,28 @@ public final class LocalSyncServer: @unchecked Sendable {
 
     private var remoteConfig: (port: UInt16, code: String)?
 
+    // MARK: - Remote-access entitlement (ProFeature.remoteSync)
+
+    /// Whether this copy is entitled to `ProFeature.remoteSync`. Pushed in
+    /// one-way by the composition root on every settings emission (the same
+    /// flow `FanControlService.isProUnlocked` uses) — this type never
+    /// queries entitlement itself, so it stays platform-shared and
+    /// entitlement-free, and tests drive the gate with a plain boolean.
+    /// Defaults locked: a server nobody seeded must not answer off-LAN
+    /// peers. `queue`-confined, hence the setter below rather than a
+    /// public var.
+    private var remoteAccessUnlocked = false
+
+    /// See `remoteAccessUnlocked`. Because the composition root calls this
+    /// on every settings emission, a license paste, lapse, or override flip
+    /// re-arms or narrows the accept gate live — the next inbound
+    /// connection is judged under the new answer, with no restart.
+    public func setRemoteAccessUnlocked(_ unlocked: Bool) {
+        queue.async { [weak self] in
+            self?.remoteAccessUnlocked = unlocked
+        }
+    }
+
     // MARK: - Connection handling
 
     /// - Parameter isAuthenticated: `true` only from `enableRemote`'s
@@ -394,6 +426,35 @@ public final class LocalSyncServer: @unchecked Sendable {
         }
         queue.async { [weak self] in
             guard let self else {
+                connection.cancel()
+                return
+            }
+            // The Pro gate (`ProFeature.remoteSync`), applied only to the
+            // TLS-PSK listener's connections: a locked copy keeps this
+            // listener open — pairing and command auth on the LAN are free,
+            // and the trust model above routes *all* commands through it —
+            // but refuses peers that aren't on the local network, which is
+            // the reachability Sentry Pro actually sells. The Bonjour path
+            // never reaches this check by construction (`isAuthenticated`
+            // is false there) and stays entirely ungated.
+            //
+            // Lapse behavior, deliberate and disclosed: a license that
+            // lapses with Remote Access enabled leaves the listener up, so
+            // the paired phone can still pair and issue commands at home —
+            // including ending a keep-awake, the escape hatch that must
+            // survive any lapse — while off-LAN peers are turned away here
+            // at accept time. Never silent: `SyncPane`'s locked row states
+            // this refusal in words next to the toggle. Connections already
+            // open when the entitlement flips are left to drain, matching
+            // `disableRemote`'s stance on a settings toggle; the next
+            // reconnect (a network blip, or `handleSystemWillSleep` closing
+            // everything) is judged under the new answer.
+            if isAuthenticated,
+               !RemoteAccessGate.permitsAuthenticatedPeer(
+                   isProUnlocked: self.remoteAccessUnlocked,
+                   peer: connection.endpoint
+               ) {
+                self.log.error("LocalSyncServer: refusing an off-LAN connection — Remote Access is part of Sentry Pro and this copy is locked")
                 connection.cancel()
                 return
             }

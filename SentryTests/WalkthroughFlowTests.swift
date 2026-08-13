@@ -150,9 +150,12 @@ final class WalkthroughFlowTests: XCTestCase {
     /// location request out of the location-log step) would put a prompt in
     /// front of a user who has not been told why.
     func testMacPermissionStepsAreTheOnesThatExplainThem() {
+        // `.locationLog` is also a `.permission` step by role, but it is
+        // excluded from `allCases` for 1.0 along with its pane — see the
+        // ordering test above.
         XCTAssertEqual(
             MacWalkthroughStep.allCases.filter { $0.role == .permission },
-            [.alerts, .locationLog]
+            [.alerts]
         )
     }
 
@@ -260,10 +263,10 @@ final class WalkthroughFlowTests: XCTestCase {
 
     func testProgressLabelIsOneBasedAndCountsEveryStep() {
         var flow = WalkthroughFlow<MacWalkthroughStep>()
-        XCTAssertEqual(flow.progressLabel, "Step 1 of 9")
+        XCTAssertEqual(flow.progressLabel, "Step 1 of 8")
 
         flow.go(to: .done)
-        XCTAssertEqual(flow.progressLabel, "Step 9 of 9")
+        XCTAssertEqual(flow.progressLabel, "Step 8 of 8")
     }
 
     func testIndexInFlowMatchesDeclarationOrder() {

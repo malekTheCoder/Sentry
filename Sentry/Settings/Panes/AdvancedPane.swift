@@ -13,6 +13,16 @@ struct AdvancedPane: View {
     /// wired up (e.g. a future preview or test harness).
     var onShowDebugWindow: (() -> Void)?
 
+    /// Whether `ProFeature.historyExport` (history export + extended
+    /// retention) is unlocked. Passed by `SettingsView` per body evaluation
+    /// rather than observed here — every entitlement change (override flip,
+    /// license paste or removal) rides a settings emission the already-
+    /// observed `store` republishes, so the capped ranges below flip live
+    /// without this pane holding an entitlement store. Defaults locked,
+    /// matching `FanControlService.isProUnlocked`: a pane nobody seeded
+    /// must not offer extended retention.
+    var isProUnlocked: Bool = false
+
     /// Debug builds always show the Developer section (it carries the Pro
     /// developer-override toggle even when no debug window is wired);
     /// release builds show it only when there's a debug window to open —
@@ -31,18 +41,29 @@ struct AdvancedPane: View {
     var body: some View {
         Form {
             Section {
+                // Both sliders show and estimate from the *effective*
+                // (entitlement-clamped) values, not the stored ones — the
+                // same `HistoryProGate.clampedRetention` the composition
+                // root applies before `RollupJob.setRetention`, so nothing
+                // on this screen ever describes a window the database isn't
+                // honoring. When locked, the capped ranges make raising past
+                // the free window impossible from this control while leaving
+                // everything at or below it fully live (lowering retention
+                // is never gated); a full-range slider that snapped back
+                // would be a dishonest control, and a disabled one would
+                // gate the free tier's own legitimate adjustments.
                 retentionSlider(
                     title: "Raw samples",
                     value: Binding(
-                        get: { Double(store.settings.rawRetentionHours) },
+                        get: { Double(effectiveRetention.rawHours) },
                         set: { store.settings.rawRetentionHours = Int($0.rounded()) }
                     ),
-                    range: 6...168,
+                    range: Self.rawRetentionSliderRange(isProUnlocked: isProUnlocked),
                     step: 1,
-                    valueLabel: "\(store.settings.rawRetentionHours) h",
+                    valueLabel: "\(effectiveRetention.rawHours) h",
                     accessibilityLabel: "Raw sample retention in hours",
                     estimate: DiskEstimate.rawBytes(
-                        hours: store.settings.rawRetentionHours,
+                        hours: effectiveRetention.rawHours,
                         interval: store.settings.globalRefreshInterval
                     )
                 )
@@ -50,15 +71,34 @@ struct AdvancedPane: View {
                 retentionSlider(
                     title: "Hourly rollups",
                     value: Binding(
-                        get: { Double(store.settings.hourlyRetentionDays) },
+                        get: { Double(effectiveRetention.hourlyDays) },
                         set: { store.settings.hourlyRetentionDays = Int($0.rounded()) }
                     ),
-                    range: 7...365,
+                    range: Self.hourlyRetentionSliderRange(isProUnlocked: isProUnlocked),
                     step: 1,
-                    valueLabel: "\(store.settings.hourlyRetentionDays) d",
+                    valueLabel: "\(effectiveRetention.hourlyDays) d",
                     accessibilityLabel: "Hourly rollup retention in days",
-                    estimate: DiskEstimate.hourlyBytes(days: store.settings.hourlyRetentionDays)
+                    estimate: DiskEstimate.hourlyBytes(days: effectiveRetention.hourlyDays)
                 )
+
+                if !isProUnlocked {
+                    lockedExtendedRetentionRow
+
+                    // A lapsed license (or a hand-edited settings.json) can
+                    // leave the *stored* preference above the free caps. The
+                    // preference is deliberately never rewritten — unlocking
+                    // again restores it verbatim — but the enforced window
+                    // is the clamped one, so rows older than the free window
+                    // are pruned on the next rollup pass exactly as if the
+                    // sliders had been lowered to the caps. This sentence is
+                    // what makes that pruning disclosed rather than silent.
+                    if storedRetentionExceedsFreeCaps {
+                        Text("Your saved retention (\(store.settings.rawRetentionHours) h raw, \(store.settings.hourlyRetentionDays) d hourly) is longer than the free windows above. History older than the free window is pruned; your saved choice takes effect again if Sentry Pro is unlocked.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
 
                 LabeledContent("Daily rollups") {
                     Text("Kept forever — \(DiskEstimate.formatted(DiskEstimate.dailyBytesPerDecade)) per decade")
@@ -175,12 +215,76 @@ struct AdvancedPane: View {
         }
     }
 
+    // MARK: - Retention gate (ProFeature.historyExport)
+
+    /// The retention actually enforced — the same `HistoryProGate` clamp
+    /// `AppDelegate` applies to the delivered values before
+    /// `rollupJob.setRetention`, recomputed here so slider labels and disk
+    /// estimates can't drift from enforcement.
+    private var effectiveRetention: (rawHours: Int, hourlyDays: Int) {
+        HistoryProGate.clampedRetention(
+            isUnlocked: isProUnlocked,
+            rawHours: store.settings.rawRetentionHours,
+            hourlyDays: store.settings.hourlyRetentionDays
+        )
+    }
+
+    /// Whether the stored preference outruns the free caps — the lapse
+    /// case the disclosure sentence in the retention section exists for.
+    /// A statement about the stored values alone; the caller decides
+    /// whether entitlement makes it worth mentioning.
+    private var storedRetentionExceedsFreeCaps: Bool {
+        store.settings.rawRetentionHours > HistoryProGate.freeRawRetentionCapHours
+            || store.settings.hourlyRetentionDays > HistoryProGate.freeHourlyRetentionCapDays
+    }
+
+    /// Slider bounds, static (same pattern as `FanControlPane`'s static
+    /// helpers) so tests pin them without building a view. The lower bounds
+    /// never move — shrinking retention is data minimization and is never
+    /// gated — and the locked upper bounds equal the shipped defaults via
+    /// `HistoryProGate`, so a free user keeps every value they could have
+    /// had before the gate existed.
+    static func rawRetentionSliderRange(isProUnlocked: Bool) -> ClosedRange<Double> {
+        6...(isProUnlocked ? 168 : Double(HistoryProGate.freeRawRetentionCapHours))
+    }
+
+    static func hourlyRetentionSliderRange(isProUnlocked: Bool) -> ClosedRange<Double> {
+        7...(isProUnlocked ? 365 : Double(HistoryProGate.freeHourlyRetentionCapDays))
+    }
+
+    /// The locked affordance for extension, after `LockedInsightRowView`'s
+    /// treatment translated into this pane's plain-Form idiom: the
+    /// feature's own name, the honest bounds, a trailing lock — nothing
+    /// else. There is no withheld content to leak (the withheld thing is
+    /// database rows that were never recorded), and no Buy button: checkout
+    /// doesn't exist yet (see `ProUpsellCard.unavailableNotice`).
+    private var lockedExtendedRetentionRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Extended retention")
+                    .foregroundStyle(.secondary)
+                Text("Up to 7 days of raw samples and a year of hourly rollups, with Sentry Pro.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Image(systemName: "lock.fill")
+                .foregroundStyle(.tertiary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Extended retention")
+        .accessibilityValue("Up to 7 days of raw samples and a year of hourly rollups. Requires Sentry Pro.")
+    }
+
     private var totalProjectedBytes: Double {
+        // Effective, not stored, for the same "describe only what's
+        // enforced" reason as the sliders above.
         DiskEstimate.rawBytes(
-            hours: store.settings.rawRetentionHours,
+            hours: effectiveRetention.rawHours,
             interval: store.settings.globalRefreshInterval
         )
-        + DiskEstimate.hourlyBytes(days: store.settings.hourlyRetentionDays)
+        + DiskEstimate.hourlyBytes(days: effectiveRetention.hourlyDays)
         + DiskEstimate.dailyBytesPerDecade
     }
 

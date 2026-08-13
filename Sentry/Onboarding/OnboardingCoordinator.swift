@@ -98,6 +98,11 @@ final class OnboardingCoordinator: ObservableObject {
     /// See `showIfNeeded(anchoredTo:settingsStore:theme:endpointPublisher:)`.
     private weak var endpointPublisher: MCPEndpointPublisher?
 
+    /// See `showIfNeeded`'s `entitlements` parameter. Weak like the rest of
+    /// the attached dependencies — `AppDelegate` owns the store's lifetime,
+    /// not this coordinator.
+    private weak var entitlements: (any ProEntitlementProviding)?
+
     private init() {}
 
     // MARK: - Presentation
@@ -136,11 +141,23 @@ final class OnboardingCoordinator: ObservableObject {
     ///     `endpointPublisher: mcpEndpointPublisher` to the existing
     ///     `AppDelegate` call is a one-line, additive change whenever that
     ///     file is free.
+    ///   - entitlements: `AppDelegate`'s `proEntitlementStore`, if the
+    ///     integrator chooses to pass it. Resolved per presentation for
+    ///     `ProFeature.remoteSync`, which the companion step's pairing
+    ///     controls read. Defaults `nil` for the same
+    ///     keep-the-call-site-valid reason as `endpointPublisher` — and
+    ///     `nil` degrades to *locked*, not unlocked, because a walkthrough
+    ///     that cannot verify an entitlement must not offer the Pro
+    ///     surface; a licensed user still has the fully-armed pane in
+    ///     Settings ▸ Sync. Adding `entitlements: proEntitlementStore` to
+    ///     the existing `AppDelegate` call is the same one-line, additive
+    ///     change.
     func showIfNeeded(
         anchoredTo statusItem: NSStatusItem,
         settingsStore: SettingsStore,
         theme: Theme,
-        endpointPublisher: MCPEndpointPublisher? = nil
+        endpointPublisher: MCPEndpointPublisher? = nil,
+        entitlements: (any ProEntitlementProviding)? = nil
     ) {
         // Attach unconditionally, *then* gate. See this type's doc comment
         // for why the replay path depends on this happening even on the
@@ -148,6 +165,7 @@ final class OnboardingCoordinator: ObservableObject {
         self.statusItem = statusItem
         self.settingsStore = settingsStore
         self.endpointPublisher = endpointPublisher
+        self.entitlements = entitlements
         canReplay = statusItem.button != nil
 
         guard WalkthroughGate.shouldPresentOnLaunch(
@@ -202,6 +220,10 @@ final class OnboardingCoordinator: ObservableObject {
                 store: settingsStore,
                 theme: theme,
                 endpointPublisher: endpointPublisher,
+                // Resolved now, per presentation, like the theme — and
+                // locked when no store was attached (see `showIfNeeded`'s
+                // `entitlements` doc for why absent must mean locked).
+                isRemoteSyncUnlocked: entitlements?.isUnlocked(.remoteSync) ?? false,
                 onFinish: { [weak self] outcome in self?.complete(outcome) }
             )
         )

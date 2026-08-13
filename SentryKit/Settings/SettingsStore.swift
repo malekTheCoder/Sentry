@@ -217,6 +217,22 @@ public final class SettingsStore: ObservableObject {
     // MARK: - File IO
 
     private static func load(from url: URL) -> AppSettings {
+        var settings = loadRaw(from: url)
+        // The one place a device identity is minted. `AppSettings()`'s own
+        // default is the empty string — a random default would make two
+        // freshly-constructed values unequal, which breaks value semantics
+        // (and the tests that pin them) — so the store, which owns the
+        // file, owns the mint: fresh install, corrupt-file fallback, and a
+        // pre-deviceID settings.json all arrive here empty and leave with
+        // a stable ID. The composition root saves once at startup so the
+        // mint survives the first relaunch.
+        if settings.deviceID.isEmpty {
+            settings.deviceID = UUID().uuidString
+        }
+        return settings
+    }
+
+    private static func loadRaw(from url: URL) -> AppSettings {
         guard FileManager.default.fileExists(atPath: url.path) else {
             // First launch is the common case, not an error worth logging as one.
             logger.info("No settings file at \(url.path, privacy: .public); using defaults")

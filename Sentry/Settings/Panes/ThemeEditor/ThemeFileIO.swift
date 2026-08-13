@@ -41,11 +41,26 @@ enum ThemeFileIO {
     /// (see that type); the theme is *not* partially applied, because
     /// `ThemeDocument.decode` either returns a fully validated theme or
     /// throws.
+    ///
+    /// `isProUnlocked` is a required parameter, not an ambient lookup:
+    /// import creates a custom theme, which is `ProFeature.customThemes`,
+    /// and this func is the single choke point both views call — checking
+    /// here (before the panel, so the refusal can't arrive after the user
+    /// has already picked a file) means no future call site can skip the
+    /// gate. Defense in depth with `ThemePane`'s withheld affordances.
     static func importTheme(
+        isProUnlocked: Bool,
         in window: NSWindow?,
         onError: @escaping (String) -> Void,
         completion: @escaping (Theme) -> Void
     ) {
+        do {
+            try ThemeEditingGate.authorize(isProUnlocked: isProUnlocked)
+        } catch {
+            onError(error.localizedDescription)
+            return
+        }
+
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [contentType, .json]
         panel.allowsMultipleSelection = false
@@ -82,12 +97,26 @@ enum ThemeFileIO {
     /// Encoding is attempted *before* the panel appears, so a theme that
     /// can't be encoded produces an error instead of a save panel that
     /// fails after the user has already picked a folder and a name.
+    ///
+    /// Same required `isProUnlocked` as `importTheme`, and deliberately
+    /// applied to *existing* custom themes too: export is part of
+    /// `ProFeature.customThemes`, and the lapse contract
+    /// (`ThemeEditingGate`) keeps a lapsed user's themes rendering and
+    /// deletable — not exportable.
     static func exportTheme(
         _ theme: Theme,
+        isProUnlocked: Bool,
         in window: NSWindow?,
         onError: @escaping (String) -> Void,
         onSuccess: @escaping (URL) -> Void
     ) {
+        do {
+            try ThemeEditingGate.authorize(isProUnlocked: isProUnlocked)
+        } catch {
+            onError(error.localizedDescription)
+            return
+        }
+
         let data: Data
         do {
             data = try ThemeDocument.encode(theme)

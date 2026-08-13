@@ -339,17 +339,18 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     // MARK: - Device identity
 
-    /// A stable identifier for this Mac, minted on first launch and
-    /// persisted so the identity every snapshot carries
-    /// (`StatsCoordinator.deviceID`, which minted a fresh `UUID()` per
-    /// process before this field existed) survives relaunches — the phone's
-    /// reconnect-to-the-last-Mac preference and any future CloudKit record
-    /// naming both depend on it not rotating. Minted here as a default
-    /// rather than by the composition root so every construction path
-    /// (fresh install, corrupt-file fallback, tests) gets one the same way.
-    /// One caveat, accepted: `settings.json` copied wholesale to a second
-    /// Mac carries the ID with it, and the two Macs then report the same
-    /// identity until one of them edits or resets its settings — the same
+    /// A stable identifier for this Mac, persisted so the identity every
+    /// snapshot carries (`StatsCoordinator.deviceID`, which minted a fresh
+    /// `UUID()` per process before this field existed) survives relaunches
+    /// — the phone's reconnect-to-the-last-Mac preference depends on it
+    /// not rotating. The default is the EMPTY string, meaning "not minted":
+    /// a random default would make two freshly-constructed `AppSettings`
+    /// values unequal, breaking value semantics. `SettingsStore.load` is
+    /// the one place a real ID is minted (fresh install, corrupt-file
+    /// fallback, pre-deviceID file — all pass through it), and
+    /// `resetToDefaults` preserves it. One caveat, accepted: `settings.json`
+    /// copied wholesale to a second Mac carries the ID with it, and the two
+    /// Macs then report the same identity until one resets — the same
     /// copy-the-file behavior every other field has, and a per-machine
     /// store can split it out later without a format change.
     public var deviceID: String
@@ -490,7 +491,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         proUnlockOverrideEnabled: Bool = false,
         proLicenseBlob: String? = nil,
         proLicenseLastVerifiedAt: Date? = nil,
-        deviceID: String = UUID().uuidString,
+        deviceID: String = "",
         fanControl: FanControlSettings = FanControlSettings(),
         agentGuardrails: AgentGuardrailSettings = AgentGuardrailSettings(),
         hasSeenWelcome: Bool = false,
@@ -621,10 +622,10 @@ extension AppSettings {
         case proLicenseBlob
         case proLicenseLastVerifiedAt
         // Device identity, additive: absent in any settings.json written
-        // before the ID was persisted. The fallback mints a fresh UUID —
-        // correct for an upgrading install (its old IDs were per-launch
-        // anyway), and the composition root saves settings once at startup
-        // so the minted ID is stable from the second launch on.
+        // before the ID was persisted. The fallback is the empty "not
+        // minted" sentinel — `SettingsStore.load` mints the real ID after
+        // decode, and the composition root saves once at startup so it is
+        // stable from the second launch on.
         case deviceID
         // Fan control, additive: absent in any settings.json written before
         // the fan-control shell existed, and its fallback is a fully inert

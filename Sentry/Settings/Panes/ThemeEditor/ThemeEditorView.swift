@@ -34,6 +34,13 @@ struct ThemeEditorView: View {
     /// The theme as it was when the editor opened, for Revert.
     private let original: Theme
     let layout: MenuBarLayout
+    /// `ProFeature.customThemes`, snapshotted by `ThemePane` at
+    /// presentation. The editor is unreachable when locked — `ThemePane`
+    /// constructs no door to it — so this exists for defense in depth: Save
+    /// and Export are withheld, not disabled, if a future caller presents
+    /// the sheet to a free copy. Cancel, Revert, and Reset stay live
+    /// regardless: nothing that discards or reverts is ever gated.
+    let isProUnlocked: Bool
     let onSave: (Theme) -> Void
     let onCancel: () -> Void
 
@@ -51,11 +58,13 @@ struct ThemeEditorView: View {
         theme: Theme,
         layout: MenuBarLayout,
         initialAppearance: ThemeAppearance,
+        isProUnlocked: Bool,
         onSave: @escaping (Theme) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.original = theme
         self.layout = layout
+        self.isProUnlocked = isProUnlocked
         self.onSave = onSave
         self.onCancel = onCancel
         self._draft = State(initialValue: theme)
@@ -611,29 +620,49 @@ struct ThemeEditorView: View {
                   ? String(localized: "Nothing has changed since you opened the editor.")
                   : String(localized: "Discard every change made since the editor opened, without closing it."))
 
-            Button {
-                ThemeFileIO.exportTheme(
-                    draft,
-                    in: NSApp.keyWindow,
-                    onError: { errorMessage = $0 },
-                    onSuccess: { _ in }
-                )
-            } label: {
-                Label("Export…", systemImage: "square.and.arrow.up")
+            if isProUnlocked {
+                Button {
+                    ThemeFileIO.exportTheme(
+                        draft,
+                        isProUnlocked: isProUnlocked,
+                        in: NSApp.keyWindow,
+                        onError: { errorMessage = $0 },
+                        onSuccess: { _ in }
+                    )
+                } label: {
+                    Label("Export…", systemImage: "square.and.arrow.up")
+                }
+                .help(String(localized: "Write this theme to a .sentrytheme file. Exports the draft as it stands, including unsaved changes."))
             }
-            .help(String(localized: "Write this theme to a .sentrytheme file. Exports the draft as it stands, including unsaved changes."))
 
             Spacer(minLength: 0)
 
             Button(role: .cancel) { onCancel() } label: { Text("Cancel") }
                 .keyboardShortcut(.cancelAction)
 
-            Button { onSave(draft) } label: { Text("Save") }
-                .keyboardShortcut(.defaultAction)
-                .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                      ? String(localized: "Give the theme a name first.")
-                      : String(localized: "Save this theme and close the editor."))
+            if isProUnlocked {
+                Button { onSave(draft) } label: { Text("Save") }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                          ? String(localized: "Give the theme a name first.")
+                          : String(localized: "Save this theme and close the editor."))
+            } else {
+                // Unreachable in practice (see `isProUnlocked`'s doc), but a
+                // locked editor withholds Save and Export rather than
+                // disabling them, and says why in the space Save occupied.
+                Label {
+                    Text(ThemeEditingGate.lockedShortLabel)
+                        .font(palette.font(size: 11))
+                        .foregroundStyle(palette.textSecondary)
+                } icon: {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(palette.textSecondary)
+                        .accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .combine)
+            }
         }
         .padding(.horizontal, palette.spacingPage)
         .padding(.vertical, palette.spacingBlock)

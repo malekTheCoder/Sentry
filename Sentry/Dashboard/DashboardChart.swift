@@ -870,14 +870,27 @@ struct DashboardChart: View {
         let metricID: String
         let since: Date
         let tier: HistoryStore.Tier
+        /// Whether `ProFeature.historyExport` is unlocked, from the same
+        /// composition-root push that seeds `DashboardViewModel
+        /// .isProUnlocked`. Carried here rather than read by the menu and
+        /// `export(_:format:)` separately so both consult one flag — the
+        /// affordance and the enforcement can't drift apart.
+        let isUnlocked: Bool
 
-        init(historyStore: HistoryStore, metricID: String, since: Date, tier: HistoryStore.Tier) {
+        init(historyStore: HistoryStore, metricID: String, since: Date, tier: HistoryStore.Tier, isUnlocked: Bool) {
             self.historyStore = historyStore
             self.metricID = metricID
             self.since = since
             self.tier = tier
+            self.isUnlocked = isUnlocked
         }
     }
+
+    /// The locked menu item's exact label, as a testable constant — the
+    /// locked copy must stay the honest kind: it names the feature and the
+    /// tier, and sells nothing it can't deliver (no Buy affordance exists
+    /// anywhere until checkout does; see `ProUpsellCard.unavailableNotice`).
+    static let lockedExportMenuTitle = String(localized: "Export… — Sentry Pro")
 
     private enum ExportFormat {
         case csv, json
@@ -906,8 +919,25 @@ struct DashboardChart: View {
     /// out explicitly.
     @ViewBuilder
     private func exportMenuItems(_ context: ExportContext) -> some View {
-        Button("Export as CSV…") { export(context, format: .csv) }
-        Button("Export as JSON…") { export(context, format: .json) }
+        if context.isUnlocked {
+            Button("Export as CSV…") { export(context, format: .csv) }
+            Button("Export as JSON…") { export(context, format: .json) }
+        } else {
+            // Withheld, not obscured (`ProGate`'s doctrine): the menu keeps
+            // one visible, honestly-labeled item — the feature's own name in
+            // a menu leaks nothing, because the withheld content is the file,
+            // which is never constructed — but *disabled*, not
+            // tappable-to-nothing: an item that swallows clicks is exactly
+            // the inert-control pattern this codebase strips elsewhere.
+            // Hiding the menu entirely was rejected too — a visible locked
+            // affordance is the Insights pattern (`LockedInsightRowView`),
+            // and a menu that exists for some users and not others reads as
+            // a bug, not a tier.
+            Button {} label: {
+                Label(Self.lockedExportMenuTitle, systemImage: "lock.fill")
+            }
+            .disabled(true)
+        }
     }
 
     /// Queries fresh rows for `context`'s exact metric/range, formats them,
@@ -915,6 +945,13 @@ struct DashboardChart: View {
     /// let the user pick where a file goes without this app inventing its
     /// own file browser.
     private func export(_ context: ExportContext, format: ExportFormat) {
+        // Defense in depth with the locked menu item above: the entitlement
+        // is re-checked in the same function that touches `HistoryStore`, so
+        // a stale menu or a programmatic invocation can't produce a file.
+        // Silent return, not an alert — the only UI path here is a menu item
+        // that is disabled when locked, so a user can never reach this guard
+        // to be owed an explanation by it.
+        guard context.isUnlocked else { return }
         let ranged = context.historyStore.samplesWithRange(
             metric: context.metricID,
             since: context.since,

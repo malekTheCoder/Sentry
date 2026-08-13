@@ -137,12 +137,29 @@ struct SleepControlCard: View {
     /// closure with a real default rather than read straight from the static
     /// so previews and tests can hand this card a fabricated process table —
     /// the same reason `PowerControlService.processProbe` is a settable
-    /// closure over the very same scan. Both existing call sites
-    /// (`DropdownView`, `DashboardView`) construct this card as
-    /// `SleepControlCard(powerControl:)` and are unaffected: a stored
-    /// property with a default value becomes a defaulted memberwise
-    /// parameter.
+    /// closure over the very same scan. Neither host (`DropdownView`,
+    /// `DashboardView`) passes it: a stored property with a default value
+    /// becomes a defaulted memberwise parameter, so only previews/tests
+    /// that fabricate a table ever name it.
     var runningProcessNamesProvider: () -> [String] = { PowerControlService.runningProcessNames() }
+
+    /// Whether `ProFeature.conditionalKeepAwake` — the release-rule triggers
+    /// in the "For" menu — is unlocked. Pushed one-way by the composition
+    /// root through both hosts (`DropdownView` construction,
+    /// `DashboardViewModel`'s published mirror), the same flow
+    /// `FanControlService.isProUnlocked` rides; this view never queries
+    /// entitlements. Defaults locked so a construction site nobody updated
+    /// withholds rather than leaks.
+    ///
+    /// The locked treatment is withheld, not obscured (see `ProGate`'s doc
+    /// comment): the conditional triggers are absent from the menu — never
+    /// rendered as disabled items — and the one locked row below the free
+    /// options carries only the feature's display name and a count
+    /// (`SleepTriggerOption.lockedOptionsMenuTitle`). Timed and indefinite
+    /// keep-awake stay fully live, and nothing that ends or shortens a
+    /// session (`stop()`, End Now, −15m, the header switch) consults this
+    /// flag — escape hatches survive a lapsed license.
+    var isConditionalKeepAwakeUnlocked: Bool = false
 
     @State private var trigger: SleepTriggerOption = .indefinite
     @State private var mode: AwakeMode = .displayAndSystem
@@ -256,6 +273,13 @@ struct SleepControlCard: View {
         .onChange(of: powerControl.state) { _, _ in
             syncWithRunningHold()
         }
+        // Entitlement can flip while this card is on screen — a license
+        // paste, or the override toggle — and the Dashboard host in
+        // particular lives in a window that is never rebuilt, so the
+        // locked-selection snap can't rely on `onAppear` alone.
+        .onChange(of: isConditionalKeepAwakeUnlocked) { _, _ in
+            snapLockedTriggerSelection()
+        }
     }
 
     // MARK: Header
@@ -362,7 +386,7 @@ struct SleepControlCard: View {
                     untilTime: untilTime
                 )
             ) {
-                ForEach(SleepTriggerOption.allOptions) { option in
+                ForEach(SleepTriggerOption.visibleOptions(isUnlocked: isConditionalKeepAwakeUnlocked)) { option in
                     Button(option.pickerLabel) {
                         trigger = option
                         // Picking the process trigger is the moment its list
@@ -370,6 +394,10 @@ struct SleepControlCard: View {
                         // drawer minutes ago.
                         if case .processRunning = option { refreshRunningProcesses() }
                     }
+                }
+                if !isConditionalKeepAwakeUnlocked {
+                    Divider()
+                    lockedTriggerRow
                 }
             }
             thresholdStepper
@@ -389,6 +417,20 @@ struct SleepControlCard: View {
             }
         }
         .transition(.opacity)
+    }
+
+    /// The one locked row under the free trigger options —
+    /// `LockedInsightRowView`'s doctrine applied to a menu. Note what this
+    /// view is built from: a title carrying only the feature's display name
+    /// and a count. The withheld triggers' own labels are never constructed
+    /// into the free hierarchy, so there is nothing to recover from a
+    /// screenshot, an accessibility dump, or a view inspector. A plain
+    /// `Label` renders as a non-interactive menu item, which is honest —
+    /// there is nothing for a click to do (checkout doesn't exist), so no
+    /// button pretends otherwise.
+    private var lockedTriggerRow: some View {
+        Label(SleepTriggerOption.lockedOptionsMenuTitle, systemImage: "lock.fill")
+            .accessibilityLabel(SleepTriggerOption.lockedOptionsMenuTitle)
     }
 
     /// The mode picker, grouped by power condition.
@@ -917,11 +959,30 @@ struct SleepControlCard: View {
     /// daemon that happens to sort first: silently arming the user onto
     /// `AMPArtworkAgent` would be worse than the stale default.
     private func refreshRunningProcesses() {
+        // The picker this scan feeds only exists on the unlocked tier —
+        // `.processRunning` can't be selected while locked (see
+        // `snapLockedTriggerSelection`) — so the locked tier never pays for
+        // a full-PID walk it can't use.
+        guard isConditionalKeepAwakeUnlocked else { return }
         runningProcesses = runningProcessNamesProvider()
         processName = KeepAwakeProcessMenu.resolvedSelection(
             current: processName,
             contents: processMenuContents
         )
+    }
+
+    /// A conditional trigger left selected while locked would render its
+    /// `menuLabel` through `selectionSummary` — a Pro string in a free
+    /// hierarchy, the exact leak the withheld menu exists to prevent.
+    /// Snapped back to `.indefinite` rather than hidden: the pending
+    /// selection is this card's own state, so correcting it lies about
+    /// nothing. A *running* session's `reason` line is deliberately left
+    /// alone — a live hold's own description is the user's state, not a
+    /// leak (P5), and this method touches only the pending pickers.
+    private func snapLockedTriggerSelection() {
+        if !isConditionalKeepAwakeUnlocked, trigger.isConditional {
+            trigger = .indefinite
+        }
     }
 
     /// Keeps this card's local state consistent with a hold it may not have
@@ -933,6 +994,7 @@ struct SleepControlCard: View {
     /// though the "For" row can't be (`ReleaseCondition` is private to the
     /// service). See the type doc comment.
     private func syncWithRunningHold() {
+        snapLockedTriggerSelection()
         guard let activeState else {
             applied = nil
             return
@@ -1089,6 +1151,44 @@ enum SleepTriggerOption: Hashable, Identifiable {
         .downloadActive,
         .scheduledWindow
     ]
+
+    /// Whether this trigger arms a `ReleaseCondition` — exactly the cases
+    /// `releaseCondition(...)` maps to non-nil, and therefore exactly what
+    /// `ProFeature.conditionalKeepAwake` covers. A written-out `switch`
+    /// rather than a call into `releaseCondition` with dummy arguments, so a
+    /// new trigger is a compiler-forced decision about which side of the Pro
+    /// gate it lands on.
+    var isConditional: Bool {
+        switch self {
+        case .indefinite, .fixed, .untilTime:
+            return false
+        case .batteryBelow, .cpuAbove, .processRunning, .downloadActive, .scheduledWindow:
+            return true
+        }
+    }
+
+    /// What the "For" menu offers at a given entitlement:
+    /// `ProFeature.conditionalKeepAwake` gates the conditional triggers;
+    /// timed, indefinite, and until-a-time stay free everywhere. A filter
+    /// over `allOptions` rather than a second hand-ordered list, so the menu
+    /// order stays declared in exactly one place — and a pure function so
+    /// the gate is testable without SwiftUI (see
+    /// `SleepControlCardFormattingTests`' note on why these tests never arm
+    /// a real assertion).
+    static func visibleOptions(isUnlocked: Bool) -> [SleepTriggerOption] {
+        isUnlocked ? allOptions : allOptions.filter { !$0.isConditional }
+    }
+
+    /// The locked "For"-menu row's entire text — the only Pro string the
+    /// free tier renders on this card. Built from the feature's own
+    /// `displayName` plus a *count* of withheld triggers: naming the five
+    /// (even as disabled items) would be the "blurred `Text`" leak `ProGate`'s
+    /// doc comment forbids. The count is derived from the same arrays the
+    /// menu renders, so it can't drift from what is actually withheld.
+    static var lockedOptionsMenuTitle: String {
+        let count = allOptions.count - visibleOptions(isUnlocked: false).count
+        return String(localized: "\(ProFeature.conditionalKeepAwake.displayName) — \(count) more release rules in Sentry Pro")
+    }
 
     var id: String {
         switch self {
@@ -1717,7 +1817,12 @@ enum AwakeModePowerScope: String, CaseIterable, Identifiable {
 // MARK: - Preview
 
 #Preview {
-    SleepControlCard(powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.sleepcard")!))
+    // Unlocked so the preview keeps showing the full trigger menu it always
+    // did; drop the flag to preview the locked treatment.
+    SleepControlCard(
+        powerControl: PowerControlService(defaults: UserDefaults(suiteName: "preview.sleepcard")!),
+        isConditionalKeepAwakeUnlocked: true
+    )
         .padding()
         .frame(width: 320)
         .environment(\.themePalette, ThemePalette(theme: .defaultTheme, scheme: .dark))

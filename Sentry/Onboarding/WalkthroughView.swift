@@ -70,6 +70,13 @@ struct WalkthroughView: View {
     /// a stated fallback rather than a disabled button.
     private let endpointPublisher: MCPEndpointPublisher?
 
+    /// `ProFeature.remoteSync`, resolved by the coordinator for this
+    /// presentation — same per-presentation freshness as `theme`, and for
+    /// the same reason: an entitlement flip mid-walkthrough should not
+    /// restyle a popover the user is reading. Read by the `.companion`
+    /// step's pairing controls.
+    private let isRemoteSyncUnlocked: Bool
+
     /// Called exactly once, from Skip, from Escape, or from Done on the last
     /// step. The coordinator does the AppKit work and the settings write —
     /// same "UI fires closures, the composition root acts" split
@@ -81,12 +88,14 @@ struct WalkthroughView: View {
         store: SettingsStore,
         theme: Theme,
         endpointPublisher: MCPEndpointPublisher?,
+        isRemoteSyncUnlocked: Bool,
         onFinish: @escaping (WalkthroughOutcome) -> Void
     ) {
         _flow = State(initialValue: flow)
         self.store = store
         self.theme = theme
         self.endpointPublisher = endpointPublisher
+        self.isRemoteSyncUnlocked = isRemoteSyncUnlocked
         self.onFinish = onFinish
     }
 
@@ -178,7 +187,8 @@ struct WalkthroughView: View {
                     step: step,
                     store: store,
                     theme: theme,
-                    endpointPublisher: endpointPublisher
+                    endpointPublisher: endpointPublisher,
+                    isRemoteSyncUnlocked: isRemoteSyncUnlocked
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -300,6 +310,9 @@ struct WalkthroughView: View {
             .appendingPathComponent("walkthrough-preview-settings.json")),
         theme: .defaultTheme,
         endpointPublisher: nil,
+        // Locked — the state every fresh install is in, and the one worth
+        // previewing.
+        isRemoteSyncUnlocked: false,
         onFinish: { _ in }
     )
 }

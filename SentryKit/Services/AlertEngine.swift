@@ -271,6 +271,38 @@ public final class AlertEngine {
     /// pipeline and why a DND-suppressed firing isn't logged.
     public var doNotDisturb: Bool
 
+    /// Whether process-match rules (`AlertRule.processNameMatch` non-nil) are
+    /// evaluated at all — the Sentry Pro gate
+    /// (`ProFeature.processMatchAlerts`), enforced here rather than only in
+    /// the Alerts pane so it also covers rules that enter the store without
+    /// the editor: a hand-edited `settings.json`, an MCP
+    /// `set_alert_rule_enabled` re-enable, or any future payload extension.
+    /// Mirrors `proEntitlementStore.isUnlocked(.processMatchAlerts)` — the
+    /// composition root passes the resolved value at construction and
+    /// re-assigns it from `applySettings`, the exact `rateCapPerHour` /
+    /// `doNotDisturb` convention immediately above (the engine only ever
+    /// sees the resulting `Bool`, never the entitlement store itself).
+    ///
+    /// **Defaults to `false` deliberately**: a composition root (or test)
+    /// that forgets to wire it fails toward *not* giving the paid feature
+    /// away, rather than silently granting it.
+    ///
+    /// **What locked means for an existing process rule** (the entitlement-
+    /// lapse decision, pinned by `ProcessAlertRuleTests`): the rule and all
+    /// its settings stay in the store untouched — user data is never
+    /// deleted or mutated by an entitlement change — but while locked it is
+    /// simply not evaluated: `currentCondition` reports honest-nil
+    /// ("condition not met"), so nothing fires, nothing is logged to
+    /// `alert_log`, no cooldown is consumed, and the sustained-since timer
+    /// is cleared. Gated means "not evaluated," never "fired and
+    /// suppressed" — and never silently deleted. The Alerts pane discloses
+    /// this state on the rule itself rather than leaving the user to wonder
+    /// why it stopped firing. Unlocking mid-session takes effect on the
+    /// next tick, with a *fresh* sustained window — no credit accrues while
+    /// locked, per the same "a window must be built entirely from observed
+    /// ticks" rule `handleSystemWake()` enforces.
+    public var processRulesUnlocked: Bool
+
     // MARK: - Rules
 
     public private(set) var rules: [AlertRule]
@@ -355,6 +387,11 @@ public final class AlertEngine {
     ///     `AppSettings.notificationRateCapPerHour` in production.
     ///   - doNotDisturb: plan §11.3 default off; pass
     ///     `AppSettings.doNotDisturb` in production.
+    ///   - processRulesUnlocked: the resolved `ProFeature.processMatchAlerts`
+    ///     entitlement; pass `proEntitlementStore.isUnlocked(.processMatchAlerts)`
+    ///     in production. Defaults to `false` so an unwired root withholds
+    ///     the paid feature rather than granting it — see the property's
+    ///     doc comment.
     ///   - notificationCenter: injectable for tests, defaults to the real
     ///     shared center.
     ///   - clock: injectable `Date` source so tests can drive
@@ -373,6 +410,7 @@ public final class AlertEngine {
         historyStore: HistoryStore? = nil,
         rateCapPerHour: Int = 6,
         doNotDisturb: Bool = false,
+        processRulesUnlocked: Bool = false,
         notificationCenter: UNUserNotificationCenter = .current(),
         clock: @escaping () -> Date = Date.init,
         persistedState: AlertEnginePersistedState = AlertEnginePersistedState()
@@ -381,6 +419,7 @@ public final class AlertEngine {
         self.historyStore = historyStore
         self.rateCapPerHour = rateCapPerHour
         self.doNotDisturb = doNotDisturb
+        self.processRulesUnlocked = processRulesUnlocked
         self.notificationCenter = notificationCenter
         self.clock = clock
         self.lastFired = Dictionary(
@@ -642,6 +681,14 @@ public final class AlertEngine {
         // comment for exactly what `metric`/`comparison`/`threshold` mean
         // once this is set.
         if let processName = rule.processNameMatch {
+            // The `ProFeature.processMatchAlerts` gate (see
+            // `processRulesUnlocked`'s doc comment for the full lapse
+            // semantics). Locked reuses the honest-nil "condition not met"
+            // contract, not a post-fire suppression: the caller clears the
+            // sustained-since timer, consumes no cooldown, and writes
+            // nothing to `alert_log` — so a later unlock evaluates with a
+            // fresh sustained window, and the rule itself is never touched.
+            guard processRulesUnlocked else { return (false, nil) }
             return evaluateProcessRule(rule, processName: processName, snapshot: snapshot)
         }
 

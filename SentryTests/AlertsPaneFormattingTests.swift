@@ -285,4 +285,83 @@ final class AlertsPaneFormattingTests: XCTestCase {
         )
         XCTAssertTrue(AlertsPane.conditionSummary(for: rule).contains("no process set"))
     }
+
+    // MARK: - Process-match lock state (ProFeature.processMatchAlerts)
+
+    private func lockStateRule(processNameMatch: String? = nil, isEnabled: Bool = true) -> AlertRule {
+        AlertRule(
+            name: "Test rule",
+            isEnabled: isEnabled,
+            metric: .cpuTotalPercent,
+            comparison: .above,
+            threshold: 90,
+            sustainedFor: 0,
+            cooldown: 0,
+            actions: [],
+            processNameMatch: processNameMatch
+        )
+    }
+
+    func testEnableAffordanceIsWithheldOnlyForALockedDisabledProcessRule() {
+        // The one combination where a checkbox could only *enable* a rule
+        // the engine refuses to evaluate — everything else keeps its
+        // control.
+        XCTAssertTrue(AlertsPane.enableAffordanceWithheld(
+            for: lockStateRule(processNameMatch: "node", isEnabled: false),
+            processMatchUnlocked: false
+        ))
+    }
+
+    func testEnableAffordanceSurvivesForAnEnabledLockedProcessRule() {
+        // Disabling is the escape hatch — a rule that's on must stay
+        // turn-off-able regardless of entitlement.
+        XCTAssertFalse(AlertsPane.enableAffordanceWithheld(
+            for: lockStateRule(processNameMatch: "node", isEnabled: true),
+            processMatchUnlocked: false
+        ))
+    }
+
+    func testEnableAffordanceIsNeverWithheldWhenUnlockedOrForNonProcessRules() {
+        XCTAssertFalse(AlertsPane.enableAffordanceWithheld(
+            for: lockStateRule(processNameMatch: "node", isEnabled: false),
+            processMatchUnlocked: true
+        ))
+        XCTAssertFalse(AlertsPane.enableAffordanceWithheld(
+            for: lockStateRule(processNameMatch: nil, isEnabled: false),
+            processMatchUnlocked: false
+        ))
+    }
+
+    func testLockedConditionFooterExistsForExactlyTheTwoGatedKinds() {
+        // `.generic` (can't create one) and `.processMatch` (the one you
+        // have isn't being evaluated) each get their own sentence; the
+        // three ID-special-cased kinds have no process dimension and keep
+        // their `notApplicableNote` footers.
+        XCTAssertNotNil(AlertsPane.lockedConditionFooter(kind: .generic, processMatchUnlocked: false))
+        XCTAssertNotNil(AlertsPane.lockedConditionFooter(kind: .processMatch, processMatchUnlocked: false))
+        for kind in [RuleKind.chargingPaused, .slowCharging, .batteryHealthDrop] {
+            XCTAssertNil(AlertsPane.lockedConditionFooter(kind: kind, processMatchUnlocked: false))
+        }
+    }
+
+    func testLockedConditionFooterVanishesEntirelyOnceUnlocked() {
+        // Zero Pro strings for entitled users — the paywall sentence is the
+        // locked state's copy, not a permanent fixture.
+        for kind in [RuleKind.generic, .processMatch, .chargingPaused, .slowCharging, .batteryHealthDrop] {
+            XCTAssertNil(AlertsPane.lockedConditionFooter(kind: kind, processMatchUnlocked: true))
+        }
+    }
+
+    func testLockedProcessMatchFooterTellsTheWholeTruth() {
+        // The existing-rule sentence must (1) admit the rule isn't being
+        // evaluated, (2) name Sentry Pro plainly, and (3) point at the
+        // ungated way out — the honesty contract
+        // `AlertEngine.processRulesUnlocked`'s doc comment pins for the
+        // pane.
+        let footer = AlertsPane.lockedConditionFooter(kind: .processMatch, processMatchUnlocked: false)
+        XCTAssertNotNil(footer)
+        XCTAssertTrue(footer?.contains("isn't being evaluated") == true)
+        XCTAssertTrue(footer?.contains("Sentry Pro") == true)
+        XCTAssertTrue(footer?.contains("Watch a specific process") == true, "must name the toggle that converts the rule back to a free one")
+    }
 }

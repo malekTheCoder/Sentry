@@ -124,6 +124,16 @@ struct SettingsView: View {
     /// `nil` is therefore a real configuration, not a placeholder.
     let updateController: UpdateController?
 
+    /// Entitlement source for every Pro-gated pane affordance (the Alerts
+    /// pane's process-match rules, the Theme pane's editor, Sync's off-LAN
+    /// Remote Access, Advanced's retention caps). A plain reference,
+    /// deliberately not observed: every entitlement input (override flip,
+    /// license paste/removal) rides a settings emission the observed
+    /// `store` republishes, so per-render reads stay live. Optional so
+    /// previews stay constructible; `nil` fails closed to the locked
+    /// treatment, never the unlocked one.
+    let proEntitlements: (any ProEntitlementProviding)?
+
     init(
         store: SettingsStore,
         historyStore: HistoryStore? = nil,
@@ -132,7 +142,8 @@ struct SettingsView: View {
         endpointPublisher: MCPEndpointPublisher? = nil,
         locationService: LocationService,
         fanControlService: FanControlService,
-        updateController: UpdateController? = nil
+        updateController: UpdateController? = nil,
+        proEntitlements: (any ProEntitlementProviding)? = nil
     ) {
         self.store = store
         self.historyStore = historyStore
@@ -142,6 +153,7 @@ struct SettingsView: View {
         self.locationService = locationService
         self.fanControlService = fanControlService
         self.updateController = updateController
+        self.proEntitlements = proEntitlements
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -340,9 +352,9 @@ struct SettingsView: View {
         case .menuBar:
             MenuBarPane(store: store).formStyle(.grouped)
         case .theme:
-            ThemePane(store: store)
+            ThemePane(store: store, entitlements: proEntitlements)
         case .alerts:
-            AlertsPane(store: store, historyStore: historyStore).formStyle(.grouped)
+            AlertsPane(store: store, historyStore: historyStore, entitlements: proEntitlements).formStyle(.grouped)
         case .fans:
             FanControlPane(store: store, service: fanControlService).formStyle(.grouped)
         case .aiAccess:
@@ -352,11 +364,18 @@ struct SettingsView: View {
                 endpointPublisher: endpointPublisher
             ).formStyle(.grouped)
         case .sync:
-            SyncPane(store: store).formStyle(.grouped)
+            SyncPane(
+                store: store,
+                isProUnlocked: proEntitlements?.isUnlocked(.remoteSync) ?? false
+            ).formStyle(.grouped)
         case .location:
             LocationPane(store: store, locationService: locationService).formStyle(.grouped)
         case .advanced:
-            AdvancedPane(store: store, onShowDebugWindow: onShowDebugWindow).formStyle(.grouped)
+            AdvancedPane(
+                store: store,
+                onShowDebugWindow: onShowDebugWindow,
+                isProUnlocked: proEntitlements?.isUnlocked(.historyExport) ?? false
+            ).formStyle(.grouped)
         case .about:
             AboutPane().formStyle(.grouped)
         }

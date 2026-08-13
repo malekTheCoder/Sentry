@@ -69,6 +69,12 @@ struct DashboardGrid: View {
     var historyStore: HistoryStore? = nil
     var exportRange: (since: Date, tier: HistoryStore.Tier)? = nil
 
+    /// Whether `ProFeature.historyExport` is unlocked, forwarded into every
+    /// card's `ExportContext` so the export menu and the export action read
+    /// one flag. Defaults locked for the same reason `FanControlService
+    /// .isProUnlocked` does — a grid nobody seeded must not offer export.
+    var isProUnlocked: Bool = false
+
     /// Same module ordering as `ModuleCardStack`, minus `.power` — power
     /// lives in `BatteryHeroCard`/`BatteryHealthTrendCard` here too, not as
     /// a grid card, for the same reason `ModuleCardStack.card(for:)` renders
@@ -174,7 +180,8 @@ struct DashboardGrid: View {
             historyStore: historyStore,
             metricID: metric.metricID.rawValue,
             since: exportRange.since,
-            tier: exportRange.tier
+            tier: exportRange.tier,
+            isUnlocked: isProUnlocked
         )
     }
 

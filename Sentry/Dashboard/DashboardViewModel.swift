@@ -218,6 +218,25 @@ final class DashboardViewModel: ObservableObject {
     /// capture would go stale in a window that is never rebuilt.
     @Published var samplingInterval: TimeInterval = 3
 
+    /// Whether this copy is entitled to `ProFeature.historyExport`, pushed
+    /// by `AppDelegate` the same way `theme`/`detailedCharts` are and for
+    /// the same launch-time seed + `applySettings` reasons — a license
+    /// paste or override flip must re-gate the export menu on the next
+    /// body evaluation, not after a relaunch of a window that is never
+    /// rebuilt. This type never queries entitlement itself (same one-way
+    /// flow as `FanControlService.isProUnlocked`), and it defaults locked:
+    /// a view model nobody seeded must not offer export.
+    @Published var isProUnlocked = false
+
+    /// Whether this copy is entitled to `ProFeature.conditionalKeepAwake`,
+    /// pushed by `AppDelegate` exactly like `isProUnlocked` above and read
+    /// live by `DashboardView` when it constructs `SleepControlCard`. Its
+    /// own flag rather than a reuse of `isProUnlocked` so each mirrored
+    /// feature names the `ProFeature` case it answers for — the same
+    /// no-ambient-`isPro`-boolean rule `ProFeature`'s doc comment states.
+    /// Defaults locked: an unseeded view model withholds rather than leaks.
+    @Published var isConditionalKeepAwakeUnlocked = false
+
     private let historyStore: HistoryStore
 
     /// Drives periodic re-querying while the Dashboard window is visible —

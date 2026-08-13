@@ -59,13 +59,23 @@ import SentryKit
 ///   pairing code is a lock with no key), and draws the real QR with
 ///   `SyncPane.qrImage(host:port:code:)` against a real address from
 ///   `RemotePairing.hostCandidates()`. It is the same QR, of the same
-///   endpoint, as the one in Settings — not a picture of one.
+///   endpoint, as the one in Settings — not a picture of one. And the same
+///   `ProFeature.remoteSync` gate: pairing on this Wi-Fi is free (it is
+///   the LAN command-auth path — see `SyncPane.remoteAccessSection`), so
+///   the toggle and QR stay real for a locked copy, but the QR never
+///   encodes a tunnel address and the step says plainly that other
+///   networks are part of Sentry Pro.
 struct WalkthroughStepContent: View {
 
     let step: MacWalkthroughStep
     @ObservedObject var store: SettingsStore
     let theme: Theme
     let endpointPublisher: MCPEndpointPublisher?
+
+    /// `ProFeature.remoteSync`, resolved by `OnboardingCoordinator` at
+    /// presentation time (the same per-presentation freshness `theme`
+    /// gets). Only the `.companion` step reads it.
+    let isRemoteSyncUnlocked: Bool
 
     @Environment(\.themePalette) private var palette
 
@@ -92,7 +102,7 @@ struct WalkthroughStepContent: View {
         case .agents:
             agentAccessControls
         case .companion:
-            PairingControls(store: store)
+            PairingControls(store: store, isProUnlocked: isRemoteSyncUnlocked)
         case .locationLog:
             LocationLogControl(store: store)
         case .done:
@@ -391,17 +401,26 @@ private struct CommandLineBridgeRow: View {
 
 // MARK: - iPhone pairing
 
-/// Turns on Remote Access and draws this Mac's real pairing QR.
+/// Turns on the Remote Access listener and draws this Mac's real pairing QR.
 ///
 /// Everything here mirrors `SyncPane` rather than reimplementing it: the
 /// enable-mints-a-code binding, `RemotePairing.hostCandidates()` for the
 /// address (Tailscale ranked above LAN, so the code works off-network when
 /// there is a tunnel), and `SyncPane.qrImage(host:port:code:)` for the
 /// image. A user who scans this and then opens Settings ▸ Sync sees the same
-/// code, because it is the same code.
+/// code, because it is the same code. The `ProFeature.remoteSync` gate
+/// mirrors `SyncPane.remoteAccessSection` too, for the same reasons argued
+/// there: the toggle and QR stay real while locked (LAN pairing is the free
+/// command-auth path), the candidates are filtered through
+/// `RemoteAccessGate.visibleHostCandidates` so no tunnel address is drawn,
+/// and the locked note below states the withheld half in words.
 private struct PairingControls: View {
 
     @ObservedObject var store: SettingsStore
+
+    /// `ProFeature.remoteSync` — see `WalkthroughStepContent
+    /// .isRemoteSyncUnlocked` for where it's resolved.
+    let isProUnlocked: Bool
 
     @Environment(\.themePalette) private var palette
 
@@ -410,9 +429,13 @@ private struct PairingControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacingTight) {
-            Toggle("Allow connections from other networks", isOn: remoteEnabledBinding)
-                .accessibilityLabel("Allow connections from other networks")
-                .accessibilityHint("Turns on Remote Access and creates a pairing code. Also in Settings, Sync.")
+            // Same label logic as Settings ▸ Sync — the two surfaces write
+            // the same setting and must describe it in the same words.
+            Toggle(SyncPane.remoteToggleLabel(isProUnlocked: isProUnlocked), isOn: remoteEnabledBinding)
+                .accessibilityLabel(SyncPane.remoteToggleLabel(isProUnlocked: isProUnlocked))
+                .accessibilityHint(isProUnlocked
+                    ? String(localized: "Turns on Remote Access and creates a pairing code. Also in Settings, Sync.")
+                    : String(localized: "Creates a pairing code for controlling this Mac from this Wi-Fi. Also in Settings, Sync."))
 
             if store.settings.remoteSyncEnabled {
                 if let qr = SyncPane.qrImage(
@@ -445,8 +468,29 @@ private struct PairingControls: View {
                     .foregroundStyle(palette.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if !isProUnlocked {
+                // The withheld half, in words — the walkthrough-density
+                // sibling of `SyncPane.lockedOffLANRow`. No Buy button
+                // (checkout doesn't exist; see `ProUpsellCard`).
+                Label {
+                    Text("Connecting from other networks is part of Sentry Pro — pairing on this Wi-Fi is free.")
+                        .font(palette.font(size: 10.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "lock")
+                        .foregroundStyle(palette.textTertiary)
+                }
+                .foregroundStyle(palette.textTertiary)
+                .accessibilityElement(children: .combine)
+            }
         }
         .onAppear(perform: refreshHostCandidates)
+        // No `.onChange(of: isProUnlocked)` here, unlike `SyncPane`'s QR
+        // row: the coordinator resolves the entitlement once per
+        // presentation (see `WalkthroughView.isRemoteSyncUnlocked`), so it
+        // cannot change while this view exists — a handler would be inert
+        // code implying a liveness that isn't there.
     }
 
     /// The QR is an image of a URL, which VoiceOver cannot read and which
@@ -488,7 +532,12 @@ private struct PairingControls: View {
     }
 
     private func refreshHostCandidates() {
-        hostCandidates = RemotePairing.hostCandidates()
+        // Locked copies never draw a tunnel address — same reasoning as
+        // `SyncPane.refreshHostCandidates`, same filter.
+        hostCandidates = RemoteAccessGate.visibleHostCandidates(
+            RemotePairing.hostCandidates(),
+            isProUnlocked: isProUnlocked
+        )
         if !hostCandidates.contains(where: { $0.address == selectedHost }) {
             selectedHost = hostCandidates.first?.address ?? ""
         }

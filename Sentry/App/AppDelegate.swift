@@ -125,6 +125,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         historyStore: historyStore,
         rateCapPerHour: settingsStore.settings.notificationRateCapPerHour,
         doNotDisturb: settingsStore.settings.doNotDisturb,
+        // The resolved `ProFeature.processMatchAlerts` entitlement — same
+        // "composition root reads the stores, engine only sees the
+        // resulting value" convention as the two lines above. Re-assigned
+        // live in `applySettings`.
+        processRulesUnlocked: proEntitlementStore.isUnlocked(.processMatchAlerts),
         persistedState: settingsStore.settings.alertPersistedState
     )
 
@@ -203,7 +208,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             endpointPublisher: self.mcpEndpointPublisher,
                             locationService: self.locationService,
                             fanControlService: self.fanControlService,
-                            updateController: self.updateController
+                            updateController: self.updateController,
+                            // The panes' Pro gates (process-match rules,
+                            // theme editing, Remote Access, retention caps)
+                            // all read this one live provider.
+                            proEntitlements: self.proEntitlementStore
                         )
                     )
                 )
@@ -452,6 +461,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var lastAppliedDropdownShowsKeepAwake: Bool?
     private var lastAppliedDropdownShowsAgentActivity: Bool?
 
+    /// `ProFeature.conditionalKeepAwake` as last baked into the dropdown's
+    /// hosting controller, so a license paste or override flip rebuilds the
+    /// popover (the card's flag is passed by value at construction) — same
+    /// rebuild-on-change contract as the two visibility flags above.
+    private var lastAppliedConditionalKeepAwakeUnlocked: Bool?
+
     /// Kill-switch state last seen by `applySettings`, so a rising edge
     /// (false→true) can release the agent-held keep-awake assertion exactly
     /// once — same transition-detection pattern as `lastEnabledRuleIDs`
@@ -505,7 +520,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         OnboardingCoordinator.shared.showIfNeeded(
             anchoredTo: controller.statusItem,
             settingsStore: settingsStore,
-            theme: theme
+            theme: theme,
+            endpointPublisher: mcpEndpointPublisher,
+            entitlements: proEntitlementStore
         )
 
         // Apply persisted settings before anything starts polling, so a saved
@@ -518,9 +535,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         coordinator.setMediumInterval(settings.mediumTierRefreshInterval)
         coordinator.setSlowInterval(settings.slowTierRefreshInterval)
         coordinator.adaptiveThrottlingEnabled = settings.adaptiveThrottlingEnabled
-        rollupJob.setRetention(
+        // Entitlement-clamped at the composition root (see HistoryProGate's
+        // doc comment): settings.json is user-editable, so the Advanced
+        // pane's capped sliders are honesty, not enforcement. Same clamp as
+        // the applySettings site — a locked copy's hand-edited (or lapsed)
+        // above-cap values must not take effect even for the window between
+        // launch and the first settings emission.
+        let launchRetention = HistoryProGate.clampedRetention(
+            isUnlocked: proEntitlementStore.isUnlocked(.historyExport),
             rawHours: settings.rawRetentionHours,
             hourlyDays: settings.hourlyRetentionDays
+        )
+        rollupJob.setRetention(
+            rawHours: launchRetention.rawHours,
+            hourlyDays: launchRetention.hourlyDays
         )
         rollupJob.start()
 
@@ -672,6 +700,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         fanControlService.settings = settings.fanControl
         fanControlService.isProUnlocked = proEntitlementStore.isUnlocked(.fanControl)
 
+        // The `ProFeature.conditionalKeepAwake` service gate — the same
+        // sibling-services seam as `processProbe`: `PowerControlService`
+        // never reads entitlements itself, so the composition root answers
+        // at arm time. A live read through the store (which caches from
+        // delivered settings) rather than a pushed Bool, so a license paste
+        // or override flip gates/ungates the very next arm with no re-push
+        // step. Wired post-init because `powerControl` is a plain `let`
+        // constructed before the lazy `proEntitlementStore` exists; the
+        // only pre-wiring arm path is init's cold-start reconcile, which
+        // drops conditional records before the gate is ever consulted.
+        powerControl.conditionalKeepAwakeAuthorized = { [weak self] in
+            self?.proEntitlementStore.isUnlocked(.conditionalKeepAwake) ?? false
+        }
+        // Seed the view-model mirrors and the sync server for the same
+        // first-tick reason as the fan entitlement above — a licensed
+        // user's controls must not flash the locked state at launch, and
+        // an entitled user's off-LAN peers must not be refused in the
+        // window before the first settings emission.
+        dashboardViewModel.isConditionalKeepAwakeUnlocked =
+            proEntitlementStore.isUnlocked(.conditionalKeepAwake)
+        dashboardViewModel.isProUnlocked = proEntitlementStore.isUnlocked(.historyExport)
+        localSyncServer.setRemoteAccessUnlocked(proEntitlementStore.isUnlocked(.remoteSync))
+
         locationService.$lastLocation
             .sink { [weak self] location in
                 self?.coordinator.location = location
@@ -819,6 +870,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         lastAppliedModules = enabledModules
         let height = cardListMaxHeight()
         lastAppliedCardListMaxHeight = height
+        let conditionalKeepAwakeUnlocked = proEntitlementStore.isUnlocked(.conditionalKeepAwake)
+        lastAppliedConditionalKeepAwakeUnlocked = conditionalKeepAwakeUnlocked
         let hostingController = NSHostingController(
             rootView: DropdownView(
                 viewModel: dropdownViewModel,
@@ -831,6 +884,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 cardListMaxHeight: height,
                 showsKeepAwake: settingsStore.settings.dropdownShowsKeepAwake,
                 showsAgentActivity: settingsStore.settings.dropdownShowsAgentActivity,
+                isConditionalKeepAwakeUnlocked: conditionalKeepAwakeUnlocked,
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onOpenHistory: { [weak self] in self?.openMainWindow(tab: .dashboard) },
                 onQuit: { NSApplication.shared.terminate(nil) },
@@ -1013,27 +1067,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         case .dark: popover.appearance = NSAppearance(named: .darkAqua)
         }
 
-        // Remote (off-LAN) phone access: open/close the TLS-PSK listener
-        // to match settings. `enableRemote` is idempotent per config, so
-        // calling on every settings emission is safe.
-        if settings.remoteSyncEnabled,
-           !settings.remoteSyncPairingCode.isEmpty,
-           let port = UInt16(exactly: settings.remoteSyncPort) {
-            localSyncServer.enableRemote(port: port, pairingCode: settings.remoteSyncPairingCode)
-        } else {
-            localSyncServer.disableRemote()
-        }
-
         // Entitlement resolution first: `insightsViewModel.applySettings`
         // reads `proEntitlementStore.isUnlocked` synchronously below, so the
         // override toggle must already reflect the delivered value. The fan
         // service takes its entitlement the same tick for the same reason —
         // a license paste or override flip must gate/ungate fan writes
         // before the next control interaction, not after the next unrelated
-        // settings change.
+        // settings change. The sync server's remote-access gate rides the
+        // same moment, and must run BEFORE the enableRemote/disableRemote
+        // block below so the listener never judges a new peer under last
+        // tick's entitlement.
         proEntitlementStore.applySettings(settings)
         insightsViewModel.applySettings(settings)
         fanControlService.isProUnlocked = proEntitlementStore.isUnlocked(.fanControl)
+        localSyncServer.setRemoteAccessUnlocked(proEntitlementStore.isUnlocked(.remoteSync))
+        alertEngine.processRulesUnlocked = proEntitlementStore.isUnlocked(.processMatchAlerts)
+        dashboardViewModel.isProUnlocked = proEntitlementStore.isUnlocked(.historyExport)
+        let conditionalKeepAwakeUnlocked = proEntitlementStore.isUnlocked(.conditionalKeepAwake)
+        dashboardViewModel.isConditionalKeepAwakeUnlocked = conditionalKeepAwakeUnlocked
+
+        // Remote (off-LAN) phone access: open/close the TLS-PSK listener
+        // to match settings. `enableRemote` is idempotent per config, so
+        // calling on every settings emission is safe. Deliberately NOT
+        // entitlement-gated (see `RemoteAccessGate.shouldOpenListener`):
+        // this listener doubles as the free tier's LAN command-auth path,
+        // so a locked copy keeps it open and `LocalSyncServer` refuses
+        // only off-LAN peers, per `setRemoteAccessUnlocked` above.
+        if RemoteAccessGate.shouldOpenListener(
+               remoteSyncEnabled: settings.remoteSyncEnabled,
+               pairingCode: settings.remoteSyncPairingCode,
+               port: settings.remoteSyncPort
+           ),
+           let port = UInt16(exactly: settings.remoteSyncPort) {
+            localSyncServer.enableRemote(port: port, pairingCode: settings.remoteSyncPairingCode)
+        } else {
+            localSyncServer.disableRemote()
+        }
 
         // Settings that must actually reach the services behind them —
         // these sliders/toggles were previously wired to nothing.
@@ -1044,9 +1113,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         coordinator.setMediumInterval(settings.mediumTierRefreshInterval)
         coordinator.setSlowInterval(settings.slowTierRefreshInterval)
         coordinator.adaptiveThrottlingEnabled = settings.adaptiveThrottlingEnabled
-        rollupJob.setRetention(
+        // Clamped for the same reason as the launch-time seed — see
+        // HistoryProGate.clampedRetention's lapse-behavior note: the stored
+        // preference is never rewritten, only the delivered values are
+        // capped, so re-unlocking restores the user's choice verbatim.
+        let retention = HistoryProGate.clampedRetention(
+            isUnlocked: proEntitlementStore.isUnlocked(.historyExport),
             rawHours: settings.rawRetentionHours,
             hourlyDays: settings.hourlyRetentionDays
+        )
+        rollupJob.setRetention(
+            rawHours: retention.rawHours,
+            hourlyDays: retention.hourlyDays
         )
 
         // Rule edits in the Alerts pane only reach the engine through here —
@@ -1158,8 +1236,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // change, and never while the user is looking at the popover.
         let dropdownOptionsChanged = settings.dropdownShowsKeepAwake != lastAppliedDropdownShowsKeepAwake
             || settings.dropdownShowsAgentActivity != lastAppliedDropdownShowsAgentActivity
+            || conditionalKeepAwakeUnlocked != lastAppliedConditionalKeepAwakeUnlocked
         lastAppliedDropdownShowsKeepAwake = settings.dropdownShowsKeepAwake
         lastAppliedDropdownShowsAgentActivity = settings.dropdownShowsAgentActivity
+        lastAppliedConditionalKeepAwakeUnlocked = conditionalKeepAwakeUnlocked
         guard theme != lastAppliedTheme
                 || settings.customThemes != lastAppliedCustomThemes
                 || settings.enabledModules != lastAppliedModules

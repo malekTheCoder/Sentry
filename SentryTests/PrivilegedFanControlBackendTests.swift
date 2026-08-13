@@ -207,6 +207,12 @@ final class PrivilegedFanControlBackendTests: XCTestCase {
             // blame a missing helper for a hardware fact.
             XCTAssertFalse(privileged.writeAvailability.canWrite)
             XCTAssertFalse(privileged.supportsPrivilegedHelper)
+        case .requiresPro:
+            // Backends never produce the Pro gate — it is service-layer
+            // vocabulary (`FanControlService.writeAvailability`), and a
+            // backend that claimed it would be lying about whose decision
+            // it was.
+            XCTFail("a backend must never report .requiresPro; that case belongs to FanControlService")
         }
 
         // Called on every quit from `applicationWillTerminate`. Must be a
