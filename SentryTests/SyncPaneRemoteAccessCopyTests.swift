@@ -4,9 +4,8 @@ import XCTest
 
 /// Coverage for the pure remote-access copy in `SyncPane`
 /// (Sentry/Settings/Panes/SyncPane.swift) — the `ProFeature.remoteSync`
-/// gate's on-screen words, pinned the same way `SyncPaneFormattingTests`
-/// pins the cadence table: static functions of plain values, no view
-/// hierarchy.
+/// gate's on-screen words, pinned as static functions of plain values, no
+/// view hierarchy.
 ///
 /// What these tests defend is honesty, not phrasing: a locked copy's
 /// Remote Access section must (a) stop claiming other-network

@@ -205,9 +205,8 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
 ///
 /// **This flow asks for no system permission at all, and that is a finding,
 /// not an omission.** The phone app has nothing to ask for: it delivers no
-/// notifications of its own (`SettingsTabView`'s notifications section says
-/// so in as many words — "Notifications need a live connection to your Mac,
-/// so there's nothing here to turn on or off yet"); pairing uses the system
+/// notifications of its own (the phone-push feature was deleted before any
+/// delivery path existed); pairing uses the system
 /// Camera app via a `sentry://pair` deep link specifically so that no camera
 /// permission is needed (`RemotePairing`'s doc comment argues that choice);
 /// and the location log is collected by the *Mac*, so the phone reads it

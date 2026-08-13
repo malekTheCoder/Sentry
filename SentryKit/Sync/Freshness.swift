@@ -5,10 +5,10 @@ import Foundation
 /// How old a Mac-derived reading is, bucketed into the four tiers the iPhone
 /// UI renders a distinct color/icon/label for.
 ///
-/// **Why this exists at all.** CloudKit sync (`StatsTransport`, `SyncRecords.swift`)
-/// is eventually-consistent by construction, and — separately, today — doesn't
-/// exist yet (no CloudKit conformer or container entitlement; see
-/// `StatsTransport.swift`'s doc comment). Either way, any number the iPhone
+/// **Why this exists at all.** Any transport puts distance between the Mac
+/// taking a reading and the phone showing it — a LocalSync connection can
+/// drop, a Mac can sleep, and demo data has no upstream at all. Whatever
+/// the source, any number the iPhone
 /// shows (battery %, CPU load, whether the Mac is asleep) is a *claim about
 /// the past*, not a live reading. Plan §12.2 is explicit that the fix isn't
 /// technical, it's presentational discipline: "Never render a number without
@@ -21,7 +21,7 @@ import Foundation
 ///
 /// **Why it lives in `SentryKit`, not `SentryMobile`.** The four cases,
 /// their thresholds, and the "is this reading trustworthy" question are pure
-/// data-age logic with no iOS dependency — `Device.lastSeen` (`SyncRecords.swift`)
+/// data-age logic with no iOS dependency — `Device.lastSeen` (`SyncModels.swift`)
 /// is exactly the kind of timestamp this wraps. Keeping it here means it's
 /// available to whichever platform eventually renders sync-derived data,
 /// same reasoning as `HeartbeatTracker` living here rather than in a

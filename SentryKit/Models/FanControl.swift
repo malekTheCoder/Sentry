@@ -19,8 +19,7 @@ import Foundation
 // Keeping the arithmetic (interpolation, clamping, hysteresis, safety
 // ceiling) in pure types means all of it is unit-testable today, on any
 // Mac including a fanless one, years before there is a write path to
-// exercise it against — the same posture `SyncService`'s cadence functions
-// take toward a CloudKit container that doesn't exist yet.
+// exercise it against.
 
 // MARK: - Mode
 

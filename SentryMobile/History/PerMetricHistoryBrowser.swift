@@ -6,10 +6,10 @@ import SentryKit
 /// module, rather than a full synthetic history per metric.
 ///
 /// **Why the scope-down.** A real per-metric history browser implies a
-/// CloudKit query over `SnapshotRecord`/rollup tables — the same job
+/// query over historical snapshot/rollup tables — the same job
 /// `HistoryStore` does on the Mac side — and no such fetch API exists for
 /// this transport (same gap `MockDataSource.dailyHealthHistory`'s doc
-/// comment describes for `DailyHealth`, just for every `SnapshotRecord`
+/// comment describes for `DailyHealth`, just for every snapshot
 /// field instead of one). Fabricating a plausible-looking synthetic
 /// *history* for all ~50 `MetricID` cases (`SentryKit/Models/MetricID.swift`)
 /// would be a large amount of invented, never-real numbers for a browser

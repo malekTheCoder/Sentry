@@ -17,11 +17,10 @@ import Foundation
 ///      reasonably read every reload; shipping the whole `SystemSnapshot`
 ///      through the App Group for five stat lines and a sparkline is more
 ///      surface area than the job needs.
-///   2. `SnapshotRecord` (`SyncRecords.swift`) already established the
-///      pattern this follows: a CloudKit/App-Group-shared projection is a
-///      *different, deliberately narrower shape* than the canonical
-///      in-process model, not a re-export of it. Same reasoning here, one
-///      more consumer.
+///   2. A shared projection is a *different, deliberately narrower shape*
+///      than the canonical in-process model, not a re-export of it — the
+///      pattern the deleted CloudKit record types originally established
+///      (see git history), still the right call here.
 ///
 /// **Why `sourceIsDemoData` is a stored field, not something the widget
 /// infers.** `DashboardTabView`'s `demoDataBanner` (see that file's doc
@@ -33,8 +32,8 @@ import Foundation
 /// banner, no settings pane nearby, just a number in a system font. Baking
 /// the demo flag into the cached value itself (rather than "the widget
 /// assumes demo data because `MockDataSource` is all that exists today")
-/// means the honesty travels with the data: the day a real
-/// `CloudKitTransport` writes this cache instead of `MockDataSource`, the
+/// means the honesty travels with the data: when a live `LocalSyncClient`
+/// connection writes this cache instead of `MockDataSource`, the
 /// widget's disclosure automatically turns off because the writer sets
 /// `sourceIsDemoData: false`, not because someone remembered to delete a
 /// hardcoded label in `SentryWidget/`.
@@ -216,10 +215,7 @@ public enum WidgetSnapshotStore {
     /// scoped to *this process only* if the identifier doesn't match a group
     /// both targets are entitled to, rather than failing loudly. There is
     /// nowhere else in the tree this string is duplicated from except those
-    /// two entitlements files and `SyncRecords.swift`'s CloudKit container
-    /// name comment (`iCloud.dev.malekswilam.sentry` — a different string,
-    /// deliberately not reused for the App Group, since the two identify
-    /// different Apple platform resources with different naming rules).
+    /// two entitlements files.
     public static let appGroupIdentifier = "group.dev.malekswilam.sentry"
 
     /// The macOS suite is deliberately *not* an App Group: iOS-style

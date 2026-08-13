@@ -2,21 +2,18 @@ import Foundation
 
 // MARK: - SyntheticDailyHealth: fabricated DailyHealth series for the demo build
 
-/// Fabricates a plausible-looking, multi-day `DailyHealth` series (`SyncRecords.swift`)
-/// for `SentryMobile/History` to chart, in lieu of a real CloudKit query.
+/// Fabricates a plausible-looking, multi-day `DailyHealth` series (`SyncModels.swift`)
+/// for `SentryMobile/History` to chart, in lieu of a real historical fetch.
 ///
 /// **Why this needs to exist at all.** Plan §12.1 wants a "battery health
 /// trend" chart and "cycle count over time" on the History tab. Both need a
-/// *series* of `DailyHealth` records, but nothing in this codebase can
-/// produce one: `CKMapper` (`SentryKit/Sync/CKMapper.swift`) can convert a
-/// `DailyHealth` to/from a `CKRecord`, but no `SyncService`/transport
-/// anywhere issues a `CKQuery` for the `DailyHealth` record type, and the
-/// plan never specifies that fetch API's shape (deciding it is real,
-/// separate design work this task doesn't own — same reasoning
-/// `MockDataSource.devices()`'s doc comment gives for why the device catalog
-/// fetch isn't part of `StatsTransport` either). Rather than block the whole
-/// History tab on that undesigned API, this generates a fake series with the
-/// same shape a real one would have.
+/// *series* of `DailyHealth` records, but no transport in this codebase
+/// offers a historical fetch for the `DailyHealth` type, and designing
+/// that fetch API is real, separate work this task doesn't own — same
+/// reasoning `MockDataSource.devices()`'s doc comment gives for why the
+/// device catalog fetch isn't part of `StatsTransport` either. Rather than
+/// block the whole History tab on that undesigned API, this generates a
+/// fake series with the same shape a real one would have.
 ///
 /// **Why the math lives here, in `SentryKit`, rather than inside
 /// `MockDataSource` (`SentryMobile/Data/MockDataSource.swift`), which is
@@ -64,8 +61,7 @@ public enum SyntheticDailyHealth {
     /// would look broken, not "healthy"). Cycle count is non-decreasing
     /// oldest-to-newest; `fullChargeCapacity` tracks `healthPercent`
     /// proportionally against `designCapacityMAh`, matching how the real
-    /// field is defined (`SnapshotRecord.batteryHealth`'s sibling reasoning
-    /// in `BatteryStats`).
+    /// field is defined on `BatteryStats`.
     ///
     /// `dayCount <= 0` returns an empty array rather than asserting — a
     /// range change racing a not-yet-loaded device is a normal transient

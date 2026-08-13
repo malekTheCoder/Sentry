@@ -28,10 +28,9 @@ public enum LocalSyncMessage: Sendable {
 // MARK: - LocalSyncFraming: the wire protocol for the local-network transport
 
 /// Pure, testable framing logic for the local-network (Bonjour + `Network`
-/// framework) transport `StatsTransport.swift`'s doc comment calls "v4" —
-/// see that file for the architectural context (CloudKit is v2 and fully
-/// blocked on Apple Developer Program enrollment; this transport needs none
-/// of that, since it never leaves the local Wi-Fi network).
+/// framework) transport — see `StatsTransport.swift` for the architectural
+/// context (this is the transport that shipped; it needs no cloud
+/// infrastructure, since it never leaves the local Wi-Fi network).
 ///
 /// **The wire format.** A 1-byte kind tag (`0x01` = snapshot, `0x02` =
 /// command, `0x03` = status), then a 4-byte big-endian `UInt32` length
@@ -49,15 +48,12 @@ public enum LocalSyncMessage: Sendable {
 /// stream that gives no other message boundaries (`NWConnection.receive`
 /// hands back arbitrary chunks, not one call per logical message).
 ///
-/// **Why pure functions, not something bound to `NWConnection`.** Every
-/// other testable piece of wire-protocol-shaped logic in this codebase
-/// (`GzipPayloadCoder`, `CKMapper`) is a pure encode/decode pair with no
-/// networking dependency, specifically so `SentryTests` can exercise it
-/// without standing up a real socket. This is the one genuinely new
-/// wire-protocol in the whole codebase, so it gets the same treatment:
-/// `LocalSyncServer`/`LocalSyncClient` (the two concrete `Network`-framework
-/// users) call into these functions, but the functions themselves know
-/// nothing about `NWConnection`.
+/// **Why pure functions, not something bound to `NWConnection`.** Keeping
+/// wire-protocol-shaped logic as a pure encode/decode pair with no
+/// networking dependency is what lets `SentryTests` exercise it without
+/// standing up a real socket. `LocalSyncServer`/`LocalSyncClient` (the two
+/// concrete `Network`-framework users) call into these functions, but the
+/// functions themselves know nothing about `NWConnection`.
 ///
 /// **The streaming-read function specifically
 /// (`extractFrames(from:)`).** `NWConnection.receive` delivers whatever

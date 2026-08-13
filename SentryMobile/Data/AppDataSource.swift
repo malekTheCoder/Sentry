@@ -23,11 +23,11 @@ import SentryKit
 /// needs to read `transport`. It tries `LocalSyncClient.waitForFirstConnection
 /// (timeout:)` with a short, bounded timeout, and falls back to
 /// `MockDataSource()` if nothing answers in time. There is deliberately no
-/// third option tried here — CloudKit ("v2" in `StatsTransport.swift`'s
-/// doc comment) has no conformer anywhere in this tree yet (and no iCloud
-/// container claimed in any entitlements), so `MockDataSource` remains the
-/// correct, honest fallback until it exists, exactly as it was before this
-/// type was introduced.
+/// third option tried here — `LocalSyncClient` and `MockDataSource` are
+/// the only `StatsTransport` conformers (the once-planned CloudKit
+/// transport was deleted without ever being wired; see `StatsTransport
+/// .swift`'s doc comment), so `MockDataSource` is the correct, honest
+/// fallback when no Mac answers.
 ///
 /// **The disclosure contract that fallback is conditional on.** Falling back
 /// to fabricated readings is only defensible while the app says so, and the

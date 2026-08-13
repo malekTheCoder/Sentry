@@ -1,7 +1,7 @@
 import Foundation
 
 /// Stable dotted identifiers from plan Appendix A, used as database rows,
-/// CloudKit fields, MCP tool arguments, and theme color keys.
+/// sync payload fields, MCP tool arguments, and theme color keys.
 ///
 /// **Never rename a case's raw value after shipping** — add and deprecate
 /// instead. The raw values are the contract; the Swift case names are not.

@@ -272,9 +272,9 @@ targets:
       # Added for the Watch Siri intents (SentryWatch/Intents/
       # SentryWatchIntents.swift): ControlCommand/ControlStatus, so the
       # watch constructs and decodes the real types rather than duplicating
-      # them. Despite its CloudKit-flavored header comment, SyncRecords.swift
-      # imports only Foundation, so it builds on watchOS unchanged.
-      - path: SentryKit/Sync/SyncRecords.swift
+      # them. SyncModels.swift imports only Foundation, so it builds on
+      # watchOS unchanged.
+      - path: SentryKit/Sync/SyncModels.swift
       # Added for the Watch UI redesign: the watch renders in the user's
       # chosen theme rather than in hardcoded system colors, so it needs the
       # real `Theme`/`ThemeColor` types the Mac and phone already share

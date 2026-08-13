@@ -3,13 +3,12 @@ import XCTest
 import SentryKit
 
 /// Coverage for `LocalSyncFraming` (`SentryKit/LocalSync/LocalSyncFraming.swift`),
-/// the wire protocol behind the local-network (Bonjour) transport
-/// `StatsTransport.swift`'s doc comment calls "v4." Pure in-memory
-/// byte-buffer logic — no `NWConnection`/socket involvement, same testing
-/// posture as `GzipPayloadCoderTests` for the encode/decode half and
-/// entirely new for the streaming multi-read half, since nothing else in
-/// this codebase has to reassemble frames across arbitrary chunk
-/// boundaries the way a real socket read would deliver them.
+/// the wire protocol behind the local-network (Bonjour) transport. Pure
+/// in-memory byte-buffer logic — no `NWConnection`/socket involvement,
+/// for the encode/decode half and the streaming multi-read half alike,
+/// since nothing else in this codebase has to reassemble frames across
+/// arbitrary chunk boundaries the way a real socket read would deliver
+/// them.
 ///
 /// Covers all three `LocalSyncMessage` cases (snapshot/command/status) now
 /// that the wire format carries a 1-byte kind tag ahead of each frame's

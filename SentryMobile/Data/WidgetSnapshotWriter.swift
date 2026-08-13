@@ -53,9 +53,9 @@ actor WidgetSnapshotWriter {
     /// type's doc comment. Missing sub-structs (any Mac capability `SystemSnapshot` didn't
     /// report) fall back to `0`/`false`/`.inactive` for the *widget's*
     /// display purposes only — `SystemSnapshot` itself keeps those fields
-    /// properly optional; this is a lossy, display-shaped projection, matching
-    /// `SnapshotRecord`'s already-established precedent of duplicating a few
-    /// scalars out of the full payload for cheap, best-effort rendering.
+    /// properly optional; this is a lossy, display-shaped projection that
+    /// duplicates a few scalars out of the full payload for cheap,
+    /// best-effort rendering.
     func record(device: Device, snapshot: SystemSnapshot, sourceIsDemoData: Bool) {
         let batteryPercent = snapshot.battery?.chargePercent ?? 0
         let point = WidgetBatteryHistoryPoint(date: snapshot.timestamp, percent: batteryPercent)

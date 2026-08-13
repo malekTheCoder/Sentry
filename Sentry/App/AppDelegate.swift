@@ -385,12 +385,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// `MCPRemoteServer`'s doc comment.
     private let mcpRemoteServer = MCPRemoteServer()
 
-    // MARK: - Local-network sync (plan §7.1's "v4" fast path)
+    // MARK: - Local-network sync
     //
     // `LocalSyncServer` (`SentryKit/LocalSync/LocalSyncServer.swift`) is the
-    // Bonjour/`Network.framework` transport built ahead of CloudKit
-    // specifically because it needs no Apple Developer Program enrollment —
-    // see that type's doc comment. Named with this Mac's user-facing name
+    // Bonjour/`Network.framework` transport — the device sync that actually
+    // shipped; it needs no cloud infrastructure or Apple Developer Program
+    // enrollment. See that type's doc comment. Named with this Mac's user-facing name
     // (same `Host.current().localizedName` source `DropdownHeader`/
     // `DashboardView` already use) so a multi-Mac household's Bonjour
     // browse results are distinguishable, even though `LocalSyncClient`'s

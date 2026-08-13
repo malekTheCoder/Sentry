@@ -10,7 +10,7 @@ import Foundation
 /// across samples once it exits, and cumulative per-process history isn't
 /// something this app charts over time the way `MetricID` values are — so
 /// there's nothing coherent to persist to `sample_raw`/`sample_daily` or
-/// sync to CloudKit.
+/// sync between devices.
 ///
 /// **Is** part of `SystemSnapshot` (`SystemSnapshot.topProcesses`), unlike
 /// the paragraph above might suggest — that field exists purely so

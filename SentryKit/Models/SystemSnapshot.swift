@@ -1,7 +1,7 @@
 import Foundation
 
 /// The canonical payload that flows through the whole system — UI, storage,
-/// CloudKit, and MCP. Every sub-struct is optional so a Mac missing a
+/// device sync, and MCP. Every sub-struct is optional so a Mac missing a
 /// capability produces a valid, smaller snapshot rather than fake zeros.
 public struct SystemSnapshot: Codable, Sendable, Identifiable {
     public let id: UUID

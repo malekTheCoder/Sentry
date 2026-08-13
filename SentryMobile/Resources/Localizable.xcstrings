@@ -343,7 +343,6 @@
         }
       }
     },
-    "NOTIFICATION CATEGORIES": {},
     "Network": {
       "extractionState": "manual",
       "localizations": {
@@ -540,7 +539,6 @@
         }
       }
     },
-    "Sentry logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone.": {},
     "Serious": {
       "extractionState": "manual",
       "localizations": {
@@ -622,7 +620,6 @@
         }
       }
     },
-    "These mirror the Mac app's alert rules (AlertRule/AlertAction, SentryKit/Services/AlertRule.swift) — shown for reference, not as working preferences. Notifications require a live sync connection this build doesn't have, so there's nothing here to turn on or off yet.": {},
     "This Mac reported no battery data.": {},
     "Throttling": {
       "extractionState": "manual",
@@ -891,7 +888,6 @@
         }
       }
     },
-    "iCloud sync isn't available in this build yet.": {},
     "idle": {
       "extractionState": "manual",
       "localizations": {

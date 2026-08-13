@@ -8,8 +8,7 @@ import XCTest
 /// before there is a write path to exercise it against — which is the whole
 /// reason `FanControl.swift` keeps this logic in value types with no IOKit
 /// anywhere near it. These assertions are true about the *code* regardless
-/// of whether anything ever calls it against hardware, the same claim
-/// `SyncServiceTests` makes about a CloudKit container that doesn't exist.
+/// of whether anything ever calls it against hardware.
 final class FanControlModelTests: XCTestCase {
 
     private let limits = FanHardwareLimits(minRPM: 1200, maxRPM: 6241)

@@ -8,10 +8,9 @@ import os.log
 
 /// Advertises this Mac on the local Wi-Fi network via Bonjour
 /// (`_sentry._tcp`) and streams live `SystemSnapshot`s to any connected
-/// iPhone, framed per `LocalSyncFraming.swift`. This is the concrete thing
-/// `StatsTransport.swift`'s doc comment calls "v4 ... an optional
-/// local-network (Bonjour) fast path" — built and shipped ahead of CloudKit
-/// (v2) because it needs no Apple Developer Program enrollment at all, just
+/// iPhone, framed per `LocalSyncFraming.swift`. This is the sending half
+/// of the device sync that actually shipped — it needs no cloud
+/// infrastructure or Apple Developer Program enrollment at all, just
 /// `Network.framework` and a Bonjour service type, both available today.
 ///
 /// **Why this doesn't conform to `StatsTransport`.** `StatsTransport` is the

@@ -75,7 +75,7 @@ public enum HistoryRange: String, CaseIterable, Identifiable, Sendable {
 
     /// How many synthetic `DailyHealth` days `SyntheticDailyHealth.series`
     /// should fabricate for this range. This is the mock-data-era
-    /// counterpart to `since(now:)`: a real CloudKit query would instead
+    /// counterpart to `since(now:)`: a real historical query would instead
     /// vary its date predicate against however much history actually
     /// exists, but there is no real history to query (see
     /// `SyntheticDailyHealth`'s doc comment) — this build instead varies

@@ -1,21 +1,20 @@
 import Foundation
 
 /// Idempotency + expiry gate for `ControlCommand`s (plan §10.4's "Robustness
-/// requirements"), used wherever the real push/poll handler eventually lives
-/// (not yet built — see `SyncRecords.swift`'s top-level doc comment for why
-/// this directory has no live `CKContainer` yet). This type is pure decision
-/// logic: it never touches CloudKit, only a `ControlCommand` value and a
-/// caller-supplied `now`, so it is fully unit-testable today.
+/// requirements"), consulted by `LocalCommandExecutor` before it acts on a
+/// command that arrived over the LocalSync channel. This type is pure
+/// decision logic: it never touches the network, only a `ControlCommand`
+/// value and a caller-supplied `now`, so it is fully unit-testable.
 ///
 /// **Two independent checks, both must pass:**
-/// 1. **Not already executed.** A silent push can be redelivered (CloudKit
-///    doesn't guarantee exactly-once), and the fallback poller (plan §7.5)
-///    can also observe the same still-live `ControlCommand` on a later tick
-///    after a push already handled it. Either path re-running
+/// 1. **Not already executed.** No delivery channel guarantees
+///    exactly-once — a reconnecting client can rewrite a frame it isn't
+///    sure arrived, and any future push/poll path can observe the same
+///    still-live `ControlCommand` twice. Either way, re-running
 ///    `IOPMAssertionCreate…` would "restart the timer" — plan §10.4's exact
 ///    phrase for the bug this exists to prevent.
-/// 2. **Not expired.** "A command that sat in CloudKit for an hour because
-///    the Mac was asleep should not fire on wake" (plan §10.4). `expiresAt`
+/// 2. **Not expired.** A command that sat queued for an hour because
+///    the Mac was asleep should not fire on wake (plan §10.4). `expiresAt`
 ///    is authored by the iPhone at creation time (default +5 min, plan
 ///    §7.3), so this is a pure comparison against `now` — no clock skew
 ///    handling beyond what already lives in `ControlCommand.expiresAt`.

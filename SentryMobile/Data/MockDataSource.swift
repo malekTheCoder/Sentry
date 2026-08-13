@@ -1,34 +1,27 @@
-import CloudKit
 import Foundation
 import SentryKit
 
-// MARK: - MockDataSource: the only data source this build actually has
+// MARK: - MockDataSource: the demo data source
 
 /// A `StatsTransport` conformer that fabricates plausible-looking snapshots
-/// locally instead of talking to CloudKit — because there is nothing to talk
-/// to yet.
+/// locally — the clearly-disclosed demo source `AppDataSource` falls back
+/// to when no real Mac is reachable over `LocalSyncClient`.
 ///
-/// **Why this exists.** Same constraint as `Sentry/Settings/Panes/SyncPane.swift`
-/// on the Mac side and `StatsTransport.swift`'s own doc comment: there is no
-/// `iCloud.dev.malekswilam.sentry` container claimed in any entitlements,
-/// no `CKContainer`, and no real
-/// `CloudKitTransport` conformer anywhere in the tree. The iPhone app still
-/// needs *something* behind `StatsTransport` to build its screens against —
-/// Dashboard/History/Alerts all need a Mac's worth of `SystemSnapshot` data
-/// to render, and building those screens against a live protocol type (never
-/// against ad hoc view-local fake structs) is what makes swapping this out
-/// for a real `CloudKitTransport` later a one-line change at the call site
-/// that constructs it, not a UI rewrite.
+/// **Why this exists.** The iPhone app needs *something* behind
+/// `StatsTransport` to render its screens against even with no Mac on the
+/// network — Dashboard/History/Alerts all need a Mac's worth of
+/// `SystemSnapshot` data — and building those screens against a live
+/// protocol type (never against ad hoc view-local fake structs) is what
+/// makes the demo→real swap a data-source change, not a UI rewrite.
 ///
 /// **Why it conforms to `StatsTransport` itself, not a new mobile-only
 /// protocol.** `StatsTransport` (`SentryKit/Sync/StatsTransport.swift`) is
-/// already "the seam a real CloudKit implementation slots into," per that
-/// file's own heading — introducing a second, UI-shaped protocol here would
-/// just be a parallel abstraction the real `CloudKitTransport` would also
-/// have to satisfy, doubling the seam for no benefit. Conforming directly
-/// means the Dashboard/History/Alerts view models can be written against
-/// `any StatsTransport` from day one, and `MockDataSource()` today becomes
-/// `CloudKitTransport()` later with zero other code changes.
+/// already the seam every data source slots into — introducing a second,
+/// UI-shaped protocol here would just be a parallel abstraction any real
+/// transport would also have to satisfy, doubling the seam for no benefit.
+/// Conforming directly means the Dashboard/History/Alerts view models are
+/// written against `any StatsTransport`, and `AppDataSource` swaps this
+/// for `LocalSyncClient` with zero UI changes.
 ///
 /// **What "realistic-looking" means here and why it matters.** The plan's
 /// entire iPhone chapter (§12.2) is built around `Freshness` making stale
@@ -41,7 +34,7 @@ import SentryKit
 /// snapshots this type emits keep that gap roughly constant rather than
 /// collapsing to zero — the mock is honest about being a snapshot of
 /// "recently, not right now," the same category of truth a real
-/// CloudKit-backed transport would actually deliver.
+/// network-backed transport would actually deliver.
 ///
 /// **The one thing this type cannot fake responsibly: `Device.lastSeen` as
 /// "live."** Every screen that reads `mockDevice` must still run it through
@@ -82,28 +75,22 @@ public actor MockDataSource: StatsTransport {
     }
 
     /// The device catalog this mock pretends to know about. Not part of
-    /// `StatsTransport` — the plan doesn't yet specify how the iPhone app
-    /// discovers *which* `Device` records exist (that's presumably a plain
-    /// CloudKit query against the `Device` record type, made once at
-    /// launch/refresh, not a `StatsTransport` responsibility, since
-    /// `StatsTransport` is scoped to snapshot/command flow for an
-    /// already-known device). Exposed here as a pragmatic concrete-type
-    /// extra so `DashboardViewModel`'s device-picker stub (plan §12.1) has
-    /// something to populate from today; a real device-catalog fetch is
-    /// separate, later work, gated on the same CloudKit enrollment as
-    /// everything else in this file's doc comment.
+    /// `StatsTransport` — no transport-level device-catalog fetch exists
+    /// (`StatsTransport` is scoped to snapshot/command flow for an
+    /// already-known device; `AppDataSource.devices()` builds its list from
+    /// the snapshots it has actually seen). Exposed here as a pragmatic
+    /// concrete-type extra so `DashboardViewModel`'s device picker has
+    /// something to populate from in demo mode.
     public func devices() async -> [Device] {
         [mockDevice]
     }
 
     /// Fabricates a `DailyHealth` series for the History tab's battery
     /// health/cycle-count charts (plan §12.1). Not part of `StatsTransport`
-    /// for the same reason `devices()` above isn't: the plan never
-    /// specifies how the iPhone app is meant to fetch `DailyHealth` records
-    /// — `CKMapper` (`SentryKit/Sync/CKMapper.swift`) can round-trip one
-    /// to/from a `CKRecord`, but no `CKQuery` for the record type exists
-    /// anywhere in this tree, and designing that fetch API is separate,
-    /// later work this task doesn't own.
+    /// for the same reason `devices()` above isn't: no transport-level
+    /// fetch API for `DailyHealth` records exists anywhere in this tree
+    /// (`AppDataSource` synthesizes the series from snapshot history
+    /// instead), and designing one is separate, later work.
     ///
     /// The actual fabrication math lives in `SyntheticDailyHealth`
     /// (`SentryKit/History/SyntheticDailyHealth.swift`), not here — see
@@ -121,7 +108,7 @@ public actor MockDataSource: StatsTransport {
     /// Emits one synthetic `SystemSnapshot` immediately, then one every
     /// `tickInterval` for as long as the returned stream is alive. Each call
     /// gets its own stream/`Task`, matching `StatsTransport.snapshots()`'s
-    /// documented "fresh stream per call" contract — a `CloudKitTransport`
+    /// documented "fresh stream per call" contract — `LocalSyncClient`
     /// fans a single underlying subscription out to each caller; this mock
     /// just runs one independent timer loop per caller, which is simpler and
     /// behaviorally equivalent for a value nobody actually observes over the
@@ -180,13 +167,6 @@ public actor MockDataSource: StatsTransport {
     /// own "nothing happened, don't pretend otherwise" posture.
     public func awaitStatus(forNonce nonce: String, timeout: TimeInterval) async -> ControlStatus? {
         nil
-    }
-
-    /// No-op for the same reason as `send(command:)` — nothing to upload to.
-    public func upload(_ batch: UploadBatch) async throws {
-        #if DEBUG
-        print("[MockDataSource] ignoring upload of \(batch.recordsToSave.count) record(s) — no real container to upload to")
-        #endif
     }
 
     // MARK: - Synthetic snapshot generation

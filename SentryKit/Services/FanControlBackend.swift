@@ -266,8 +266,8 @@ public enum FanControlWriteError: Error, LocalizedError, Equatable, Sendable {
 /// Because the alternative — a read-only protocol today, plus a second
 /// protocol later — would leave the UI and the settings layer written
 /// against a shape that has to change when the write path lands, which is
-/// exactly what a seam is supposed to prevent (`StatsTransport`'s doc
-/// comment makes the same argument about `CloudKitTransport`). The methods
+/// exactly what a seam is supposed to prevent (`StatsTransport` makes the
+/// same argument about swappable transports). The methods
 /// are `throws` rather than optional so that "this can fail, and you must
 /// handle the failure" is the call site's default assumption from day one,
 /// not something retrofitted once failures become possible.

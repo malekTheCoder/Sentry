@@ -8,10 +8,10 @@ import os.log
 /// that discovers a Mac running `LocalSyncServer`
 /// (`SentryKit/LocalSync/LocalSyncServer.swift`) on the local Wi-Fi network
 /// via Bonjour and streams the framed `SystemSnapshot`s it sends. This is
-/// "v4" from `StatsTransport.swift`'s doc comment — built and usable today
-/// specifically *because* it needs no Apple Developer Program enrollment,
-/// unlike the CloudKit transport ("v2") that protocol was originally
-/// written for.
+/// the transport that actually shipped — it needs no cloud infrastructure
+/// and no Apple Developer Program enrollment, which is why it exists and
+/// the once-planned CloudKit transport (deleted; see `StatsTransport
+/// .swift`'s doc comment) never did.
 ///
 /// **Cross-platform, but really an iOS type.** `Network.framework` works
 /// identically on macOS and iOS, so this file compiles on both (no `#if
@@ -48,19 +48,16 @@ import os.log
 /// supporting several stored pairing codes at once is a bigger, separate
 /// project.
 ///
-/// **`send(command:)` is real; `upload(_:)` still isn't.** `send(command:)`
-/// used to throw unconditionally ("receive-only for this first pass"); it
-/// now frames and writes the `ControlCommand` onto the live connection, and
+/// **`send(command:)` is real.** It used to throw unconditionally
+/// ("receive-only for this first pass"); it now frames and writes the
+/// `ControlCommand` onto the live connection, and
 /// `awaitStatus(forNonce:timeout:)` lets a caller wait for the Mac's
 /// `ControlStatus` reply — see `LocalSyncServer`'s matching receive loop and
 /// `LocalCommandExecutor` (`SentryKit/Services/LocalCommandExecutor.swift`).
 /// This works over both the LAN and remote (TLS-PSK) connections, so an
 /// iPhone or Apple Watch can control a Mac from anywhere the remote listener
-/// is reachable. `upload(_:)` still throws — see its doc comment — because
-/// uploading a snapshot batch genuinely isn't a meaningful concept for this
-/// transport, unlike sending one command, which only needed a wire format
-/// and a listener on the other end. Where either *does* fail, it throws
-/// rather than silently no-op-ing the way `MockDataSource`'s conformer does:
+/// is reachable. Where it *does* fail, it throws rather than silently
+/// no-op-ing the way `MockDataSource`'s conformer does:
 /// `MockDataSource` no-ops because there's genuinely nothing on the other
 /// end to reach; this type *is* connected to a real Mac, so quietly
 /// swallowing a command would misrepresent a working connection as having
@@ -806,17 +803,6 @@ public actor LocalSyncClient: StatsTransport {
         guard let waiter = statusWaiters.removeValue(forKey: nonce) else { return }
         waiter.resume(returning: nil)
     }
-
-    /// Always throws, for the same reason as `send(command:)`. Uploading
-    /// isn't a meaningful concept for this transport at all: the phone has
-    /// nothing of its own to upload to the Mac over a local-network
-    /// connection the way it would to a shared CloudKit container — the Mac
-    /// is the sole source of `SystemSnapshot` data on this channel.
-    public func upload(_ batch: UploadBatch) async throws {
-        throw LocalSyncClientError.notSupported(
-            "Uploading is not supported over the local-network transport — this transport only receives snapshots, it has no shared store to upload into."
-        )
-    }
 }
 
 /// One Mac currently visible over Bonjour, as surfaced to
@@ -877,17 +863,14 @@ public enum DirectConnectFailureReason: Sendable, Equatable {
     case unreachable
 }
 
-/// Errors specific to `LocalSyncClient`, kept separate from
-/// `StatsTransport`-level errors (`UploadError`, defined alongside
-/// `SyncService`) since they describe *transport-level* unsupported
-/// operations, not a CloudKit-shaped upload failure.
+/// Errors specific to `LocalSyncClient` — transport-level "can't do that
+/// right now" conditions callers are expected to render honestly.
 public enum LocalSyncClientError: Error, LocalizedError, Sendable {
-    case notSupported(String)
     case notConnected(String)
 
     public var errorDescription: String? {
         switch self {
-        case .notSupported(let message), .notConnected(let message):
+        case .notConnected(let message):
             return message
         }
     }

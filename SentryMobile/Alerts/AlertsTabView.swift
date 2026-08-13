@@ -5,30 +5,25 @@ import SentryKit
 /// (full editing stays on the Mac for v2)").
 ///
 /// **Why the feed half of this tab is an honest empty state, not a feed.**
-/// Plan §7.3 lists exactly five CloudKit record types — `Device`,
-/// `Snapshot`, `DailyHealth`, `ControlCommand`, `ControlStatus`
-/// (`SentryKit/Sync/SyncRecords.swift`) — and there is no `Alert` or
-/// `AlertFiring` record type anywhere in the plan or this codebase. The
-/// Mac's fired-alert history (`alert_log`, written by
+/// The Mac's fired-alert history (`alert_log`, written by
 /// `HistoryStore.logAlertFiring`/read by `HistoryStore.recentAlertFirings`)
-/// is local SQLite only; nothing has ever serialized a row of it to
-/// CloudKit, so there is no data path by which this iPhone process could
-/// know what has fired on the Mac. Inventing a plausible-looking feed here
-/// — synthetic timestamps, synthetic rule names — would be exactly the
-/// "confident UI describing a reality that isn't true" bug `SyncPane.swift`
-/// (`Sentry/Settings/Panes/SyncPane.swift`) was written to stop
-/// reintroducing elsewhere in this app; `historyDisclosure` below keeps
-/// that pane's direct, non-apologetic tone rather than something softer
-/// like "coming soon." Designing the actual sync record type this needs is
-/// a real architecture decision for the CloudKit sync work, not a call this
-/// tab gets to make on its own.
+/// is local SQLite only, and the LocalSync wire (`LocalSyncFraming`)
+/// carries snapshots, commands, and statuses — no alert-firing record type
+/// exists anywhere in this codebase, so there is no data path by which
+/// this iPhone process could know what has fired on the Mac. Inventing a
+/// plausible-looking feed here — synthetic timestamps, synthetic rule
+/// names — would be exactly the "confident UI describing a reality that
+/// isn't true" bug this codebase's honesty discipline exists to stop;
+/// `historyDisclosure` below keeps the direct, non-apologetic tone rather
+/// than something softer like "coming soon." Designing the actual sync
+/// record type this needs is a real architecture decision for the device
+/// sync work, not a call this tab gets to make on its own.
 ///
 /// **Why the rule list is real content, not a mock.** `AppSettings.defaultAlertRules`
 /// (`SentryKit/Settings/AppSettings.swift`) is the exact 11-rule set
 /// `AlertEngine.defaultRules(cooldown:)` builds and Sentry actually ships
-/// with — showing it here is reporting a true fact about the Mac app, the
-/// same way `SyncPane`'s cadence table shows `SyncService`'s real, tested
-/// cadence constants "as documentation, not status." No firing history, no
+/// with — showing it here is reporting a true fact about the Mac app,
+/// as documentation, not status. No firing history, no
 /// per-Mac customization, and no live rule set are implied by this list —
 /// see `ruleRow`'s doc comment for exactly what the enable/disable toggle
 /// does and doesn't do.
@@ -131,9 +126,9 @@ struct AlertsTabView: View {
     /// can't be wired to anything real today, though: making a toggle here
     /// actually flip a rule's `isEnabled` on the Mac needs a live
     /// round-trip — either a synced, editable `AlertRule` record (which
-    /// doesn't exist; see this file's top doc comment) or a `ControlCommand`
-    /// sent over CloudKit (`SyncRecords.swift`), which needs the same live
-    /// container `SyncPane.swift` explains this build doesn't have.
+    /// doesn't exist; see this file's top doc comment) or a dedicated
+    /// rule-edit `ControlCommand` type, which `LocalCommandExecutor`
+    /// doesn't define.
     ///
     /// **Disabled, not animating (connection-honesty review, bug #4).** This
     /// `Toggle` used to be fully interactive — it flipped, animated, and
@@ -198,9 +193,8 @@ struct AlertsTabView: View {
 
     /// See this file's top-level doc comment for why there is no feed to
     /// show. Restyled to the same muted "intentional disclosure" look as
-    /// History's `chargeSessionGapNotice` and Settings' sync-status row —
-    /// the full explanation moves to an accessibility hint so the visible
-    /// row stays short.
+    /// History's `chargeSessionGapNotice` — the full explanation moves to
+    /// an accessibility hint so the visible row stays short.
     private var historyDisclosure: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -210,7 +204,7 @@ struct AlertsTabView: View {
                     .scaledFont(palette, size: 12, weight: .semibold)
                     .foregroundStyle(palette.textSecondary)
             }
-            Text("Sentry logs fired alerts locally on the Mac — there's no CloudKit record type for alert history yet, so nothing about a firing has ever reached this iPhone.")
+            Text("Sentry logs fired alerts locally on the Mac — the device sync channel doesn't carry alert history yet, so nothing about a firing has ever reached this iPhone.")
                 .scaledFont(palette, size: 11)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)

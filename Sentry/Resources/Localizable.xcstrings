@@ -1425,50 +1425,6 @@
       }
     },
     "Estimates assume roughly 40 metrics recorded at your current %@ s refresh interval. Actual size varies with how many modules you enable and how well SQLite packs the rows.": {},
-    "Every %@ minutes": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every %@ minutes"
-          }
-        }
-      }
-    },
-    "Every %@ seconds": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every %@ seconds"
-          }
-        }
-      }
-    },
-    "Every 1 minute": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every 1 minute"
-          }
-        }
-      }
-    },
-    "Every 1 second": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every 1 second"
-          }
-        }
-      }
-    },
     "Every fan is back under your Mac's own control.": {
       "extractionState": "manual",
       "localizations": {
@@ -1609,17 +1565,6 @@
           "stringUnit": {
             "state": "new",
             "value": "Fires when %1$@ is %2$@ %3$@. “Above” and “below” are inclusive (≥ and ≤)."
-          }
-        }
-      }
-    },
-    "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fires when battery health falls by at least this many percentage points below the highest value seen since Sentry last launched. The metric and comparison aren't editable — this rule deliberately ignores health *increases*, which a generic comparison can't express. The baseline resets on relaunch, so this won't catch a drop that happened while Sentry was closed."
           }
         }
       }
@@ -1856,17 +1801,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "IP"
-          }
-        }
-      }
-    },
-    "Immediately": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Immediately"
           }
         }
       }
@@ -3359,7 +3293,6 @@
         }
       }
     },
-    "Status": {},
     "Still gathering history": {},
     "Stop %@": {
       "extractionState": "manual",
@@ -3619,7 +3552,6 @@
         }
       }
     },
-    "This is the cadence Sentry's sync engine is built and tested to follow once it's connected — it doesn't describe anything happening right now. A significant change (plugging in, unplugging, an alert firing, or a pull-to-refresh from the iPhone app) is configured to upload immediately rather than waiting out the interval above.": {},
     "This rule has no actions and will only be recorded in history.": {},
     "This rule has no editable metric or threshold. It compares the wattage actually reaching the battery against the connected adapter's rated wattage, which changes with whatever adapter is plugged in — a fixed number couldn't express it. Only its timing, quiet hours, and conditions below are editable.": {
       "extractionState": "manual",
@@ -3849,7 +3781,6 @@
         }
       }
     },
-    "Upload Schedule": {},
     "Uptime, process count, and whether a sleep assertion is active.": {
       "extractionState": "manual",
       "localizations": {
@@ -4363,7 +4294,6 @@
         }
       }
     },
-    "iCloud sync isn't available in this build": {},
     "iPhone companion and device sync.": {
       "extractionState": "manual",
       "localizations": {

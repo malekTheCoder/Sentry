@@ -223,10 +223,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// back to `AlertEnginePersistedState()`.
     public var alertPersistedState: AlertEnginePersistedState
 
-    // MARK: - Sync
-
-    public var cloudKitSyncEnabled: Bool
-
     // MARK: - MCP (plan §13)
 
     public var mcpServerEnabled: Bool
@@ -478,7 +474,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         doNotDisturb: Bool = false,
         alertRules: [AlertRule] = AppSettings.defaultAlertRules,
         alertPersistedState: AlertEnginePersistedState = AlertEnginePersistedState(),
-        cloudKitSyncEnabled: Bool = false,
         mcpServerEnabled: Bool = false,
         mcpWriteToolsEnabled: Bool = false,
         mcpEnabledToolIDs: Set<String> = AppSettings.defaultMCPEnabledToolIDs,
@@ -522,7 +517,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.doNotDisturb = doNotDisturb
         self.alertRules = alertRules
         self.alertPersistedState = alertPersistedState
-        self.cloudKitSyncEnabled = cloudKitSyncEnabled
         self.mcpServerEnabled = mcpServerEnabled
         self.mcpWriteToolsEnabled = mcpWriteToolsEnabled
         self.mcpEnabledToolIDs = mcpEnabledToolIDs
@@ -597,7 +591,6 @@ extension AppSettings {
         // yet" state an install from before this key existed was already
         // implicitly in.
         case alertPersistedState
-        case cloudKitSyncEnabled
         case mcpServerEnabled
         case mcpWriteToolsEnabled
         case mcpEnabledToolIDs
@@ -735,8 +728,6 @@ extension AppSettings {
             // above — see this property's own doc comment.
             alertPersistedState: try container.decodeIfPresent(AlertEnginePersistedState.self, forKey: .alertPersistedState)
                 ?? fallback.alertPersistedState,
-            cloudKitSyncEnabled: try container.decodeIfPresent(Bool.self, forKey: .cloudKitSyncEnabled)
-                ?? fallback.cloudKitSyncEnabled,
             mcpServerEnabled: try container.decodeIfPresent(Bool.self, forKey: .mcpServerEnabled)
                 ?? fallback.mcpServerEnabled,
             mcpWriteToolsEnabled: try container.decodeIfPresent(Bool.self, forKey: .mcpWriteToolsEnabled)

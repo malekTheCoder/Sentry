@@ -3,35 +3,22 @@ import SentryKit
 
 // MARK: - SettingsTabView (plan §12.1)
 
-/// Tab 4 — Settings. Plan §12.1 lists four things for this tab: "Devices &
-/// sync status, Notification preferences, Widget configuration, Theme
-/// (shares Theme tokens with the Mac app)." Of those four, exactly one is
-/// buildable as a real, working feature today — the rest describe surfaces
-/// for infrastructure that doesn't exist in this build (see each section's
-/// doc comment below for specifics). This file follows the same honesty
-/// discipline `Sentry/Settings/Panes/SyncPane.swift` established on the Mac
-/// side: say plainly what doesn't work and why, rather than hiding it behind
-/// "coming soon" or — worse — a control that looks functional but silently
-/// does nothing (`SyncPane`'s doc comment calls this codebase's canonical
-/// prior bug by name: "a settings slider that silently did nothing").
+/// Tab 4 — Settings. The working surfaces: the theme picker (shares Theme
+/// tokens with the Mac app — see `RootTabView`'s doc comment for how the
+/// selection propagates via `@AppStorage` + `.environment(\.themePalette:)`),
+/// units, the paired-device card (live local-network state via
+/// `AppDataSource.isUsingLocalSync`), the multi-Mac picker, and the Remote
+/// Mac (off-LAN TLS-PSK) connection flow.
 ///
-/// **What's real: the theme picker.** `Theme.builtInPresets`
-/// (`SentryKit/Settings/Theme.swift`) is the exact same set of presets the
-/// Mac app ships, and selecting one here actually re-themes all four tabs —
-/// see `RootTabView`'s doc comment for how the selection propagates via
-/// `@AppStorage` + `.environment(\.themePalette:)`. This is a genuine,
-/// working, "shares Theme tokens with the Mac app" feature.
-///
-/// **What's honest-but-inert: devices & sync, notifications, widgets.** Each
-/// is gated on the same missing piece — no CloudKit container claimed in
-/// any entitlements, therefore no cloud device catalog, therefore no push
-/// infrastructure, therefore no real device catalog and no way to schedule a
-/// local notification that means anything (a notification with no upstream
-/// event to trigger it isn't a notification *preference*, it's dead UI).
-/// Rather than three near-identical "not available yet" screens, each
-/// section says specifically what's missing and what's shown instead (mock
-/// data, static rule names, a stub file), so a reader can tell these apart
-/// from three genuinely different kinds of "not done."
+/// This file follows the house honesty discipline: say plainly what doesn't
+/// work and why, rather than hiding it behind "coming soon" or — worse — a
+/// control that looks functional but silently does nothing (this codebase's
+/// canonical prior bug: "a settings slider that silently did nothing").
+/// Earlier revisions carried disclosure sections for a CloudKit sync layer
+/// and a phone-push notification surface that never shipped; both features
+/// were deleted outright (see git history), so those sections went with
+/// them — the one disclosure row left is the widgets row, which points at a
+/// real widget with genuinely no in-app configuration yet.
 ///
 /// **Nocturne redesign restyle.** Was a native `Form`/`Section` screen (the
 /// theme picker was a `.pickerStyle(.navigationLink)` row into a full
@@ -40,8 +27,7 @@ import SentryKit
 /// theme swatches (each rendering *that* theme's own colors, not the
 /// ambient one, so tapping through actually previews before committing), a
 /// compact paired-device card, and the honest-disclosure pattern shared
-/// with History's charge-session row and Alerts' history row for the
-/// sections that don't do anything real yet.
+/// with History's charge-session row and Alerts' history row where needed.
 struct SettingsTabView: View {
     /// Backs the theme picker below. Default matches `Theme.defaultTheme.id` —
     /// the same default `AppSettings.themeID` uses on the Mac side
@@ -210,10 +196,8 @@ struct SettingsTabView: View {
                 unitsSection
                 deviceCard
                 macPickerSection
-                syncStatusRow
                 remoteMacSection
                 LocationLogSection(viewModel: locationLogViewModel)
-                notificationsSection
                 widgetsSection
                 walkthroughRow
                 aboutRow
@@ -599,29 +583,21 @@ struct SettingsTabView: View {
     /// Plan §12.1's "Devices" half. Two-line card (name + meta caption) per
     /// the redesign spec's shape. The spec's literal mock text for the meta
     /// line is "Paired · Last synced 2m ago" — not used verbatim here,
-    /// deliberately: this build has no sync channel at all (see
-    /// `syncStatusRow` right below this card), and every other honesty
-    /// discipline in this codebase (`SyncPane.swift`, `demoDataBanner` on
-    /// Dashboard/History, this same file's own doc comment) exists
-    /// specifically to stop a screen from claiming a sync event that never
-    /// happened. Showing "Last synced 2m ago" one card above a row admitting
-    /// this phone isn't connected to a Mac right now would be a direct,
-    /// visible self-contradiction on the same screen. The meta line instead
-    /// reports the one true thing this build knows about the device (its
-    /// model) plus the honest state, keeping the intended two-line visual
-    /// shape without inventing a sync timestamp.
+    /// deliberately: every honesty discipline in this codebase
+    /// (`demoDataBanner` on Dashboard/History, this same file's own doc
+    /// comment) exists specifically to stop a screen from claiming a sync
+    /// event that never happened, and demo mode has no sync events. The
+    /// meta line instead reports the one true thing this build knows about
+    /// the device (its model) plus the honest state, keeping the intended
+    /// two-line visual shape without inventing a sync timestamp.
     private var deviceCard: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(displayedDevice.deviceName)
                 .scaledFont(palette, size: 12.5, weight: .medium)
                 .foregroundStyle(palette.textPrimary)
             // The meta line's second half distinguishes a real local-network
-            // connection from demo data — `syncStatusRow` right below is
-            // scoped specifically to iCloud/CloudKit sync (still genuinely
-            // unavailable, and unrelated to whether a Mac is reachable over
-            // local Wi-Fi right now), not this local-network path, so this
-            // is the one place on this tab that actually reflects
-            // `AppDataSource.isUsingLocalSync`.
+            // connection from demo data — this is the one place on this tab
+            // that actually reflects `AppDataSource.isUsingLocalSync`.
             Text("\(displayedDevice.model) · \(appDataSource.isUsingLocalSync ? "Live on your local network" : "Demo device, not synced")")
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
@@ -747,90 +723,6 @@ struct SettingsTabView: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .accessibilityHint(isSelected ? "Currently connected." : "Switch to this Mac instead.")
     }
-
-    // MARK: - Sync status (SyncPane's tone, mobile side)
-
-    /// The iPhone-side counterpart of `Sentry/Settings/Panes/SyncPane.swift`.
-    /// Deliberately mirrors that pane's wording and its list of banned
-    /// phrasings ("Connected," "Syncing," "Up to date," a spinner, a
-    /// fabricated record count) rather than inventing new language for the
-    /// same underlying fact: this build has no iCloud container, no
-    /// `CKContainer`, no push subscription, on either platform, for the same
-    /// reason (`Sentry` isn't enrolled in the Apple Developer Program).
-    /// Same muted "honest disclosure" row style as History's
-    /// `chargeSessionGapNotice` and Alerts' `historyDisclosure` — a small
-    /// outlined circle + one line of tertiary text, full explanation in the
-    /// accessibility hint.
-    ///
-    /// **Not the reason demo data shows up (connection-honesty review, bug
-    /// #6).** This row used to read "iCloud sync isn't available in this
-    /// build yet," full stop — which reads, right next to `deviceCard`'s
-    /// "Demo device, not synced," as though iCloud is *why* the Dashboard is
-    /// showing synthetic data. It isn't: the app was never going to try
-    /// iCloud for that. The actual, working transport is local-network
-    /// Bonjour (`LocalSyncClient`) plus an optional remote TLS-PSK fallback
-    /// (`remoteMacSection` above) — a user whose Mac is simply unreachable
-    /// on Wi-Fi doesn't need a story about a cloud feature that was never
-    /// involved. This row now says what's genuinely true (no iCloud channel
-    /// exists in this build) without implying it's the culprit; `deviceCard`
-    /// and the Dashboard's connection line are the places that actually
-    /// explain *why* this phone isn't seeing a real Mac right now.
-    private var syncStatusRow: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "circle")
-                .scaledSystemFont(size: 9)
-                .foregroundStyle(palette.textTertiary)
-            Text("This build has no iCloud sync — it reaches your Mac over your local network instead.")
-                .scaledFont(palette, size: 11)
-                .foregroundStyle(palette.textTertiary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Sentry isn't enrolled in the Apple Developer Program yet, so this phone has no iCloud container to sync through. That's unrelated to whether this phone is currently connected to a Mac — this build reaches a Mac over your local Wi-Fi network, or a remote address you configure above, never through iCloud.")
-    }
-
-    // MARK: - Notifications (informational only — no working preferences)
-
-    /// Plan §12.1 wants "Notification preferences" here, but a preference
-    /// only means something if it changes what happens later — and nothing
-    /// can deliver a push notification in this build (no CloudKit
-    /// subscription, no APNs registration; the Mac side's phone-push
-    /// feature was cut entirely, leaving `AlertAction.pushToPhone` in
-    /// `SentryKit/Services/AlertRule.swift` as a documented
-    /// decode-compatibility no-op). Building toggles that don't wire
-    /// to anything would recreate the exact "slider that silently does
-    /// nothing" bug `SyncPane`'s doc comment names as this codebase's own
-    /// prior mistake. Instead this section lists the categories a real
-    /// build *would* notify about — read directly from
-    /// `AlertEngine.defaultRules(cooldown:)` rather than a hand-copied list,
-    /// so it can't drift out of sync with the Mac app's actual default
-    /// rules — as plain, non-interactive reference text.
-    private var notificationsSection: some View {
-        VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
-            Text("NOTIFICATION CATEGORIES")
-                .scaledFont(palette, size: 10, weight: .semibold)
-                .foregroundStyle(palette.textTertiary)
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Self.notificationCategoryNames, id: \.self) { name in
-                    Text(name)
-                        .scaledFont(palette, size: 11.5)
-                        .foregroundStyle(palette.textSecondary)
-                }
-            }
-            // Type and file names removed for the same reason as the theme
-            // caption above: this is read by someone deciding whether to
-            // trust the app, not by someone browsing the source.
-            Text("These mirror the Mac app's alert rules — shown for reference, not as working preferences. Notifications need a live connection to your Mac, so there's nothing here to turn on or off yet.")
-                .scaledFont(palette, size: 10.5)
-                .foregroundStyle(palette.textTertiary)
-        }
-    }
-
-    /// `cooldown` is irrelevant to the names themselves (it only affects
-    /// each rule's `cooldown` field) — `0` is passed purely because
-    /// `defaultRules(cooldown:)` requires an argument; no rule's name
-    /// depends on it.
-    private static let notificationCategoryNames: [String] =
-        AlertEngine.defaultRules(cooldown: 0).map(\.name)
 
     // MARK: - Widgets (real widget, no in-app configuration yet)
 
