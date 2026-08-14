@@ -1,6 +1,12 @@
 ---
 layout: default
 title: Support
+# Pinned for the same reason as the privacy policy's, one step weaker: this
+# address is not compiled into the app, but it is what goes in App Store
+# Connect's "Support URL" field, and that field is checked on every review.
+# Pinning it here means the published path cannot drift with a future theme
+# or permalink-style change.
+permalink: /support/
 ---
 
 # Support

@@ -1,0 +1,28 @@
+# Jekyll configuration for the Sentry site (https://malekthecoder.github.io/Sentry/).
+#
+# This file exists because every page on the site declares `layout: default`,
+# and a layout only resolves if a theme provides it. With no theme configured,
+# GitHub Pages builds the pages with no layout at all: the Markdown renders as
+# unstyled HTML with no <head>, no CSS, and no viewport meta tag. The privacy
+# policy — the page an App Store reviewer opens — is the worst place for that
+# to happen.
+#
+# `jekyll-theme-minimal` is one of the themes GitHub Pages supports natively,
+# so it needs no plugin allowlisting and no build step of our own. It was
+# chosen over Cayman (which puts a large marketing banner above every page,
+# including the policy) for being legible and quiet on a long text document.
+theme: jekyll-theme-minimal
+
+title: Sentry
+description: A system monitor for your Mac's menu bar, with iPhone and Apple Watch companions.
+
+# The site is served from a project subpath, not the domain root. Theme links
+# and stylesheet references are built from these two values, so getting them
+# wrong yields a page that loads with no CSS — the same visible symptom as the
+# missing theme above, from a different cause.
+url: "https://malekthecoder.github.io"
+baseurl: "/Sentry"
+
+# Markdown files that are not pages of the site.
+exclude:
+  - README.md

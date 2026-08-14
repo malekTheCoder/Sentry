@@ -1,6 +1,22 @@
 ---
 layout: default
 title: Privacy Policy
+# ⚠️ This permalink is load-bearing and must not be changed.
+#
+# `https://malekthecoder.github.io/Sentry/privacy-policy` is compiled into
+# every shipped copy of the app (`SentryKit/Models/AppCredits.swift`,
+# `privacyPolicyURLString`) and is the URL submitted in the App Store Connect
+# "Privacy Policy URL" field. An installed build opens whatever address was
+# baked into it, so this page has to answer at that exact path forever.
+#
+# Without this line Jekyll would publish the file at `/privacy-policy.html`
+# and the extensionless URL the app uses would 404 — in front of a reviewer,
+# and for every user who taps the link in About.
+#
+# The trailing slash is what makes the extensionless form work: Jekyll writes
+# `privacy-policy/index.html`, and GitHub Pages redirects the slashless path
+# to it. `permalink: /privacy-policy.html` would NOT satisfy the app's URL.
+permalink: /privacy-policy/
 ---
 
 # Sentry Privacy Policy
