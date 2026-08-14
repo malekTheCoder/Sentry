@@ -116,8 +116,8 @@ struct ThemePane: View {
                 // deliberately doesn't build for them would be a treasure
                 // hunt, not a subtitle.
                 isProUnlocked
-                    ? String(localized: "Six built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours.")
-                    : String(localized: "Six built-in themes, each with a light and a dark variant — free and fully selectable.")
+                    ? String(localized: "Three built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours.")
+                    : String(localized: "Three built-in themes, each with a light and a dark variant — free and fully selectable.")
             )
 
             appearancePicker

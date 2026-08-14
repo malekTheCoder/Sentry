@@ -37,9 +37,9 @@ import SentryKit
 ///      happened would be exactly the kind of confident-looking
 ///      fabrication `SyncPane.swift`'s doc comment (house rule P5, "never
 ///      overclaim") documents as a bug this codebase has shipped before in
-///      different clothes. `chargeSessionGapNotice` below says why the
-///      section is missing, so the gap reads as a documented choice, not an
-///      oversight or a forgotten TODO.
+///      different clothes. The tab carries no placeholder row for it
+///      either — a feature that doesn't exist gets no UI explaining its
+///      absence; this comment is where the gap is documented.
 ///   5. Per-metric history browser — scoped down to a browsable list of
 ///      *current* per-metric values (`PerMetricHistoryBrowser`), not a full
 ///      synthetic history per metric; see that view's doc comment for why.
@@ -78,7 +78,6 @@ struct HistoryTabView: View {
                     coverageCaption
                 }
                 batteryHealthCard
-                chargeSessionGapNotice
                 PerMetricHistoryBrowser(snapshot: viewModel.latestSnapshot)
             }
             .padding(palette.spacing * 2)
@@ -180,29 +179,4 @@ struct HistoryTabView: View {
         return String(localized: "Battery health · \(percent)")
     }
 
-    // MARK: - Charge/discharge sessions (deliberately not built — see type doc comment)
-
-    /// Nocturne redesign spec: a muted, *intentional*-looking disclosure —
-    /// small outlined circle + one line of tertiary text — not the
-    /// dashed-border callout box this used to be. The full "why" (no
-    /// collector anywhere records session boundaries; `SystemSnapshot` is
-    /// point-in-time, `DailyHealth` is a once-a-day aggregate) lives in
-    /// user-appropriate words as an accessibility hint, so it isn't lost for
-    /// anyone who needs it, but the visible row is short enough to read as a
-    /// deliberate design choice rather than a placeholder that broke. Both
-    /// sentences avoid developer vocabulary ("this build", internal type
-    /// names) — a user has no build but the one in their hand, and no source
-    /// checkout to look those names up in.
-    private var chargeSessionGapNotice: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "circle")
-                .scaledSystemFont(size: 9)
-                .foregroundStyle(palette.textTertiary)
-            Text("Charge sessions — not available yet")
-                .scaledFont(palette, size: 11)
-                .foregroundStyle(palette.textTertiary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Sentry doesn't record separate charge and discharge sessions yet — its readings are moment-to-moment snapshots and once-a-day battery health summaries.")
-    }
 }

@@ -1537,17 +1537,6 @@
         }
       }
     },
-    "Fifteen built-in themes. Presets can't be edited in place — duplicate one to make it yours.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fifteen built-in themes. Presets can't be edited in place — duplicate one to make it yours."
-          }
-        }
-      }
-    },
     "Fires immediately": {
       "extractionState": "manual",
       "localizations": {
@@ -3568,6 +3557,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "This tool is disabled in Sentry → Settings → AI Access."
+          }
+        }
+      }
+    },
+    "Three built-in themes, each with a light and a dark variant — free and fully selectable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Three built-in themes, each with a light and a dark variant — free and fully selectable."
+          }
+        }
+      }
+    },
+    "Three built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Three built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours."
           }
         }
       }

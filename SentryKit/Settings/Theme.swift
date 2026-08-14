@@ -660,7 +660,7 @@ extension Theme {
     }
 }
 
-// MARK: - Built-in presets (six themes, each a light/dark pair)
+// MARK: - Built-in presets (three themes, each a light/dark pair)
 
 extension Theme {
     /// Shared per-theme metric→role mapping: CPU/Disk track accent, GPU/Network
@@ -680,52 +680,6 @@ extension Theme {
             "thermal.soc_temp_c": danger,
         ]
     }
-
-    /// Slate — minimal. Graphite dark half, cool paper light half.
-    public static let slate = Theme(
-        id: "builtin.slate",
-        name: "Slate",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#F4F5F8", dark: "#0D0E12"),
-        surface: ThemeColor(light: "#EAECF1", dark: "#181A21"),
-        surfaceElevated: ThemeColor(light: "#DFE2E9", dark: "#1F212B"),
-        textPrimary: ThemeColor(light: "#24262E", dark: "#E7E7EA"),
-        textSecondary: ThemeColor(light: "#565968", dark: "#9A9CA8"),
-        textTertiary: ThemeColor(light: "#878B99", dark: "#6B6D78"),
-        accent: ThemeColor(light: "#4553CE", dark: "#7C8CF0"),
-        success: ThemeColor(light: "#1E6B41", dark: "#5FCE8F"),
-        warning: ThemeColor(light: "#835C06", dark: "#E0A851"),
-        danger: ThemeColor(light: "#B03340", dark: "#E0616B"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
-        // The light half carries an alpha byte (#…4D ≈ 30%) so the shared
-        // `opacity` can stay at the dark half's shipped 0.35 without the
-        // light chart drowning in indigo — effective light fill ≈ 0.10.
-        chartFill: [
-            ThemeColor(light: "#4553CE4D", dark: "#7C8CF0", opacity: 0.35),
-            ThemeColor(light: "#4553CE", dark: "#7C8CF0", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#4553CE", dark: "#7C8CF0"),
-            success: ThemeColor(light: "#1E6B41", dark: "#5FCE8F"),
-            warning: ThemeColor(light: "#835C06", dark: "#E0A851"),
-            danger: ThemeColor(light: "#B03340", dark: "#E0616B")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .area,
-        chartLineWidth: 1.0,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .menu,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
 
     /// One Dark — direction 1b of the exploration round: Atom's One Dark
     /// palette (its light half follows One Light), blue accent as the only
@@ -822,52 +776,6 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Tokyo Night — IDE-inspired; the light half follows Tokyo Night Day,
-    /// darkened where the published palette sits under AA on paper.
-    public static let tokyoNight = Theme(
-        id: "builtin.tokyoNight",
-        name: "Tokyo Night",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#E1E2E7", dark: "#1A1B26"),
-        surface: ThemeColor(light: "#D6D8E3", dark: "#24283B"),
-        surfaceElevated: ThemeColor(light: "#CBCEDD", dark: "#2C3149"),
-        textPrimary: ThemeColor(light: "#343B58", dark: "#C0CAF5"),
-        textSecondary: ThemeColor(light: "#4E5573", dark: "#A9B1D6"),
-        textTertiary: ThemeColor(light: "#7A7F9E", dark: "#565F89"),
-        accent: ThemeColor(light: "#28479E", dark: "#7AA2F7"),
-        success: ThemeColor(light: "#42591E", dark: "#9ECE6A"),
-        warning: ThemeColor(light: "#775117", dark: "#E0AF68"),
-        danger: ThemeColor(light: "#9F2745", dark: "#F7768E"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
-        // Same alpha-byte trick as Slate: the shared opacity stays at the
-        // shipped dark 0.35, the light half's #…4D byte tames it to ≈ 0.10.
-        chartFill: [
-            ThemeColor(light: "#28479E4D", dark: "#7AA2F7", opacity: 0.35),
-            ThemeColor(light: "#28479E", dark: "#7AA2F7", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.08),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#28479E", dark: "#7AA2F7"),
-            success: ThemeColor(light: "#42591E", dark: "#9ECE6A"),
-            warning: ThemeColor(light: "#775117", dark: "#E0AF68"),
-            danger: ThemeColor(light: "#9F2745", dark: "#F7768E")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 6,
-        density: .compact,
-        chartStyle: .area,
-        chartLineWidth: 1.0,
-        showChartGrid: false,
-        barGraphWidth: 40,
-        useMaterialBackground: false,
-        materialStyle: .menu,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
     /// System — native macOS. Apple's semantic colors (system blue/green/
     /// orange/red), neutral surfaces, and a translucent popover material, so
     /// every surface reads like it shipped with the OS. Adaptive.
@@ -913,64 +821,17 @@ extension Theme {
         scanlineOverlay: false
     )
 
-    /// Translucent — near-transparent surfaces over the popover material, so
-    /// the dropdown reads as frosted glass over whatever is behind it.
-    /// Everything structural is monochrome at low opacity; only semantic
-    /// state gets a hue.
-    public static let translucent = Theme(
-        id: "builtin.translucent",
-        name: "Translucent",
-        isBuiltIn: true,
-        background: ThemeColor(light: "#FFFFFF", dark: "#1A1A1A", opacity: 0.35),
-        surface: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.06),
-        surfaceElevated: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.09),
-        textPrimary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.88),
-        textSecondary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.52),
-        textTertiary: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.28),
-        accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
-        success: ThemeColor(light: "#34C759", dark: "#30D158"),
-        warning: ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
-        danger: ThemeColor(light: "#FF3B30", dark: "#FF453A"),
-        chartGrid: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.05),
-        chartFill: [
-            ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.14),
-            ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.0),
-        ],
-        separator: ThemeColor(light: "#000000", dark: "#FFFFFF", opacity: 0.1),
-        metricColors: nocturneMetricColors(
-            accent: ThemeColor(light: "#007AFF", dark: "#0A84FF"),
-            success: ThemeColor(light: "#34C759", dark: "#30D158"),
-            warning: ThemeColor(light: "#FF9500", dark: "#FF9F0A"),
-            danger: ThemeColor(light: "#FF3B30", dark: "#FF453A")
-        ),
-        fontFamily: .system,
-        barFontSize: 11,
-        barFontWeight: .medium,
-        numericStyle: .monospacedDigit,
-        cornerRadius: 8,
-        density: .comfortable,
-        chartStyle: .area,
-        chartLineWidth: 1.5,
-        showChartGrid: false,
-        barGraphWidth: 36,
-        useMaterialBackground: true,
-        materialStyle: .hudWindow,
-        glowIntensity: 0.0,
-        scanlineOverlay: false
-    )
-
-    /// All built-in presets, in display order. Six themes, every one with a
-    /// real light/dark pair: the adaptive natives first (System, then the
-    /// warm Ivory), the glass treatment, then the three editor-heritage
-    /// palettes (One Dark, Slate, Tokyo Night).
+    /// All built-in presets, in display order. Three themes, every one with a
+    /// real light/dark pair: the adaptive native System first, then the warm
+    /// Ivory, then the editor-heritage One Dark.
     public static let builtInPresets: [Theme] = [
-        .system, .ivory, .translucent, .oneDark, .slate, .tokyoNight,
+        .system, .ivory, .oneDark,
     ]
 
     /// The single source of truth for "which theme when the user hasn't chosen
     /// one, or chose one that no longer exists". Call sites use this rather than
     /// naming a preset directly, so changing the default is a one-line edit
-    /// here instead of a hunt through every `?? .slate` fallback.
+    /// here instead of a hunt through every `?? .oneDark` fallback.
     public static let defaultTheme: Theme = .system
 }
 

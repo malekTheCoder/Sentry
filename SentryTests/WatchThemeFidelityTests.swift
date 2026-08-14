@@ -148,19 +148,19 @@ final class WatchThemeFidelityTests: XCTestCase {
         }
     }
 
-    /// Slate is a case the override exists for: `nocturneMetricColors`
+    /// System is a case the override exists for: `nocturneMetricColors`
     /// sends `memory.used_bytes` straight to `warning`, so the watch must
     /// *not* draw a normal-pressure memory dial in the alarm colour.
-    func testSlatesMemoryMetricIsCorrectlyDetectedAsAliasingWarning() throws {
-        let slate = Theme.slate
-        let memory = try XCTUnwrap(XCTUnwrap(slate.metricColor(for: .memoryUsedBytes)).rgba(for: .dark))
+    func testSystemsMemoryMetricIsCorrectlyDetectedAsAliasingWarning() throws {
+        let system = Theme.system
+        let memory = try XCTUnwrap(XCTUnwrap(system.metricColor(for: .memoryUsedBytes)).rgba(for: .dark))
         XCTAssertTrue(
-            collides(memory, with: slate, .dark),
-            "Slate aliases memory onto warning — the watch has to override it"
+            collides(memory, with: system, .dark),
+            "System aliases memory onto warning — the watch has to override it"
         )
 
         // CPU does not alias anything, and must survive the same check.
-        let cpu = try XCTUnwrap(XCTUnwrap(slate.metricColor(for: .cpuTotalPercent)).rgba(for: .dark))
-        XCTAssertFalse(collides(cpu, with: slate, .dark), "the override must be narrow, not blanket")
+        let cpu = try XCTUnwrap(XCTUnwrap(system.metricColor(for: .cpuTotalPercent)).rgba(for: .dark))
+        XCTAssertFalse(collides(cpu, with: system, .dark), "the override must be narrow, not blanket")
     }
 }

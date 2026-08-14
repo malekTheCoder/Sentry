@@ -242,7 +242,7 @@ final class BatteryGlyphTests: XCTestCase {
 
     // MARK: - Renderer agreement
 
-    private func renderer() -> BarModuleRenderer { BarModuleRenderer(theme: .slate, dark: true) }
+    private func renderer() -> BarModuleRenderer { BarModuleRenderer(theme: .oneDark, dark: true) }
 
     func testBatteryIconIsWiderThanASquareModuleIcon() {
         // The regression test for the original complaint, at the level the bar
@@ -299,7 +299,7 @@ final class BatteryGlyphTests: XCTestCase {
         var withBattery = SystemSnapshot(deviceID: "test-device")
         withBattery.battery = BatteryStats(chargePercent: 62, isCharging: true, isPluggedIn: true)
 
-        let view = StatusItemView(layout: layout, theme: .slate)
+        let view = StatusItemView(layout: layout, theme: .oneDark)
         view.update(withBattery)
         let batteryWidth = view.intrinsicContentSize.width
 

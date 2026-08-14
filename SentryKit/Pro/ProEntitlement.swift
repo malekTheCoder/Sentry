@@ -51,7 +51,7 @@ public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
         case .processMatchAlerts:
             return String(localized: "Alert rules that trigger on what's running, not just on metric thresholds.")
         case .customThemes:
-            return String(localized: "Fork, edit, import, and export themes with WCAG contrast checking. The six built-in themes stay free.")
+            return String(localized: "Fork, edit, import, and export themes with WCAG contrast checking. The built-in themes stay free.")
         case .remoteSync:
             return String(localized: "Pair an iPhone over an encrypted connection from outside your Wi-Fi network. Same-network sync stays free.")
         case .historyExport:

@@ -53,7 +53,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
     // MARK: - No budget: nothing is truncated
 
     func testNilMaxWidthKeepsAllModulesAndAccessibilitySummary() {
-        let view = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .slate)
+        let view = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .oneDark)
         view.update(makeSnapshot())
 
         // With no width budget, every configured module's label should show
@@ -72,7 +72,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
     func testVeryNarrowBudgetStillKeepsFirstModule() {
         // R8: the first module is always kept even if it alone busts the
         // budget — a vanished bar item reads as a crashed app.
-        let view = StatusItemView(layout: manyModulesLayout(maxWidth: 1), theme: .slate)
+        let view = StatusItemView(layout: manyModulesLayout(maxWidth: 1), theme: .oneDark)
         view.update(makeSnapshot())
 
         XCTAssertTrue(
@@ -82,10 +82,10 @@ final class StatusItemViewTruncationTests: XCTestCase {
     }
 
     func testNarrowBudgetDropsTrailingModulesComparedToUnlimited() {
-        let unlimited = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .slate)
+        let unlimited = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .oneDark)
         unlimited.update(makeSnapshot())
 
-        let narrow = StatusItemView(layout: manyModulesLayout(maxWidth: 60), theme: .slate)
+        let narrow = StatusItemView(layout: manyModulesLayout(maxWidth: 60), theme: .oneDark)
         narrow.update(makeSnapshot())
 
         // A budget far smaller than five labeled modules need must render a
@@ -94,11 +94,11 @@ final class StatusItemViewTruncationTests: XCTestCase {
     }
 
     func testNarrowBudgetProducesFewerAccessibilityPartsThanUnlimited() {
-        let unlimited = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .slate)
+        let unlimited = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .oneDark)
         unlimited.update(makeSnapshot())
         let unlimitedParts = unlimited.accessibilitySummary.components(separatedBy: ", ").count
 
-        let narrow = StatusItemView(layout: manyModulesLayout(maxWidth: 60), theme: .slate)
+        let narrow = StatusItemView(layout: manyModulesLayout(maxWidth: 60), theme: .oneDark)
         narrow.update(makeSnapshot())
         let narrowParts = narrow.accessibilitySummary.components(separatedBy: ", ").count
 
@@ -111,7 +111,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
         let layoutNarrow = manyModulesLayout(maxWidth: 80)
         let layoutWide = manyModulesLayout(maxWidth: 400)
 
-        let view = StatusItemView(layout: layoutNarrow, theme: .slate)
+        let view = StatusItemView(layout: layoutNarrow, theme: .oneDark)
         view.update(makeSnapshot())
         let narrowWidth = view.intrinsicContentSize.width
 
@@ -124,7 +124,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
     // MARK: - Empty layout falls back to the glyph rather than a blank item
 
     func testEmptyModulesFallsBackToNonZeroWidth() {
-        let view = StatusItemView(layout: MenuBarLayout(modules: [], maxWidth: nil), theme: .slate)
+        let view = StatusItemView(layout: MenuBarLayout(modules: [], maxWidth: nil), theme: .oneDark)
         view.update(makeSnapshot())
 
         XCTAssertGreaterThan(view.intrinsicContentSize.width, 0)
@@ -140,7 +140,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
     /// which stays the constant "Sentry" — see `StatusItemView
     /// .accessibilityValue`'s doc comment for the full AX-split reasoning.
     func testAccessibilityValueHoldsTheReadingsWithoutTheNamePrefix() {
-        let view = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .slate)
+        let view = StatusItemView(layout: manyModulesLayout(maxWidth: nil), theme: .oneDark)
         view.update(makeSnapshot())
 
         XCTAssertTrue(view.accessibilityValue.contains("CPU"))
@@ -149,7 +149,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
     }
 
     func testAccessibilityValueIsEmptyWhenNoModulesAreShown() {
-        let view = StatusItemView(layout: MenuBarLayout(modules: [], maxWidth: nil), theme: .slate)
+        let view = StatusItemView(layout: MenuBarLayout(modules: [], maxWidth: nil), theme: .oneDark)
         view.update(makeSnapshot())
 
         XCTAssertEqual(view.accessibilityValue, "")
@@ -162,7 +162,7 @@ final class StatusItemViewTruncationTests: XCTestCase {
             modules: [BarModule(metric: .cpuTotalPercent, displayMode: .valueOnly)],
             maxWidth: 1
         )
-        let view = StatusItemView(layout: layout, theme: .slate)
+        let view = StatusItemView(layout: layout, theme: .oneDark)
         view.update(makeSnapshot())
 
         XCTAssertFalse(view.accessibilitySummary.isEmpty)

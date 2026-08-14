@@ -249,7 +249,7 @@ public struct ThemeControlColors: Equatable, Sendable {
     /// to propagate.
     ///
     /// **Material themes are the interesting case and this is the compromise.**
-    /// System and Translucent draw over a real `NSVisualEffectView`
+    /// System draws over a real `NSVisualEffectView`
     /// (`themedBackdrop(_:)` → `VisualEffect`), so the effective backdrop is
     /// the user's desktop, blurred, plus whatever the theme washes over it.
     /// That is not a colour this process can know, and pretending alpha is 1
@@ -258,8 +258,8 @@ public struct ThemeControlColors: Equatable, Sendable {
     ///
     /// So: `surface` and `surfaceElevated` are flattened onto the theme's own
     /// **`background`**, because that is literally the layer beneath them in
-    /// the view tree — Translucent's `#0000000A` surface really is sitting on
-    /// Translucent's `#FFFFFF` wash, and compositing those two is exact, not
+    /// the view tree — System's `#0000000A` surface really is sitting on
+    /// System's `#FFFFFF` wash, and compositing those two is exact, not
     /// approximate. Only when `background` is *itself* translucent does a
     /// guess become unavoidable, and there we reuse the assumption
     /// `ThemeContrastAudit` already made rather than inventing a second one:

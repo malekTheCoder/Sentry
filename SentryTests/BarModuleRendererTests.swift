@@ -20,7 +20,7 @@ import XCTest
 final class BarModuleRendererTests: XCTestCase {
 
     private func renderer() -> BarModuleRenderer {
-        BarModuleRenderer(theme: .slate, dark: true)
+        BarModuleRenderer(theme: .oneDark, dark: true)
     }
 
     private func gradientModule(low: Double = 0, high: Double = 100) -> BarModule {
@@ -132,7 +132,7 @@ final class BarModuleRendererTests: XCTestCase {
     // unreadable in practice.)
 
     func testModuleDividerIsMoreOpaqueThanTheGaugeTrackSeparator() {
-        let palette = MenuBarPalette(theme: .slate, dark: true)
+        let palette = MenuBarPalette(theme: .oneDark, dark: true)
         XCTAssertGreaterThan(
             palette.moduleDivider.alphaComponent,
             palette.separator.alphaComponent,
@@ -141,7 +141,7 @@ final class BarModuleRendererTests: XCTestCase {
     }
 
     func testModuleDividerMatchesTextSecondaryLegibility() {
-        let palette = MenuBarPalette(theme: .slate, dark: true)
+        let palette = MenuBarPalette(theme: .oneDark, dark: true)
         XCTAssertEqual(palette.moduleDivider.alphaComponent, palette.textSecondary.alphaComponent)
     }
 
@@ -152,7 +152,7 @@ final class BarModuleRendererTests: XCTestCase {
     /// critical alert and an "ok" one. Alpha is the fix — critical must be
     /// visually heaviest.
     func testCriticalAlphaIsHeavierThanEveryOtherToken() {
-        let palette = MenuBarPalette(theme: .slate, dark: true)
+        let palette = MenuBarPalette(theme: .oneDark, dark: true)
         let critical = palette.alertHighlightAlpha(for: "critical")
         for token in ["warning", "success", "ok", "accent", "info", "unknown-token"] {
             XCTAssertGreaterThan(critical, palette.alertHighlightAlpha(for: token), "critical must outweigh '\(token)'")
@@ -160,12 +160,12 @@ final class BarModuleRendererTests: XCTestCase {
     }
 
     func testSuccessAlphaIsLighterThanWarning() {
-        let palette = MenuBarPalette(theme: .slate, dark: true)
+        let palette = MenuBarPalette(theme: .oneDark, dark: true)
         XCTAssertLessThan(palette.alertHighlightAlpha(for: "success"), palette.alertHighlightAlpha(for: "warning"))
     }
 
     func testAlertHighlightAlphaIsCaseInsensitiveAndAliasesAgree() {
-        let palette = MenuBarPalette(theme: .slate, dark: true)
+        let palette = MenuBarPalette(theme: .oneDark, dark: true)
         XCTAssertEqual(palette.alertHighlightAlpha(for: "critical"), palette.alertHighlightAlpha(for: "CRITICAL"))
         XCTAssertEqual(palette.alertHighlightAlpha(for: "danger"), palette.alertHighlightAlpha(for: "critical"))
         XCTAssertEqual(palette.alertHighlightAlpha(for: "error"), palette.alertHighlightAlpha(for: "critical"))
@@ -177,7 +177,7 @@ final class BarModuleRendererTests: XCTestCase {
         // `alertHighlightColor(for:)` falls back to `warning` for an
         // unrecognized token rather than drawing nothing; the alpha lever
         // agrees so the fallback is consistent end to end.
-        let palette = MenuBarPalette(theme: .slate, dark: true)
+        let palette = MenuBarPalette(theme: .oneDark, dark: true)
         XCTAssertEqual(palette.alertHighlightAlpha(for: "totally-unknown"), palette.alertHighlightAlpha(for: "warning"))
     }
 }

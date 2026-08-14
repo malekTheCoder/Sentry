@@ -342,8 +342,8 @@ final class WatchRelaySnapshotTests: XCTestCase {
 
     func testAKnownThemeIDResolvesToThatPreset() {
         var snapshot = makeFullyPopulated()
-        snapshot.themeID = Theme.slate.id
-        XCTAssertEqual(snapshot.resolvedTheme.id, Theme.slate.id)
+        snapshot.themeID = Theme.ivory.id
+        XCTAssertEqual(snapshot.resolvedTheme.id, Theme.ivory.id)
     }
 
     func testAnAbsentThemeIDFallsBackToTheDefaultTheme() {
@@ -364,10 +364,10 @@ final class WatchRelaySnapshotTests: XCTestCase {
 
     func testThemeIDSurvivesTheWCSessionRoundTrip() throws {
         var snapshot = makeFullyPopulated()
-        snapshot.themeID = Theme.tokyoNight.id
+        snapshot.themeID = Theme.oneDark.id
         let payload = try XCTUnwrap(snapshot.wcSessionPayload())
         let decoded = try XCTUnwrap(WatchRelaySnapshot.from(wcSessionPayload: payload))
-        XCTAssertEqual(decoded.themeID, Theme.tokyoNight.id)
+        XCTAssertEqual(decoded.themeID, Theme.oneDark.id)
     }
 
     func testEveryBuiltInPresetIDRoundTripsToItself() {

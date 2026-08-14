@@ -192,9 +192,9 @@ struct AlertsTabView: View {
     // MARK: - History (deliberately an honest gap, not a feed)
 
     /// See this file's top-level doc comment for why there is no feed to
-    /// show. Restyled to the same muted "intentional disclosure" look as
-    /// History's `chargeSessionGapNotice` — the full explanation moves to
-    /// an accessibility hint so the visible row stays short.
+    /// show. Restyled to a muted "intentional disclosure" look — the full
+    /// explanation moves to an accessibility hint so the visible row stays
+    /// short.
     private var historyDisclosure: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {

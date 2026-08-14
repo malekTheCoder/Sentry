@@ -148,7 +148,7 @@ public enum ThemeDocument {
     /// theme object carries `isBuiltIn: false` and a fresh custom id — the
     /// file is a starting point somebody will edit, not a claim on Sentry's
     /// namespace, and re-importing it must not produce a second thing calling
-    /// itself `builtin.slate`.
+    /// itself `builtin.ivory`.
     public static func encode(_ theme: Theme, formatVersion: Int = currentFormatVersion) throws -> Data {
         var exported = theme
         if exported.isBuiltIn {
