@@ -564,12 +564,12 @@ Code fixes are done. These are not.
 - [ ] **Enter the same URL in App Store Connect** → App Privacy → Privacy Policy URL.
 - [ ] **Write review notes explaining the Mac dependency.** This is the difference between a pass and a 2.1 rejection. Say plainly: the app is a companion to a macOS app distributed outside the App Store; a reviewer without a Mac will see clearly-labelled demo data; here is what it does with a real Mac. Be specific — Guideline 2.3.1 says generic descriptions will be rejected.
 - [ ] **Attach a demo video** (screen recording of the app driving a real Mac) to the review notes, or host it and link it. For a hardware/desktop-companion app this is the single most effective thing you can provide.
-- [ ] **Pre-empt the location question** in review notes, using the wording in §8.
+- [x] ~~**Pre-empt the location question** in review notes, using the wording in §8.~~ **Superseded (Aug 13, 2026):** location was removed from the app entirely — there is no location question to pre-empt. See the editor's notes at §7/§8.
 - [ ] **Verify the build's Info.plist after archiving** — confirm `CFBundleShortVersionString` reads `1.0.0` and `CFBundleVersion` reads `2` in the app, the widget, the watch app and the complication. All four must match.
 
 ### Required App Store Connect fields
 
-- [ ] **App Privacy questionnaire** — enter exactly the table in §8. Do not let App Store Connect's defaults stand.
+- [ ] **App Privacy questionnaire** — enter the answers in `docs/asc-metadata-draft.md` (**Data Not Collected** across the board since the Aug 13 location removal; §8's table is superseded — see its editor's note). Do not let App Store Connect's defaults stand.
 - [ ] **Age rating** — Apple has required responses to the *updated* age-rating questions since **31 January 2026**; un-answered apps are blocked from submitting updates. Expect 4+.
 - [ ] **Export compliance** — the plist now answers this (`ITSAppUsesNonExemptEncryption: false`), so App Store Connect should stop asking. If it does ask, the answer is: uses encryption → **yes**; exempt → **yes**, only encryption provided by the operating system. Read §5 first; this is your legal declaration.
 - [ ] **EU Digital Services Act trader status.** Since **17 February 2025** apps without verified trader status are **removed from the EU App Store**. Verification takes time — start it now, not at submission.

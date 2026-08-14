@@ -12,7 +12,7 @@
   the whole SentryKit directory. project.yml enumerates it file by file:
   SentryKit/Watch/ (the whole directory — RelayedPalette, WatchRelayPolicy,
   WatchRelaySnapshot, WatchRelayStore), plus Sync/Freshness.swift,
-  Sync/FreshnessBadge.swift, Sync/SyncRecords.swift, Settings/Theme.swift,
+  Sync/FreshnessBadge.swift, Sync/SyncModels.swift, Settings/Theme.swift,
   Settings/ThemeTokens.swift, Settings/ThemeContrast.swift and
   Models/MetricID.swift — eleven files from seven path entries.
 

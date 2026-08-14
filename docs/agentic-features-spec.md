@@ -704,13 +704,13 @@ Even setting the value question aside, the honest engineering position:
   `UUID().uuidString` and is never persisted — its own doc comment carries the
   TODO. Every Mac gets a new identity on every launch. Any fleet concept is
   keyed on something that changes hourly.
-- **CloudKit is blocked, not stubbed-and-ready.** `SentryKit/Sync/` is
-  complete-looking scaffolding with zero `CKContainer` constructions anywhere
-  in the tree and no iCloud entitlement in `project.yml`, blocked on Apple
-  Developer Program enrolment that `Sentry/Settings/Panes/SyncPane.swift`
-  states plainly: `SyncService` "is constructed nowhere in `AppDelegate` and
-  has no `uploadAttempt` closure that talks to a server, because there is no
-  server to talk to."
+- **CloudKit was deleted, not stubbed-and-ready.** The dormant
+  `SentryKit/Sync/` CloudKit scaffolding (SyncService, CKMapper,
+  SyncRecords, pruning, gzip payloads) was deleted outright on Aug 13,
+  2026 — zero `CKContainer` constructions ever existed and no iCloud
+  entitlement is in `project.yml`. Device sync is LocalSync (Bonjour +
+  TLS-PSK). Reintroducing cloud sync means rebuilding from git history,
+  not flipping a switch.
 
 ### 4.3 If it is ever reconsidered, this is the honest path
 

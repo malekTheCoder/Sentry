@@ -59,7 +59,7 @@ Sentry does **not** read your Mac's serial number or hardware UUID, your usernam
 
 **Security posture.** Sentry can check how your Mac is protected: FileVault, System Integrity Protection, Gatekeeper, the firewall and stealth mode, automatic-update settings, screen-lock settings, whether the guest account is on, and which network ports are listening. It does this by running Apple's own read-only status commands (`fdesetup status`, `csrutil status`, `spctl --status`, `socketfilterfw`, `defaults read`, `netstat`). It never asks for your password, never elevates privileges, never changes a setting, and never contacts the network to do it. The results stay on your Mac and are used only to show you your own protection score.
 
-**Location.** Sentry does not read your location. No app in the family — Mac, iPhone, or Watch — contains any location code. (An earlier opt-in "Location Log" feature was removed before release; nothing collects, stores, or transmits a coordinate.)
+**Location.** Sentry does not read your location. No app in the family — Mac, iPhone, or Watch — ever requests location access or reads a location. (An earlier opt-in "Location Log" feature was removed before release; nothing collects, stores, or transmits a coordinate.)
 
 **Wi-Fi network name.** Sentry does not read your Wi-Fi network name. The capability exists in the code but is switched off in the shipping app.
 
@@ -179,7 +179,7 @@ Sentry does not use iCloud, and the app has no iCloud entitlement, so it cannot 
 - **Local network.** Needed so your iPhone and Watch can find your Mac and show its stats over Wi-Fi. On the Mac this prompt appears when the app starts, because the local listener starts with the app. On iPhone it appears when the app looks for your Mac.
 - **Notifications.** Asked for only when you enable an alert rule, or the first time an alert would actually be delivered. Never at launch. Used only to show you your own alerts, on your own device.
 
-Sentry never asks for camera, microphone, contacts, photos, calendar, location, or health access, and contains no code that could use them.
+Sentry never asks for camera, microphone, contacts, photos, calendar, location, or health access — no feature uses them, and nothing ever prompts for them.
 
 ## Deleting your data
 

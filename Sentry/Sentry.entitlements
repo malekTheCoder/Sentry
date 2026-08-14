@@ -27,10 +27,10 @@
 
   iCloud container / iCloud services / aps-environment
       Plan §14.1 lists these, and they would be lies today. There is no
-      `CKContainer` or `CKDatabase` constructed anywhere in this codebase —
-      `SentryKit/Sync/` imports CloudKit for its record *types* and its
-      scheduling arithmetic, and `SyncPane`'s doc comment spells out at length
-      that no upload path exists. An entitlement for a capability the code does
+      CloudKit code anywhere in this codebase — the dormant `SentryKit/Sync/`
+      CloudKit layer was deleted outright on Aug 13, 2026 (device sync is
+      LocalSync: Bonjour + TLS-PSK, no cloud; `SyncPane`'s doc comment
+      records the deletion). An entitlement for a capability the code does
       not use buys nothing at runtime, and costs a provisioning-profile
       requirement plus an App ID capability that must be kept in sync forever.
       These get added in the same change that adds the first real `CKContainer`,
