@@ -69,7 +69,6 @@
         }
       }
     },
-    "Alert history isn't synced to this iPhone yet": {},
     "Alerts": {},
     "Approximate — accurate to roughly ±%@ meters, not precise GPS.": {},
     "As of %@": {},
@@ -106,7 +105,6 @@
         }
       }
     },
-    "Charge sessions — not available yet": {},
     "Charging": {
       "extractionState": "manual",
       "localizations": {
@@ -162,7 +160,6 @@
         }
       }
     },
-    "Current values only — no per-metric history query exists yet": {},
     "Cut %@ minutes off your Mac's keep-awake time.": {
       "extractionState": "manual",
       "localizations": {
@@ -263,6 +260,7 @@
         }
       }
     },
+    "Full license list, including the Mac app's packages": {},
     "GPU": {
       "extractionState": "manual",
       "localizations": {
@@ -392,6 +390,8 @@
         }
       }
     },
+    "Off": {},
+    "On": {},
     "On battery": {
       "extractionState": "manual",
       "localizations": {
@@ -599,6 +599,7 @@
       }
     },
     "The Mac app is free. The link opens the latest release — download the DMG on your Mac.": {},
+    "The alert rules the Mac app ships with — rule editing stays on the Mac.": {},
     "The same presets as the Mac app (SentryKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.": {},
     "Thermal": {
       "extractionState": "manual",
@@ -702,7 +703,6 @@
         }
       }
     },
-    "Widgets show the Dashboard's latest reading — nothing to configure here yet.": {},
     "Wired": {
       "extractionState": "manual",
       "localizations": {

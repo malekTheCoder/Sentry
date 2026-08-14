@@ -184,12 +184,19 @@ struct AboutView: View {
             // the same one buzz.
             .haptic(.tap, on: showsThirdParty)
 
-            // Same rewording as the privacy note above, same reason: no
-            // repository path in front of a reader who only has the app.
-            Text("The full list, including the packages that ship only in the Mac app, isn't published outside the app yet.")
-                .scaledFont(palette, size: 10.5)
-                .foregroundStyle(palette.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
+            // The Mac-only packages (Sparkle, SwiftNIO, the MCP SDK, and
+            // their transitive dependencies) are deliberately not listed
+            // in-app — see `AppCredits.iOSThirdPartyComponents` — but the
+            // full list *is* published (`docs/third-party-licenses.md`,
+            // as GitHub renders it), so the reader who wants it gets a
+            // link, not a description of where it isn't. Same silent-`Link`
+            // pattern as every other link on this screen — see this file's
+            // doc comment.
+            if let url = AppCredits.thirdPartyLicensesURL {
+                Link("Full license list, including the Mac app's packages", destination: url)
+                    .scaledFont(palette, size: 10.5)
+                    .foregroundStyle(palette.accent)
+            }
         }
     }
 

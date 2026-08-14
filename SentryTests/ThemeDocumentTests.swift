@@ -105,7 +105,7 @@ final class ThemeDocumentTests: XCTestCase {
     }
 
     func testExportingABuiltInPresetStripsItsBuiltInIdentity() throws {
-        let data = try ThemeDocument.encode(Theme.slate)
+        let data = try ThemeDocument.encode(Theme.ivory)
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let theme = try XCTUnwrap(object["theme"] as? [String: Any])
 
@@ -114,7 +114,7 @@ final class ThemeDocumentTests: XCTestCase {
         let id = try XCTUnwrap(theme["id"] as? String)
         XCTAssertFalse(id.hasPrefix(Theme.builtInIDPrefix), "an exported file must not claim a built-in id")
         // The ancestry is what makes reset-to-preset work after re-import.
-        XCTAssertEqual(theme["basePresetID"] as? String, Theme.slate.id)
+        XCTAssertEqual(theme["basePresetID"] as? String, Theme.ivory.id)
     }
 
     func testImportedThemesAlwaysGetAFreshIdentity() throws {

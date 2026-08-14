@@ -42,22 +42,22 @@ final class ThemeEditingTests: XCTestCase {
     // MARK: - Duplication
 
     func testDuplicatingAPresetProducesAnEditableForkThatRemembersItsAncestor() {
-        let fork = Theme.slate.duplicated()
+        let fork = Theme.ivory.duplicated()
 
-        XCTAssertNotEqual(fork.id, Theme.slate.id)
+        XCTAssertNotEqual(fork.id, Theme.ivory.id)
         XCTAssertTrue(fork.id.hasPrefix(Theme.customIDPrefix))
         XCTAssertFalse(fork.isBuiltIn)
         XCTAssertTrue(fork.isCustom)
-        XCTAssertEqual(fork.basePresetID, Theme.slate.id)
-        XCTAssertEqual(fork.basePreset?.id, Theme.slate.id)
+        XCTAssertEqual(fork.basePresetID, Theme.ivory.id)
+        XCTAssertEqual(fork.basePreset?.id, Theme.ivory.id)
 
         for token in ThemeColorToken.allCases {
-            XCTAssertEqual(fork[token], Theme.slate[token], token.rawValue)
+            XCTAssertEqual(fork[token], Theme.ivory[token], token.rawValue)
         }
     }
 
     func testDuplicatingTwiceProducesTwoDistinctThemes() {
-        XCTAssertNotEqual(Theme.slate.duplicated().id, Theme.slate.duplicated().id)
+        XCTAssertNotEqual(Theme.ivory.duplicated().id, Theme.ivory.duplicated().id)
     }
 
     /// A fork of a fork points at the *shipped preset*, not at the
@@ -65,22 +65,41 @@ final class ThemeEditingTests: XCTestCase {
     /// to whatever the user happened to have edited that other theme into
     /// afterwards — an answer that changes behind your back.
     func testForkingAForkKeepsTheOriginalPresetAsTheAncestor() {
-        var first = Theme.slate.duplicated(named: "First")
+        var first = Theme.ivory.duplicated(named: "First")
         first.accent = ThemeColor(hex: "#FF00FF")
         let second = first.duplicated(named: "Second")
 
-        XCTAssertEqual(second.basePresetID, Theme.slate.id)
+        XCTAssertEqual(second.basePresetID, Theme.ivory.id)
         XCTAssertNotEqual(second.basePresetID, first.id)
         // The edit still carries across — it's a copy of `first`, not of Nord.
         XCTAssertEqual(second.accent, ThemeColor(hex: "#FF00FF"))
     }
 
     func testResolveFindsCustomThemesAndFallsBackToTheDefault() {
-        let custom = Theme.slate.duplicated(named: "Mine")
+        let custom = Theme.ivory.duplicated(named: "Mine")
         XCTAssertEqual(Theme.resolve(id: custom.id, in: [custom]).name, "Mine")
-        XCTAssertEqual(Theme.resolve(id: Theme.tokyoNight.id, in: [custom]).id, Theme.tokyoNight.id)
+        XCTAssertEqual(Theme.resolve(id: Theme.oneDark.id, in: [custom]).id, Theme.oneDark.id)
         XCTAssertEqual(Theme.resolve(id: "custom.deleted", in: [custom]).id, Theme.defaultTheme.id)
         XCTAssertEqual(Theme.resolve(id: "", in: []).id, Theme.defaultTheme.id)
+    }
+
+    /// A `themeID` persisted by an older build for a preset this build no
+    /// longer ships (Slate, Tokyo Night and Translucent were removed) must
+    /// degrade to the default theme, not crash or half-resolve. Same
+    /// unknown-id path as a deleted custom theme, pinned with the literal
+    /// removed ids so shrinking the preset list again can't silently
+    /// regress it.
+    func testARemovedBuiltInPresetIDFallsBackToTheDefaultTheme() {
+        for removed in ["builtin.slate", "builtin.tokyoNight", "builtin.translucent"] {
+            XCTAssertNil(
+                Theme.builtInPresets.first { $0.id == removed },
+                "\(removed) is supposed to be gone — if it's back, this test is stale"
+            )
+            XCTAssertEqual(
+                Theme.resolve(id: removed, in: []).id, Theme.defaultTheme.id,
+                "\(removed) must degrade to the default theme"
+            )
+        }
     }
 
     // MARK: - Per-token reset
@@ -168,7 +187,7 @@ final class ThemeEditingTests: XCTestCase {
     // MARK: - Global reset
 
     func testGlobalResetRestoresEveryTokenButKeepsIdentity() {
-        var fork = Theme.tokyoNight.duplicated(named: "Custom Dark")
+        var fork = Theme.oneDark.duplicated(named: "Custom Dark")
         let keptID = fork.id
 
         fork.accent = ThemeColor(hex: "#FF00FF")
@@ -184,20 +203,20 @@ final class ThemeEditingTests: XCTestCase {
         fork.resetAllToPreset()
 
         for token in ThemeColorToken.allCases {
-            XCTAssertEqual(fork[token], Theme.tokyoNight[token], token.rawValue)
+            XCTAssertEqual(fork[token], Theme.oneDark[token], token.rawValue)
         }
-        XCTAssertEqual(fork.metricColors, Theme.tokyoNight.metricColors)
-        XCTAssertEqual(fork.chartFill, Theme.tokyoNight.chartFill)
-        XCTAssertEqual(fork.density, Theme.tokyoNight.density)
-        XCTAssertEqual(fork.chartStyle, Theme.tokyoNight.chartStyle)
-        XCTAssertEqual(fork.barFontSize, Theme.tokyoNight.barFontSize)
-        XCTAssertEqual(fork.glowIntensity, Theme.tokyoNight.glowIntensity)
+        XCTAssertEqual(fork.metricColors, Theme.oneDark.metricColors)
+        XCTAssertEqual(fork.chartFill, Theme.oneDark.chartFill)
+        XCTAssertEqual(fork.density, Theme.oneDark.density)
+        XCTAssertEqual(fork.chartStyle, Theme.oneDark.chartStyle)
+        XCTAssertEqual(fork.barFontSize, Theme.oneDark.barFontSize)
+        XCTAssertEqual(fork.glowIntensity, Theme.oneDark.glowIntensity)
 
         // Identity is the user's, not the preset's.
         XCTAssertEqual(fork.id, keptID)
         XCTAssertEqual(fork.name, "Custom Dark", "reset must not discard the name the user typed")
         XCTAssertFalse(fork.isBuiltIn)
-        XCTAssertEqual(fork.basePresetID, Theme.tokyoNight.id)
+        XCTAssertEqual(fork.basePresetID, Theme.oneDark.id)
     }
 
     /// The check has to ignore `id` and `name`, which always differ between a
@@ -205,7 +224,7 @@ final class ThemeEditingTests: XCTestCase {
     /// never go quiet, and "Reset All" would always look like it had something
     /// to do.
     func testGlobalResetGoesQuietOnAnUneditedFork() {
-        let fork = Theme.tokyoNight.duplicated(named: "Untouched")
+        let fork = Theme.oneDark.duplicated(named: "Untouched")
         XCTAssertFalse(fork.globalResetAvailability.canReset)
         if case .alreadyMatchesPreset = fork.globalResetAvailability {} else {
             XCTFail("expected alreadyMatchesPreset, got \(fork.globalResetAvailability)")
@@ -213,7 +232,7 @@ final class ThemeEditingTests: XCTestCase {
     }
 
     func testGlobalResetNoticesANonColorEdit() {
-        var fork = Theme.tokyoNight.duplicated(named: "Denser")
+        var fork = Theme.oneDark.duplicated(named: "Denser")
         fork.density = .spacious
         XCTAssertTrue(fork.globalResetAvailability.canReset, "a density change is still a change")
     }
@@ -221,7 +240,7 @@ final class ThemeEditingTests: XCTestCase {
     // MARK: - Persistence
 
     func testCustomThemesRoundTripThroughAppSettings() throws {
-        var theme = Theme.tokyoNight.duplicated(named: "Mine")
+        var theme = Theme.oneDark.duplicated(named: "Mine")
         theme.accent = ThemeColor(light: "#112233", dark: "#445566", opacity: 0.9)
         theme.fontFamily = .custom("IBMPlexMono")
 
@@ -235,7 +254,7 @@ final class ThemeEditingTests: XCTestCase {
         XCTAssertEqual(restored.themeID, theme.id)
         XCTAssertEqual(restored.customThemes.count, 1)
         XCTAssertEqual(restored.customThemes.first, theme)
-        XCTAssertEqual(restored.customThemes.first?.basePresetID, Theme.tokyoNight.id)
+        XCTAssertEqual(restored.customThemes.first?.basePresetID, Theme.oneDark.id)
     }
 
     /// The additive-decoding contract, tested from the direction that

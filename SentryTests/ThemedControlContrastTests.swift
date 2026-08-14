@@ -16,9 +16,9 @@ import XCTest
 /// once is a fix with a shelf life of exactly one new preset. This file sweeps
 /// `Theme.builtInPresets` — the array itself, never a hardcoded list — across
 /// both appearances and all three surfaces a switch is genuinely drawn on, so
-/// preset number seven is graded the day it is added by someone who has never
+/// the next preset is graded the day it is added by someone who has never
 /// read this comment. That is the whole point: the failure mode is silent,
-/// nothing crashes, and a human eyeballing six themes will not reliably catch
+/// nothing crashes, and a human eyeballing every theme will not reliably catch
 /// a 2.6:1 border.
 ///
 /// **The floors, and where they are argued.** 3:1 for enabled components
@@ -207,9 +207,9 @@ final class ThemedControlContrastTests: XCTestCase {
 
     // MARK: - Material themes
 
-    /// The two presets that draw over an `NSVisualEffectView` must still be
+    /// Any preset that draws over an `NSVisualEffectView` must still be
     /// graded, and must be graded through a stated assumption rather than by
-    /// pretending their alpha is 1 — which would *overstate* contrast and let
+    /// pretending its alpha is 1 — which would *overstate* contrast and let
     /// an invisible switch pass.
     ///
     /// Asserts the flag rather than the number: what matters is that the
@@ -232,7 +232,7 @@ final class ThemedControlContrastTests: XCTestCase {
     /// hardcoded, so retuning a preset's opacity updates the expectation with
     /// it instead of turning this into a puzzle.
     func testMaterialThemeBackdropsAreApproximateExactlyWhenTranslucent() throws {
-        for theme in [Theme.system, Theme.translucent] {
+        for theme in Theme.builtInPresets.filter(\.useMaterialBackground) {
             for appearance in ThemeAppearance.allCases {
                 for surface in ThemeControlColors.hostSurfaces {
                     let colors = try XCTUnwrap(
@@ -265,7 +265,7 @@ final class ThemedControlContrastTests: XCTestCase {
     /// Silently treating alpha as 1 *overstates* contrast, so a switch would
     /// pass this sweep and still disappear over a bright desktop.
     func testTranslucentLayersAreNeverReportedExact() throws {
-        for theme in [Theme.system, Theme.translucent] {
+        for theme in Theme.builtInPresets.filter(\.useMaterialBackground) {
             for appearance in ThemeAppearance.allCases {
                 for surface in ThemeControlColors.hostSurfaces {
                     let ownAlpha = try XCTUnwrap(theme[surface].rgba(for: appearance)).alpha

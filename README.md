@@ -58,7 +58,7 @@ Everything here is free unless marked **Pro**.
 **On the Mac** — a menu bar readout (monochrome, layout-configurable) with
 a themed dropdown; a Dashboard of live charts backed by a local GRDB
 history store with tiered rollups; alert rules with history; keep-awake
-timers; fan RPM readout everywhere; six built-in themes, each with light,
+timers; fan RPM readout everywhere; built-in themes, each with light,
 dark, and follow-the-system variants; a security-posture check of your
 Mac's protections, read-only and local.
 
@@ -103,7 +103,7 @@ inside the app; checkout opens shortly after launch — watch the
   runs, while a download is active, or on a schedule.
 - **Process-match alert rules** — trigger alerts on what's running, not
   just on thresholds.
-- **Custom theme editor** with WCAG contrast checking, on top of the six
+- **Custom theme editor** with WCAG contrast checking, on top of the
   built-in themes.
 - **Off-LAN remote sync** — a TLS listener the iPhone pairs with via QR
   code, so the companions work away from home. Same-Wi-Fi sync is free.

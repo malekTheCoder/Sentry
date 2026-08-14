@@ -232,7 +232,7 @@ final class DashboardViewModelTests: XCTestCase {
     }
 
     func testThemeCanBeReassignedLiveAfterConstruction() {
-        let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .slate)
+        let model = DashboardViewModel(historyStore: tempHistoryStore(), theme: .oneDark)
         model.theme = .ivory
         XCTAssertEqual(model.theme, .ivory)
     }

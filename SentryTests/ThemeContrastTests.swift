@@ -149,10 +149,9 @@ final class ThemeContrastTests: XCTestCase {
     ///
     /// This test deliberately does **not** assert the requirement and fail.
     /// Making the shipped halves pass is a palette redesign with a visual
-    /// review attached (Tokyo Night's dark half is a reproduction of a
-    /// published palette; the faint tertiary ramp is a deliberate design
-    /// choice) — this test is the instrument that measures the gap, not the
-    /// fix.
+    /// review attached (One Dark is a reproduction of a published palette;
+    /// the faint tertiary ramp is a deliberate design choice) — this test is
+    /// the instrument that measures the gap, not the fix.
     ///
     /// What is asserted is the *shape* of the gap: which tokens are
     /// responsible. If a future edit drops `textPrimary` below AA, or fixes
@@ -235,9 +234,9 @@ final class ThemeContrastTests: XCTestCase {
     }
 
     func testTranslucentBackdropIsMarkedApproximate() {
-        // Translucent's background is 35% opacity — the app cannot know what
+        // System's background is 85% opacity — the app cannot know what
         // is behind it, and the finding has to say so.
-        let audit = Theme.translucent.contrastAudit
+        let audit = Theme.system.contrastAudit
         let backgroundFindings = audit.findings.filter { $0.backdrop == .background }
         XCTAssertFalse(backgroundFindings.isEmpty)
         XCTAssertTrue(backgroundFindings.allSatisfy(\.backdropIsApproximate))

@@ -25,9 +25,9 @@ final class ThemeEditingGateTests: XCTestCase {
 
     func testLockedSaveThrowsRequiresProAndLeavesSettingsUntouched() {
         var settings = AppSettings()
-        settings.themeID = Theme.tokyoNight.id
+        settings.themeID = Theme.oneDark.id
         let before = settings
-        let fork = Theme.slate.duplicated(named: "Mine")
+        let fork = Theme.ivory.duplicated(named: "Mine")
 
         XCTAssertThrowsError(
             try ThemeEditingGate.commit(fork, into: &settings, isProUnlocked: false)
@@ -88,7 +88,7 @@ final class ThemeEditingGateTests: XCTestCase {
         let entitlements = ProEntitlementStore(settingsStore: store)
 
         entitlements.setDeveloperOverride(true)
-        var saved = Theme.slate.duplicated(named: "Saved While Entitled")
+        var saved = Theme.ivory.duplicated(named: "Saved While Entitled")
         saved.accent = ThemeColor(hex: "#FF00FF")
         try ThemeEditingGate.commit(
             saved, into: &store.settings,
@@ -102,8 +102,8 @@ final class ThemeEditingGateTests: XCTestCase {
         XCTAssertEqual(store.resolvedTheme(), saved, "a lapse must not alter the saved look in any way")
 
         // Switching away and back is selection, not editing.
-        store.settings.themeID = Theme.tokyoNight.id
-        XCTAssertEqual(store.resolvedTheme().id, Theme.tokyoNight.id)
+        store.settings.themeID = Theme.oneDark.id
+        XCTAssertEqual(store.resolvedTheme().id, Theme.oneDark.id)
         store.settings.themeID = saved.id
         XCTAssertEqual(store.resolvedTheme().id, saved.id)
 

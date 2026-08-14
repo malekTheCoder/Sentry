@@ -48,14 +48,9 @@ struct PerMetricHistoryBrowser: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("Per-Metric Browser")
-                .scaledFont(palette, size: 13, weight: .semibold)
-                .foregroundStyle(palette.textPrimary)
-            Text("Current values only — no per-metric history query exists yet")
-                .font(.caption2)
-                .foregroundStyle(palette.textTertiary)
-        }
+        Text("Per-Metric Browser")
+            .scaledFont(palette, size: 13, weight: .semibold)
+            .foregroundStyle(palette.textPrimary)
     }
 
     // MARK: - Module picker

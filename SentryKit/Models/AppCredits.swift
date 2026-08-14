@@ -92,6 +92,23 @@ public enum AppCredits {
         URL(string: macAppDownloadURLString)
     }
 
+    // MARK: - Third-party license list
+
+    /// The published third-party license list — `docs/third-party-licenses.md`
+    /// as GitHub renders it, covering every platform's packages including
+    /// the Mac-only ones the iPhone About screen deliberately doesn't
+    /// acknowledge in-app (see `ThirdPartyComponent.shipsOniOS`). One shared
+    /// definition, like the two URLs above, so every surface that offers
+    /// the list offers the same address.
+    public static let thirdPartyLicensesURLString = "https://github.com/malekTheCoder/Sentry/blob/main/docs/third-party-licenses.md"
+
+    /// Same optionality contract as `privacyPolicyURL`: a malformed literal
+    /// is a programming error for a test to catch, not a link to silently
+    /// drop at runtime.
+    public static var thirdPartyLicensesURL: URL? {
+        URL(string: thirdPartyLicensesURLString)
+    }
+
     // MARK: - Version
 
     /// "Version 1.2.3 (45)" from a bundle's `CFBundleShortVersionString` and
