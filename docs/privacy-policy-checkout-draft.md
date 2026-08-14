@@ -12,7 +12,9 @@
 > section was added; the "Where it is stored" and "Deleting your data"
 > sections now say what the licence file contains; and the "no server"
 > wording was tightened to stay true (a checkout service now exists — the
-> app still never talks to it). Nothing else was touched, deliberately:
+> app still never talks to it). The draft also tracks the live policy's
+> Aug 13 location-code removal (the "never asks for" sentence includes
+> location). Nothing else was touched, deliberately:
 > checkout adds no network path to the app, so nothing else needed to
 > change. This draft describes a release with **paste-in activation only**
 > — if that release also confirms licences with a server ("revalidation"),
@@ -177,7 +179,7 @@ Sentry does not use iCloud, and the app has no iCloud entitlement, so it cannot 
 - **Local network.** Needed so your iPhone and Watch can find your Mac and show its stats over Wi-Fi. On the Mac this prompt appears when the app starts, because the local listener starts with the app. On iPhone it appears when the app looks for your Mac.
 - **Notifications.** Asked for only when you enable an alert rule, or the first time an alert would actually be delivered. Never at launch. Used only to show you your own alerts, on your own device.
 
-Sentry never asks for camera, microphone, contacts, photos, calendar, or health access, and contains no code that could use them.
+Sentry never asks for camera, microphone, contacts, photos, calendar, location, or health access, and contains no code that could use them.
 
 ## Deleting your data
 

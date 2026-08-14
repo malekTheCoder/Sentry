@@ -790,8 +790,20 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             guard let reply = self.authorizeInstrumented(.createAlertRule, wireClientName: clientName, argumentsSummary: summary, persistedSummary: "proposed new alert rule (JSON not persisted)", reply: reply) else { return }
             do {
                 let request = try JSONDecoder().decode(MCPPayloads.NewAlertRule.self, from: ruleJSON)
+                let rule = request.makeAlertRule()
+                // `.pushToPhone` survives on AlertAction only so rules
+                // persisted by earlier builds still decode — delivery never
+                // shipped and the queue it fed was deleted. An agent-minted
+                // rule carrying it would be a no-op the agent believes is a
+                // phone alert, so it is refused with the reason rather than
+                // accepted-and-ignored (the inert-control rule, applied to
+                // an API).
+                guard !rule.actions.contains(.pushToPhone) else {
+                    reply(false, "The pushToPhone action isn't supported: phone alert delivery never shipped and the action was removed. Use a notification action instead.")
+                    return
+                }
                 var rules = self.settingsStore.settings.alertRules
-                rules.append(request.makeAlertRule())
+                rules.append(rule)
                 self.settingsStore.settings.alertRules = rules
                 reply(true, nil)
             } catch {

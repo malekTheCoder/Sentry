@@ -191,6 +191,13 @@ That is a good string. It survived a prior revision that added the control
 half (`project.yml`'s comment records why), and it should not be shortened.
 
 **Location — no purpose string is needed, and adding one would be wrong.**
+> **SUPERSEDED (Aug 13, 2026):** the entire Location Log feature was
+> deleted — `LocationService`, `LocationLogSection`, and every file named
+> below no longer exist, and the App Privacy answer is now **Data Not
+> Collected** across the board. `docs/asc-metadata-draft.md` is the
+> current source of truth; the paragraph below is kept for the historical
+> record only.
+
 This is worth stating explicitly because the App Privacy label *does* declare
 location (§8), which looks like a contradiction and is not. The iPhone never
 opens a `CLLocationManager`: `SentryKit/Services/LocationService.swift` is

@@ -67,12 +67,10 @@
 			  and write information that is only accessible to the app
 			  itself."
 			  Declared because the embedded SentryKit.framework binary
-			  contains `UserDefaults.standard` call sites — `RollupJob`
-			  (SentryKit/Persistence/RollupJob.swift) and
-			  `PendingAlertPushStore`
-			  (SentryKit/Sync/PendingAlertPushStore.swift), both of whose
-			  default initializers take `.standard`. Neither type is ever
-			  constructed by this extension (their only production callers are
+			  contains a `UserDefaults.standard` call site — `RollupJob`
+			  (SentryKit/Persistence/RollupJob.swift), whose default
+			  initializer takes `.standard`. The type is never
+			  constructed by this extension (its only production caller is
 			  in Sentry/App/AppDelegate.swift, the Mac app), but the symbols
 			  ship inside this appex and Apple's check is a static scan of the
 			  binaries, not of the call graph. Declaring what is in the bundle

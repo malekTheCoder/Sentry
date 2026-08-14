@@ -540,6 +540,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         )
         rollupJob.start()
 
+        // One-time cleanup: earlier builds queued phone-bound alert pushes
+        // under this key (PendingAlertPushStore, deleted — nothing ever
+        // drained it). A v1.0 upgrade can carry up to 200 JSON records of
+        // rule names and notification copy; user data from a deleted
+        // feature must not sit in the defaults forever. Safe to run every
+        // launch — removing an absent key is a no-op.
+        UserDefaults.standard.removeObject(forKey: "dev.malekswilam.sentry.pendingAlertPushes")
+
         // Give the updater the persisted preference before Sparkle's own
         // scheduler has a chance to run its first check, so a user who
         // turned automatic checks off on a previous launch isn't checked on

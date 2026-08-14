@@ -24,8 +24,8 @@
 
   So the two required-reason call sites the iPhone side has to declare —
   `ProcessInfo.processInfo.systemUptime` in Insights/DeviceFacts.swift, and
-  the `UserDefaults.standard` defaults in Persistence/RollupJob.swift and
-  Sync/PendingAlertPushStore.swift — are not in this binary at all, and are
+  the `UserDefaults.standard` default in Persistence/RollupJob.swift —
+  are not in this binary at all, and are
   correctly not declared here. Of the eleven files above, only
   Watch/WatchRelayStore.swift touches a required-reason API, and it is the
   App Group suite declared below. Models/MetricID.swift is the one that looks

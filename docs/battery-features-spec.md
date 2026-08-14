@@ -679,8 +679,15 @@ runtime estimate rather than a predicted one. **EXTENSION** —
 
 **10. Location- and schedule-aware suggestions.** BatFi's genuinely best idea
 (§2.2) — "you're at the office, where this Mac is plugged in 94 % of the time;
-want the limit at 80 %?" Sentry already has `LocationService`.
-**EXTENSION** — `LocationService`, `ProtectionInsightsEngine`. **M**, low risk.
+want the limit at 80 %?"
+> **NOTE (Aug 13, 2026):** `LocationService` and every trace of location
+> code were deleted with the Location Log cut, and the shipped privacy
+> policy + App Privacy label now promise zero location collection.
+> Implementing this item means rebuilding that foundation AND redoing the
+> permission/manifest/policy paperwork — it is no longer an extension, and
+> its cost estimate below is stale.
+
+**EXTENSION** — `ProtectionInsightsEngine` (location layer would need rebuilding). **M→L** with the paperwork.
 As a *suggestion* layer over feature 2, not an autonomous actuator.
 
 ### Tier 3 — explicitly not recommended

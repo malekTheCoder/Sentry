@@ -88,10 +88,11 @@ relay carries *metrics*, not messages. Concretely:
 - `LocalSyncFraming.LocalSyncMessage`
   (`SentryKit/LocalSync/LocalSyncFraming.swift`) has exactly three cases —
   `.snapshot`, `.command`, `.status`. There is no notice/message kind.
-- `AlertAction.pushToPhone` enqueues an `AlertPush` into
-  `SentryKit/Sync/PendingAlertPushStore.swift` and **nothing drains it** —
-  the CloudKit transport it was written for is blocked on Apple Developer
-  Program enrolment.
+- `AlertAction.pushToPhone` was **cut on Aug 13, 2026** along with the
+  queue it fed (`PendingAlertPushStore`, deleted) — delivery never
+  shipped. The enum case survives only so rules persisted by earlier
+  builds still decode; the engine treats it as a documented no-op, and
+  `create_alert_rule` refuses rules that carry it.
 - The iPhone app contains **zero** references to `UNUserNotificationCenter`,
   no `UIBackgroundModes`, no push entitlement, no NSE. It cannot raise a
   notification at all, and `SentryMobile/Data/AppDataSource.swift` documents
