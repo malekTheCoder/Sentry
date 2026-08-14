@@ -103,4 +103,11 @@ final class AppCreditsTests: XCTestCase {
     func testPrivacyPolicyURLParses() {
         XCTAssertNotNil(AppCredits.privacyPolicyURL)
     }
+
+    /// Same contract as the privacy-policy link: the iPhone About screen
+    /// builds a `Link` from it, and a nil URL would silently drop the row
+    /// pointing at the published `docs/third-party-licenses.md`.
+    func testThirdPartyLicensesURLParses() {
+        XCTAssertNotNil(AppCredits.thirdPartyLicensesURL)
+    }
 }

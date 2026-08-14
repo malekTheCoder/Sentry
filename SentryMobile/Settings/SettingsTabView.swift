@@ -17,17 +17,18 @@ import SentryKit
 /// Earlier revisions carried disclosure sections for a CloudKit sync layer
 /// and a phone-push notification surface that never shipped; both features
 /// were deleted outright (see git history), so those sections went with
-/// them — the one disclosure row left is the widgets row, which points at a
-/// real widget with genuinely no in-app configuration yet.
+/// them. A widgets disclosure row followed once the widget itself shipped:
+/// a settings row whose entire content was "nothing to configure here yet"
+/// described an absence, not a setting, and a widget with no options needs
+/// no section here until it has real ones.
 ///
 /// **Nocturne redesign restyle.** Was a native `Form`/`Section` screen (the
 /// theme picker was a `.pickerStyle(.navigationLink)` row into a full
 /// sub-screen, not a preview-able swatch). Rebuilt as a themed `ScrollView`
 /// matching the other three tabs: a horizontally scrollable row of 44×44pt
 /// theme swatches (each rendering *that* theme's own colors, not the
-/// ambient one, so tapping through actually previews before committing), a
-/// compact paired-device card, and the honest-disclosure pattern shared
-/// with History's charge-session row and Alerts' history row where needed.
+/// ambient one, so tapping through actually previews before committing),
+/// and a compact paired-device card.
 struct SettingsTabView: View {
     /// Backs the theme picker below. Default matches `Theme.defaultTheme.id` —
     /// the same default `AppSettings.themeID` uses on the Mac side
@@ -191,7 +192,6 @@ struct SettingsTabView: View {
                 deviceCard
                 macPickerSection
                 remoteMacSection
-                widgetsSection
                 walkthroughRow
                 aboutRow
             }
@@ -717,29 +717,6 @@ struct SettingsTabView: View {
         .accessibilityHint(isSelected ? "Currently connected." : "Switch to this Mac instead.")
     }
 
-    // MARK: - Widgets (real widget, no in-app configuration yet)
-
-    /// The widget itself is real now — `SentryWidget` renders whatever
-    /// `WidgetSnapshotWriter` (`SentryMobile/Data/WidgetSnapshotWriter.swift`)
-    /// last cached through the App Group, on `WidgetTimelineScheduler`'s
-    /// reload cadence. What still doesn't exist is any *configuration*
-    /// surface (which metrics to show, per-family options) — so this
-    /// section describes the one true limitation rather than inventing a
-    /// fake picker, same honest-disclosure row style as the sections above.
-    /// (This row used to claim "Widgets aren't available in this build yet"
-    /// — true when written, stale once the widget pipeline landed.)
-    private var widgetsSection: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "circle")
-                .scaledSystemFont(size: 9)
-                .foregroundStyle(palette.textTertiary)
-            Text("Widgets show the Dashboard's latest reading — nothing to configure here yet.")
-                .scaledFont(palette, size: 11)
-                .foregroundStyle(palette.textTertiary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Add the widget from your home screen. It shows the most recent data this app cached — there are no in-app widget options to change yet.")
-    }
 }
 
 // MARK: - Walkthrough row
