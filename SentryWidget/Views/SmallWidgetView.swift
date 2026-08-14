@@ -5,12 +5,12 @@ import SwiftUI
 /// `.systemSmall` — plan §12.3: "Battery arc + % + charging W, freshness
 /// dot." The most space-constrained home screen family, so this shows
 /// exactly the four things the spec lists and nothing else — no device
-/// name, no demo-data caption (see `WidgetDemoDataCaption`'s doc comment on
-/// where that disclosure lives instead for this family) — plus one
-/// interactive control: a refresh button, the smallest family this widget
-/// declares so also the one most likely to be pinned somewhere a user
-/// checks often enough to want a manual nudge rather than waiting out
-/// `WidgetTimelineScheduler`'s cadence.
+/// name, no full demo-data sentence (`WidgetDemoDataTag`, the compact pill,
+/// carries that disclosure here; see `WidgetDemoDataCaption`'s doc comment)
+/// — plus one interactive control: a refresh button, the smallest family
+/// this widget declares so also the one most likely to be pinned somewhere
+/// a user checks often enough to want a manual nudge rather than waiting
+/// out `WidgetTimelineScheduler`'s cadence.
 struct SmallWidgetView: View {
     let snapshot: WidgetSnapshot?
 
@@ -21,6 +21,9 @@ struct SmallWidgetView: View {
                     .frame(width: 64, height: 64)
                 wattsLabel(snapshot)
                 HStack(spacing: 4) {
+                    if snapshot.sourceIsDemoData {
+                        WidgetDemoDataTag()
+                    }
                     freshnessDot(snapshot)
                     refreshButton
                 }

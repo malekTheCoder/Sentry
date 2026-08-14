@@ -168,7 +168,7 @@ final class ThemeEditingTests: XCTestCase {
     // MARK: - Global reset
 
     func testGlobalResetRestoresEveryTokenButKeepsIdentity() {
-        var fork = Theme.tokyoNight.duplicated(named: "Malek's Dark")
+        var fork = Theme.tokyoNight.duplicated(named: "Custom Dark")
         let keptID = fork.id
 
         fork.accent = ThemeColor(hex: "#FF00FF")
@@ -195,7 +195,7 @@ final class ThemeEditingTests: XCTestCase {
 
         // Identity is the user's, not the preset's.
         XCTAssertEqual(fork.id, keptID)
-        XCTAssertEqual(fork.name, "Malek's Dark", "reset must not discard the name the user typed")
+        XCTAssertEqual(fork.name, "Custom Dark", "reset must not discard the name the user typed")
         XCTAssertFalse(fork.isBuiltIn)
         XCTAssertEqual(fork.basePresetID, Theme.tokyoNight.id)
     }

@@ -91,14 +91,15 @@ struct WidgetNoDataView: View {
 
 // MARK: - Shared demo-data caption
 
-/// The `.systemLarge`-only caption plan honesty requires (see the task that
-/// produced this widget, and `DashboardTabView.demoDataBanner`'s precedent
-/// on the phone app) — only `.systemLarge` has room for a full sentence.
-/// Smaller families rely on the widget gallery's configuration description
-/// (`SentryWidgetBundle.swift`) for the same disclosure at add-time; there
-/// is deliberately no attempt to cram a disclosure sentence into
-/// `.systemSmall`'s ~150pt square, which would either be illegible or crowd
-/// out the actual battery reading the family exists to show.
+/// The `.systemLarge` caption plan honesty requires (see the task that
+/// produced this widget, and the phone app's `DemoDataBanner` precedent) —
+/// only `.systemLarge` has room for a full sentence. The smaller home
+/// screen families carry `WidgetDemoDataTag` below instead: the gallery's
+/// configuration description (`SentryWidgetBundle.swift`) discloses demo
+/// data at add-time, but a widget sits on the home screen long after
+/// add-time, and a screenshot of it carries no gallery text — the marker
+/// has to travel with the data, the same rule `WidgetSnapshot
+/// .sourceIsDemoData` exists to serve.
 struct WidgetDemoDataCaption: View {
     var body: some View {
         Label {
@@ -111,5 +112,33 @@ struct WidgetDemoDataCaption: View {
                 .foregroundStyle(.secondary)
         }
         .labelStyle(.titleAndIcon)
+    }
+}
+
+/// The compact demo marker for `.systemSmall` and `.systemMedium` — the
+/// families with no room for `WidgetDemoDataCaption`'s full sentence. Same
+/// glyph as that caption and as the phone app's own banner and tags
+/// (`DemoDataDisclosure.symbolName` is `wand.and.stars`; not imported here
+/// because a widget extension can't depend on its containing app's target),
+/// so one symbol means "synthesized data" everywhere a user can meet it.
+/// The word is spelled out too — §9.4's standing rule that state is never
+/// carried by a glyph or hue alone — and VoiceOver gets the caption's full
+/// sentence rather than the pill's abbreviation.
+struct WidgetDemoDataTag: View {
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "wand.and.stars")
+                .font(.system(size: 7, weight: .semibold))
+            Text("Demo")
+                .font(.system(size: 7.5, weight: .semibold))
+                .textCase(.uppercase)
+                .kerning(0.5)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1.5)
+        .background(Capsule().fill(Color.secondary.opacity(0.15)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Demo data — no live Mac sync yet"))
     }
 }

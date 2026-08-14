@@ -79,7 +79,7 @@ struct Provider: TimelineProvider {
     }
 
     private static let placeholderSnapshot = WatchRelaySnapshot(
-        deviceName: "Malek's MacBook Pro",
+        deviceName: "Demo MacBook Pro",
         lastSeen: Date(),
         relayedAt: Date(),
         sourceIsDemoData: true,

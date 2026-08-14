@@ -85,6 +85,17 @@ struct AboutView: View {
                 .scaledFont(palette, size: 11.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
+            // The sentence above names a Mac app this screen never said how
+            // to get. Same silent-`Link` pattern as `privacyCard` below —
+            // see this file's doc comment on why the Links here have no
+            // action feedback. "Free" is in the label because it answers the
+            // question that actually stops people from tapping.
+            if let url = AppCredits.macAppDownloadURL {
+                Link("Get Sentry for Mac — free download", destination: url)
+                    .scaledFont(palette, size: 11.5)
+                    .foregroundStyle(palette.accent)
+                    .padding(.top, 3)
+            }
         }
         .padding(palette.spacingBlock)
         .frame(maxWidth: .infinity, alignment: .leading)

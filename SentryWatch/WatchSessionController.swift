@@ -130,7 +130,7 @@ final class WatchSessionController: NSObject, ObservableObject {
             switch self {
             case .fullyPopulated:
                 return WatchRelaySnapshot(
-                    deviceName: "Malek's MacBook Pro",
+                    deviceName: "Demo MacBook Pro",
                     lastSeen: now.addingTimeInterval(-45),
                     relayedAt: now.addingTimeInterval(-40),
                     sourceIsDemoData: true,
@@ -155,7 +155,7 @@ final class WatchSessionController: NSObject, ObservableObject {
                 )
             case .underPressure:
                 return WatchRelaySnapshot(
-                    deviceName: "Malek's MacBook Pro",
+                    deviceName: "Demo MacBook Pro",
                     lastSeen: now.addingTimeInterval(-12),
                     relayedAt: now.addingTimeInterval(-10),
                     sourceIsDemoData: true,

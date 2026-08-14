@@ -13,7 +13,7 @@ final class WidgetSnapshotTests: XCTestCase {
 
     private func sampleSnapshot() -> WidgetSnapshot {
         WidgetSnapshot(
-            deviceName: "Malek's MacBook Pro",
+            deviceName: "Demo MacBook Pro",
             lastSeen: Date(timeIntervalSince1970: 1_000_000),
             writtenAt: Date(timeIntervalSince1970: 1_000_010),
             sourceIsDemoData: true,

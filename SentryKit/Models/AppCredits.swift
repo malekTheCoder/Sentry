@@ -72,6 +72,26 @@ public enum AppCredits {
         URL(string: privacyPolicyURLString)
     }
 
+    // MARK: - Mac app download
+
+    /// Where the free Mac app's DMG lives — GitHub's `releases/latest`
+    /// redirect, which always resolves to the newest published release, so
+    /// this link never goes stale as versions ship. The iPhone app is a
+    /// readout of a Mac running Sentry (`AboutView`'s "iPhone companion"
+    /// line; the onboarding's whole companion-role step), and until this
+    /// constant existed it never actually told anyone where to get the Mac
+    /// half. One shared definition here, like `privacyPolicyURLString`
+    /// above, so every surface that offers the download offers the same
+    /// address.
+    public static let macAppDownloadURLString = "https://github.com/malekTheCoder/Sentry/releases/latest"
+
+    /// Same optionality contract as `privacyPolicyURL`: a malformed literal
+    /// is a programming error for a test to catch, not a link to silently
+    /// drop at runtime.
+    public static var macAppDownloadURL: URL? {
+        URL(string: macAppDownloadURLString)
+    }
+
     // MARK: - Version
 
     /// "Version 1.2.3 (45)" from a bundle's `CFBundleShortVersionString` and

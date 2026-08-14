@@ -12,10 +12,19 @@ struct MediumWidgetView: View {
                 BatteryArcView(percent: snapshot.batteryPercent, isCharging: snapshot.isCharging)
                     .frame(width: 60, height: 60)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(snapshot.deviceName)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .lineLimit(1)
+                    // The tag rides beside the device name — with the data,
+                    // where a cropped screenshot keeps it — mirroring
+                    // `LargeWidgetView`'s caption without spending a whole
+                    // row of this family's four-line budget on it.
+                    HStack(spacing: 4) {
+                        Text(snapshot.deviceName)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                        if snapshot.sourceIsDemoData {
+                            WidgetDemoDataTag()
+                        }
+                    }
                     metricRow(systemImage: "cpu", label: String(localized: "CPU"), value: "\(Int(snapshot.cpuPercent.rounded()))%")
                     metricRow(systemImage: "memorychip", label: String(localized: "RAM"), value: "\(Int((snapshot.memoryUsedFraction * 100).rounded()))%")
                     sleepRow(snapshot.sleepAssertion)

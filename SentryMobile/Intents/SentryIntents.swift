@@ -21,9 +21,12 @@ import WidgetKit
 /// and `StatsTransport.awaitStatus(forNonce:timeout:)` lets an intent learn
 /// what the Mac actually did with a command instead of just that it was
 /// transmitted. Every intent below still reports honestly when nothing
-/// answers — a connected-but-silent Mac, or `MockDataSource` (which always
-/// returns `nil` from `awaitStatus`) both read as "sent, but no reply,"
-/// never a fabricated success.
+/// answers: a connected-but-silent Mac reads as "sent, but no reply," and
+/// `MockDataSource` — whose `send(command:)` is a documented no-op and whose
+/// snapshots are invented — reads as demo mode outright, because "sent"
+/// would be false (nothing was transmitted) and a spoken battery percentage
+/// would be a fabricated reading delivered without the banner or tags the
+/// in-app surfaces carry. See `demoModeSendDialog`/`demoModeReadDialog`.
 ///
 /// **Why `sendAndDescribe(_:successVerb:)` is the one place that decides
 /// what Siri says.** Every write intent below constructs a `ControlCommand`
@@ -43,6 +46,25 @@ enum SentryIntents {
     /// expected wait.
     static let statusTimeout: TimeInterval = 5
 
+    /// What Siri says when a *write* intent runs while the app is on demo
+    /// data. `MockDataSource.send(command:)` no-ops without throwing and its
+    /// `awaitStatus` returns `nil` immediately, so before this guard existed
+    /// the dialog claimed "Sent the request, but didn't hear back" for a
+    /// command that never left the phone. The truthful sentence is that
+    /// there is no Mac to send to.
+    static var demoModeSendDialog: String {
+        String(localized: "Sentry is in demo mode — there's no Mac connected, so nothing was sent. Open Sentry on your Mac on the same Wi-Fi network, then try again.")
+    }
+
+    /// The read-intent counterpart: `MockDataSource.snapshots()` yields an
+    /// invented reading immediately, so without this guard Siri would speak
+    /// a made-up battery percentage or temperature with none of the demo
+    /// disclosure every in-app surface carries. A spoken sentence has no
+    /// banner, so the sentence itself has to say it.
+    static var demoModeReadDialog: String {
+        String(localized: "Sentry is in demo mode — there's no Mac connected, so there's no real reading to report. Open Sentry on your Mac on the same Wi-Fi network, then try again.")
+    }
+
     /// Sends `command`, awaits its `ControlStatus` reply, and returns the
     /// dialog every write intent below reports to Siri. `successVerb` is
     /// folded into the "done" phrasing (e.g. "Your Mac will stay awake" vs.
@@ -51,6 +73,9 @@ enum SentryIntents {
     /// type, so it lives here once rather than once per intent.
     static func sendAndDescribe(_ command: ControlCommand, whenCompleted successVerb: String) async -> String {
         let transport = await AppDataSource.shared.transport
+        guard !(transport is MockDataSource) else {
+            return demoModeSendDialog
+        }
         do {
             try await transport.send(command: command)
         } catch {
@@ -215,6 +240,9 @@ struct GetBatteryStatusIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let transport = await AppDataSource.shared.transport
+        guard !(transport is MockDataSource) else {
+            return .result(dialog: IntentDialog(stringLiteral: SentryIntents.demoModeReadDialog))
+        }
         guard let snapshot = await Self.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
             return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
         }
@@ -295,6 +323,9 @@ struct GetThermalStatusIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let transport = await AppDataSource.shared.transport
+        guard !(transport is MockDataSource) else {
+            return .result(dialog: IntentDialog(stringLiteral: SentryIntents.demoModeReadDialog))
+        }
         guard let snapshot = await GetBatteryStatusIntent.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
             return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
         }
@@ -376,6 +407,9 @@ struct GetProtectionScoreIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let transport = await AppDataSource.shared.transport
+        guard !(transport is MockDataSource) else {
+            return .result(dialog: IntentDialog(stringLiteral: SentryIntents.demoModeReadDialog))
+        }
         guard let snapshot = await GetBatteryStatusIntent.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
             return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
         }
@@ -410,6 +444,9 @@ struct GetAgentGuardrailsStatusIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let transport = await AppDataSource.shared.transport
+        guard !(transport is MockDataSource) else {
+            return .result(dialog: IntentDialog(stringLiteral: SentryIntents.demoModeReadDialog))
+        }
         guard let snapshot = await GetBatteryStatusIntent.firstSnapshot(from: transport, timeout: SentryIntents.statusTimeout) else {
             return .result(dialog: "Couldn't get a reading from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
         }

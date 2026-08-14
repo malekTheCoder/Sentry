@@ -313,17 +313,19 @@ struct SleepStatusCard: View {
         .foregroundStyle(palette.danger)
     }
 
-    /// Constructs and "sends" a real `ControlCommand` — through the app-wide
+    /// Constructs and sends a real `ControlCommand` — through the app-wide
     /// `AppDataSource.shared.transport` (`SentryMobile/Data/AppDataSource.swift`)
     /// every other call site in this app now reads from, not a locally
     /// constructed `MockDataSource()` — then always shows the honest
-    /// result, never a fabricated success. Both `MockDataSource.send
-    /// (command:)` and `LocalSyncClient.send(command:)` are honest about not
-    /// delivering anything today (the former is a documented no-op, the
-    /// latter `throw`s "not supported yet" — see that type's doc comment),
-    /// so `try?` swallowing the result and always showing the same "not
-    /// sent" copy remains accurate either way. Mirrors `KeepAwakeIntent
-    /// .perform()`'s "construct, send, report what actually happened" shape.
+    /// result, never a fabricated success. Four outcomes, four messages,
+    /// never collapsed: demo mode (nothing to send to — `MockDataSource
+    /// .send(command:)` is a documented no-op, so claiming "Sent" would be
+    /// the lie this guard exists to prevent), a send that threw, a real
+    /// send with no `ControlStatus` reply inside `SentryIntents
+    /// .statusTimeout`, and a reply reporting what the Mac actually did.
+    /// Mirrors `SentryIntents.sendAndDescribe(_:whenCompleted:)`'s
+    /// "construct, send, report what actually happened" shape, including
+    /// its demo-mode guard.
     private func sendCommand(_ command: ControlCommand) {
         feedbackTask?.cancel()
         feedback = String(localized: "Sending…")
@@ -335,6 +337,18 @@ struct SleepStatusCard: View {
         issued = CommandTrace(nonce: command.nonce, commandType: command.commandType)
         feedbackTask = Task {
             let transport = await AppDataSource.shared.transport
+            // Demo mode: `MockDataSource.send(command:)` deliberately
+            // no-ops without throwing and `awaitStatus` returns `nil`
+            // immediately, so without this guard the card would claim
+            // "Sent, but no reply from your Mac yet." for a command that
+            // was never transmitted anywhere. Say what actually happened
+            // instead: there is no Mac on the other end of demo data.
+            guard !(transport is MockDataSource) else {
+                feedback = String(localized: "Demo mode — there's no Mac connected, so nothing was sent.")
+                record(.undelivered, for: command)
+                await clearFeedbackAfterDelay()
+                return
+            }
             do {
                 try await transport.send(command: command)
             } catch {

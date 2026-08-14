@@ -35,7 +35,7 @@ final class LocalSyncClientTests: XCTestCase {
     // MARK: - serviceIdentity(for:)
 
     func testServiceIdentityExtractsNameFromServiceEndpoint() {
-        XCTAssertEqual(LocalSyncClient.serviceIdentity(for: service(named: "Malek's MacBook Pro")), "Malek's MacBook Pro")
+        XCTAssertEqual(LocalSyncClient.serviceIdentity(for: service(named: "Demo User's MacBook Pro")), "Demo User's MacBook Pro")
     }
 
     func testServiceIdentityIsNilForNonServiceEndpoint() {

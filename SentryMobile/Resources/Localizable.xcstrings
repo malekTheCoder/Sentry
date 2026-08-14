@@ -106,7 +106,7 @@
         }
       }
     },
-    "Charge sessions — not available yet on this build": {},
+    "Charge sessions — not available yet": {},
     "Charging": {
       "extractionState": "manual",
       "localizations": {
@@ -140,7 +140,6 @@
         }
       }
     },
-    "Control from your Mac — remote control isn't available in this build yet.": {},
     "Couldn't reach your Mac — %@": {
       "extractionState": "manual",
       "localizations": {
@@ -186,6 +185,7 @@
         }
       }
     },
+    "Demo mode — there's no Mac connected, so nothing was sent.": {},
     "Disk": {
       "extractionState": "manual",
       "localizations": {
@@ -274,6 +274,8 @@
         }
       }
     },
+    "Get Sentry for Mac": {},
+    "Get Sentry for Mac — free download": {},
     "Health": {
       "extractionState": "manual",
       "localizations": {
@@ -536,6 +538,8 @@
         }
       }
     },
+    "Sentry is in demo mode — there's no Mac connected, so nothing was sent. Open Sentry on your Mac on the same Wi-Fi network, then try again.": {},
+    "Sentry is in demo mode — there's no Mac connected, so there's no real reading to report. Open Sentry on your Mac on the same Wi-Fi network, then try again.": {},
     "Serious": {
       "extractionState": "manual",
       "localizations": {
@@ -594,6 +598,7 @@
         }
       }
     },
+    "The Mac app is free. The link opens the latest release — download the DMG on your Mac.": {},
     "The same presets as the Mac app (SentryKit/Settings/Theme.swift), applied to all four tabs. This is a local preference, not synced — there's no iCloud channel yet to carry it to or from the Mac, so choosing a theme here has no effect on the Mac app and vice versa.": {},
     "Thermal": {
       "extractionState": "manual",

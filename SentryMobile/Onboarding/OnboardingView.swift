@@ -307,7 +307,8 @@ struct OnboardingView: View {
 
 /// The steps that show something beyond words.
 ///
-/// Only two do, and the restraint is deliberate: this app's onboarding has
+/// Only three do — a download link, a live connection card, and a tab
+/// legend — and the restraint is deliberate: this app's onboarding has
 /// nothing it can legitimately demonstrate offline. There is no fabricated
 /// dashboard preview here and no sample chart, because a first-run user has
 /// no way to tell a mock reading from their own Mac's, and this app's
@@ -323,13 +324,40 @@ private struct OnboardingStepContent: View {
 
     var body: some View {
         switch step {
+        case .companionRole:
+            macAppDownloadCard
         case .pairing:
             ConnectionStatusCard()
         case .tabs:
             tabLegend
-        case .companionRole, .controls, .agents, .watch, .done:
+        case .controls, .agents, .watch, .done:
             EmptyView()
         }
+    }
+
+    /// The companion-role step tells a user this app is a readout of a Mac
+    /// app — and, until this card existed, stopped there, leaving anyone who
+    /// didn't already have the Mac app with no way forward from the very
+    /// sentence that told them they needed it. A silent `Link`, following
+    /// `AboutView`'s pattern (see that file's doc comment on why this app's
+    /// external links have no action feedback). `AppCredits
+    /// .macAppDownloadURL` is the shared definition, so this and the About
+    /// screen cannot point at different addresses.
+    private var macAppDownloadCard: some View {
+        VStack(alignment: .leading, spacing: palette.spacingTight) {
+            if let url = AppCredits.macAppDownloadURL {
+                Link("Get Sentry for Mac", destination: url)
+                    .scaledFont(palette, size: 13, weight: .medium)
+                    .foregroundStyle(palette.accent)
+            }
+            Text("The Mac app is free. The link opens the latest release — download the DMG on your Mac.")
+                .scaledFont(palette, size: 11.5)
+                .foregroundStyle(palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(palette.spacingBlock)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(palette)
     }
 
     /// The four tabs, named with the same symbols `RootTabView` puts in the

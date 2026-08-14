@@ -83,7 +83,7 @@ struct Provider: TimelineProvider {
     }
 
     private static let placeholderSnapshot = WidgetSnapshot(
-        deviceName: "Malek's MacBook Pro",
+        deviceName: "Demo MacBook Pro",
         lastSeen: Date(),
         writtenAt: Date(),
         sourceIsDemoData: true,

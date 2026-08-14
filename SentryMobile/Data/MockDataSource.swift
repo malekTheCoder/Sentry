@@ -63,7 +63,7 @@ public actor MockDataSource: StatsTransport {
         let startingLastSeen = Date().addingTimeInterval(-192)
         self.mockDevice = Device(
             deviceID: deviceID,
-            deviceName: "Malek's MacBook Pro",
+            deviceName: "Demo MacBook Pro",
             model: "MacBook Pro (14-inch, 2024)",
             chip: "Apple M3 Pro",
             osVersion: "macOS 15.1",
