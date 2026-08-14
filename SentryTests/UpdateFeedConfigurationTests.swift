@@ -240,18 +240,30 @@ final class UpdateFeedConfigurationTests: XCTestCase {
         )
     }
 
-    /// The two Sparkle keys really are in the shipped bundle, and the app
-    /// really is in the honest-refusal state documented in
-    /// `UpdateController` — not accidentally `.ready` against a key nobody
-    /// holds the private half of.
-    func testHostAppCarriesTheSparkleKeysAndIsHonestlyBlocked() {
+    /// The two Sparkle keys really are in the shipped bundle, and the app is
+    /// now armed rather than in the honest-refusal state it shipped in
+    /// before the key existed.
+    ///
+    /// **This test is the guard on a value that cannot be fixed after the
+    /// fact.** Both strings are compiled into every binary and are read by
+    /// copies already on users' Macs; nothing served from a server can
+    /// redirect an installed app to a different feed or a different key. A
+    /// typo in either one is discovered only when an update silently never
+    /// arrives. So they are asserted literally, against the built bundle,
+    /// rather than against a constant that could drift with them.
+    func testHostAppCarriesTheRealSparkleKeysAndIsArmed() {
         let config = UpdateFeedConfiguration(bundle: .main)
         XCTAssertEqual(config.feedURLString, "https://malekthecoder.github.io/Sentry/appcast.xml")
-        XCTAssertEqual(config.publicKeyString, UpdateFeedConfiguration.placeholderPublicKey)
+        XCTAssertEqual(config.publicKeyString, "jV8XQwSh5C7EVxa/bdliZ+O164GRc7Me+6V+XaY1AFI=")
+        XCTAssertNotEqual(
+            config.publicKeyString,
+            UpdateFeedConfiguration.placeholderPublicKey,
+            "the placeholder must never come back — it disables updates for every copy built with it"
+        )
         XCTAssertEqual(
             config.availability,
-            .publicKeyPlaceholder,
-            "Replace this expectation with `.ready` in the same commit that pastes the real SUPublicEDKey — see docs/sparkle-release-signing.md"
+            .ready(feedURL: URL(string: "https://malekthecoder.github.io/Sentry/appcast.xml")!),
+            "the real key is in place, so the app must actually check for updates"
         )
     }
 }

@@ -33,6 +33,6 @@
 	<key>SUFeedURL</key>
 	<string>https://malekthecoder.github.io/Sentry/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY</string>
+	<string>jV8XQwSh5C7EVxa/bdliZ+O164GRc7Me+6V+XaY1AFI=</string>
 </dict>
 </plist>

@@ -608,22 +608,23 @@ targets:
         # publishes the releases.
         SUFeedURL: "https://malekthecoder.github.io/Sentry/appcast.xml"
         # ---------------------------------------------------------------
-        # ⚠️ PLACEHOLDER — NOT A REAL KEY. Updates are DISABLED while this
-        # is here, loudly and on screen (Settings ▸ General), never
-        # silently. `UpdateFeedConfiguration.placeholderPublicKey` must
-        # match this string exactly.
+        # THE REAL PUBLIC KEY. This is the public half — it is meant to be
+        # readable by anyone, and its presence in a public repo is not a
+        # leak. The PRIVATE half lives in the login keychain of whoever
+        # generated it ("Private key for signing Sparkle updates") and must
+        # never appear here or anywhere else in the tree.
         #
-        # Generate the pair yourself, once, and back the private half up
-        # before the first release. Sparkle's tools ship inside the resolved
-        # SPM artifact, so they exist only after one build; $DD below is that
-        # build's -derivedDataPath:
+        # Generated 2026-08-13. Whoever cuts a release must hold the private
+        # half; a second maintainer signing releases needs a copy of that
+        # same key, because re-keying is not possible (see below).
+        #
+        # Sparkle's tools ship inside the resolved SPM artifact, so they
+        # exist only after one build; $DD below is that build's
+        # -derivedDataPath:
         #
         #     "$DD"/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
         #
-        # (or `generate_keys` from the Sparkle distribution). It prints the
-        # PUBLIC key — paste that here — and stores the PRIVATE key in your
-        # login keychain as "Private key for signing Sparkle updates".
-        # Export and back it up somewhere you control, offline:
+        # To export the private half for offline backup:
         #
         #     "$DD"/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_private_key.txt
         #
@@ -634,7 +635,7 @@ targets:
         # you ship, not after. Full procedure and release-time signing order
         # in `docs/sparkle-release-signing.md`.
         # ---------------------------------------------------------------
-        SUPublicEDKey: "REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY"
+        SUPublicEDKey: "jV8XQwSh5C7EVxa/bdliZ+O164GRc7Me+6V+XaY1AFI="
         # No NSLocation* usage strings, deliberately: the Location Log
         # feature was deleted (see git history) and nothing in this app
         # touches CoreLocation. The one macOS API that would pull location
