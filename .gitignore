@@ -28,3 +28,8 @@ DerivedData/
 # otherwise stage each one as an embedded git repository, which git accepts
 # with only a warning and which produces a commit nobody can clone.
 worktrees/
+
+# Release staging: DMGs and the generated appcast.xml. The published copy of
+# appcast.xml lives on the gh-pages branch; this directory is scratch space
+# that release.sh fetches into and regenerates.
+dist/

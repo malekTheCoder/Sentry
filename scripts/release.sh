@@ -46,12 +46,18 @@
 #
 # USAGE
 #
-#   scripts/release.sh                 # archive → export → verify → dmg → notarize → staple
+#   scripts/release.sh                 # archive → export → verify → dmg → notarize → staple → appcast
 #   scripts/release.sh --resign        # additionally re-sign nested code inner-out (see below)
 #   scripts/release.sh --skip-notarize # everything up to (not including) submission
 #
+# `--skip-notarize` also skips the appcast: signing an unstapled DMG would
+# produce a feed entry whose signature stops matching the moment the DMG is
+# stapled for real. There is deliberately no way to generate a feed for a
+# build that has not been through the notary.
+#
 # Environment overrides: NOTARY_PROFILE (default AC_NOTARY), BUILD_DIR (default
-# ./build), DEVELOPER_DIR (auto-detected below).
+# ./build), RELEASES_DIR (default ./dist), SPARKLE_BIN_DIR (default: found
+# under DerivedData), DEVELOPER_DIR (auto-detected below).
 
 set -euo pipefail
 
@@ -141,6 +147,24 @@ preflight() {
   # is deliberately non-base64 so this exact-match grep can't false-positive.
   if grep -q 'SUPublicEDKey: "REPLACE-WITH-YOUR-SPARKLE-ED25519-PUBLIC-KEY"' project.yml; then
     die "SUPublicEDKey in project.yml is still the placeholder — this build's updater would be permanently dead. Embed the real Sparkle public key (task B1) before cutting a release."
+  fi
+
+  # The appcast is generated at the very end of a run that may have already
+  # spent fifteen minutes in the notary queue, and it needs two things this
+  # machine may simply not have: Sparkle's tool, and the private key whose
+  # public half is compiled into the app. Checking both here turns "the
+  # release finished but produced no feed" into a five-second failure.
+  if (( ! SKIP_NOTARIZE )); then
+    local tool
+    tool="$(find_sparkle_tool generate_appcast)"
+    [[ -x "$tool" ]] || die "generate_appcast not found. Build once so SPM resolves Sparkle, or set SPARKLE_BIN_DIR."
+
+    # The key is stored as a generic password by generate_keys. Absence here
+    # means whoever is cutting this release does not hold the private half,
+    # and nothing they sign would be accepted by an installed copy.
+    if ! security find-generic-password -s "https://sparkle-project.org" >/dev/null 2>&1; then
+      die "No Sparkle private key in this keychain. Only the machine that ran generate_keys can sign updates; import the backed-up key before cutting a release."
+    fi
   fi
 
   # Derived data and build output must live outside the repo when the repo sits
@@ -379,6 +403,140 @@ notarize() {
   spctl -a -vvv -t install "$DMG"
 }
 
+# ── 7. Appcast ───────────────────────────────────────────────────────────────
+#
+# The step that turns a notarized DMG into an update an installed copy will
+# actually accept.
+#
+# ORDER IS LOAD-BEARING: THIS RUNS AFTER STAPLING, NEVER BEFORE.
+# `xcrun stapler staple` rewrites the DMG in place to embed the notarization
+# ticket. A signature taken before that describes a file that no longer
+# exists, and Sparkle rejects the download with a signature mismatch — on the
+# user's machine, silently, long after the release looked successful here.
+# Everything below therefore lives after notarize() in the run order, and
+# nothing may touch the DMG once this function has run.
+#
+# WHY THE PUBLISHED FEED IS FETCHED FIRST. generate_appcast reuses an
+# appcast.xml already present in the archives directory and adds new entries
+# to it (`--help`: "that file will be re-used and updated with new entries").
+# The live feed is the only authoritative copy of what users have been offered
+# so far, so it is pulled down rather than reconstructed from whatever happens
+# to be in a local directory. Generating from an empty directory would publish
+# a feed containing only this release, which is survivable but throws away
+# every previous entry's release notes and signatures for no reason.
+#
+# WHY --download-url-prefix IS COMPUTED PER RELEASE. The DMGs live on GitHub
+# Releases, whose download URLs embed the tag (…/releases/download/v1.1/…), so
+# the prefix differs for every version. generate_appcast applies the prefix
+# only to entries it adds, leaving previously generated URLs untouched, which
+# is exactly the behaviour this needs.
+
+RELEASES_DIR="${RELEASES_DIR:-$REPO_ROOT/dist}"
+FEED_URL="https://malekthecoder.github.io/Sentry/appcast.xml"
+RELEASE_URL_BASE="https://github.com/malekTheCoder/Sentry/releases/download"
+
+# Sparkle's tools ship inside the resolved SPM artifact, so they exist only
+# after the project has been built at least once, and the path contains a
+# per-checkout hash. Prefer an explicit override, then anything on PATH, then
+# the newest copy under DerivedData.
+find_sparkle_tool() {
+  local tool="$1"
+  if [[ -n "${SPARKLE_BIN_DIR:-}" ]]; then
+    print -r -- "$SPARKLE_BIN_DIR/$tool"; return
+  fi
+  if command -v "$tool" >/dev/null 2>&1; then
+    command -v "$tool"; return
+  fi
+  local found
+  found="$(find ~/Library/Developer/Xcode/DerivedData \
+             -path "*/artifacts/sparkle/Sparkle/bin/$tool" -type f 2>/dev/null \
+           | head -1)"
+  print -r -- "$found"
+}
+
+appcast() {
+  say "Generating the Sparkle appcast"
+
+  local generate_appcast version dmg_name staged
+  generate_appcast="$(find_sparkle_tool generate_appcast)"
+  [[ -x "$generate_appcast" ]] || die "generate_appcast not found. Build once so SPM resolves Sparkle, or set SPARKLE_BIN_DIR."
+
+  # The version the *built app* carries, not what project.yml says now — the
+  # appcast's version must match the bundle byte for byte or Sparkle will
+  # compare wrongly and offer nothing.
+  version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+  [[ -n "$version" ]] || die "could not read CFBundleShortVersionString from the built app"
+
+  # A versioned filename, because every GitHub release asset needs a distinct
+  # name and because a user who downloads two of these should be able to tell
+  # them apart. Renaming is safe here: the notarization ticket lives inside
+  # the DMG, not in its name or path.
+  dmg_name="Sentry-$version.dmg"
+  mkdir -p "$RELEASES_DIR"
+  staged="$RELEASES_DIR/$dmg_name"
+  cp "$DMG" "$staged"
+
+  # Pull the published feed so previous entries survive. A 404 is the expected
+  # answer for the very first release and must not abort the run; anything
+  # else that leaves a non-XML body (a proxy error page, say) would be worse
+  # than starting fresh, so the result is sanity-checked before being kept.
+  if curl -fsSL "$FEED_URL" -o "$RELEASES_DIR/appcast.xml" 2>/dev/null; then
+    if grep -q "<rss" "$RELEASES_DIR/appcast.xml"; then
+      print -r -- "  Fetched the live feed; new entry will be appended to it."
+    else
+      print -r -- "  ⚠ $FEED_URL did not return an RSS document — starting a fresh feed."
+      rm -f "$RELEASES_DIR/appcast.xml"
+    fi
+  else
+    print -r -- "  No published feed yet (first release) — generating a new one."
+  fi
+
+  "$generate_appcast" \
+    --download-url-prefix "$RELEASE_URL_BASE/v$version/" \
+    --link "https://malekthecoder.github.io/Sentry/" \
+    "$RELEASES_DIR"
+
+  # ── The feed must actually be signed ──────────────────────────────────────
+  #
+  # generate_appcast will happily emit an entry with NO sparkle:edSignature,
+  # print "Wrote 1 new update", and exit 0. Observed directly: run against a
+  # correctly signed, notarized app whose SUPublicEDKey does not match the
+  # private key in the keychain, it writes an unsigned enclosure and says
+  # nothing — not even with --verbose. An installed Sentry rejects an unsigned
+  # update, so the result is a release that looks perfect here and silently
+  # fails to install for every user.
+  #
+  # Nothing else in this script catches it. The preflight and verify checks
+  # confirm the app carries a real, non-placeholder key; this confirms that
+  # the key is the one whose private half just signed the feed, which is a
+  # different claim and the one that actually matters.
+  if ! grep -q 'sparkle:edSignature="' "$RELEASES_DIR/appcast.xml"; then
+    die "appcast.xml has no sparkle:edSignature — generate_appcast did not sign this entry. The app's SUPublicEDKey almost certainly does not match the private key in this keychain. An unsigned entry is rejected by every installed copy; do not publish it."
+  fi
+
+  # The single cheapest way to catch a post-signing rewrite: the length the
+  # feed advertises must equal the DMG's real size. If these disagree, the
+  # file was touched after it was signed and every user's update will fail
+  # verification.
+  local advertised actual
+  advertised="$(grep -o "$dmg_name\"[^>]*length=\"[0-9]*\"" "$RELEASES_DIR/appcast.xml" \
+                | grep -o 'length="[0-9]*"' | grep -o '[0-9]*' | tail -1)"
+  actual="$(stat -f%z "$staged")"
+  if [[ -n "$advertised" && "$advertised" != "$actual" ]]; then
+    die "appcast length=$advertised does not match $dmg_name ($actual bytes) — the DMG changed after signing."
+  fi
+
+  say "Appcast ready"
+  print -r -- "  $RELEASES_DIR/appcast.xml"
+  print -r -- "  $staged"
+  print -r -- ""
+  print -r -- "  To publish, both of these must go out together:"
+  print -r -- "    1. Upload $dmg_name as an asset on the 'v$version' GitHub release"
+  print -r -- "       (the tag must be exactly 'v$version' — the feed's download URL assumes it)."
+  print -r -- "    2. Commit appcast.xml to the gh-pages branch."
+  print -r -- "  If the DMG is regenerated or re-uploaded afterwards, re-run this step."
+}
+
 # ── Run ──────────────────────────────────────────────────────────────────────
 
 preflight
@@ -395,6 +553,7 @@ if (( SKIP_NOTARIZE )); then
 fi
 
 notarize
+appcast
 
 say "Done"
 print -r -- "  $DMG — signed, notarized, stapled, Gatekeeper-approved."
