@@ -53,16 +53,20 @@ public enum AppCredits {
 
     // MARK: - Policy links
 
-    /// Where the privacy policy will live once it is published.
+    /// Where the privacy policy is published. **Live and verified** (HTTP 200,
+    /// no login, no redirect-to-login) as of 2026-08-13.
     ///
-    /// ⚠️ **[PRIVACY POLICY URL — TO FILL IN]** ⚠️ The policy text itself is
-    /// `docs/privacy-policy.md` in this repository; it is not yet served at
-    /// any address. This constant is the *only* place either platform names
-    /// that address, so publishing the policy is a one-line change here and
-    /// nowhere else. The value below is the GitHub Pages site the app
-    /// already points at for its Sparkle appcast (`SUFeedURL`), which is
-    /// the intended home — it is a placeholder for the *path*, not a guess
-    /// at some other host.
+    /// This constant is the *only* place either platform names that address,
+    /// and the same string goes in App Store Connect's Privacy Policy URL
+    /// field — App Review fetches it on every submission, so the two must not
+    /// drift apart.
+    ///
+    /// **The extensionless path is deliberate and is pinned at both ends.**
+    /// Jekyll would publish `privacy-policy.md` at `/privacy-policy.html`;
+    /// the site's front matter sets `permalink: /privacy-policy/` precisely
+    /// so the URL below resolves. Changing either half alone breaks the link
+    /// in every shipped copy — and unlike the site, this string cannot be
+    /// corrected on an app already installed.
     public static let privacyPolicyURLString = "https://malekthecoder.github.io/Sentry/privacy-policy"
 
     /// Non-optional at the call site, because a malformed literal here is a

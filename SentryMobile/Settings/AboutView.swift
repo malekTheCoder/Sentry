@@ -136,14 +136,15 @@ struct AboutView: View {
                     .scaledFont(palette, size: 12.5)
                     .foregroundStyle(palette.accent)
             }
-            // Deliberately says neither a source-tree path nor a file
-            // extension — connection-honesty review, "internal-type-name
-            // leaks" — matching how the acknowledgements list below states
-            // each package's actual `license`/`copyright` fact rather than
-            // pointing at where that fact lives in the repo. Someone reading
-            // this in the app has no source checkout to look in; "not live
-            // yet" is the one thing that's both true and useful to them.
-            Text("Sentry keeps its data on your own devices. The full written policy isn't published yet; the link above isn't live.")
+            // This sentence used to end "the link above isn't live," which was
+            // true when it was written and became false the moment the policy
+            // was published. Shipping copy that tells a reviewer a required
+            // link is dead is a self-inflicted rejection — App Review checks
+            // the privacy policy URL on every submission — so the claim is
+            // gone rather than reworded, and what remains is the part that is
+            // durably true and actually useful to someone reading it in the
+            // app: where their data lives.
+            Text("Sentry keeps its data on your own devices. The full written policy is linked above.")
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
