@@ -131,7 +131,16 @@ struct WatchKeepAwakeIntent: AppIntent {
         "Asks your Mac to stay awake for a while, relayed through your iPhone."
     )
 
-    @Parameter(title: "Duration", description: "How long to keep the Mac awake, in minutes.", default: 60)
+    /// `0` means "until you release it" — same contract as the iPhone's
+    /// `KeepAwakeIntent` and the Mac's `KeepMacAwakeIntent`, and the same
+    /// shared `KeepAwakeRequest` encoding as the Watch app's own Keep Awake
+    /// page (`ContentView.send(_:)`), so Siri from the wrist can't drift
+    /// from a tap on the same wrist.
+    @Parameter(
+        title: "Duration",
+        description: "How long to keep the Mac awake, in minutes. 0 keeps it awake until you release it.",
+        default: 60
+    )
     var durationMinutes: Int
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -139,14 +148,16 @@ struct WatchKeepAwakeIntent: AppIntent {
             deviceID: "unknown",
             issuedAt: Date(),
             commandType: "keepAwake",
-            parametersJSON: #"{"durationSeconds":\#(max(durationMinutes, 0) * 60),"mode":"systemOnly"}"#,
+            parametersJSON: KeepAwakeRequest.parametersJSON(minutes: durationMinutes),
             nonce: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(5 * 60)
         )
-        let dialog = await WatchControlBridge.sendAndDescribe(
-            command,
-            whenCompleted: String(localized: "Your Mac will stay awake for \(String(durationMinutes)) minutes.")
-        )
+        // Same predicate as the wire encoding — an indefinite hold must not
+        // be narrated with a minute count (see `KeepAwakeRequest`).
+        let successVerb = KeepAwakeRequest.isIndefinite(minutes: durationMinutes)
+            ? String(localized: "Your Mac will stay awake until you release it.")
+            : String(localized: "Your Mac will stay awake for \(String(durationMinutes)) minutes.")
+        let dialog = await WatchControlBridge.sendAndDescribe(command, whenCompleted: successVerb)
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
 }

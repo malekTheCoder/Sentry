@@ -299,31 +299,27 @@ struct ContentView: View {
             // sentinel for "until I turn it off" — the Mac supports an
             // untimed assertion (`PowerControlService.startAssertion(duration:
             // nil)`) and a non-Optional minute count has no other way to
-            // spell it. Branched on explicitly, and against the *named*
-            // constant rather than a bare `0`: the obvious
-            // `durationSeconds: minutes * 60` would send `0`, which
-            // `LocalCommandExecutor.executeKeepAwake` happens to coerce to
-            // `nil` by way of its `> 0` guard — right answer, wrong reason,
-            // and it would stop being right the moment either side changed.
-            // Referring to the symbol also means that if the sentinel is ever
-            // replaced by an `Int?` signature, this stops compiling instead of
-            // quietly sending a one-second assertion.
-            if minutes == KeepAwakePage.indefiniteMinutes {
-                // No `durationSeconds` key at all, rather than an explicit
-                // zero — the same shape the phone's own indefinite request
-                // sends, so the Mac never has to interpret a zero.
-                command = Self.command(
-                    type: "keepAwake",
-                    parametersJSON: #"{"mode":"systemOnly"}"#
-                )
-                successSentence = String(localized: "Your Mac will stay awake until you turn it off.")
-            } else {
-                command = Self.command(
-                    type: "keepAwake",
-                    parametersJSON: #"{"durationSeconds":\#(max(minutes, 0) * 60),"mode":"systemOnly"}"#
-                )
-                successSentence = String(localized: "Your Mac will stay awake for \(String(minutes)) minutes.")
-            }
+            // spell it. The wire encoding is `KeepAwakeRequest`'s, shared
+            // with every other remote surface: the "no `durationSeconds`
+            // key at all, never an explicit zero the Mac has to interpret"
+            // argument that used to live only in this method's comment now
+            // lives in that type's doc comment and, more to the point, in
+            // the behavior of every caller at once — this branch pioneered
+            // the honest shape and the Siri intents drifted from it, which
+            // is exactly the drift a hand-spelled JSON string per surface
+            // invites. The sentinel check stays symbolic (`==
+            // KeepAwakePage.indefiniteMinutes`, not `<= 0`) so replacing
+            // the sentinel with an `Int?` signature breaks this line at
+            // compile time instead of quietly changing meaning; the two
+            // predicates agree today because the sentinel *is* 0, and the
+            // sentence below branches on the page's own vocabulary.
+            command = Self.command(
+                type: "keepAwake",
+                parametersJSON: KeepAwakeRequest.parametersJSON(minutes: minutes)
+            )
+            successSentence = minutes == KeepAwakePage.indefiniteMinutes
+                ? String(localized: "Your Mac will stay awake until you turn it off.")
+                : String(localized: "Your Mac will stay awake for \(String(minutes)) minutes.")
         case .release:
             command = Self.command(type: "releaseAwake", parametersJSON: "{}")
             successSentence = String(localized: "Your Mac can sleep normally again.")

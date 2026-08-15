@@ -10,6 +10,11 @@ import SwiftUI
 struct LargeWidgetView: View {
     let snapshot: WidgetSnapshot?
 
+    /// `entry.date`, not `Date()` — see `MediumWidgetView.asOf` for why the
+    /// entry's own on-screen instant is the only clock an archived widget
+    /// view can honestly judge a timed hold's expiry against.
+    let asOf: Date
+
     var body: some View {
         if let snapshot {
             VStack(alignment: .leading, spacing: 10) {
@@ -63,11 +68,16 @@ struct LargeWidgetView: View {
         .frame(minWidth: 90)
     }
 
+    /// "Awake" only while the cached hold is still credible as of this
+    /// entry's on-screen instant — a timed hold past its own `expiresAt`
+    /// reads "Normal", because its release is guaranteed by the recorded
+    /// deadline, not contingent on this cache being fresh. Same judgment,
+    /// same helper, as `MediumWidgetView.sleepRow` and the Control Center
+    /// toggle (`SleepAssertionState.isCrediblyActive(asOf:)`).
     private func sleepLabel(_ assertion: SleepAssertionState) -> String {
-        switch assertion {
-        case .inactive: return String(localized: "Normal")
-        case .active: return String(localized: "Awake")
-        }
+        assertion.isCrediblyActive(asOf: asOf)
+            ? String(localized: "Awake")
+            : String(localized: "Normal")
     }
 
     /// `batteryHistory` is whatever `WidgetBatteryHistory`'s ring buffer

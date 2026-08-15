@@ -58,7 +58,8 @@ struct DashboardTabView: View {
                 if isSleepActive {
                     SleepStatusCard(
                         assertion: viewModel.latestSnapshot?.sleepAssertion,
-                        deviceID: viewModel.selectedDevice?.deviceID ?? "unknown"
+                        deviceID: viewModel.selectedDevice?.deviceID ?? "unknown",
+                        isMacUnreachable: isMacUnreachable
                     )
                 }
 
@@ -90,7 +91,8 @@ struct DashboardTabView: View {
                 if !isSleepActive {
                     SleepStatusCard(
                         assertion: viewModel.latestSnapshot?.sleepAssertion,
-                        deviceID: viewModel.selectedDevice?.deviceID ?? "unknown"
+                        deviceID: viewModel.selectedDevice?.deviceID ?? "unknown",
+                        isMacUnreachable: isMacUnreachable
                     )
                 }
             }
@@ -111,12 +113,24 @@ struct DashboardTabView: View {
     /// so everything degrades to "—" — the last received values are real
     /// but frozen, and frozen-presented-as-live is the lie the handoff
     /// forbids. (`SleepStatusCard` keeps the raw snapshot: an assertion
-    /// countdown carries its own end time and stays meaningful.)
+    /// countdown carries its own end time and stays meaningful — but it
+    /// takes `isMacUnreachable` alongside it, because an *indefinite* hold
+    /// carries no such self-correcting end time and its "● Active" pill
+    /// was this rule's one leak: frozen-presented-as-live, on the exact
+    /// card that reports whether the Mac is being held awake.)
     private var displaySnapshot: SystemSnapshot? {
-        if appDataSource.isUsingLocalSync && !appDataSource.isLocalSyncConnected {
+        if isMacUnreachable {
             return nil
         }
         return viewModel.latestSnapshot
+    }
+
+    /// The tab's one unreachable predicate — the same expression
+    /// `displaySnapshot` has always keyed off, named so the sleep card and
+    /// the blanking rule provably share it rather than each spelling their
+    /// own transport check that could drift.
+    private var isMacUnreachable: Bool {
+        appDataSource.isUsingLocalSync && !appDataSource.isLocalSyncConnected
     }
 
     /// Whether the chart and ledger should wear their own `SAMPLE` tags.
@@ -132,9 +146,16 @@ struct DashboardTabView: View {
             .marksIndividualValues
     }
 
+    /// Whether the sleep card earns top billing. `isCrediblyActive`, not a
+    /// bare `.active` match: a cached timed hold whose own `expiresAt` has
+    /// passed certainly released (see `SleepAssertionState.isCrediblyActive
+    /// (asOf:)`), and promoting it above the battery hero would headline
+    /// the tab with a hold that no longer exists. The card itself still
+    /// renders the ended state — down in its usual slot, with its
+    /// `expiredNotice` explaining — so the fact isn't hidden, just no
+    /// longer the lead story.
     private var isSleepActive: Bool {
-        if case .active = viewModel.latestSnapshot?.sleepAssertion { return true }
-        return false
+        viewModel.latestSnapshot?.sleepAssertion?.isCrediblyActive(asOf: Date()) ?? false
     }
 
     // MARK: - Header

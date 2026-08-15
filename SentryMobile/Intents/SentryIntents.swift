@@ -114,7 +114,19 @@ struct KeepAwakeIntent: AppIntent {
         "Asks your Mac to stay awake for a while. Needs Sentry open on a Mac on the same Wi-Fi network."
     )
 
-    @Parameter(title: "Duration", description: "How long to keep the Mac awake, in minutes.", default: 60)
+    /// `0` means "until you release it" — the same contract the Mac's own
+    /// `KeepMacAwakeIntent.durationMinutes` documents, so Siri answers the
+    /// same utterance the same way whichever device fields it. The wire
+    /// shape and the spoken outcome both branch on
+    /// `KeepAwakeRequest.isIndefinite(minutes:)` (see that type's doc
+    /// comment for the drift this intent used to ship: an explicit
+    /// `"durationSeconds":0` the Mac coerced to indefinite, narrated as
+    /// "stay awake for 0 minutes").
+    @Parameter(
+        title: "Duration",
+        description: "How long to keep the Mac awake, in minutes. 0 keeps it awake until you release it.",
+        default: 60
+    )
     var durationMinutes: Int
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -122,14 +134,17 @@ struct KeepAwakeIntent: AppIntent {
             deviceID: await SentryIntents.targetDeviceID(),
             issuedAt: Date(),
             commandType: "keepAwake",
-            parametersJSON: #"{"durationSeconds":\#(max(durationMinutes, 0) * 60),"mode":"systemOnly"}"#,
+            parametersJSON: KeepAwakeRequest.parametersJSON(minutes: durationMinutes),
             nonce: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(5 * 60)
         )
-        let dialog = await SentryIntents.sendAndDescribe(
-            command,
-            whenCompleted: String(localized: "Your Mac will stay awake for \(String(durationMinutes)) minutes.")
-        )
+        // The success sentence must branch on the same predicate the wire
+        // encoding branched on — an indefinite hold narrated with a minute
+        // count (or a zero) reports an end the Mac will never enforce.
+        let successVerb = KeepAwakeRequest.isIndefinite(minutes: durationMinutes)
+            ? String(localized: "Your Mac will stay awake until you release it.")
+            : String(localized: "Your Mac will stay awake for \(String(durationMinutes)) minutes.")
+        let dialog = await SentryIntents.sendAndDescribe(command, whenCompleted: successVerb)
         return .result(dialog: IntentDialog(stringLiteral: dialog))
     }
 }
