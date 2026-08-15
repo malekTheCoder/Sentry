@@ -574,7 +574,7 @@ Code fixes are done. These are not.
 - [ ] **Export compliance** — the plist now answers this (`ITSAppUsesNonExemptEncryption: false`), so App Store Connect should stop asking. If it does ask, the answer is: uses encryption → **yes**; exempt → **yes**, only encryption provided by the operating system. Read §5 first; this is your legal declaration.
 - [ ] **EU Digital Services Act trader status.** Since **17 February 2025** apps without verified trader status are **removed from the EU App Store**. Verification takes time — start it now, not at submission.
 - [ ] **Support URL** — required, must resolve. There is currently no support URL anywhere in the project. Decide what it is.
-- [ ] **Marketing URL** — optional; leave blank rather than pointing at a 404.
+- [ ] **Marketing URL** — optional; use `https://malekswilam.dev/SentryWebsite/`, which is live. Never leave a 404 here.
 - [ ] **Screenshots** — required for iPhone 6.9" *and* Apple Watch (a bundled watch app needs its own set). `docs/screenshots/` and the marketing repo have material to start from. They must show the real app; a screenshot of demo data is fine if it is not presented as a real Mac.
 - [ ] **App description** — state the Mac requirement in the first paragraph, above the fold. This sets reviewer expectation before they open the app and protects against 2.1 and 4.2 simultaneously.
 - [ ] **Category** — Utilities.
