@@ -17,6 +17,8 @@ Support for Sentry happens on GitHub Issues:
 
 Search the existing issues first — someone may have already reported yours. If not, open a new issue.
 
+**No GitHub account?** Email **[getsentryapp@gmail.com](mailto:getsentryapp@gmail.com)** instead. Use email for anything you would rather not post publicly — a crash log with paths you would rather not share, or a security report.
+
 ## What to include in a bug report
 
 The more of this you include, the faster the bug gets fixed:
