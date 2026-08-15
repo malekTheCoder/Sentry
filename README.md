@@ -178,6 +178,18 @@ Everything stays on your devices; sync goes directly from your Mac to your
 phone and watch. The full policy — what is collected, where it lives, and
 how to delete it — is [`docs/privacy-policy.md`](docs/privacy-policy.md).
 
+## Website
+
+The marketing site is **not** part of this repo. It lives in
+[SentryWebsite](https://github.com/malekTheCoder/SentryWebsite) and deploys
+from that repo's own `main` to <https://malekswilam.dev/SentryWebsite/>;
+nothing here is served as the site, and nothing here needs to be copied
+there to publish it.
+
+The screenshot masters the site uses are
+[`docs/screenshots/`](docs/screenshots/) in this repo. Update them here, then
+pull them into the site repo from there.
+
 ## Support
 
 Questions and bug reports go to
