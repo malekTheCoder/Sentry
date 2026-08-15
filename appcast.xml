@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparkle update feed for Sentry.
+
+  This URL is compiled into every shipped binary as SUFeedURL and cannot be
+  changed retroactively, so it has to resolve. Until this file existed the
+  feed 404'd for every v1.0 install on every update check.
+
+  The channel is deliberately empty: an entry has to carry a real EdDSA
+  signature over its DMG, and those are produced by scripts/release.sh via
+  Sparkle's generate_appcast using the private key in the release machine's
+  Keychain. An unsigned entry would be rejected by Sparkle anyway, so a
+  well-formed empty feed is the honest state — clients read it as "you are
+  up to date" rather than erroring.
+
+  scripts/release.sh fetches this file, appends the new release's signed
+  entry and republishes it. Do not hand-edit entries into it.
+-->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Sentry</title>
+    <link>https://malekthecoder.github.io/Sentry/appcast.xml</link>
+    <description>Updates for Sentry, a native macOS system monitor.</description>
+    <language>en</language>
+  </channel>
+</rss>
