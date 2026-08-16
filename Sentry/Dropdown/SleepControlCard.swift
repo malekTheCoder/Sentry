@@ -38,11 +38,12 @@ import SentryKit
 ///   re-arm *again* when the user dialed in the number they actually wanted
 ///   — a period of live, wrong behavior plus two teardowns, produced by a
 ///   user who did nothing but start typing their intent.
-/// - *Every edit is a real IOKit teardown.* `startAssertionInternal` begins
-///   with `releaseAssertion()`, so each re-assert releases and recreates the
-///   OS-level assertion, bumps `assertionGeneration`, and closes and reopens
-///   an `awakeHolds` ledger entry. A `Stepper` held down, or a `DatePicker`
-///   typed into, would do that per tick and per keystroke.
+/// - *Every edit is a real IOKit teardown.* The service's internal start
+///   path begins by releasing the slot's previous assertion, so each
+///   re-assert releases and recreates the OS-level assertion, bumps
+///   `assertionGeneration`, and closes and reopens an `awakeHolds` ledger
+///   entry. A `Stepper` held down, or a `DatePicker` typed into, would do
+///   that per tick and per keystroke.
 ///
 /// Apply's semantics depend on *what* changed, because the two rows mean
 /// different things. The **For** row and its threshold row define when the
@@ -1661,7 +1662,12 @@ enum KeepAwakeChange: Equatable {
         case .retrigger:
             return String(localized: "Apply restarts this session with these settings, including its countdown.")
         case .unknown:
-            return String(localized: "This session was started elsewhere. Apply replaces it with these settings.")
+            // "Starts your own session," not "replaces it": a restored hold
+            // of the user's own *is* replaced, but an agent's hold lives in
+            // its own slot now (`PowerControlService`'s two-slot design) and
+            // survives underneath the user's — claiming Apply replaces it
+            // would promise a teardown that deliberately doesn't happen.
+            return String(localized: "This session was started elsewhere. Apply starts your own session with these settings.")
         }
     }
 }

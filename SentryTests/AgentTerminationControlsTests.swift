@@ -58,17 +58,28 @@ final class AgentTerminationControlsTests: XCTestCase {
         XCTAssertNil(service.agentAssertionOwner)
     }
 
-    func testUserAssertionReplacingAgentOneClearsOwnership() throws {
-        // The generation-tag design: the user's fresh assertion bumps
-        // `assertionGeneration`, so the agent tag goes stale and the kill
-        // switch must not tear down the user's hold.
-        let service = PowerControlService(defaults: makeTestDefaults("userReplaces"))
+    func testUserAssertionCoexistsWithAgentHoldAndAgentSweepSparesIt() throws {
+        // This test used to pin the generation-tag design: one slot, where a
+        // user start *replaced* the agent's hold and cleared its ownership,
+        // and the safety property — the kill switch must never tear down the
+        // user's hold — held because nothing agent-owned survived the
+        // replacement. The two-slot model keeps the property but inverts the
+        // mechanics: the holds now coexist (an agent's `keep_awake` silently
+        // swallowing the user's "Indefinitely," and vice versa, was the
+        // replace model's own failure mode), so the kill switch's safety is
+        // structural — `releaseAgentAssertion` can only ever touch the agent
+        // slot. Assert the whole sequence, not just the end state.
+        let service = PowerControlService(defaults: makeTestDefaults("userCoexists"))
         defer { service.releaseAssertion() }
 
         try service.startAgentAssertion(mode: .systemOnly, duration: 60, reason: "agent", clientName: "Claude Code")
         try service.startAssertion(mode: .systemOnly, duration: 60, reason: "user's own hold")
-        XCTAssertNil(service.agentAssertionOwner)
-        XCTAssertFalse(service.releaseAgentAssertion(), "nothing agent-held should be releasable")
+        XCTAssertEqual(
+            service.agentAssertionOwner, "Claude Code",
+            "the user's start must not evict the agent's hold — the slots coexist"
+        )
+        XCTAssertTrue(service.releaseAgentAssertion(), "the sweep must find and release the agent's hold")
+        XCTAssertNil(service.agentAssertionOwner, "ownership ends with the agent slot")
         XCTAssertNotEqual(service.state, .inactive, "the user's hold must survive an agent release sweep")
     }
 
