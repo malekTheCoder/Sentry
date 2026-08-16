@@ -474,17 +474,18 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             // Coordination picture: who else is active (caller excluded —
             // capacity for *you* shouldn't warn about *you*), and whether an
             // agent holds keep-awake. The registry's flag is cross-checked
-            // against the live assertion: a timed hold can expire without
-            // another MCP call arriving to tell the registry.
+            // against the live *agent-owned* assertion, not merely "any
+            // assertion is active": with the user's and an agent's holds now
+            // separate slots (`PowerControlService`'s two-slot design), a
+            // user-started hold plus a stale registry flag must not report
+            // `agentHeldKeepAwake: true` — that misattributes the user's own
+            // choice to an agent. `agentAssertionOwner` is non-nil exactly
+            // while an agent-slot hold is live, which also covers the
+            // registry-goes-stale case (a timed agent hold can expire with
+            // no further MCP call arriving to tell the registry).
             let others = self.sessionRegistry.otherActiveSessions(excluding: self.sessionIdentity(fromWire: clientName).clientName)
-            let assertionActive: Bool
-            if case .active = self.powerControl.state {
-                assertionActive = true
-            } else {
-                assertionActive = false
-            }
-            let agentHeldKeepAwake = assertionActive
-                && self.sessionRegistry.activeSessions().contains(where: \.holdsKeepAwake)
+            let agentHoldOwner = self.powerControl.agentAssertionOwner
+            let agentHeldKeepAwake = agentHoldOwner != nil
 
             let sessions = others.map { session in
                 MCPPayloads.AgentSessionInfo(
@@ -492,7 +493,9 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                     connectedAt: session.connectedAt,
                     lastCallAt: session.lastCallAt,
                     recentTools: session.recentTools.map(\.rawValue),
-                    holdsKeepAwake: session.holdsKeepAwake && assertionActive
+                    // Per-session honesty: the flag is only true for the
+                    // session that actually owns the live agent hold.
+                    holdsKeepAwake: session.holdsKeepAwake && session.clientName == agentHoldOwner
                 )
             }
 
@@ -686,13 +689,17 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
             let identity = self.sessionIdentity(fromWire: clientName)
             let clampedReason = reason.isEmpty ? "Requested via MCP by \(identity.clientName)" : reason
             do {
-                // The agent-tagged variant, not plain `startAssertion` — one
-                // call carries both ownership tags. The *client name* is what
-                // lets the kill switch and guardrail auto-revocation release
-                // an agent's hold without touching one the user started; the
-                // *session ID* is what lets the awake-hold ledger
-                // (`PowerControlService.awakeHolds`) attribute held time to
-                // this session in `get_session_resource_report`.
+                // The agent-slot entry point, not plain `startAssertion` —
+                // this lands in `PowerControlService`'s *agent slot*, so a
+                // user-started hold is never replaced by an agent's request
+                // (the old shared-assertion design let an agent's timed
+                // `keep_awake` silently supplant the user's indefinite hold
+                // and then expire out from under them). The *client name* is
+                // what lets the kill switch and guardrail auto-revocation
+                // release an agent's hold without touching one the user
+                // started; the *session ID* is what lets the awake-hold
+                // ledger (`PowerControlService.awakeHolds`) attribute held
+                // time to this session in `get_session_resource_report`.
                 try self.powerControl.startAgentAssertion(
                     mode: awakeMode,
                     duration: clampedDuration > 0 ? clampedDuration : nil,
@@ -700,9 +707,9 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
                     clientName: identity.clientName,
                     sessionID: identity.sessionID
                 )
-                // Attribute the (single) live assertion to this session for
-                // get_agent_capacity's coordination picture — only after
-                // the assertion actually exists.
+                // Attribute the (single) live agent-slot assertion to this
+                // session for get_agent_capacity's coordination picture —
+                // only after the assertion actually exists.
                 self.sessionRegistry.recordKeepAwake(clientName: identity.clientName)
                 reply(true, nil)
             } catch {
@@ -714,11 +721,33 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
     nonisolated func releaseAwake(clientName: String, reply: @escaping (Bool, String?) -> Void) {
         Task { @MainActor in
             guard let reply = self.authorizeInstrumented(.releaseAwake, wireClientName: clientName, argumentsSummary: "—", reply: reply) else { return }
-            self.powerControl.releaseAssertion()
-            // One assertion app-wide, so a release clears every session's
-            // keep-awake attribution — see `AgentSessionRegistry.clearKeepAwake`.
+            // Agent-slot release only, never `releaseAssertion()` — that is
+            // the user's master off switch, and this handler used to call it
+            // unconditionally, which let any MCP client silently end a
+            // keep-awake the *user* had turned on. An agent may only ever
+            // end the agent-slot hold (`PowerControlService`'s two-slot
+            // design makes the user's hold structurally unreachable from
+            // here). Releasing whichever agent hold exists, rather than only
+            // the caller's own, deliberately preserves this tool's old
+            // one-release-for-whoever-calls contract at the agent tier —
+            // there is exactly one agent slot, and the registry's
+            // `clearKeepAwake` doc already documents that reading.
+            let released = self.powerControl.releaseAgentAssertionAtAgentRequest()
             self.sessionRegistry.clearKeepAwake()
-            reply(true, nil)
+            if released {
+                reply(true, nil)
+            } else if self.powerControl.state == .inactive {
+                // Nothing held at all — an idempotent no-op, same success
+                // contract as `releaseAssertion()`'s own "safe to call with
+                // nothing active."
+                reply(true, nil)
+            } else {
+                // Something IS held, but by the user. Refuse honestly rather
+                // than silently succeeding over a hold this tool didn't (and
+                // must not) touch — an agent told "true" here would believe
+                // the Mac can now sleep, and it can't.
+                reply(false, "Keep-awake is held by the user, not an agent — agents can't release it. It ends when the user turns it off.")
+            }
         }
     }
 
@@ -891,13 +920,21 @@ final class MCPXPCService: NSObject, SentryXPCServiceProtocol {
 
     nonisolated func listAgentSessions(reply: @escaping (Data?, String?) -> Void) {
         Task { @MainActor in
+            // The cross-check `AgentSessionRegistry.Session.holdsKeepAwake`'s
+            // own doc comment mandates and this handler used to skip: the
+            // registry flag survives an agent hold expiring on its own timer
+            // (no MCP call arrives to clear it), so raw `holdsKeepAwake`
+            // would have `sentryctl sessions` report a hold that no longer
+            // exists. Only the session that owns the *live* agent-slot
+            // assertion gets the flag.
+            let agentHoldOwner = self.powerControl.agentAssertionOwner
             let sessions = self.sessionRegistry.activeSessions().map { session in
                 MCPPayloads.AgentSessionInfo(
                     clientName: session.clientName,
                     connectedAt: session.connectedAt,
                     lastCallAt: session.lastCallAt,
                     recentTools: session.recentTools.map(\.rawValue),
-                    holdsKeepAwake: session.holdsKeepAwake
+                    holdsKeepAwake: session.holdsKeepAwake && session.clientName == agentHoldOwner
                 )
             }
             self.encodeAndReply(sessions, reply: reply)

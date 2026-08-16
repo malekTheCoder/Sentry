@@ -195,13 +195,13 @@ final class PowerControlServiceTests: XCTestCase {
     // MARK: - Agent ownership survives extend/truncate (ownership-drift bug)
 
     func testAdjustAssertionExtendPreservesAgentOwnership() throws {
-        // Before the fix, `adjustAssertion` called the untagged internal
-        // start path directly, which bumps `assertionGeneration` and
-        // silently detaches `agentOwnership` from the (now different)
-        // generation — leaving an agent-held hold that the kill switch and
-        // `AgentGuardrails.autoRevocationReason` can no longer see as
-        // agent-owned. This is the exact scenario: extend an agent-held
-        // assertion, then check the owner survived.
+        // Historical bug this pins: under the shared-assertion design,
+        // `adjustAssertion` called the untagged internal start path, which
+        // silently detached the agent-ownership tag — leaving a hold the
+        // kill switch and `AgentGuardrails.autoRevocationReason` could no
+        // longer see as agent-owned. Ownership now lives on the agent slot
+        // itself, so surviving an extend is structural rather than a re-tag
+        // choreography — but the invariant is the same and stays pinned.
         let service = PowerControlService(defaults: makeTestDefaults("adjustAgentExtend"))
         defer { service.releaseAssertion() }
 
@@ -212,18 +212,18 @@ final class PowerControlServiceTests: XCTestCase {
             clientName: "claude-code"
         )
         XCTAssertEqual(service.agentAssertionOwner, "claude-code")
-        let generationBeforeAdjust = service.assertionGeneration
+        let generationBeforeAdjust = service.agentAssertionGeneration
 
         try service.adjustAssertion(bySeconds: 300)
 
-        // The adjustment really did mint a new assertion (new generation) —
-        // otherwise this test would trivially pass without exercising the
-        // bug at all.
-        XCTAssertNotEqual(service.assertionGeneration, generationBeforeAdjust)
+        // The adjustment really did mint a new agent-slot assertion (new
+        // generation) — otherwise this test would trivially pass without
+        // exercising anything at all.
+        XCTAssertNotEqual(service.agentAssertionGeneration, generationBeforeAdjust)
         XCTAssertEqual(
             service.agentAssertionOwner,
             "claude-code",
-            "extending an agent-held assertion must not silently strip its owner tag"
+            "extending an agent-held assertion must not silently strip its owner"
         )
     }
 
@@ -371,7 +371,18 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .inactive)
     }
 
-    func testColdStartDoesNotRestoreAnIndefiniteAssertion() throws {
+    func testColdStartReassertsTheUsersIndefiniteHold() throws {
+        // This test used to pin the *opposite* behavior — an indefinite
+        // record was deliberately discarded at cold start, on the argument
+        // that restoring it would silently re-hold the machine on every
+        // login-item launch. That argument conflated restoring with hiding
+        // (the dropdown, menu-bar rule, and widgets all surface a live
+        // hold), and the discard's real-world effect was the exact
+        // complaint that reopened this file: "Indefinitely" un-setting
+        // itself whenever the app restarted. The user's standing intent —
+        // keep this Mac awake *until I turn it off* — survives a relaunch
+        // now; only the user turning it off ends it. See
+        // `reconcileAtColdStart()`'s doc comment for the full argument.
         let defaults = makeTestDefaults("reconcileIndefinite")
 
         let first = PowerControlService(defaults: defaults)
@@ -379,19 +390,16 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertEqual(first.state, .active(mode: .systemOnly, expiresAt: nil, reason: "round trip"))
 
         // A second instance sharing the same UserDefaults suite simulates an
-        // app relaunch. An *indefinite* assertion must NOT come back: the OS
-        // released the real assertion when the previous process exited, so
-        // the persisted record is only stale bookkeeping. Restoring it would
-        // silently re-hold the machine awake with no user action — and,
-        // because Sentry can be a login item, would do so on every boot,
-        // forever, with nothing on screen until the user happens to open the
-        // dropdown. Plan §10.4 only authorizes restoring a record whose
-        // "expiry is still in the future," which an indefinite hold cannot
-        // satisfy.
+        // app relaunch. (The recorded owner PID is this test process, which
+        // `reconcileAtColdStart` treats as its own record — the
+        // another-live-instance guard is exercised separately by
+        // `testColdStartLeavesARecordOwnedByAnotherLiveInstanceAlone`.)
         let second = PowerControlService(defaults: defaults)
-        XCTAssertEqual(second.state, .inactive)
-        // The stale record must also be cleared, not left to be re-evaluated.
-        XCTAssertNil(defaults.data(forKey: "dev.malekswilam.sentry.powercontrol.state"))
+        XCTAssertEqual(
+            second.state,
+            .active(mode: .systemOnly, expiresAt: nil, reason: "round trip"),
+            "the user's indefinite hold must survive a relaunch — indefinitely means until the user turns it off"
+        )
 
         first.releaseAssertion()
         second.releaseAssertion()
@@ -472,14 +480,16 @@ final class PowerControlServiceTests: XCTestCase {
         second.releaseAssertion()
     }
 
-    func testWakeReconcileOfAnAgentHoldPreservesItsOwner() throws {
-        // The wake counterpart: the process never died, so `agentOwnership`
-        // is still resident in memory, but `reconcilePersistedState` still
-        // bumps `assertionGeneration` when it recreates the (already live)
-        // OS assertion — see the type doc comment on why the wake path
-        // recreates at all. Without re-tagging after that bump, the
-        // in-memory tag would go stale on the very next guardrail check,
-        // exactly as `adjustAssertion` did before its fix.
+    func testWakeReconcileOfAnAgentHoldPreservesItsOwnerWithoutRecreating() throws {
+        // An earlier version of this test pinned the opposite mechanics: the
+        // wake path used to release-and-recreate the (still live) assertion,
+        // and this test verified the owner tag survived the flap by being
+        // explicitly re-applied. The flap is gone — sleep does not destroy
+        // an `IOPMAssertion`, and re-arming from the record on wake is what
+        // let a clobbered record silently kill a live hold (see
+        // `reconcileAfterWake()`'s doc comment) — so the pinned invariant is
+        // now the stronger one: waking changes *nothing* about a live,
+        // unexpired agent hold. Same generation, same owner.
         let defaults = makeTestDefaults("reconcileAgentWake")
         let service = PowerControlService(defaults: defaults)
         try service.startAgentAssertion(
@@ -488,7 +498,7 @@ final class PowerControlServiceTests: XCTestCase {
             reason: "agent hold across wake",
             clientName: "claude-code"
         )
-        let generationBeforeWake = service.assertionGeneration
+        let generationBeforeWake = service.agentAssertionGeneration
         XCTAssertEqual(service.agentAssertionOwner, "claude-code")
 
         NSWorkspace.shared.notificationCenter.post(
@@ -499,32 +509,33 @@ final class PowerControlServiceTests: XCTestCase {
         DispatchQueue.main.async { resumed.fulfill() }
         wait(for: [resumed], timeout: 2)
 
-        XCTAssertNotEqual(
-            service.assertionGeneration,
+        XCTAssertEqual(
+            service.agentAssertionGeneration,
             generationBeforeWake,
-            "the wake path really does recreate the assertion (new generation) — otherwise this test wouldn't exercise the bug"
+            "waking must keep the live assertion, not flap it through a release-and-recreate"
         )
         XCTAssertEqual(
             service.agentAssertionOwner,
             "claude-code",
-            "waking must not silently strip an agent-held assertion's owner tag"
+            "waking must not silently strip an agent-held assertion's owner"
         )
 
         service.releaseAssertion()
     }
 
-    func testWakeKeepsAnIndefiniteAssertionThatColdStartWouldHaveDiscarded() throws {
+    func testWakeKeepsAnIndefiniteAssertionWithoutRecreatingIt() throws {
         let defaults = makeTestDefaults("reconcileWake")
         let service = PowerControlService(defaults: defaults)
         try service.startAssertion(mode: .systemOnly, duration: nil, reason: "across wake")
+        let generationBeforeWake = service.assertionGeneration
 
-        // The deliberate asymmetry to `testColdStartDoesNotRestoreAnIndefiniteAssertion`:
-        // on wake the process never died, so the user's standing "keep this
-        // Mac awake" intent is still live and must survive. Only a cold
-        // start — where the OS already released the real assertion — treats
-        // the persisted record as stale. Without this test the two halves of
-        // `isColdStart` could silently converge on the same behaviour and
-        // still pass everything else.
+        // On wake the process never died, so the user's standing "keep this
+        // Mac awake" intent is still live and must survive — and survive
+        // *as the same assertion*: the old release-and-recreate flap opened
+        // a window with no assertion held and made the persisted record the
+        // authority over a hold this process verifiably still owned, which
+        // is the exact mechanism behind the silent-shutoff incident
+        // `reconcileAfterWake()`'s doc comment describes.
         NSWorkspace.shared.notificationCenter.post(
             name: NSWorkspace.didWakeNotification,
             object: nil
@@ -534,6 +545,80 @@ final class PowerControlServiceTests: XCTestCase {
         wait(for: [resumed], timeout: 2)
 
         XCTAssertEqual(service.state, .active(mode: .systemOnly, expiresAt: nil, reason: "across wake"))
+        XCTAssertEqual(
+            service.assertionGeneration,
+            generationBeforeWake,
+            "waking must keep the live assertion, not flap it through a release-and-recreate"
+        )
+
+        service.releaseAssertion()
+    }
+
+    func testWakeWithAMissingRecordKeepsTheLiveHoldAndRepairsTheRecord() throws {
+        // THE regression test for the verified field incident: the installed
+        // app held a live indefinite assertion; a second Sentry instance (a
+        // Debug/test-host run sharing the bundle's defaults domain) cleared
+        // the persisted record; and at the next lid-open wake the old
+        // reconcile's "no record → release" branch silently tore down the
+        // user's live hold and flipped the toggle off. The live in-process
+        // assertion is the authority at wake — a missing record means the
+        // *record* is damaged, so it is repaired from live state and the
+        // hold survives.
+        let defaults = makeTestDefaults("wakeMissingRecord")
+        let service = PowerControlService(defaults: defaults)
+        try service.startAssertion(mode: .displayAndSystem, duration: nil, reason: "the user's standing intent")
+
+        // The clobber: another instance (or anything else) removes the record.
+        defaults.removeObject(forKey: "dev.malekswilam.sentry.powercontrol.state")
+
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        let resumed = expectation(description: "wake reconciliation ran")
+        DispatchQueue.main.async { resumed.fulfill() }
+        wait(for: [resumed], timeout: 2)
+
+        XCTAssertEqual(
+            service.state,
+            .active(mode: .displayAndSystem, expiresAt: nil, reason: "the user's standing intent"),
+            "a damaged record must never take a live hold down with it"
+        )
+        XCTAssertNotNil(
+            defaults.data(forKey: "dev.malekswilam.sentry.powercontrol.state"),
+            "the wake path must repair the record from live state"
+        )
+
+        service.releaseAssertion()
+    }
+
+    func testWakeWithAForeignInactiveRecordKeepsTheLiveHold() throws {
+        // The indistinguishable sibling of the missing-record clobber: the
+        // second instance doesn't remove the record, it overwrites it with
+        // its own `.inactive` truth. Same authority rule applies.
+        let defaults = makeTestDefaults("wakeInactiveRecord")
+        let key = "dev.malekswilam.sentry.powercontrol.state"
+        let service = PowerControlService(defaults: defaults)
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "still the user's intent")
+
+        struct MirrorRecord: Codable {
+            var state: SleepAssertionState
+            var condition: ReleaseCondition?
+            var ownerPID: Int32?
+            var ownerProcessName: String?
+        }
+        let foreign = MirrorRecord(state: .inactive, condition: nil, ownerPID: 1, ownerProcessName: "launchd")
+        defaults.set(try JSONEncoder().encode(foreign), forKey: key)
+
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        let resumed = expectation(description: "wake reconciliation ran")
+        DispatchQueue.main.async { resumed.fulfill() }
+        wait(for: [resumed], timeout: 2)
+
+        XCTAssertEqual(service.state, .active(mode: .systemOnly, expiresAt: nil, reason: "still the user's intent"))
 
         service.releaseAssertion()
     }
@@ -563,8 +648,13 @@ final class PowerControlServiceTests: XCTestCase {
 
         // Must not fire a fresh assertion for a window that already passed...
         XCTAssertEqual(service.state, .inactive)
-        // ...and must not leave the stale record behind to fool the next launch.
-        XCTAssertNil(defaults.data(forKey: key))
+        // ...and must not leave the stale claim behind to fool the next
+        // launch. (The record is rewritten as this process's own inactive
+        // truth rather than deleted — deletion is indistinguishable from
+        // the second-instance clobber the wake path now defends against —
+        // so the proof is a further cold start also restoring nothing.)
+        let next = PowerControlService(defaults: defaults)
+        XCTAssertEqual(next.state, .inactive)
     }
 
     func testReconciliationWithStaleAssertionIDDoesNotLeakOnMissingRecord() {
@@ -884,5 +974,270 @@ final class PowerControlServiceTests: XCTestCase {
         XCTAssertTrue(PowerControlService.isProcessRunning(named: hostName.uppercased()))
         XCTAssertFalse(PowerControlService.isProcessRunning(named: "definitely-not-a-real-process-name"))
         XCTAssertFalse(PowerControlService.isProcessRunning(named: ""))
+    }
+
+    // MARK: - Indefinite means indefinite
+
+    func testSpuriousExpiryCallbackCannotEndAnIndefiniteHold() throws {
+        // The regression encoding of "indefinite mode has no deadline": an
+        // indefinite hold arms no timer, so in a correct program the expiry
+        // landing point never fires for one — but the invariant is enforced
+        // structurally rather than assumed, because "indefinitely means
+        // until the user turns it off" is exactly the promise a verified
+        // field incident broke. Even a callback carrying the *current*
+        // generation must be a no-op against a hold with no deadline.
+        let service = PowerControlService(defaults: makeTestDefaults("indefiniteNoDeadline"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "no deadline")
+        service.timedAssertionExpired(generation: service.assertionGeneration)
+
+        XCTAssertEqual(
+            service.state,
+            .active(mode: .systemOnly, expiresAt: nil, reason: "no deadline"),
+            "no expiry path may end a hold that has no deadline"
+        )
+    }
+
+    // MARK: - Separate intents: the user's hold and an agent's are different assertions
+
+    func testAgentStartDoesNotReplaceTheUsersHold() throws {
+        // The historical defect: `startAgentAssertion` funneled into the
+        // shared internal start, whose first act released whatever was
+        // running — so an agent's timed `keep_awake` silently supplanted
+        // the user's indefinite hold and then expired out from under them.
+        let service = PowerControlService(defaults: makeTestDefaults("agentDoesNotReplace"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .displayAndSystem, duration: nil, reason: "user indefinite")
+        try service.startAgentAssertion(mode: .systemOnly, duration: 3600, reason: "agent build", clientName: "claude-code")
+
+        XCTAssertEqual(service.agentAssertionOwner, "claude-code")
+        XCTAssertEqual(
+            service.state,
+            .active(mode: .displayAndSystem, expiresAt: nil, reason: "user indefinite"),
+            "the presented state must still be the user's hold — the agent's rides alongside, not in its place"
+        )
+    }
+
+    func testAgentExpiryNeverTakesTheUsersHoldDownWithIt() throws {
+        // The core separate-intents invariant, in the exact shape the brief
+        // names: an AI-requested keep-awake expiring must never end the
+        // user's manual one.
+        let service = PowerControlService(defaults: makeTestDefaults("agentExpiryIsolated"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "user indefinite")
+        try service.startAgentAssertion(mode: .systemOnly, duration: 3600, reason: "agent window", clientName: "claude-code")
+
+        service.agentTimedAssertionExpired(generation: service.agentAssertionGeneration)
+
+        XCTAssertNil(service.agentAssertionOwner, "the agent's hold must genuinely have expired")
+        XCTAssertEqual(
+            service.state,
+            .active(mode: .systemOnly, expiresAt: nil, reason: "user indefinite"),
+            "an agent session's window running out must not end the user's hold"
+        )
+    }
+
+    func testUserExpiryLeavesTheAgentsHoldStandingAndPresented() throws {
+        // The mirror image: the user's timed hold running out must not end
+        // an agent's still-valid hold — and the presented state must fall
+        // back to showing the agent's hold rather than lying `.inactive`
+        // while an assertion is genuinely live.
+        let service = PowerControlService(defaults: makeTestDefaults("userExpiryIsolated"))
+        defer { service.releaseAssertion() }
+
+        try service.startAgentAssertion(mode: .systemOnly, duration: 3600, reason: "agent long build", clientName: "codex")
+        try service.startAssertion(mode: .displayAndSystem, duration: 60, reason: "user short hold")
+
+        service.timedAssertionExpired(generation: service.assertionGeneration)
+
+        XCTAssertEqual(service.agentAssertionOwner, "codex")
+        guard case .active(_, _, let reason) = service.state else {
+            return XCTFail("the agent's hold must remain presented after the user's expires")
+        }
+        XCTAssertEqual(reason, "agent long build")
+    }
+
+    func testReleaseAssertionIsTheMasterOffAndEndsBothSlots() throws {
+        // The user's off switch means "let my Mac sleep" — a toggle that
+        // flipped itself back on because an agent still held a hidden
+        // assertion would read as broken. See `releaseAssertion(trigger:)`'s
+        // doc comment for the argued asymmetry: user off ends everything,
+        // agent releases end only the agent slot.
+        let service = PowerControlService(defaults: makeTestDefaults("masterOff"))
+
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "user hold")
+        try service.startAgentAssertion(mode: .systemOnly, duration: 3600, reason: "agent hold", clientName: "claude-code")
+
+        service.releaseAssertion()
+
+        XCTAssertEqual(service.state, .inactive)
+        XCTAssertNil(service.agentAssertionOwner)
+    }
+
+    func testReleaseAgentAssertionNeverTouchesTheUsersHold() throws {
+        let service = PowerControlService(defaults: makeTestDefaults("agentReleaseIsolated"))
+        defer { service.releaseAssertion() }
+
+        try service.startAssertion(mode: .systemOnly, duration: nil, reason: "user hold")
+        XCTAssertFalse(service.releaseAgentAssertion(), "nothing agent-held means nothing to release")
+        XCTAssertFalse(service.releaseAgentAssertionAtAgentRequest())
+        XCTAssertEqual(service.state, .active(mode: .systemOnly, expiresAt: nil, reason: "user hold"))
+
+        try service.startAgentAssertion(mode: .systemOnly, duration: 3600, reason: "agent hold", clientName: "claude-code")
+        XCTAssertTrue(service.releaseAgentAssertion())
+        XCTAssertEqual(
+            service.state,
+            .active(mode: .systemOnly, expiresAt: nil, reason: "user hold"),
+            "revoking an agent's hold must leave the user's standing"
+        )
+    }
+
+    // MARK: - Cold-start record ownership (the second-instance clobber)
+
+    func testColdStartLeavesARecordOwnedByAnotherLiveInstanceAlone() throws {
+        // Stage one of the verified incident: a Debug/test-host Sentry
+        // cold-starts against the shared defaults domain while the installed
+        // app is alive and holding — and, before the ownership check
+        // existed, adjudicated (and clobbered) a record describing a live
+        // assertion it did not own. A record whose recorded owner is a
+        // *different, still-running* process must be left byte-for-byte
+        // untouched: not restored (that would double-hold), not discarded.
+        // pid 1 / "launchd" is the one process guaranteed alive forever.
+        let defaults = makeTestDefaults("foreignLiveOwner")
+        let key = "dev.malekswilam.sentry.powercontrol.state"
+        struct MirrorRecord: Codable {
+            var state: SleepAssertionState
+            var condition: ReleaseCondition?
+            var ownerPID: Int32?
+            var ownerProcessName: String?
+        }
+        let foreign = MirrorRecord(
+            state: .active(mode: .displayAndSystem, expiresAt: nil, reason: "another instance's live hold"),
+            condition: nil,
+            ownerPID: 1,
+            ownerProcessName: "launchd"
+        )
+        let originalData = try JSONEncoder().encode(foreign)
+        defaults.set(originalData, forKey: key)
+
+        let service = PowerControlService(defaults: defaults)
+
+        XCTAssertEqual(service.state, .inactive, "another instance's hold must not be double-asserted here")
+        XCTAssertEqual(
+            defaults.data(forKey: key),
+            originalData,
+            "another live instance's record must be left strictly alone"
+        )
+    }
+
+    func testColdStartRestoresWhenTheRecordedOwnerIsDeadOrRecycled() throws {
+        // The PID-reuse half of the ownership check: after a reboot the
+        // recorded PID routinely belongs to some unrelated process, and
+        // liveness of the bare number must not block the user's restore —
+        // the recorded *name* is what disambiguates. pid 1 is certainly
+        // alive, but it is certainly not named this.
+        let defaults = makeTestDefaults("deadOwnerRestores")
+        let key = "dev.malekswilam.sentry.powercontrol.state"
+        struct MirrorRecord: Codable {
+            var state: SleepAssertionState
+            var condition: ReleaseCondition?
+            var ownerPID: Int32?
+            var ownerProcessName: String?
+        }
+        let stale = MirrorRecord(
+            state: .active(mode: .systemOnly, expiresAt: nil, reason: "user hold from before reboot"),
+            condition: nil,
+            ownerPID: 1,
+            ownerProcessName: "sentry-name-this-pid-does-not-wear"
+        )
+        defaults.set(try JSONEncoder().encode(stale), forKey: key)
+
+        let service = PowerControlService(defaults: defaults)
+        defer { service.releaseAssertion() }
+
+        XCTAssertEqual(
+            service.state,
+            .active(mode: .systemOnly, expiresAt: nil, reason: "user hold from before reboot"),
+            "a dead (or recycled-PID) owner's record is the user's own standing intent — restore it"
+        )
+    }
+
+    func testColdStartDropsAnAgentsIndefiniteHoldButRestoresATimedOne() throws {
+        // The user's-standing-intent argument does not transfer to agents:
+        // an agent's indefinite hold is keyed to an MCP session that did not
+        // survive the relaunch, and resurrecting an unbounded hold nobody
+        // living asked for is the battery-in-a-bag failure mode. A *timed*
+        // agent hold is bounded and self-releasing, so it still restores —
+        // pinned by `testColdStartRestoreOfATimedAgentHoldPreservesItsOwner`;
+        // this is the indefinite counterpart.
+        let defaults = makeTestDefaults("agentIndefiniteDropped")
+
+        let first = PowerControlService(defaults: defaults)
+        try first.startAgentAssertion(
+            mode: .systemOnly,
+            duration: nil,
+            reason: "agent indefinite",
+            clientName: "claude-code"
+        )
+        XCTAssertEqual(first.agentAssertionOwner, "claude-code")
+
+        let second = PowerControlService(defaults: defaults)
+        XCTAssertNil(second.agentAssertionOwner, "an agent's indefinite hold must not survive a cold start")
+        XCTAssertEqual(second.state, .inactive)
+
+        first.releaseAssertion()
+        second.releaseAssertion()
+    }
+
+    func testLegacyAgentTaggedRecordRestoresIntoTheAgentSlot() throws {
+        // v1 records (pre-two-slot) put whichever hold was live into `state`
+        // and marked agent ownership with `agentOwnerClientName`. A timed
+        // agent hold persisted by that build must come back as an *agent*
+        // hold — visible to the kill switch and guardrails — not as an
+        // unowned user hold.
+        let defaults = makeTestDefaults("legacyAgentRecord")
+        let key = "dev.malekswilam.sentry.powercontrol.state"
+        struct LegacyRecord: Codable {
+            var state: SleepAssertionState
+            var condition: ReleaseCondition?
+            var agentOwnerClientName: String?
+        }
+        let legacy = LegacyRecord(
+            state: .active(mode: .systemOnly, expiresAt: Date().addingTimeInterval(1800), reason: "legacy agent hold"),
+            condition: nil,
+            agentOwnerClientName: "claude-code"
+        )
+        defaults.set(try JSONEncoder().encode(legacy), forKey: key)
+
+        let service = PowerControlService(defaults: defaults)
+        defer { service.releaseAssertion() }
+
+        XCTAssertEqual(service.agentAssertionOwner, "claude-code")
+        guard case .active(_, let expiresAt, let reason) = service.state else {
+            return XCTFail("the legacy agent hold must be live after restore")
+        }
+        XCTAssertEqual(reason, "legacy agent hold")
+        XCTAssertNotNil(expiresAt, "the restored hold must keep its bounded window")
+    }
+
+    // MARK: - Test-host persistence isolation
+
+    func testDefaultPersistenceDomainIsIsolatedUnderTestRuns() {
+        // Stage one of the incident was the test host itself: `xcodebuild
+        // test` launches the real app as host, whose AppDelegate constructs
+        // a production `PowerControlService` before any test runs — against
+        // `.standard`, that cold start adjudicated the *installed, running*
+        // app's record. Under a test run the default domain must be the
+        // isolated suite, so the host app instance is inert against real
+        // user state. (This very test process is the proof: it runs under
+        // XCTest by definition.)
+        let domain = PowerControlService.defaultPersistenceDomain()
+        XCTAssertFalse(
+            domain === UserDefaults.standard,
+            "a test run must never persist keep-awake state into the real defaults domain"
+        )
     }
 }

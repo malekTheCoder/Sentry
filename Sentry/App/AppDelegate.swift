@@ -563,7 +563,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // able to actually drop the hold. Unwired, the action was a no-op
         // on both ends.
         alertEngine.sleepAssertionReleaser = { [weak self] in
-            self?.powerControl.releaseAssertion()
+            // `.conditionMet`, not the default `.userEnded`: the user wrote
+            // the rule, but the *firing* is automation, and the whole point
+            // of `KeepAwakeReleaseTrigger` is that the log can tell those
+            // apart afterwards (the Aug-15 incident took a forensic pmset
+            // reconstruction precisely because every release looked alike).
+            self?.powerControl.releaseAssertion(trigger: .conditionMet)
+        }
+        // Without this assignment `policyReleaseNotifier` is nil and every
+        // policy-driven release — a conditional hold dropped by a lapsed
+        // license, a restore that failed at wake — happens in silence, which
+        // is the exact "toggle silently off" failure this file's power
+        // wiring exists to prevent. Routed through the alert engine rather
+        // than posting a `UNNotification` here because `deliverGuardrailNotice`
+        // already owns authorization state and Do-Not-Disturb handling; a
+        // second delivery path would fork that logic.
+        powerControl.policyReleaseNotifier = { [weak self] title, body in
+            self?.alertEngine.deliverGuardrailNotice(title: title, body: body)
         }
         // The shipped "Thermal throttling" rule carries `.menuBarHighlight`
         // and is enabled by default, so leaving this unassigned meant a
