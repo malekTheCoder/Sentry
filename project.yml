@@ -275,6 +275,14 @@ targets:
       # them. SyncModels.swift imports only Foundation, so it builds on
       # watchOS unchanged.
       - path: SentryKit/Sync/SyncModels.swift
+      # Added so the watch's keep-awake senders (WatchKeepAwakeIntent and
+      # ContentView's Keep Awake page) share the one `keepAwake`
+      # parametersJSON encoder with the phone instead of hand-spelling the
+      # indefinite-vs-timed wire shape — see KeepAwakeRequest.swift's doc
+      # comment for the drift this closed. Pure Foundation, no
+      # required-reason API (no UserDefaults, no boot time), so the two
+      # privacy manifests this list evidences stay true unchanged.
+      - path: SentryKit/Sync/KeepAwakeRequest.swift
       # Added for the Watch UI redesign: the watch renders in the user's
       # chosen theme rather than in hardcoded system colors, so it needs the
       # real `Theme`/`ThemeColor` types the Mac and phone already share

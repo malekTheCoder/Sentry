@@ -383,6 +383,19 @@ extension WatchRelayManager: WCSessionDelegate {
         }
 
         let transport = AppDataSource.shared.transport
+        // The same demo-mode guard `SentryIntents.sendAndDescribe` and
+        // `SleepStatusCard.sendCommand` apply before every send — this
+        // forwarder was the one path that skipped it. `MockDataSource
+        // .send(command:)` no-ops without throwing and its `awaitStatus`
+        // returns `nil` immediately, so without this guard a watch tap in
+        // demo mode came back as "Sent to your Mac, but didn't hear back" —
+        // claiming a transmission that never happened, about a Mac that
+        // doesn't exist. The truthful sentence is the one every other
+        // surface already uses.
+        guard !(transport is MockDataSource) else {
+            replyHandler(["error": SentryIntents.demoModeSendDialog])
+            return
+        }
         do {
             try await transport.send(command: command)
         } catch {

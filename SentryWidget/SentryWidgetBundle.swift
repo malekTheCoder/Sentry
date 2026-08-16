@@ -30,9 +30,12 @@ struct SentryWidgetEntryView: View {
         case .systemSmall:
             SmallWidgetView(snapshot: entry.snapshot)
         case .systemMedium:
-            MediumWidgetView(snapshot: entry.snapshot)
+            // `entry.date`, not `Date()`: each entry's view is archived at
+            // timeline-build time, so the entry's own date is the only
+            // per-entry clock — see `MediumWidgetView.asOf`.
+            MediumWidgetView(snapshot: entry.snapshot, asOf: entry.date)
         case .systemLarge:
-            LargeWidgetView(snapshot: entry.snapshot)
+            LargeWidgetView(snapshot: entry.snapshot, asOf: entry.date)
         #if !os(macOS)
         case .accessoryCircular:
             AccessoryCircularWidgetView(snapshot: entry.snapshot)

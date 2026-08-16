@@ -159,7 +159,12 @@ struct ToggleMacAwakeIntent: SetValueIntent {
                 deviceID: "unknown",
                 issuedAt: Date(),
                 commandType: "keepAwake",
-                parametersJSON: #"{"durationSeconds":\#(toggleDurationMinutes * 60),"mode":"systemOnly"}"#,
+                // `KeepAwakeRequest` rather than a locally-spelled JSON
+                // string — same encoder as both Siri intents and the Watch
+                // page, so "identical command regardless of surface" is
+                // guaranteed by a shared function instead of by four string
+                // literals staying in sync (see that type's doc comment).
+                parametersJSON: KeepAwakeRequest.parametersJSON(minutes: toggleDurationMinutes),
                 nonce: nonce,
                 expiresAt: expiresAt
             )
@@ -191,15 +196,25 @@ struct ToggleMacAwakeIntent: SetValueIntent {
 /// with no cache behind it (`false`/"not awake" whenever the cache is
 /// empty, matching `WidgetSnapshotWriter`'s own `.inactive` default noted
 /// in `MediumWidgetView.sleepRow`'s doc comment).
+///
+/// **"Lags a few polling intervals" has one exception, and it's handled.**
+/// This cache only updates while the phone app is running with a live
+/// connection, so a *timed* hold in the cache can sit unchanged long past
+/// its own `expiresAt` — a state the toggle used to render as ON even
+/// though the hold has certainly released by its own recorded deadline
+/// (the OS-level assertion timeout guarantees it, Mac app alive or not —
+/// see `SleepAssertionState.isCrediblyActive(asOf:)`). Judging the cached
+/// state against *now* is what keeps this toggle from being the most
+/// confident surface in the app to show ON for a Mac that went to sleep
+/// hours ago. A stale *indefinite* hold still reads ON, deliberately: no
+/// deadline in the value disproves it, and inventing an OFF the Mac never
+/// reported is the opposite lie.
 struct MacAwakeControlValueProvider: ControlValueProvider {
     var previewValue: Bool { false }
 
     func currentValue() async throws -> Bool {
         guard let snapshot = WidgetSnapshotStore.read() else { return false }
-        if case .active = snapshot.sleepAssertion {
-            return true
-        }
-        return false
+        return snapshot.sleepAssertion.isCrediblyActive(asOf: Date())
     }
 }
 
