@@ -2,6 +2,25 @@
 
 Date: 2026-08-07 · Branch: `research/battery-features` · Status: **research + spec, nothing implemented**
 
+> **EDITOR'S NOTE (2026-08-20): the precedent this document argues from no
+> longer exists.** Sentry's fan-control feature — `SentryFanDaemon`, the root
+> LaunchDaemon that could write SMC keys, and everything in
+> `SentryKit/FanDaemon/` — has been removed. Sentry reads fan speeds and
+> never sets them, and the app now ships **no privileged execution at all**.
+> Every present-tense reference below to `SentryFanDaemon`, `FanDaemonProtocol`,
+> `FanDaemonFailSafe`, `FanDaemonClamp`, `FanDaemonContract`, `FanDaemonTiming`,
+> `SMCFanWriter`, or `docs/fan-control-spike.md` (also deleted) describes code
+> that is gone; read them as a historical record of a design that shipped once,
+> not as a description of this codebase.
+>
+> This **strengthens** the document's verdict rather than weakening it. §4.1
+> argues that the fan daemon's safety bounds do not transfer to charge
+> limiting; with the fan daemon deleted, §6's "extend the existing daemon"
+> framing is no longer available at all. Building charge limiting would mean
+> *introducing* a root helper into an app that deliberately has none — a much
+> larger decision than extending one that was already there, and one that has
+> to be argued on its own before any of §6 applies.
+
 Probe hardware: **Mac16,8 (MacBook Pro, Apple M4 Pro), macOS 26.6 (build 25G72,
 Darwin 25.6.0)**.
 
@@ -445,7 +464,8 @@ damage from it — the risk is stranding, not destruction.
 working root helpers on Tahoe. The mechanism is unchanged for a decade:
 `IOServiceMatching("AppleSMC")` → `IOServiceOpen` → `IOConnectCallStructMethod`
 with an `SMCParamStruct`. No entitlement, no kext, no DriverKit, no SIP
-disable — just root. This is exactly what `SentryFanDaemon` already does.
+disable — just root. This is exactly what `SentryFanDaemon` did, before it was
+removed; nothing in Sentry does it now.
 
 **One widespread claim is folklore and should not be repeated.** `zackelia/bclm`'s
 README says it fails on macOS ≥ 15 "due to new entitlement enforcement from the
@@ -473,7 +493,10 @@ that is when it is needed.
 
 ### 4.1 The asymmetry with fan control, which is the core argument
 
-`FanDaemonFailSafe`'s doc comment bounds the fan feature's worst case with two
+(Written while fan control still shipped; see the editor's note at the top.
+The asymmetry stands, and the fan side of the comparison is now history.)
+
+`FanDaemonFailSafe`'s doc comment bounded the fan feature's worst case with two
 facts: the SMC's firmware takes back over on a power cycle, and the daemon never
 writes below `F{i}Mn`, so a leaked override "cannot park a fan under the floor
 the firmware itself considers safe". **Neither bound has an analogue here.**
@@ -711,6 +734,12 @@ OS ships these (§3.2). Compete on retention, correlation and export.
 ---
 
 ## 6. If charge limiting were built: extending `FanDaemonProtocol`
+
+> Superseded by the editor's note at the top: `FanDaemonProtocol` and the
+> daemon that implemented it were deleted. This section is kept as the record
+> of what the extension would have looked like, and as the inventory of
+> safety machinery any *new* privileged helper would have to reproduce from
+> scratch.
 
 Written per the brief as the design that would be correct *if* §1 were
 overridden. Its good parts — the allowlist, the deadman floor, release-on-start,

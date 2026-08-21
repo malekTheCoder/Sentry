@@ -14,7 +14,7 @@ import XCTest
 ///    temperature, the app still runs, and the copy now says the Mac is on
 ///    fire. `testDeltaHasNoOffset` and friends pin this.
 /// 2. **A conversion leaking into storage.** Sensors, `HistoryStore`, the
-///    sync wire, `AlertRule.threshold` and `FanCurve` are all Celsius by
+///    sync wire and `AlertRule.threshold` are all Celsius by
 ///    contract; only strings change. `testAlertRuleThresholdRoundTripsThroughFahrenheitEditing`
 ///    and `testAppSettingsDecodesWithoutTheKey` guard the two places that
 ///    could plausibly get this wrong.
@@ -383,32 +383,20 @@ final class TemperatureUnitTests: XCTestCase {
         XCTAssertEqual(typedBack, 95, accuracy: 0.0001)
     }
 
-    func testFanCurveIssueMessagesFollowTheDisplayUnit() {
+    /// Fan RPM is a *reading*, and a reading with no temperature in it —
+    /// so switching the display unit must not touch it. This is what is
+    /// left of the two fan-curve tests that used to sit here: fan control
+    /// was removed, the curve types went with it, and the surviving
+    /// obligation is that the unit setting stays confined to temperatures.
+    func testSwitchingDisplayUnitDoesNotTouchFanRPM() {
         let saved = TemperatureUnit.display
         defer { TemperatureUnit.display = saved }
 
-        let issue = FanCurveIssue.duplicateTemperature(celsius: 70)
+        let thermal = ThermalStats(socTemperatureCelsius: 70, fanRPMs: [1200, 5000])
 
+        TemperatureUnit.display = .fahrenheit
+        XCTAssertEqual(thermal.fanRPMs, [1200, 5000])
         TemperatureUnit.display = .celsius
-        XCTAssertTrue(issue.message.contains("70 °C"), issue.message)
-
-        TemperatureUnit.display = .fahrenheit
-        XCTAssertTrue(issue.message.contains("158 °F"), issue.message)
-    }
-
-    func testFanCurvePointsAreNotConvertedBySwitchingUnits() {
-        // The curve is compared against raw sensor readings by
-        // `FanControlService` and by the privileged daemon; converting a
-        // breakpoint would change what the fans actually do.
-        let saved = TemperatureUnit.display
-        defer { TemperatureUnit.display = saved }
-        TemperatureUnit.display = .fahrenheit
-
-        let curve = FanCurve(points: [
-            FanCurvePoint(celsius: 50, rpm: 1200),
-            FanCurvePoint(celsius: 90, rpm: 5000)
-        ])
-        XCTAssertEqual(curve.points.map(\.celsius), [50, 90])
-        XCTAssertEqual(curve.targetRPM(atCelsius: 70) ?? -1, 3100, accuracy: 0.0001)
+        XCTAssertEqual(thermal.fanRPMs, [1200, 5000])
     }
 }

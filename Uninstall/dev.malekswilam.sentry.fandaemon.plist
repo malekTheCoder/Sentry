@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TOMBSTONE. This is the launchd job description for SentryFanDaemon, the
+  root helper older builds of Sentry could install to write SMC fan keys.
+  Sentry does not set fan speeds any more: the daemon target, its binary,
+  and every line of code that could write a fan key are gone, and fan RPM
+  is now something the app only reads and displays.
+
+  THIS FILE STILL SHIPS, ON PURPOSE, AND IT IS THE ONLY REASON AN ALREADY-
+  INSTALLED DAEMON CAN BE REMOVED. Users who pressed Install in the old
+  Settings ▸ Fans pane have this job registered on their Mac right now.
+  `Sentry/App/FanDaemonUninstaller.swift` unregisters it on launch through
+  `SMAppService.daemon(plistName:)`, which resolves a service by looking
+  this exact file up by basename inside
+  Sentry.app/Contents/Library/LaunchDaemons/. Delete the file and every Mac
+  reports `.notFound`, the uninstaller can no longer distinguish "never
+  installed" from "installed and now invisible", and a root process with no
+  owner becomes permanent. Deleting the plist before unregistering is
+  exactly how an orphaned daemon is created.
+
+  NOTHING BELOW IS LIVE. `BundleProgram` names a binary this app no longer
+  contains. A job description installs nothing by itself — it does nothing
+  at all until something registers it, and nothing in this build registers
+  anything. The keys are left byte-for-byte as they shipped because they
+  describe a job already recorded on other people's machines; changing them
+  would describe a different job than the one that needs removing.
+
+  DELETE THIS FILE only together with `FanDaemonUninstaller`, its call in
+  `AppDelegate`, and the copy phase in project.yml — once no install in the
+  field can still predate the fan-control removal. See the uninstaller's
+  doc comment.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.malekswilam.sentry.fandaemon</string>
+
+	<!-- Relative to Sentry.app. The Sentry target's Copy Files phase puts
+	     the built tool at Contents/MacOS/SentryFanDaemon; see project.yml. -->
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/SentryFanDaemon</string>
+
+	<!-- Must match FanDaemonNaming.machService exactly — the app dials this
+	     string via NSXPCConnection(machServiceName:options:.privileged). -->
+	<key>MachServices</key>
+	<dict>
+		<key>dev.malekswilam.sentry.fandaemon</key>
+		<true/>
+	</dict>
+
+	<!-- What macOS shows the user in System Settings ▸ General ▸ Login
+	     Items & Extensions. Without it the entry is an unexplained
+	     background item; with it, it is attributed to Sentry, which is the
+	     only honest presentation of a root process this app installed. It
+	     is also the entry the user toggles off to disable the helper
+	     without deleting anything. -->
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>dev.malekswilam.sentry</string>
+	</array>
+
+	<!-- Adaptive: the daemon spends essentially all its time asleep on a
+	     dispatch queue, but a fan write should not be scheduled behind a
+	     background maintenance task. -->
+	<key>ProcessType</key>
+	<string>Adaptive</string>
+</dict>
+</plist>

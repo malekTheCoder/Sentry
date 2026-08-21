@@ -53,10 +53,15 @@ xcodebuild -project Sentry.xcodeproj -scheme SentryWatch  -destination 'generic/
   extrapolate beyond what was measured. Please keep that bar.
 - **Small and focused.** One change per PR; refactors separate from
   behavior changes.
-- **Security-sensitive areas** — `SentryFanDaemon` (root helper, the only
-  code allowed to write to the SMC), the MCP server, and the sync
-  listeners — get extra scrutiny. Explain your reasoning in the PR
+- **Security-sensitive areas** — the MCP server, the sync listeners, and
+  `SentryMCPBridge` (the LaunchAgent that brokers connections into the
+  app) — get extra scrutiny. Explain your reasoning in the PR
   description.
+- **Nothing in Sentry runs as root, and nothing writes to hardware.**
+  Sentry reads sensors and reports what it read. A root helper existed
+  once, for fan control, and was removed; a PR that reintroduces
+  privileged execution or a hardware write path needs to argue for itself
+  before it needs to compile.
 
 ## Reporting issues
 

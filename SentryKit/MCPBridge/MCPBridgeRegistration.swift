@@ -21,8 +21,10 @@ import Foundation
 /// I/O. `MCPEndpointPublisher` maps `SMAppService.Status` onto this and
 /// `SentryXPCClient` reaches the equivalent conclusions from connection
 /// failures, so both can be tested exhaustively on a machine where
-/// `SMAppService` can only ever report one value. Same technique
-/// `FanWriteAvailability` uses for the fan daemon.
+/// `SMAppService` can only ever report one value. The same technique
+/// `MCPBridgePeerFailure` uses against the Security framework: model the
+/// states as a pure value, and leave the impure layer
+/// (`MCPBridgeSecurityEvaluator`) with nothing to do but map onto it.
 public enum MCPBridgeRegistration: Equatable, Sendable {
 
     /// launchd has the job and will start it on demand. This is the only

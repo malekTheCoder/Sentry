@@ -4,7 +4,7 @@ import Foundation
 
 /// Why a peer's code signature could not be accepted, as a value.
 ///
-/// Split as finely as `FanDaemonPeerFailure` and for the same reason: the
+/// Split this finely — four cases where a `Bool` would compile — because the
 /// cases mean genuinely different things to whoever reads the log after a
 /// refusal. On an unsigned developer checkout `.requirementNotSatisfied` is
 /// the *expected* state and means this whole feature is inert; on a shipped,
@@ -54,12 +54,9 @@ public enum MCPBridgePeerDecision: Equatable, Sendable {
 /// The Security-framework call the gate makes, behind a protocol so the
 /// decision logic can be tested without a signed binary to point it at.
 ///
-/// Identical in shape to `FanDaemonPeerEvaluator`, and deliberately a
-/// separate protocol rather than a shared one: merging them would put the
-/// root daemon's authorization seam and a user-level agent's on the same
-/// type, so that a change made for one reaches the other by default. For a
-/// pair of four-line protocols that is a bad trade — the duplication is
-/// visible and cheap, the coupling would not be.
+/// One method, and nothing else: the seam exists to be substituted in a
+/// test, never to become a second place where an authorization decision
+/// gets made. Everything that decides lives in `MCPBridgePeerGate` below.
 public protocol MCPBridgePeerEvaluator {
     /// - Returns: `nil` on success, or the failure that stopped it.
     func evaluate(pid: Int32, requirement: String) -> MCPBridgePeerFailure?
@@ -72,9 +69,11 @@ public protocol MCPBridgePeerEvaluator {
 ///
 ///   * The **publisher** is Sentry itself, one known app bundle, so its
 ///     requirement pins the bundle identifier as well as the anchor and the
-///     Team ID — the same three-clause shape `FanDaemonPeerGate` uses, and
-///     for the same reasons (see that type's doc comment for what each clause
-///     prevents).
+///     Team ID. Each of the three clauses stops a different substitution:
+///     `identifier` stops another app of this developer's from standing in
+///     for Sentry, `anchor apple generic` stops a self-signed binary that
+///     merely claims that identifier, and the Team ID clause stops a
+///     signature chained to somebody else's certificate.
 ///
 ///   * The **consumers** are `sentryctl` and `SentryMCP`, which are bare
 ///     Mach-O tools nested in `Sentry.app/Contents/MacOS`. They have no
@@ -114,11 +113,11 @@ public protocol MCPBridgePeerEvaluator {
 /// peer's audit token through any public API. Audit tokens are the correct
 /// identifier because they are immune to pid reuse. Reaching one requires the
 /// undocumented `NSXPCConnection.auditToken` property, and this codebase
-/// already weighed and rejected that for the root daemon — see
-/// `FanDaemonPeerGate`'s doc comment for the full argument (an undocumented
-/// property that starts returning garbage after an OS update fails *open*).
-/// The same reasoning is applied here for consistency, and the residual risk
-/// is smaller: winning a pid-reuse race against this gate yields an
+/// declines to depend on it: an undocumented property that quietly starts
+/// returning garbage after an OS update fails *open*, which is the one
+/// failure mode a gate may not have. The residual risk of the pid is
+/// smaller than it first looks: winning a pid-reuse race against this gate
+/// yields an
 /// `NSXPCListenerEndpoint` for a process that will independently gate the
 /// resulting connection and then gate every individual tool call against live
 /// user settings. It is recorded here so the next reader can weigh it rather
@@ -131,8 +130,7 @@ public enum MCPBridgePeerGate {
     /// `SMAuthorizedClients`** (via `project.yml`), because launchd reads a
     /// plist and cannot read Swift. `MCPBridgePeerGateTests` asserts the exact
     /// text so a change here fails a test that names the plist rather than
-    /// silently diverging from it — the same arrangement
-    /// `FanDaemonPeerGate.clientRequirement` has.
+    /// silently diverging from it.
     public static let publisherRequirement =
         "identifier \"dev.malekswilam.sentry\" and anchor apple generic and certificate leaf[subject.OU] = \"H7T2D2GL7U\""
 

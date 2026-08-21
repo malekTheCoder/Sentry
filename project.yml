@@ -28,9 +28,10 @@ settings:
     # The permissive floor, restored. Promoting `Apple Development` + a real
     # team to the *project-wide* base broke `xcodebuild ... test` outright on
     # any machine without that team's certificates — 8 "No signing certificate"
-    # errors across SentryCLI, SentryMCP, SentryFanDaemon and SentryTests,
-    # so the macOS suite could not run at all. Verified against origin/main in
-    # a clean worktree, so this was not a merge artefact.
+    # errors across SentryCLI, SentryMCP and SentryTests (plus the
+    # since-removed SentryFanDaemon, which existed at the time), so the macOS
+    # suite could not run at all. Verified against origin/main in a clean
+    # worktree, so this was not a merge artefact.
     #
     # The change was also redundant: every target that genuinely needs a real
     # identity for device deployment (SentryMobile, its widget, SentryWatch,
@@ -337,18 +338,30 @@ targets:
     # and the in-app privacy page §14.3 calls for.
     sources:
       - path: Sentry
-      # The privileged fan helper's launchd job description, copied into
-      # Sentry.app/Contents/Library/LaunchDaemons/ — the one directory
-      # `SMAppService.daemon(plistName:)` looks in, by file name. It is
-      # listed here rather than in the SentryFanDaemon target because it
-      # describes where the *app* installs the helper from; the daemon
-      # binary itself never reads it.
+      # THE TOMBSTONE OF A REMOVED FEATURE, AND IT IS LOAD-BEARING.
       #
-      # This is data, not code: it is not compiled, and it must not land in
-      # Resources (where XcodeGen would otherwise put a .plist by
-      # extension), because SMAppService would then report `.notFound` for
-      # a helper that is sitting right there in the bundle.
-      - path: SentryFanDaemon/dev.malekswilam.sentry.fandaemon.plist
+      # This is the launchd job description for the root fan helper Sentry
+      # used to be able to install. The helper is gone — the SentryFanDaemon
+      # target, its binary, and every line of code that could set a fan
+      # speed were deleted — but the *registration* it created is not gone
+      # on the Macs of the users who pressed Install. Removing that
+      # registration is `Sentry/App/FanDaemonUninstaller.swift`'s only job,
+      # and it removes it through `SMAppService.daemon(plistName:)`, which
+      # resolves a service by looking this exact file up by name inside
+      # Contents/Library/LaunchDaemons. Stop copying it and every Mac
+      # reports `.notFound`, the uninstaller can no longer tell "was never
+      # installed" from "installed and now invisible", and an orphaned root
+      # daemon becomes permanent. So it keeps shipping, pointing at a
+      # BundleProgram that no longer exists, until the uninstaller retires —
+      # see that file for when the two can be deleted together.
+      #
+      # This is data, not code: it is not compiled, it installs nothing on
+      # its own (a job description does nothing until something registers
+      # it, and nothing in this build registers anything), and it must not
+      # land in Resources — where XcodeGen would otherwise put a .plist by
+      # extension — because SMAppService would then report `.notFound` for
+      # a plist sitting right there in the bundle.
+      - path: Uninstall/dev.malekswilam.sentry.fandaemon.plist
         buildPhase:
           copyFiles:
             destination: wrapper
@@ -356,8 +369,9 @@ targets:
       # The command-line bridge's launchd job description, copied into
       # Sentry.app/Contents/Library/LaunchAgents/ — the one directory
       # `SMAppService.agent(plistName:)` looks in, by file name. Same
-      # arrangement as the fan daemon's plist above, one directory over
-      # (Agents, not Daemons: this one runs as the user).
+      # arrangement as the tombstone plist above, one directory over
+      # (Agents, not Daemons: this one runs as the user, and unlike that
+      # one it describes a binary this app actually still ships).
       #
       # THIS FILE IS THE FIX. Its absence was the bug: `AppDelegate` published
       # `NSXPCListener(machServiceName: "dev.malekswilam.sentry.xpc")` and no
@@ -419,36 +433,13 @@ targets:
         codeSign: true
         copy:
           destination: executables
-      # The privileged fan helper. Copied into Contents/MacOS alongside the
-      # two command-line tools, because that is the path
-      # `dev.malekswilam.sentry.fandaemon.plist` names in its
-      # `BundleProgram` key — a path relative to the app bundle, so the
-      # helper travels with the app instead of pinning it to /Applications.
-      #
-      # `codeSign: true` is not optional here the way it is a nicety
-      # elsewhere. `SMAppService.daemon` registration flatly requires the
-      # daemon to be signed with the same Team ID as the app that registers
-      # it, and the app must satisfy the daemon's own `SMAuthorizedClients`
-      # requirement (embedded in its binary — see the target below). Both
-      # are signature checks, both are made by launchd before any of our
-      # code runs, and neither can be satisfied on a machine with no signing
-      # identities. On such a machine — which is the machine this was
-      # written on — registration fails, the app reports it on screen, and
-      # every write control stays disabled. That is the intended inert
-      # state, not a build failure: nothing here breaks an unsigned build.
-      - target: SentryFanDaemon
-        link: false
-        embed: true
-        codeSign: true
-        copy:
-          destination: executables
       # The command-line bridge. Copied into Contents/MacOS beside the two
-      # tools and the fan daemon, because that is the path
+      # command-line tools, because that is the path
       # `dev.malekswilam.sentry.xpc.plist` names in its `BundleProgram` key.
       #
-      # `codeSign: true` is load-bearing here for the same reason it is for
-      # SentryFanDaemon: `SMAppService.agent` registration requires the agent
-      # to be signed with the same real Team ID as the app registering it, and
+      # `codeSign: true` is load-bearing here rather than a nicety:
+      # `SMAppService.agent` registration requires the agent to be signed with
+      # the same real Team ID as the app registering it, and
       # that check is made by launchd before any of our code runs. On a machine
       # with no signing identities — the machine this was written on —
       # registration fails, Settings ▸ AI Access says so verbatim, `sentryctl`
@@ -1108,87 +1099,6 @@ targets:
         # module 'sentry' as 'Sentry'" when PRODUCT_NAME was set directly).
         EXECUTABLE_NAME: sentryctl
 
-  # The privileged fan helper (fan-control plan Phase 3). Runs as root,
-  # launched on demand by launchd from
-  # Sentry.app/Contents/Library/LaunchDaemons/, and is the only thing in
-  # this project that can write an SMC key.
-  #
-  # NOTE THE SOURCE LIST, which is the security-relevant part of this
-  # target. It compiles four files of its own plus the six files in
-  # SentryKit/FanDaemon/, and it links **no framework of ours at all** —
-  # not SentryKit, not SystemMetricsKit. That is the same technique
-  # SentryKit_watchOS uses above (list the files, not the directory), and
-  # here the motive is auditability rather than platform support: a root
-  # process whose entire compile surface is Foundation + IOKit + Security +
-  # ten files is a tractable thing to review, whereas one that dragged in
-  # GRDB, the MCP SDK and SwiftNIO would not be. It also means the daemon
-  # has no @rpath dependency on the app's embedded frameworks and runs
-  # correctly from Contents/MacOS with nothing else loaded.
-  #
-  # The duplication this costs (`SMCFanWriter` re-implements SMCFanBridge's
-  # protocol layer) buys a property stated in that file's header and worth
-  # restating: no binary inside Sentry.app can write to the SMC. Only this
-  # one can.
-  SentryFanDaemon:
-    type: tool
-    platform: macOS
-    # Copied into Sentry.app/Contents/MacOS — notarized nested code, same as
-    # SentryMCP and SentryCLI, and additionally subject to the Team ID
-    # match SMAppService enforces.
-    templates:
-      - DeveloperIDSigned
-    sources:
-      - path: SentryFanDaemon
-        excludes:
-          # The launchd job description belongs to the app bundle, not to
-          # this binary (the Sentry target copies it into
-          # Contents/Library/LaunchDaemons); the generated Info.plist is
-          # consumed via CREATE_INFOPLIST_SECTION_IN_BINARY below, not
-          # bundled. A `tool` target has no resources phase for either of
-          # them to land in anyway.
-          - "*.plist"
-      # The pure decision layer — clamping, the fail-safe state machine, the
-      # peer gate, and the XPC contract. Shared with SentryKit by
-      # compilation rather than by linking; see this target's header.
-      - path: SentryKit/FanDaemon
-    dependencies:
-      - sdk: Security.framework
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.sentry.fandaemon
-        # A command-line tool has no Info.plist file in a bundle, so the
-        # plist is embedded as a __TEXT,__info_plist section instead. That
-        # is where launchd and SMAppService look for SMAuthorizedClients on
-        # a bare Mach-O.
-        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
-    info:
-      path: SentryFanDaemon/Info.plist
-      properties:
-        CFBundleIdentifier: dev.malekswilam.sentry.fandaemon
-        # ---------------------------------------------------------------
-        # THE FIRST HALF OF PEER VERIFICATION (safety requirement 3).
-        #
-        # launchd refuses XPC connections from clients that do not satisfy
-        # this designated requirement, before any of the daemon's own code
-        # runs. The second half is FanDaemonPeerGate, which re-checks the
-        # same requirement inside the daemon process — because
-        # authorization that exists only in a configuration file is
-        # authorization that a configuration mistake removes silently.
-        #
-        # ⚠️ THIS STRING IS DUPLICATED IN
-        # `SentryKit/FanDaemon/FanDaemonPeerGate.swift` AS
-        # `clientRequirement`, AND THE TWO MUST STAY IDENTICAL. They cannot
-        # share a constant: launchd reads this plist and cannot read Swift.
-        # `FanDaemonPeerGateTests` asserts the exact expected text so a
-        # change on the Swift side fails a test that names this file.
-        #
-        # Each clause is load-bearing — see FanDaemonPeerGate's doc comment
-        # for what each one prevents. The Team ID must match
-        # DEVELOPMENT_TEAM in the DeveloperIDSigned template above.
-        # ---------------------------------------------------------------
-        SMAuthorizedClients:
-          - 'identifier "dev.malekswilam.sentry" and anchor apple generic and certificate leaf[subject.OU] = "H7T2D2GL7U"'
-
   # The command-line bridge — the on-demand LaunchAgent that owns the Mach
   # service `sentryctl` and SentryMCP dial, and hands them a direct connection
   # to a running Sentry.
@@ -1202,7 +1112,8 @@ targets:
   # proved this and why a broker, rather than a relay or a socket, is the
   # shape that follows from it.
   #
-  # NOTE THE SOURCE LIST, same as SentryFanDaemon's and for the same reason.
+  # NOTE THE SOURCE LIST — the technique the deleted SentryFanDaemon target
+  # used, kept here because the reason outlived that target.
   # It compiles two files of its own plus the five in SentryKit/MCPBridge/,
   # and it links **no framework of ours** — not SentryKit, not
   # SystemMetricsKit. Sharing by compilation rather than by linking keeps this
@@ -1213,8 +1124,10 @@ targets:
   # else loaded — the same trap `SentryCLI`/`SentryMCP` had to be moved
   # inside the bundle to escape.
   #
-  # Unlike the fan daemon, this one runs as the logged-in user. It writes no
-  # hardware register, opens no database, and makes no network connection.
+  # This runs as the logged-in user, never as root. It writes no hardware
+  # register, opens no database, and makes no network connection — and with
+  # the fan daemon deleted it is the only launchd job Sentry can install at
+  # all.
   SentryMCPBridge:
     type: tool
     platform: macOS
@@ -1307,7 +1220,6 @@ schemes:
         Sentry: all
         SentryMCP: all
         SentryCLI: all
-        SentryFanDaemon: all
         SentryTests: [test]
     run:
       config: Debug

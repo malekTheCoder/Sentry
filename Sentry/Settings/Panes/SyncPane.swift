@@ -22,8 +22,8 @@ struct SyncPane: View {
     /// Whether this copy is entitled to `ProFeature.remoteSync`. Resolved by
     /// the composition root's `LicenseProEntitlementStore` and passed down
     /// through `SettingsView` per render — this pane never queries an
-    /// entitlement store itself, matching how `FanControlPane` reads its
-    /// gate off `FanControlService.isProUnlocked` rather than owning one.
+    /// entitlement store itself, matching how `AdvancedPane` takes its
+    /// `isProUnlocked` from the same caller rather than owning one.
     /// Defaults locked: a pane nobody seeded must not offer the Pro
     /// surface, and every entitlement input (override flip, license paste)
     /// rides a settings emission that re-renders `SettingsView`, so the
@@ -110,12 +110,12 @@ struct SyncPane: View {
     }
 
     /// The locked half of the section: the off-LAN grant, shown as a row
-    /// rather than a disabled toggle (`LockedInsightRowView` /
-    /// `FanControlPane.helperSection`'s `.requiresPro` branch are the
-    /// precedents — a greyed-out "Allow connections from other networks"
-    /// would be a confident-looking control describing a reality that isn't
-    /// true). No Buy button, ever: checkout does not exist, and the copy
-    /// admits it in the same words the fan pane uses.
+    /// rather than a disabled toggle (`LockedInsightRowView` and
+    /// `ThemePane`'s locked editor row are the precedents — a greyed-out
+    /// "Allow connections from other networks" would be a confident-looking
+    /// control describing a reality that isn't true). No Buy button, ever:
+    /// checkout does not exist, and the copy admits it in the same words
+    /// `ProUpsellCard` does.
     private var lockedOffLANRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label {
@@ -158,8 +158,8 @@ struct SyncPane: View {
         localized: "Connecting from outside this Mac's own network is part of Sentry Pro. While it's locked, this Mac turns away connections from other networks even when they hold the pairing code; pairing and control on this Wi-Fi stay free."
     )
 
-    /// Verbatim the fan pane's admission — one sentence, no Buy button
-    /// wired to a checkout that doesn't exist.
+    /// Verbatim the admission `ProUpsellCard` and `ThemePane` make — one
+    /// sentence, no Buy button wired to a checkout that doesn't exist.
     static let lockedPurchaseNotice = String(
         localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened. Checkout is coming in an update."
     )

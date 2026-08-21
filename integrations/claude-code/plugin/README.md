@@ -64,7 +64,7 @@ a plain CLI with `check`/`wait`/`status`/`watch`/`statusline`/
 it as an MCP server would just fail. The actual stdio MCP JSON-RPC binary
 is a separate build product, `SentryMCP` (`SentryMCP/main.swift`, `type:
 tool` in `project.yml`), copied into `Sentry.app/Contents/MacOS/` alongside
-`sentryctl` and `SentryFanDaemon`. `sentryctl hook pretooluse` (the
+`sentryctl` and `SentryMCPBridge`. `sentryctl hook pretooluse` (the
 `PreToolUse` hook, below) is correctly `sentryctl` — that half of the
 brief was already right in this repo's `README.md`/`settings.example.json`
 before this change, nothing to fix there. Only the MCP server entry needed

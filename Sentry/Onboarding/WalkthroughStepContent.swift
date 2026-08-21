@@ -266,8 +266,8 @@ private struct NotificationPermissionRow: View {
     }
 
     /// The icon and the sentence both carry the state — §9.4's rule, applied
-    /// the same way `GeneralPane`'s battery warning and `FanControlPane`'s
-    /// lock rows apply it.
+    /// the same way `GeneralPane`'s battery warning and `AlertsPane`'s
+    /// Suppressed/Delivered history labels apply it.
     private func stateRow(symbol: String, tint: Color, text: String) -> some View {
         Label {
             Text(text)

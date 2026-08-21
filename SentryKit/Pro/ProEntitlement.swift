@@ -3,7 +3,7 @@ import Foundation
 /// The features Sentry charges for.
 ///
 /// It is an enum rather than a `Bool` on purpose: the entitlement check at
-/// every call site names its feature — `isUnlocked(.fanControl)` — so
+/// every call site names its feature — `isUnlocked(.remoteSync)` — so
 /// adding a paid feature is a new case, not a hunt through the app for
 /// `isPro` booleans that all meant slightly different things. The
 /// exhaustive `isUnlocked` switches in `ProEntitlementStore` and
@@ -16,12 +16,19 @@ import Foundation
 /// known to be impossible (see `ProEntitlementProviding`); the license
 /// system that replaced it sells one product — Sentry Pro — whose payload
 /// (`LicensePayload`) intentionally carries no feature list to drift out
-/// of sync with this enum. Keeping a dead identifier "just in case" is the
-/// same anti-pattern `FanControlBackend.swift`'s header names: vocabulary
-/// for a thing that cannot happen reads as a thing that might.
+/// of sync with this enum. Keeping a dead identifier "just in case" is
+/// vocabulary for a thing that cannot happen, which reads as a thing that
+/// might.
+///
+/// **`fanControl` used to be a case here and is not any more.** Sentry no
+/// longer sets fan speeds — it only reads them, free, on every Mac — so
+/// there is no longer a paid feature to name. Nothing persisted a
+/// `ProFeature` value (`LicensePayload` carries no feature list, and no
+/// `AppSettings` field stores one), so removing the case migrates nothing
+/// and a license issued before the removal unlocks exactly the six features
+/// that are left.
 public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
     case protectionInsights
-    case fanControl
     case conditionalKeepAwake
     case processMatchAlerts
     case customThemes
@@ -31,7 +38,6 @@ public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
     public var displayName: String {
         switch self {
         case .protectionInsights: return String(localized: "Protection Insights")
-        case .fanControl: return String(localized: "Fan Control")
         case .conditionalKeepAwake: return String(localized: "Conditional Keep-Awake")
         case .processMatchAlerts: return String(localized: "Process-Match Alerts")
         case .customThemes: return String(localized: "Custom Themes")
@@ -44,8 +50,6 @@ public enum ProFeature: String, Codable, Sendable, CaseIterable, Hashable {
         switch self {
         case .protectionInsights:
             return String(localized: "Personalised, evidence-backed recommendations built from this Mac's own measured history and security posture.")
-        case .fanControl:
-            return String(localized: "Hold a fan at a fixed speed through the explicitly-installed root helper. Fan RPM readout stays free on every Mac with fans.")
         case .conditionalKeepAwake:
             return String(localized: "Release rules that end a keep-awake on their own — battery level, sustained CPU, a named app or process, an active download, or a schedule. Timed keep-awake stays free.")
         case .processMatchAlerts:
@@ -178,7 +182,7 @@ public final class ProEntitlementStore: ProEntitlementProviding {
     /// rather than a silent grant.
     public func isUnlocked(_ feature: ProFeature) -> Bool {
         switch feature {
-        case .protectionInsights, .fanControl, .conditionalKeepAwake,
+        case .protectionInsights, .conditionalKeepAwake,
              .processMatchAlerts, .customThemes, .remoteSync, .historyExport:
             return unlockSource != .locked
         }

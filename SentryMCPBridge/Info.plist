@@ -20,9 +20,10 @@
 	  THE LOOSER OF THE TWO REQUIREMENTS, ON PURPOSE — see
 	  MCPBridgePeerGate.consumerRequirement, which this must match exactly.
 
-	  It is tempting to put the publisher requirement here (it pins Sentry's
-	  bundle identifier as well as the Team ID, and `SentryFanDaemon`'s
-	  Info.plist does exactly that). It would be wrong. This agent's clients
+	  It is tempting to put the publisher requirement here — it pins Sentry's
+	  bundle identifier as well as the Team ID, which is what the deleted
+	  `SentryFanDaemon`'s Info.plist did, since its only legitimate client
+	  really was the app itself. It would be wrong here. This agent's clients
 	  are not just Sentry: they are also `sentry` and `SentryMCP`, bare
 	  Mach-O tools whose signing identifiers `codesign` derives from the file
 	  name plus a hash of the signing identity — no `identifier` clause can

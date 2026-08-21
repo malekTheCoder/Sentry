@@ -115,9 +115,9 @@ final class SMCFanBridge {
     /// reports (`F{i}Mn` / `F{i}Mx`) plus the current target (`F{i}Tg`).
     ///
     /// Every field is optional and independently so — a Mac that answers
-    /// `F0Ac` but not `F0Mx` is a real possibility, and the fan-control
-    /// shell is written to show the speed while admitting the range is
-    /// unknown rather than substituting a plausible-looking ceiling.
+    /// `F0Ac` but not `F0Mx` is a real possibility, and the honest reading
+    /// of that Mac is the speed alongside an admittedly unknown range,
+    /// never a plausible-looking ceiling substituted for the missing key.
     struct FanHardwareDescription {
         let index: Int
         let minRPM: Double?
@@ -131,15 +131,14 @@ final class SMCFanBridge {
     ///
     /// **Still read-only, and deliberately so.** These are exactly the keys
     /// a write path would need (`F{i}Mn`/`F{i}Mx` to clamp against,
-    /// `F{i}Tg` to write and to verify by readback), and reading them is
-    /// what lets the fan-control settings shell clamp against measured
-    /// hardware instead of hardcoded numbers — the spike found fan 0 and
-    /// fan 1 of the *same* MacBook Pro topping out 462 rpm apart, so no
-    /// constant could be correct. Nothing here writes: this type's only
-    /// SMC commands remain `READ_KEYINFO` and `READ_BYTES`, and adding a
-    /// write command is a separate, separately-reviewed change requiring a
-    /// privileged helper (see this file's header and
-    /// `docs/fan-control-spike.md`).
+    /// `F{i}Tg` to write and to verify by readback), and they are read
+    /// here because the machine is the only authority on its own limits:
+    /// this project's hardware matrix turned up fan 0 and fan 1 of the
+    /// *same* MacBook Pro topping out 462 rpm apart, so no hardcoded
+    /// constant could be correct for both. Nothing here writes: this
+    /// type's only SMC commands remain `READ_KEYINFO` and `READ_BYTES`,
+    /// and adding a write command would be a separate, separately-reviewed
+    /// change requiring a privileged helper (see this file's header).
     func readFanHardware() -> [FanHardwareDescription] {
         guard connection != 0 else { return [] }
         guard let count = readFanCount(), count > 0 else { return [] }

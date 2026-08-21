@@ -224,7 +224,8 @@ final class DashboardViewModel: ObservableObject {
     /// paste or override flip must re-gate the export menu on the next
     /// body evaluation, not after a relaunch of a window that is never
     /// rebuilt. This type never queries entitlement itself (same one-way
-    /// flow as `FanControlService.isProUnlocked`), and it defaults locked:
+    /// flow as `AlertEngine.processRulesUnlocked` and
+    /// `LocalSyncServer.setRemoteAccessUnlocked`), and it defaults locked:
     /// a view model nobody seeded must not offer export.
     @Published var isProUnlocked = false
 

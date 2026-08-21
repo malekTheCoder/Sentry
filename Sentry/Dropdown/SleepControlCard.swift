@@ -148,7 +148,7 @@ struct SleepControlCard: View {
     /// in the "For" menu — is unlocked. Pushed one-way by the composition
     /// root through both hosts (`DropdownView` construction,
     /// `DashboardViewModel`'s published mirror), the same flow
-    /// `FanControlService.isProUnlocked` rides; this view never queries
+    /// `AlertEngine.processRulesUnlocked` rides; this view never queries
     /// entitlements. Defaults locked so a construction site nobody updated
     /// withholds rather than leaks.
     ///

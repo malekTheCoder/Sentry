@@ -7,7 +7,7 @@ import Foundation
 ///
 /// **The storage unit is Celsius and is not negotiable.** Every sensor path
 /// in this codebase — `ThermalCollector`'s HID reads, `BatteryCollector`'s
-/// `Double(temp) / 100.0`, `FanCurvePoint.celsius`, the `battery
+/// `Double(temp) / 100.0`, the `battery
 /// .temperature_c` / `thermal.soc_temp_c` rows `HistoryStore` writes, the
 /// `peakSoCTemperatureCelsius` fields on the MCP payloads, and the CSV/JSON
 /// `HistoryExport` writes with a literal `"celsius"` unit column — speaks
@@ -21,12 +21,12 @@ import Foundation
 /// uninterpretable — a `95` written last week would mean 95 °C and a `95`
 /// written today would mean 35 °C, with nothing on the row to tell them
 /// apart. The same argument applies to the sync wire (a Mac in °F relaying
-/// to a phone in °C), to `FanCurve` (whose breakpoints are compared against
-/// raw sensor readings by `FanControlService`, in the daemon, at a cadence
-/// no UI is involved in), and to every threshold constant
+/// to a phone in °C), and to every threshold constant
 /// (`SystemAdvisor.highSoCTempCelsius`, `AlertRule.threshold`,
-/// `InsightHistorySummaries.sustainedHeatThreshold`). All of those stay in
-/// Celsius; only the strings change.
+/// `InsightHistorySummaries.sustainedHeatThreshold`) — each of those is
+/// compared against a raw sensor reading at a cadence no UI is involved in,
+/// so a display toggle reaching them would move the threshold itself. All
+/// of those stay in Celsius; only the strings change.
 ///
 /// **Why an enum with two cases rather than `Bool showsFahrenheit`.**
 /// Kelvin and Rankine are jokes here, but "is this flag true or false" is
@@ -157,14 +157,14 @@ public enum TemperatureUnit: String, Codable, CaseIterable, Sendable, Hashable {
     /// panes, `AlertEngine`'s notification bodies, eight
     /// `ProtectionInsightRule`s' evidence sentences, two App Intents
     /// dialogs, `SystemAdvisor`/`AgentPreflight`'s reason strings, the
-    /// `sentryctl` statusline, and `FanCurve`'s validation messages. Most
-    /// of those are pure `Sendable` value types or free functions
-    /// (`InsightPhrasing`, `FanCurve.issues()`, `MetricFormatter`) that
+    /// `sentryctl` statusline. Most of those are pure `Sendable` value
+    /// types or free functions
+    /// (`InsightPhrasing`, `StatuslineRenderer`, `MetricFormatter`) that
     /// deliberately own no reference to `SettingsStore` — the insight rules
     /// in particular have a documented contract that `evaluate` is a pure
     /// function of its `InsightContext` and reads no ambient configuration.
     /// Threading a `TemperatureUnit` into all of them would mean widening
-    /// `InsightContext`, `AlertAction`, `FanCurveIssue`, `MetricFormatter`,
+    /// `InsightContext`, `AlertAction`, `MetricFormatter`,
     /// and every intermediate that merely passes them along — a change an
     /// order of magnitude larger than the feature, touching files this task
     /// is explicitly not allowed to touch (`AppDelegate`, the composition
@@ -277,9 +277,9 @@ public enum TemperatureUnit: String, Codable, CaseIterable, Sendable, Hashable {
 /// different ways: `MetricFormatter.compact` (`"58°"`),
 /// `MetricFormatter.detailed` (`"58.4 °C"`), `InsightPhrasing.celsius`
 /// (`"58°C"`), and roughly a dozen hand-rolled
-/// `"\(Int(x.rounded())) °C"` interpolations in `FanControlPane`,
-/// `FanCurve.issues()`, `SystemAdvisor`, `AgentPreflight`,
-/// `SentryMacIntents` and `sentryctl`. Adding a unit toggle on top of that
+/// `"\(Int(x.rounded())) °C"` interpolations in `SystemAdvisor`,
+/// `AgentPreflight`, `SentryMacIntents` and `sentryctl`.
+/// Adding a unit toggle on top of that
 /// arrangement would have meant a dozen independent conversions, each an
 /// opportunity to forget the `+ 32` or apply it to a delta. Every one of
 /// those call sites now routes here.
@@ -344,9 +344,9 @@ public enum TemperatureFormatter {
         /// space before the unit reads as a typo mid-sentence.
         public static let whole = Style(precision: .whole, placement: .attached)
 
-        /// `"58 °C"` — tabular values in Settings (`FanControlPane`'s
-        /// curve rows and per-sensor list), where the number and its unit
-        /// are separate visual columns.
+        /// `"58 °C"` — tabular values, where the number and its unit sit in
+        /// separate visual columns and a space is what keeps them from
+        /// reading as one run of text.
         public static let wholeSpaced = Style(precision: .whole, placement: .spaced)
 
         /// `"4.2°C"` — a tenth, inside a sentence. `ThermalDriftRule`'s

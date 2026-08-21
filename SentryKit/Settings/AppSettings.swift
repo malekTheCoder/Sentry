@@ -66,8 +66,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Which unit every temperature on this Mac is **displayed** in. Not
     /// which unit anything is stored in — see `TemperatureUnit`'s doc
     /// comment for why the sensors, `HistoryStore`, the sync wire, every
-    /// `AlertRule.threshold`, and `FanCurve`'s breakpoints all stay in
-    /// Celsius no matter what this says.
+    /// `AlertRule.threshold` all stay in Celsius no matter what this says.
     ///
     /// **Why this lives in `AppSettings` rather than in its own store or in
     /// `Theme`.** The same reasoning `detailedCharts` immediately above
@@ -336,33 +335,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// store can split it out later without a format change.
     public var deviceID: String
 
-    // MARK: - Fan control (fan-control plan §5.2)
-
-    /// Modes, curves, per-fan overrides, hysteresis, safety ceiling, and
-    /// startup behavior for the fan-control feature — one nested object
-    /// rather than a dozen top-level fields, so `settings.json` grows one
-    /// readable `"fanControl": { … }` block and `init(from:)` below gains
-    /// exactly one additive key to defend.
-    ///
-    /// **Nothing in here changes this build's behavior, and that is not a
-    /// bug.** Writing an SMC fan key requires root through a privileged
-    /// helper that Sentry does not ship (`docs/fan-control-spike.md`), so
-    /// every mode except `.auto` is currently unreachable and the Settings
-    /// pane says so on screen next to each disabled control. This block is
-    /// persisted now because the user's *intent* — which curve, which
-    /// sensor, what ceiling — is worth keeping across the relaunches
-    /// between now and a write path existing, and because a settings shape
-    /// that arrives with the feature is a settings shape nobody has to
-    /// migrate into later. The defaults are all inert:
-    /// `defaultPolicy.mode == .auto`, `controlEnabledOnLaunch == false`.
-    public var fanControl: FanControlSettings
-
     // MARK: - Agent guardrails (conditional guardrails + kill switch)
 
     /// Conditional guardrails, the global kill switch, and per-agent
-    /// revocations for the MCP surface — one nested object for the same
-    /// reason `fanControl` is (a single readable `"agentGuardrails": { … }`
-    /// block, one additive key for `init(from:)` to defend). Enforced by
+    /// revocations for the MCP surface — one nested object rather than a
+    /// scattering of top-level fields, so `settings.json` grows one readable
+    /// `"agentGuardrails": { … }` block and `init(from:)` below gains
+    /// exactly one additive key to defend. Enforced by
     /// `MCPXPCService.authorize` and `AppDelegate`'s snapshot loop via the
     /// pure `AgentGuardrails` engine
     /// (`SentryKit/Services/AgentGuardrails.swift`); see that file for the
@@ -471,7 +450,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         proLicenseBlob: String? = nil,
         proLicenseLastVerifiedAt: Date? = nil,
         deviceID: String = "",
-        fanControl: FanControlSettings = FanControlSettings(),
         agentGuardrails: AgentGuardrailSettings = AgentGuardrailSettings(),
         hasSeenWelcome: Bool = false,
         updateCheckDaily: Bool = true,
@@ -513,7 +491,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.proLicenseBlob = proLicenseBlob
         self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
         self.deviceID = deviceID
-        self.fanControl = fanControl
         self.agentGuardrails = agentGuardrails
         self.hasSeenWelcome = hasSeenWelcome
         self.updateCheckDaily = updateCheckDaily
@@ -598,11 +575,17 @@ extension AppSettings {
         // decode, and the composition root saves once at startup so it is
         // stable from the second launch on.
         case deviceID
-        // Fan control, additive: absent in any settings.json written before
-        // the fan-control shell existed, and its fallback is a fully inert
-        // block (auto mode, control not enabled on launch) — an upgrading
-        // install must not find itself opted into a thermal feature.
-        case fanControl
+        // NOTE THE ABSENCE OF `fanControl`. It was here; fan control was
+        // removed, and the key went with it. A `settings.json` written by
+        // any build that had the feature still carries a `"fanControl": {
+        // … }` block, and that block is now simply *ignored*: this is a
+        // `CodingKeys`-driven container, so a key with no case is never
+        // looked up and never throws. It also stops being written the first
+        // time settings are saved, so the file cleans itself up. There is
+        // deliberately no migration and no `schemaVersion` bump — nothing
+        // changed meaning, a field went away, and this decoder has tolerated
+        // that in both directions since it was written.
+        // `AppSettingsFanControlRemovalTests` pins it.
         // Agent guardrails, additive: absent in any settings.json written
         // before the guardrail/kill-switch pass existed, and its fallback is
         // the shipped defaults (kill switch off, battery floor on at 20%,
@@ -744,11 +727,9 @@ extension AppSettings {
                 ?? fallback.proLicenseLastVerifiedAt,
             deviceID: try container.decodeIfPresent(String.self, forKey: .deviceID)
                 ?? fallback.deviceID,
-            fanControl: try container.decodeIfPresent(FanControlSettings.self, forKey: .fanControl)
-                ?? fallback.fanControl,
             // `AgentGuardrailSettings` has its own additive-tolerant decoder
             // (see that type), so a stored block written by an older build
-            // survives a policy field being added later, same as `fanControl`.
+            // survives a policy field being added later.
             agentGuardrails: try container.decodeIfPresent(AgentGuardrailSettings.self, forKey: .agentGuardrails)
                 ?? fallback.agentGuardrails,
             // Must upgrade to `false` — see this property's own doc comment

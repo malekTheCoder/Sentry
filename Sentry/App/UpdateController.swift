@@ -43,8 +43,8 @@ import SentryKit
 ///     carries the reason, and Settings ▸ General prints it instead of
 ///     offering a button.
 ///
-/// This is the same rule `SyncPane` and `FanControlPane` were written to —
-/// never ship a control that silently does nothing — applied to the one
+/// This is the same rule `SyncPane` was written to — never ship a control
+/// that silently does nothing — applied to the one
 /// feature where "silently does nothing" and "silently reassures you" are
 /// the same failure.
 ///
@@ -143,7 +143,7 @@ final class UpdateController: NSObject, ObservableObject {
     /// Called from `AppDelegate.applicationDidFinishLaunching` and again
     /// from `applySettings` on every emission, matching how
     /// `alertEngine.rateCapPerHour`, `coordinator.setBaseInterval`, and
-    /// `fanControlService.settings` are kept current — the pane writes to
+    /// `rollupJob.setRetention` are kept current — the pane writes to
     /// settings and never touches this object, so this is the single place a
     /// toggle reaches the updater. Idempotent: assigning the same values is
     /// free, so an unrelated settings emission (a slider drag emits one per

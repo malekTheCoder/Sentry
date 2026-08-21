@@ -6,17 +6,20 @@ import Foundation
 /// tests drive it without an entitlement store, a settings file, or a UI,
 /// and no view or job ever queries entitlement itself. Lives beside
 /// `RollupJob`/`HistoryExport` rather than in `SentryKit/Pro` for the same
-/// reason `FanWriteAvailability.requiresPro` lives in
-/// `FanControlBackend.swift`: the gate's vocabulary belongs to the feature
-/// it gates.
+/// reason `ThemeEditingGate` lives beside `Theme` rather than in
+/// `SentryKit/Pro`: a gate's vocabulary belongs to the feature it gates,
+/// not to the paywall.
 ///
 /// **What the free tier genuinely gets:** every in-app history view — the
 /// Dashboard's charts, scrubbing, coverage captions, the works — over the
 /// shipped retention windows (48 h of raw samples, 90 d of hourly rollups,
 /// daily rollups forever), and full freedom to *shrink* those windows.
-/// Lowering retention is data minimization and is never gated, in the same
-/// spirit as the fan feature's "anything that releases, reverts, stops, or
-/// removes is never gated."
+/// Lowering retention is data minimization and is never gated, under the
+/// house rule every paid feature here answers to: anything that releases,
+/// reverts, stops, or removes stays free. It is the same rule that leaves
+/// deleting a custom theme ungated in `ThemeEditingGate` and keeps the
+/// *disable* control live on a locked process rule in
+/// `AlertsPane.enableAffordanceWithheld`.
 ///
 /// **What the paywall withholds:** raising retention above the shipped
 /// defaults, and exporting history to a file. The free caps equal the

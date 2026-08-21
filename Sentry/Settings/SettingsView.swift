@@ -3,7 +3,7 @@ import SentryKit
 
 /// The settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, fans, aiAccess, sync, advanced, about
+    case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced, about
 
     var id: String { rawValue }
 
@@ -14,7 +14,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .menuBar: return String(localized: "Menu Bar")
         case .theme: return String(localized: "Theme")
         case .alerts: return String(localized: "Alerts")
-        case .fans: return String(localized: "Fans")
         case .aiAccess: return String(localized: "AI Access")
         case .sync: return String(localized: "Sync")
         case .advanced: return String(localized: "Advanced")
@@ -29,7 +28,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .menuBar: return "menubar.rectangle"
         case .theme: return "paintbrush"
         case .alerts: return "bell.badge"
-        case .fans: return "fan"
         case .aiAccess: return "bolt.shield"
         case .sync: return "arrow.triangle.2.circlepath.icloud"
         case .advanced: return "wrench.and.screwdriver"
@@ -46,7 +44,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .menuBar: return String(localized: "Compose the bar item and choose what the dropdown shows.")
         case .theme: return String(localized: "How Sentry's own surfaces look — dropdown, dashboard, widgets.")
         case .alerts: return String(localized: "Rules, notifications, and alert history.")
-        case .fans: return String(localized: "Live fan speeds, and what fan control would need to work.")
         case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
         case .sync: return String(localized: "iPhone companion and device sync.")
         case .advanced: return String(localized: "Diagnostics and debugging.")
@@ -97,14 +94,6 @@ struct SettingsView: View {
     /// reasonably conclude the feature had been removed.
     let endpointPublisher: MCPEndpointPublisher?
 
-    /// Backs `FanControlPane`. Not optional, unlike the stores above:
-    /// `FanControlService` has a real, meaningful
-    /// answer for every hardware situation it can encounter (including "no
-    /// fans" and "couldn't read"), so there is no genuine "unavailable"
-    /// state that a `nil` would represent — and inventing one would give
-    /// that pane a fourth empty state that can never actually occur.
-    @ObservedObject var fanControlService: FanControlService
-
     /// Backs `GeneralPane`'s Updates section. Optional, like `historyStore`
     /// and `mcpActivityLog` and unlike the two services above: this view is
     /// constructible in contexts with no app-lifetime updater (a preview, a
@@ -130,7 +119,6 @@ struct SettingsView: View {
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
         endpointPublisher: MCPEndpointPublisher? = nil,
-        fanControlService: FanControlService,
         updateController: UpdateController? = nil,
         proEntitlements: (any ProEntitlementProviding)? = nil
     ) {
@@ -139,7 +127,6 @@ struct SettingsView: View {
         self.onShowDebugWindow = onShowDebugWindow
         self.mcpActivityLog = mcpActivityLog
         self.endpointPublisher = endpointPublisher
-        self.fanControlService = fanControlService
         self.updateController = updateController
         self.proEntitlements = proEntitlements
     }
@@ -183,7 +170,7 @@ struct SettingsView: View {
             switch pane {
             case .general, .modules, .menuBar, .theme:
                 groups[0].append(pane)
-            case .alerts, .fans, .aiAccess, .sync:
+            case .alerts, .aiAccess, .sync:
                 groups[1].append(pane)
             case .advanced, .about:
                 groups[2].append(pane)
@@ -330,8 +317,6 @@ struct SettingsView: View {
             ThemePane(store: store, entitlements: proEntitlements)
         case .alerts:
             AlertsPane(store: store, historyStore: historyStore, entitlements: proEntitlements).formStyle(.grouped)
-        case .fans:
-            FanControlPane(store: store, service: fanControlService).formStyle(.grouped)
         case .aiAccess:
             AIAccessPane(
                 store: store,

@@ -10,7 +10,7 @@ struct ThemePane: View {
     @ObservedObject var store: SettingsStore
 
     /// The app's entitlement authority, injected at construction like every
-    /// other consumer (`InsightsViewModel`, `FanControlService`) — this view
+    /// other consumer (`InsightsViewModel`, `AlertsPane`) — this view
     /// never decides entitlement itself. Reading it in `body` stays fresh
     /// without another `ObservableObject`: both unlock inputs (the developer
     /// override and the license blob) live in the same `@Published` settings
@@ -360,10 +360,9 @@ struct ThemePane: View {
 
     private func duplicate(_ theme: Theme) {
         // Never reachable locked — no fork affordance is constructed — but
-        // guarded anyway, same shape as
-        // `FanControlService.installPrivilegedHelper`: defense in depth, and
-        // a silent no-op is the right failure for a path that cannot be
-        // reached by a rendered control.
+        // guarded anyway, the same defense in depth `ThemeEditingGate.commit`
+        // applies on the write path: a silent no-op is the right failure for
+        // a path that cannot be reached by a rendered control.
         guard isProUnlocked else { return }
         // A duplicate isn't in settings until the user saves it, which is
         // what makes Cancel on a duplicate leave nothing behind — `save`
@@ -397,8 +396,9 @@ struct ThemePane: View {
     }
 
     /// Deliberately NOT Pro-gated: deleting is removal, and removal must
-    /// survive a lapsed license — same escape-hatch rule as
-    /// `FanControlService.removePrivilegedHelper`.
+    /// survive a lapsed license — the same escape-hatch rule that keeps
+    /// `AlertsPane.enableAffordanceWithheld` from ever withholding the
+    /// *disable* control on a locked process rule.
     private func delete(_ theme: Theme) {
         store.settings.customThemes.removeAll { $0.id == theme.id }
         // Leaving `themeID` pointing at a deleted theme would resolve to the
@@ -507,7 +507,7 @@ private struct ThemeProUpsellCard: View {
                     .foregroundStyle(palette.textTertiary)
                     .padding(.top, 1)
                     .accessibilityHidden(true)
-                // Same admission as `ProUpsellCard` and `FanControlPane`:
+                // Same admission as `ProUpsellCard` and `SyncPane`:
                 // there is deliberately no Buy button that couldn't work.
                 Text("Purchasing isn't available yet — Sentry's license checkout hasn't opened. Checkout is coming in an update.")
                     .font(palette.font(size: 10))

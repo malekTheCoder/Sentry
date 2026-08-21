@@ -44,7 +44,8 @@ import SentryKit
 /// & Extensions. Doing that unannounced, on first launch, for a feature most
 /// users will never use, would be the app quietly installing a background item
 /// on their behalf — and the first they would hear of it is finding it in
-/// System Settings. `FanControlPane` sets the standard this follows: the
+/// System Settings. The standard this follows is the one every action in
+/// Sentry that changes something outside the app is held to: the
 /// consequences are spelled out next to the button, the button exists on
 /// exactly one screen, and the result of pressing it is reported verbatim
 /// including the failure.
@@ -58,10 +59,13 @@ final class MCPEndpointPublisher: ObservableObject {
 
     /// What launchd thinks of our agent, as of the last `refresh()`.
     ///
-    /// Cached rather than recomputed per redraw for the same reason
-    /// `PrivilegedFanControlBackend.cachedStatus` is, and refreshed at the
-    /// same three moments it can actually change: construction, either side of
-    /// a register/unregister, and whenever the pane appears — that last one
+    /// Cached rather than recomputed per redraw, because asking
+    /// `SMAppService` for a status is a round trip to `smd` and a SwiftUI
+    /// `body` may run many times a second: reading it from a view would turn
+    /// a property access that looks free into per-frame IPC. Refreshed
+    /// instead at the three moments it can actually change: construction,
+    /// either side of a register/unregister, and whenever the pane appears —
+    /// that last one
     /// matters because `.awaitingApproval` becomes `.registered` entirely
     /// outside this app, when the user flips a switch in System Settings, and
     /// nothing notifies us.

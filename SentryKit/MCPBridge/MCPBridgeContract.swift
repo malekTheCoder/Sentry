@@ -68,8 +68,7 @@ import Foundation
 //
 // ## What cannot be verified without a Developer ID certificate
 //
-// Stated up front so no reader assumes otherwise, in the same terms
-// `FanDaemonContract` uses for the root daemon. `SMAppService.agent(
+// Stated up front so no reader assumes otherwise. `SMAppService.agent(
 // plistName:)` requires the agent binary to be signed with the same *real*
 // Team ID as the app registering it. The machine this was written on has
 // zero code-signing identities (`security find-identity -v -p codesigning` →
@@ -89,12 +88,12 @@ import Foundation
 // fails with a message that names the *real* cause instead of the old
 // "Is Sentry running?" misdirection.
 //
-// ## Relationship to `SentryKit/FanDaemon/`
+// ## Two properties of this arrangement worth naming
 //
-// Same shape, deliberately: pure decision logic here, `SMAppService`
-// registration driven by an explicit user action and never at launch, honest
-// per-state UI, inert without the helper. Two differences are worth naming
-// rather than leaving to be inferred:
+// The shape is deliberate throughout: pure decision logic here,
+// `SMAppService` registration driven by an explicit user action and never at
+// launch, honest per-state UI, inert without the agent. Within that, two
+// things are worth naming rather than leaving to be inferred:
 //
 //   * **This agent runs as the user, not as root.** It is a rendezvous
 //     desk, not a privileged operation. The blast radius of a peer-gate
@@ -103,18 +102,17 @@ import Foundation
 //     fail-closed; the stakes are simply not the same, and pretending
 //     otherwise would misdirect a future reviewer's attention.
 //   * **The concrete `SecCode` evaluator lives in `SentryKit`, not in the
-//     tool target.** The fan daemon keeps its evaluator inside
-//     `SentryFanDaemon/` because only the daemon ever verifies a peer. Here
-//     *both* sides verify — the bridge gates who may publish and who may
-//     resolve, and Sentry's own anonymous listener gates who may connect to
-//     it — so a single shared file beats two copies of the same four
-//     Security-framework calls.
+//     tool target.** A helper that only ever verifies its own callers could
+//     keep its evaluator to itself. Here *both* sides verify — the bridge
+//     gates who may publish and who may resolve, and Sentry's own anonymous
+//     listener gates who may connect to it — so a single shared file beats
+//     two copies of the same four Security-framework calls drifting apart.
 
 #if os(macOS)
 
 /// Names all three participants must agree on, in one place so a typo cannot
 /// silently reproduce the exact bug this directory fixes — a registered
-/// agent that nothing can reach. Mirrors `FanDaemonNaming`.
+/// agent that nothing can reach.
 public enum MCPBridgeNaming {
 
     /// The launchd job label, the Mach service name, and the basename of the
@@ -150,14 +148,14 @@ public enum MCPBridgeTiming {
     /// How long the bridge stays alive holding a published endpoint with no
     /// activity before exiting on its own.
     ///
-    /// The load-bearing mitigation for the uninstall problem, exactly as
-    /// `FanDaemonTiming.idleExitAfter` is for the daemon: a user who drags
-    /// Sentry to the Trash without unregistering leaves a launchd job that
-    /// can no longer start, and a copy that happens to be running should
-    /// retire itself rather than linger. Longer than the daemon's 60 seconds
-    /// because this process holds nothing dangerous — it is a table with one
-    /// entry in it — and because being evicted mid-session would make the
-    /// *next* `sentryctl` invocation pay a cold-launch penalty for no benefit.
+    /// The load-bearing mitigation for the uninstall problem: a user who
+    /// drags Sentry to the Trash without unregistering leaves a launchd job
+    /// that can no longer start, and a copy that happens to be running should
+    /// retire itself rather than linger. Five minutes rather than something
+    /// tighter because this process holds nothing dangerous — it is a table
+    /// with one entry in it — and because being evicted mid-session would
+    /// make the *next* `sentryctl` invocation pay a cold-launch penalty for
+    /// no benefit.
     public static let idleExitAfter: TimeInterval = 300
 
     /// How long a client waits for the bridge to answer `resolveAppEndpoint`

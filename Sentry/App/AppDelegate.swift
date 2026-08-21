@@ -80,31 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var intentAccessibleCoordinator: StatsCoordinator { coordinator }
     var intentAccessibleSettingsStore: SettingsStore { settingsStore }
 
-    /// Backs Settings ▸ Fans.
-    ///
-    /// `PrivilegedFanControlBackend` **wrapping** the read-only SMC one, not
-    /// replacing it: capability detection and every RPM the pane shows come
-    /// from `SMCReadOnlyFanControlBackend` exactly as they did in Phase 2,
-    /// and only *writes* are routed to the root helper. So a helper that is
-    /// missing, unapproved, broken, or removed cannot change a single
-    /// number on that screen.
-    ///
-    /// **Constructing this is inert, and staying inert is the point.** The
-    /// privileged backend's `init` performs one `SMAppService.daemon(…)
-    /// .status` read — a local lookup that prompts nothing, launches
-    /// nothing, and opens no XPC connection — plus the same handful of SMC
-    /// reads the read-only backend has always done. Nothing here registers
-    /// a daemon; the only caller of `register()` is a button in the Fans
-    /// pane. On a machine with no helper installed (every fresh install,
-    /// and every build made without signing certificates, where
-    /// registration cannot succeed at all) the app behaves precisely as it
-    /// did before this change. See `PrivilegedFanControlBackend` and
-    /// `docs/fan-control-spike.md`.
-    private let fanControlBackend = PrivilegedFanControlBackend(
-        reading: SMCReadOnlyFanControlBackend()
-    )
-    private lazy var fanControlService = FanControlService(backend: fanControlBackend)
-
     /// Feeds the desktop widget's App Group cache from the same snapshot
     /// stream as every other consumer — see `MacWidgetSnapshotWriter`.
     private let widgetWriter = MacWidgetSnapshotWriter(
@@ -196,7 +171,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             onShowDebugWindow: { [weak self] in self?.debugWindowController.show() },
                             mcpActivityLog: self.mcpActivityLog,
                             endpointPublisher: self.mcpEndpointPublisher,
-                            fanControlService: self.fanControlService,
                             updateController: self.updateController,
                             // The panes' Pro gates (process-match rules,
                             // theme editing, Remote Access, retention caps)
@@ -413,8 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     // Sparkle persists its check schedule in `UserDefaults`, so a second
     // updater would reconcile against the first's record.
     //
-    // Non-lazy and unconditional, like `fanControlService`
-    // above: construction reads two `Info.plist` keys and, when they don't
+    // Non-lazy and unconditional: construction reads two `Info.plist` keys and, when they don't
     // describe a working channel, deliberately builds no Sparkle object at
     // all. That last part is the whole design — see `UpdateController`'s doc
     // comment for why this service is the one exception to the "start it
@@ -548,13 +521,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // launch — removing an absent key is a no-op.
         UserDefaults.standard.removeObject(forKey: "dev.malekswilam.sentry.pendingAlertPushes")
 
+        // The same kind of cleanup as the line above, one order of magnitude
+        // more serious. Earlier builds could install a **root LaunchDaemon**
+        // to write SMC fan keys; fan control is gone and the app now only
+        // reads fan speeds, but deleting the code that installed that daemon
+        // does not uninstall it from the Macs of the users who said yes.
+        // Left alone it would outlive every screen capable of removing it.
+        //
+        // Off the main queue because it may block: `unregister()` is a round
+        // trip to `smd`, and nothing on screen depends on its answer. It is
+        // a no-op — and, importantly, prompt-free — for anyone who never
+        // enabled fan control, which is why it can run unconditionally on
+        // every launch. See `FanDaemonUninstaller` for the whole decision
+        // table and for when this call and the plist it acts on can go.
+        DispatchQueue.global(qos: .utility).async {
+            FanDaemonUninstaller.removeIfInstalled()
+        }
+
         // Give the updater the persisted preference before Sparkle's own
         // scheduler has a chance to run its first check, so a user who
         // turned automatic checks off on a previous launch isn't checked on
         // this one. `applySettings` keeps it current after that — the same
-        // one-way flow `alertEngine.updateRules` and `fanControlService
-        // .settings` use, and the reader `AppSettings.updateCheckDaily` has
-        // been missing since it was added.
+        // one-way flow `alertEngine.updateRules` uses, and the reader
+        // `AppSettings.updateCheckDaily` has been missing since it was added.
         updateController.applySettings(settings)
 
         // Closes the loop between the two Phase 3 services without either
@@ -636,14 +625,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 self.debugDumpViewModel.ingest(snapshot)
                 self.dashboardViewModel.ingest(snapshot)
                 self.insightsViewModel.ingest(snapshot)
-                // Settings ▸ Fans reads live RPM from here rather than
-                // opening a second SMC connection of its own — two
-                // independent reads milliseconds apart would occasionally
-                // disagree, and a user shown two numbers for one fan has
-                // been lied to by at least one of them.
-                if let thermal = snapshot.thermal {
-                    self.fanControlService.ingest(thermal)
-                }
                 // Without these, both Phase 3 services are armed but inert —
                 // neither has a data source of its own by design (plan §3.2
                 // P3: one poll loop, many consumers). A conditional
@@ -690,15 +671,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
-        // Seed the fan-control service with the persisted policy block so
-        // its resolution preview matches what's on disk from the first
-        // sample, not from the second. `applySettings` keeps it current
-        // after that. The entitlement seed rides the same moment for the
-        // same first-tick reason — the service defaults to locked, and a
-        // licensed user's pane must not flash the Pro gate at launch.
-        fanControlService.settings = settings.fanControl
-        fanControlService.isProUnlocked = proEntitlementStore.isUnlocked(.fanControl)
-
         // The `ProFeature.conditionalKeepAwake` service gate — the same
         // sibling-services seam as `processProbe`: `PowerControlService`
         // never reads entitlements itself, so the composition root answers
@@ -713,7 +685,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.proEntitlementStore.isUnlocked(.conditionalKeepAwake) ?? false
         }
         // Seed the view-model mirrors and the sync server for the same
-        // first-tick reason as the fan entitlement above — a licensed
+        // first-tick reason as the keep-awake gate above — a licensed
         // user's controls must not flash the locked state at launch, and
         // an entitled user's off-LAN peers must not be refused in the
         // window before the first settings emission.
@@ -808,24 +780,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         historyStore.flush()
         settingsStore.save()
         localSyncServer.stop()
-        // Ask the fan helper for every fan back before we go. This is a
-        // *courtesy*, not the guarantee, and the distinction matters enough
-        // to spell out: `applicationWillTerminate` is not called on a crash,
-        // on a force-quit, or on `kill -9`, which are precisely the
-        // circumstances a fan left spinning at a fixed speed would be worst.
-        // The guarantee lives in the daemon — the XPC connection dying fires
-        // its `invalidationHandler`, which hands every held fan back to the
-        // firmware, and its heartbeat expiry catches the case where the app
-        // is alive but wedged. `PowerControlService`'s doc comment makes the
-        // same split for IOPM assertions and names the OS-side mechanism as
-        // the one that still works when this process doesn't. A no-op when
-        // no helper is installed, which is the default.
-        fanControlBackend.returnEveryFanToFirmware()
         // Retire our endpoint from the bridge's table so the next `sentryctl`
         // run is told "Sentry isn't running" — which will be true — instead of
-        // failing to connect to an endpoint that died with this process. Same
-        // courtesy-not-guarantee caveat as the fan revert above: this doesn't
-        // run on a crash or a force-quit, and the bridge's own
+        // failing to connect to an endpoint that died with this process. This
+        // is a *courtesy*, not a guarantee: `applicationWillTerminate` is not
+        // called on a crash, on a force-quit, or on `kill -9`, and the bridge's
+        // own
         // `invalidationHandler` is what covers those. A no-op when command-line
         // access was never set up, which is the default.
         mcpEndpointPublisher.withdraw()
@@ -1051,17 +1011,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Entitlement resolution first: `insightsViewModel.applySettings`
         // reads `proEntitlementStore.isUnlocked` synchronously below, so the
-        // override toggle must already reflect the delivered value. The fan
-        // service takes its entitlement the same tick for the same reason —
-        // a license paste or override flip must gate/ungate fan writes
-        // before the next control interaction, not after the next unrelated
-        // settings change. The sync server's remote-access gate rides the
-        // same moment, and must run BEFORE the enableRemote/disableRemote
-        // block below so the listener never judges a new peer under last
-        // tick's entitlement.
+        // override toggle must already reflect the delivered value. Every
+        // other gate takes its entitlement on the same tick for the same
+        // reason — a license paste or override flip must gate/ungate a
+        // feature before the next interaction with it, not after the next
+        // unrelated settings change. The sync server's remote-access gate
+        // rides the same moment, and must run BEFORE the
+        // enableRemote/disableRemote block below so the listener never
+        // judges a new peer under last tick's entitlement.
         proEntitlementStore.applySettings(settings)
         insightsViewModel.applySettings(settings)
-        fanControlService.isProUnlocked = proEntitlementStore.isUnlocked(.fanControl)
         localSyncServer.setRemoteAccessUnlocked(proEntitlementStore.isUnlocked(.remoteSync))
         alertEngine.processRulesUnlocked = proEntitlementStore.isUnlocked(.processMatchAlerts)
         dashboardViewModel.isProUnlocked = proEntitlementStore.isUnlocked(.historyExport)
@@ -1119,14 +1078,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // construction it would do nothing until relaunch.
         alertEngine.rateCapPerHour = settings.notificationRateCapPerHour
         alertEngine.doNotDisturb = settings.doNotDisturb
-
-        // Same one-way flow as `alertEngine.updateRules` above: the Fans
-        // pane writes to settings and never touches the service directly,
-        // so this is the single place a policy edit reaches the resolver.
-        // Note what this does *not* do — it does not apply anything to the
-        // hardware, because nothing in this build can (see
-        // `FanControlService`). It only keeps the computed preview honest.
-        fanControlService.settings = settings.fanControl
 
         // Same one-way flow again: the General pane writes
         // `updateCheckDaily` to settings and never touches the updater, so
