@@ -696,6 +696,19 @@ targets:
     # behind every declaration in it.
     sources:
       - path: SentryMobile
+      # `EndKeepAwakeIntent` is a `LiveActivityIntent`, which the system
+      # performs in the *containing app's* process rather than the widget
+      # extension's — so the app's binary has to contain it, while the
+      # extension's binary also has to, because that is where the Live
+      # Activity's `Button(intent:)` names the type. One file, two targets,
+      # is Apple's own answer to that, and it is why that file references
+      # nothing target-specific: only `SentryKit` symbols both binaries
+      # link (`KeepAwakeCommandSender`, `KeepAwakeActivityPresenter`), never
+      # `AppDataSource`. Declaring it twice would put a control surface's
+      # failure handling in two places that can drift, which is exactly what
+      # `KeepAwakeRequest` exists to have stopped happening to the keep-awake
+      # *encoding*.
+      - path: SentryWidget/Intents/EndKeepAwakeIntent.swift
     dependencies:
       - target: SentryKit_iOS
         embed: true
@@ -747,6 +760,28 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Live Activities (`SentryWidget/LiveActivity/KeepAwakeLiveActivity.swift`).
+        # Without this key `ActivityAuthorizationInfo().areActivitiesEnabled`
+        # is false forever and `Activity.request` throws
+        # `unsupportedTarget` — the feature is not merely hidden, it cannot
+        # start at all.
+        #
+        # Declared here rather than in SentryMobile/Info.plist because that
+        # file is GENERATED from this block on every `xcodegen generate`, so
+        # a direct edit evaporates the next time anyone regenerates. Same
+        # trap `CFBundleURLTypes` above documents having fallen into.
+        #
+        # Note what is deliberately NOT here:
+        # `NSSupportsLiveActivitiesFrequentUpdates`. That key exists to
+        # raise the budget for apps pushing frequent ActivityKit updates
+        # from a server over APNs. This app has no server — the shipped
+        # privacy policy says so — and its Live Activity is designed around
+        # that: a timed session's countdown is rendered locally by the
+        # system from a deadline carried inside the content, so it stays
+        # correct for hours with zero updates from anyone. Requesting a
+        # frequency budget for updates that never happen would be a false
+        # declaration about how this app behaves.
+        NSSupportsLiveActivities: true
         # Registers the `sentry` scheme that `RemotePairing` generates QR
         # links with and `SentryMobileApp.onOpenURL` handles. Without this
         # registration the Camera app never offers "Open in Sentry" and the

@@ -81,6 +81,32 @@ struct SettingsTabView: View {
     /// `selectedThemeID` above.
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
+    /// Backs the Live Activity section below.
+    ///
+    /// **Why `@AppStorage` and not `AppSettings`.** `AppSettings`
+    /// (`SentryKit/Settings/AppSettings.swift`) is the *Mac's* settings
+    /// model, persisted to a `settings.json` this app cannot read, and it
+    /// contains no phone-only flags at all. Every preference this target
+    /// owns — `selectedThemeID`, `temperatureUnit`,
+    /// `hasCompletedOnboarding`, the remote-sync endpoint — is an
+    /// `@AppStorage` key on `UserDefaults.standard`, for the reason
+    /// `temperatureUnitRaw` above spells out: there is no Mac→phone
+    /// preference channel, and whether this phone's Lock Screen shows a
+    /// Live Activity is about the person holding the phone, not about the
+    /// machine being measured. Adding a field to `AppSettings` would have
+    /// meant a setting the Mac writes, encodes, versions and ships to
+    /// nobody.
+    ///
+    /// Defaults to `true`: the feature is the honest presentation of a hold
+    /// the user themselves asked for, and a Live Activity is already
+    /// dismissible from the Lock Screen and switchable off per-app in iOS
+    /// Settings, so shipping it off by default would mean the common case is
+    /// a feature nobody knows exists. The key string is duplicated in
+    /// `KeepAwakeActivityController.enabledDefaultsKey` — same accepted
+    /// duplication as `selectedThemeID`'s, and for the same mechanical
+    /// reason: `@AppStorage` resolves by string, not by Swift symbol.
+    @AppStorage("liveActivityEnabled") private var liveActivityEnabled: Bool = true
+
     @AppStorage("remoteSync.host") private var remoteHost: String = ""
     @AppStorage("remoteSync.port") private var remotePort: String = "8643"
     @AppStorage("remoteSync.code") private var remoteCode: String = ""
@@ -189,6 +215,7 @@ struct SettingsTabView: View {
                 title
                 themeSection
                 unitsSection
+                liveActivitySection
                 deviceCard
                 macPickerSection
                 remoteMacSection
@@ -569,6 +596,56 @@ struct SettingsTabView: View {
             get: { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius },
             set: { temperatureUnitRaw = $0.rawValue }
         )
+    }
+
+    // MARK: - Live Activity
+
+    /// The opt-out for the keep-awake Live Activity
+    /// (`SentryWidget/LiveActivity/KeepAwakeLiveActivity.swift`).
+    ///
+    /// **A toggle here, unlike the one the Alerts tab deliberately removed.**
+    /// `AlertsTabView`'s doc comment records that a `Toggle` was taken out
+    /// of this app because it "persisted nothing, reached the Mac never" —
+    /// this codebase's canonical settings-control-that-silently-does-nothing
+    /// anti-pattern. This one persists (the `@AppStorage` key
+    /// `KeepAwakeActivityController` reads) and has an immediate, visible
+    /// effect: switching it off ends any activity currently on the Lock
+    /// Screen, via the same `KeepAwakeActivityLifecycle` rule that handles
+    /// every other end. Switching it back on does not resurrect the old one
+    /// — a new activity starts on the next confirmed hold, which is the
+    /// honest behaviour, since the phone has no way to know whether the hold
+    /// it stopped watching is still running.
+    ///
+    /// A toggle rather than the segmented picker `unitsSection` uses,
+    /// because this genuinely is one thing that is on or off — there is no
+    /// second named option to make the off state readable, which was that
+    /// section's whole argument for a picker.
+    private var liveActivitySection: some View {
+        VStack(alignment: .leading, spacing: palette.spacing * 0.75) {
+            Text("LOCK SCREEN")
+                .scaledFont(palette, size: 10, weight: .semibold)
+                .foregroundStyle(palette.textTertiary)
+
+            Toggle(isOn: $liveActivityEnabled) {
+                Text("Keep-awake Live Activity")
+                    .scaledFont(palette, size: 12)
+                    .foregroundStyle(palette.textPrimary)
+            }
+            .accessibilityLabel("Keep-awake Live Activity")
+            .haptic(.selection, on: liveActivityEnabled)
+            .onChange(of: liveActivityEnabled) {
+                // Reconcile immediately rather than waiting out the
+                // controller's thirty-second tick: a setting whose effect
+                // arrives half a minute later reads as a setting that did
+                // not work.
+                Task { await KeepAwakeActivityController.shared.reconcile() }
+            }
+
+            Text("Shows a running keep-awake session on your Lock Screen and in the Dynamic Island, with an End button. Timed sessions count down on their own — your Mac's deadline is carried in the activity, so nothing needs to be sent to keep it accurate. Sessions with no end time show no countdown, and any session your phone stops hearing about is marked as unconfirmed rather than left claiming to be live.")
+                .scaledFont(palette, size: 10.5)
+                .foregroundStyle(palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Paired device (mock data, honestly labeled)

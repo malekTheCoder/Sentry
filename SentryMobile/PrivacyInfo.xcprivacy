@@ -69,12 +69,17 @@
 			  Evidence: the `@AppStorage` properties in
 			  SentryMobile/RootTabView.swift ("selectedThemeID") and
 			  SentryMobile/Settings/SettingsTabView.swift ("selectedThemeID",
-			  "remoteSync.host", "remoteSync.port", "remoteSync.code"), and
-			  `UserDefaults.standard` in
+			  "remoteSync.host", "remoteSync.port", "remoteSync.code",
+			  "liveActivityEnabled"), and `UserDefaults.standard` in
 			  SentryMobile/Data/AppDataSource.swift's
 			  `remoteEndpointFromDefaults()`, which reads those same four
-			  keys back. All of it is this app's own standard suite; nothing
-			  reads a key written by another app or the system.
+			  remote-sync keys back, and in
+			  SentryMobile/LiveActivity/KeepAwakeActivityController.swift,
+			  which reads "liveActivityEnabled" back from outside a `View`
+			  (it is not a `View` and so has no `@AppStorage` of its own —
+			  see `enabledDefaultsKey`). All of it is this app's own standard
+			  suite; nothing reads a key written by another app or the
+			  system.
 
 			  1C8F.1 — "Declare this reason to access user defaults to read
 			  and write information only accessible to the apps, app
