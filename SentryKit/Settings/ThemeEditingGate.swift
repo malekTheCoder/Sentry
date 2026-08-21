@@ -23,10 +23,10 @@ public enum ThemeEditingError: Error, LocalizedError, Equatable, Sendable {
 
 /// The logic-layer half of the custom-theme Pro gate
 /// (`ProFeature.customThemes`), sitting behind `ThemePane`'s withheld
-/// affordances the same way `FanControlService`'s guards sit behind
-/// `FanControlPane`'s locked UI: the view never constructs a gated control
-/// for a free copy, and the paths such a control would have called refuse
-/// anyway (defense in depth).
+/// affordances the same way `AlertEngine.processRulesUnlocked` sits behind
+/// `AlertsPane`'s locked process-match rows: the view never constructs a
+/// gated control for a free copy, and the paths such a control would have
+/// called refuse anyway (defense in depth).
 ///
 /// **What is gated:** the save commit — every fork, edit, and import lands
 /// in `commit(_:into:isProUnlocked:)`, the single path that writes a custom
@@ -41,8 +41,8 @@ public enum ThemeEditingError: Error, LocalizedError, Equatable, Sendable {
 /// (`WatchRelaySnapshot`), never changes underfoot — selecting any theme
 /// (built-in or custom, in the pane or the dropdown's quick switcher) stays
 /// free, and deleting a custom theme stays free: removal is an escape
-/// hatch, per the same rule that keeps
-/// `FanControlService.removePrivilegedHelper` un-gated. Gating resolution
+/// hatch, and an escape hatch behind a paywall is not an escape
+/// hatch. Gating resolution
 /// would repaint a paying user's Mac the day their license lapsed, which is
 /// exactly the dark pattern `ProGate`'s doctrine forbids.
 ///
@@ -80,9 +80,9 @@ public enum ThemeEditingGate {
 
     // MARK: - Locked-state copy
 
-    // Kept here rather than in the pane for the `FanWriteAvailability`
-    // reason: the sentences shown next to the locked state must not drift
-    // from what the gate actually refuses.
+    // Kept here rather than in the pane for the same reason `LicenseState`
+    // carries its own copy: the sentences shown next to the locked state
+    // must not drift from what the gate actually refuses.
 
     /// A few words for a badge or a footer row.
     public static let lockedShortLabel = String(localized: "Part of Sentry Pro")

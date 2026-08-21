@@ -18,7 +18,8 @@ import Foundation
 ///
 /// This codebase has a hard rule against controls that silently do nothing
 /// (see `SyncPane`'s doc comment for the canonical writeup, and
-/// `FanControlPane` for the most recent application of it). A "Check for
+/// `AIAccessPane`'s helper-status section for another application of it).
+/// A "Check for
 /// Updates…" button that spins and then says "You're up to date!" because
 /// the signature check rejected every item in the feed is exactly that bug,
 /// in its most dangerous form — the user believes they are current when they
@@ -40,7 +41,8 @@ import Foundation
 /// They are separate cases rather than one `.misconfigured(String)` so that
 /// adding a new blocker breaks every exhaustive switch, including the pane's
 /// on-screen copy — the same compile-time-honesty trick
-/// `FanWriteAvailability` uses by having no `.available` case.
+/// `MCPBridgeRegistration` uses, where every state a caller might mistake
+/// for "working" has to be spelled out and handled.
 public enum UpdaterAvailability: Equatable, Sendable {
 
     /// Everything a signed update needs is present and well-formed: an

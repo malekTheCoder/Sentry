@@ -49,8 +49,9 @@ final class ThemeEditingGateTests: XCTestCase {
         XCTAssertNoThrow(try ThemeEditingGate.authorize(isProUnlocked: true))
     }
 
-    /// The `FanWriteAvailability` rule: a state that blocks something must
-    /// say why in plain language. Every locked-state sentence, no empties.
+    /// The house rule for every gate in this app: a state that blocks
+    /// something must say why in plain language. Every locked-state
+    /// sentence, no empties.
     func testEveryLockedSentenceExplainsItself() {
         let description = ThemeEditingError.requiresPro.errorDescription
         XCTAssertNotNil(description)

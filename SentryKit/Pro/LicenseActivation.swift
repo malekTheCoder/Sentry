@@ -5,7 +5,7 @@ import Foundation
 // This file is the boundary between the license verification that exists
 // in this build (`License.swift`, `LicenseProEntitlementStore`) and the
 // checkout/activation service that cannot exist in it yet. It follows the
-// same pattern as `FanControlBackend.swift`'s write seam: the protocol is
+// same pattern as `ProEntitlementProviding`'s entitlement seam: the protocol is
 // real and every caller is written against it, but no conformer performs
 // network IO anywhere in this repository.
 //

@@ -6,9 +6,10 @@ import SentryKit
 /// (`ProFeature.historyExport`), pinned at its pure seams — the
 /// `HistoryProGate` clamp the composition root applies before
 /// `RollupJob.setRetention`, the Advanced pane's slider bounds, and the
-/// locked export menu's copy. Same shape as `FanControlServiceTests`' "Pro
-/// gate" section: what locked withholds, and — just as load-bearing — what
-/// it must never withhold (the shipped defaults, and lowering retention).
+/// locked export menu's copy. Same shape as every other Pro-gate suite here
+/// (`ConditionalKeepAwakeGateTests`, `ThemeEditingGateTests`): what locked
+/// withholds, and — just as load-bearing — what it must never withhold (the
+/// shipped defaults, and lowering retention).
 ///
 /// What's deliberately *not* here: `DashboardChart.export(_:format:)`'s own
 /// locked guard ends in an `NSSavePanel`, which this suite never touches
@@ -128,8 +129,8 @@ final class HistoryProGateTests: XCTestCase {
     // MARK: - UI seams (defaults locked, capped ranges, honest copy)
 
     /// Both consumers of the composition-root push default locked — a view
-    /// model or grid nobody seeded must not offer export, same doctrine as
-    /// `FanControlService.isProUnlocked`.
+    /// model or grid nobody seeded must not offer export — the same
+    /// fail-closed doctrine `AlertEngine.processRulesUnlocked` follows.
     @MainActor
     func testDashboardViewModelDefaultsLocked() {
         let url = FileManager.default.temporaryDirectory

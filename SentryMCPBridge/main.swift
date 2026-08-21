@@ -3,8 +3,9 @@ import os
 
 // MARK: - SentryMCPBridge — the rendezvous desk for command-line access
 //
-// This process runs as **the logged-in user** (not root — contrast
-// `SentryFanDaemon`), launched on demand by launchd from
+// This process runs as **the logged-in user**, never as root — and with the
+// fan daemon deleted it is the only launchd job Sentry can install at all.
+// Launched on demand by launchd from
 // `Sentry.app/Contents/Library/LaunchAgents/dev.malekswilam.sentry.xpc.plist`
 // after the user explicitly sets it up in Settings ▸ AI Access.
 //
