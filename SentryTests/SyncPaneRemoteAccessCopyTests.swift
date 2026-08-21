@@ -53,7 +53,7 @@ final class SyncPaneRemoteAccessCopyTests: XCTestCase {
         XCTAssertTrue(text.localizedCaseInsensitiveContains("free"))
     }
 
-    /// Same admission, same words, as `FanControlPane`'s locked state: no
+    /// The same admission every locked surface in this app makes: no
     /// checkout exists, so no copy anywhere may imply a Buy button could.
     func testPurchaseNoticeAdmitsCheckoutDoesNotExist() {
         let text = SyncPane.lockedPurchaseNotice

@@ -388,7 +388,7 @@ public final class LocalSyncServer: @unchecked Sendable {
 
     /// Whether this copy is entitled to `ProFeature.remoteSync`. Pushed in
     /// one-way by the composition root on every settings emission (the same
-    /// flow `FanControlService.isProUnlocked` uses) — this type never
+    /// flow `AlertEngine.processRulesUnlocked` uses) — this type never
     /// queries entitlement itself, so it stays platform-shared and
     /// entitlement-free, and tests drive the gate with a plain boolean.
     /// Defaults locked: a server nobody seeded must not answer off-LAN

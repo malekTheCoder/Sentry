@@ -13,8 +13,9 @@ import os
 /// a history, not a log of who asked. There is exactly one Sentry, it
 /// publishes once per launch, and a second publisher would be an impostor the
 /// gate already refused. Keeping the state this small is the reason this file
-/// is short enough to audit in one sitting, which is the same argument
-/// `FanDaemonContract` makes for the daemon's three-case command vocabulary.
+/// is short enough to audit in one sitting — which is the whole argument for
+/// this target's deliberately tiny compile surface (see `project.yml`'s note
+/// on its source list).
 ///
 /// **Queue-confined, not actor-isolated.** `NSXPCListener` delivers
 /// connections and calls on queues of its own choosing, so every access to
@@ -187,9 +188,9 @@ final class BridgeService: NSObject, MCPBridgeProtocol, NSXPCListenerDelegate {
 
     /// Restarts the idle countdown. Called on every connection and every call.
     ///
-    /// **Why a broker exits at all.** Same reasoning as
-    /// `FanDaemonTiming.idleExitAfter`, minus the root process: a user who
-    /// drags Sentry to the Trash without unregistering leaves a launchd job
+    /// **Why a broker exits at all.** A background process that never
+    /// retires is a background process nobody remembers agreeing to: a user
+    /// who drags Sentry to the Trash without unregistering leaves a launchd job
     /// that can never start again, and a copy that happens to be running
     /// should retire rather than linger indefinitely holding a stale endpoint.
     /// Exiting is free here — launchd starts a fresh one the next time a

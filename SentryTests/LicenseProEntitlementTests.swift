@@ -297,8 +297,9 @@ final class LicenseProEntitlementTests: XCTestCase {
     }
 
     func testEveryDenialReasonHasOnScreenLanguage() {
-        // The FanWriteAvailability rule: a state that blocks something must
-        // say why in plain language. Every case, no empty strings.
+        // The house rule for every gate in this app: a state that blocks
+        // something must say why in plain language. Every case, no empty
+        // strings.
         let reasons: [LicenseDenialReason] = [
             .noLicense,
             .verificationUnavailableInThisBuild,

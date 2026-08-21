@@ -9,8 +9,8 @@ import ServiceManagement
 /// written on has zero code-signing identities, so `SMAppService.agent(...)
 /// .register()` cannot succeed and no real peer evaluation can return
 /// `errSecSuccess`. Every branch that matters is therefore expressed as a
-/// function over values — the same split `FanDaemonPeerGateTests` makes — and
-/// driven here with a fake evaluator. What is *not* covered, and cannot be
+/// function over values — the split this suite makes everywhere the real
+/// API can only answer one way — and driven here with a fake evaluator. What is *not* covered, and cannot be
 /// from this branch: launchd actually publishing the Mach service, a real
 /// `SecCodeCheckValidity` verdict against a real signed peer, and the
 /// end-to-end round trip through a registered agent. See
@@ -250,8 +250,8 @@ final class MCPBridgeRegistrationTests: XCTestCase {
     }
 
     /// The failure state must carry macOS's own words rather than replacing
-    /// them with a guess. `FanControlPane` sets the same rule for the fan
-    /// helper: print what the system said.
+    /// them with a guess. `AIAccessPane` applies the same rule on screen:
+    /// print what the system said, verbatim.
     func testUnavailableQuotesTheUnderlyingReason() {
         let registration = MCPBridgeRegistration.unavailable(reason: "Operation not permitted")
         XCTAssertTrue(registration.explanation.contains("Operation not permitted"))
@@ -354,7 +354,8 @@ final class MCPEndpointPublisherTests: XCTestCase {
     /// mapping is driven here rather than through `SMAppService` — which on a
     /// machine with no signing identities can only ever report one value,
     /// making every other branch untestable. Same injection
-    /// `PrivilegedFanControlBackendTests` uses for the fan daemon.
+    /// `FanDaemonUninstallerTests` uses to reach the removal branch this
+    /// hardware cannot produce either.
     func testEveryServiceStatusMapsToAnHonestState() {
         let expected: [(SMAppService.Status, MCPBridgeRegistration)] = [
             (.enabled, .registered),
@@ -404,7 +405,7 @@ final class MCPEndpointPublisherTests: XCTestCase {
     /// The real object graph `AppDelegate` builds — real `SMAppService` probe,
     /// no injection — on whatever machine runs this suite.
     ///
-    /// In the spirit of `PrivilegedFanControlBackendTests`'s equivalent: it
+    /// In the spirit of `FanDaemonUninstallerTests`'s equivalent: it
     /// asserts the property this whole change was designed around, which is
     /// that constructing the publisher on a machine where nobody has set
     /// command-line access up changes nothing and connects to nothing.
