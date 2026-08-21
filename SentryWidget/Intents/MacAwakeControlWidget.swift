@@ -18,52 +18,6 @@ import WidgetKit
 // Center types don't.
 #if os(iOS)
 
-// MARK: - WidgetControlTransport
-
-/// The widget extension's own `StatsTransport` connection, entirely
-/// separate from `AppDataSource.shared`
-/// (`SentryMobile/Data/AppDataSource.swift`) for the same reason
-/// `WidgetRefreshIntent`'s doc comment gives for not reusing
-/// `RefreshWidgetIntent` directly: an app extension is a different
-/// process from its containing app, so there is no in-process singleton to
-/// share even if the module boundary allowed referencing one. Every
-/// `ToggleMacAwakeIntent` invocation needs *a* `LocalSyncClient`
-/// (`SentryKit/LocalSync/LocalSyncClient.swift`) the same way
-/// `AppDataSource` needs one — one Bonjour browser and one socket per
-/// process, not one per toggle tap.
-///
-/// Deliberately never falls back to a mock transport the way
-/// `AppDataSource.resolveIfNeeded()` falls back to `MockDataSource` for
-/// browsing purposes. A Control Center toggle that silently "succeeds"
-/// against fabricated data would be the control-surface equivalent of the
-/// dishonest widget `WidgetSnapshot.sourceIsDemoData`'s doc comment warns
-/// against — so `ToggleMacAwakeIntent` below throws, and the toggle
-/// visibly reverts, when there is no real Mac to reach.
-actor WidgetControlTransport {
-    static let shared = WidgetControlTransport()
-
-    /// Mirrors `SentryIntents.statusTimeout` — long enough for a real
-    /// Bonjour discovery + TCP handshake on a healthy local network, short
-    /// enough that a Control Center tap doesn't hang the system UI waiting
-    /// on a Mac that isn't there at all.
-    static let discoveryTimeout: TimeInterval = 5
-
-    private let client = LocalSyncClient()
-
-    /// Returns the shared client, having attempted a connection if one
-    /// isn't already up. `waitForFirstConnection(timeout:)` returns
-    /// immediately (`true`) when already connected — see that method's own
-    /// doc comment — so calling this on every intent invocation costs
-    /// nothing once a connection exists, and re-attempts discovery on every
-    /// call while one doesn't, rather than latching a permanent "gave up"
-    /// state that would keep failing for the rest of the extension
-    /// process's lifetime after one transient miss.
-    func connectedClient() async -> LocalSyncClient {
-        _ = await client.waitForFirstConnection(timeout: Self.discoveryTimeout)
-        return client
-    }
-}
-
 // MARK: - WidgetControlError
 
 /// What `ToggleMacAwakeIntent.perform()` throws on anything short of the
@@ -75,17 +29,32 @@ actor WidgetControlTransport {
 /// confirmed effect is never reported as having succeeded, just expressed
 /// through a thrown error instead of a dialog string since a Control
 /// Center toggle has nowhere to show one.
-enum WidgetControlError: LocalizedError {
-    case noReply
-    case rejected(String)
+///
+/// **Now a thin wrapper over `KeepAwakeCommandOutcome`, not its own
+/// vocabulary.** This file used to own both the extension's transport
+/// (`WidgetControlTransport`, an actor holding one `LocalSyncClient`) and
+/// its own two-case error enum. Both moved into `SentryKit` as
+/// `KeepAwakeCommandSender`/`KeepAwakeCommandOutcome` when the Live
+/// Activity's End button arrived, because that intent is a
+/// `LiveActivityIntent` — performed in the *app's* process, therefore
+/// compiled into both binaries, therefore unable to reference anything
+/// declared in this target. Rather than leave two `LocalSyncClient`s
+/// discovering the same Mac from the same extension process, both control
+/// surfaces now share one. The argument the old type's doc comment made
+/// survives intact over there, including the one that matters most: a
+/// control surface never falls back to `MockDataSource` the way
+/// `AppDataSource.resolveIfNeeded()` does, because a toggle that silently
+/// "succeeds" against fabricated data is the control-surface equivalent of
+/// the dishonest widget `WidgetSnapshot.sourceIsDemoData` warns about.
+struct WidgetControlError: LocalizedError {
+    let outcome: KeepAwakeCommandOutcome
 
     var errorDescription: String? {
-        switch self {
-        case .noReply:
-            return String(localized: "Didn't hear back from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
-        case .rejected(let message):
-            return String(localized: "Your Mac declined that: \(message)")
-        }
+        // `failureMessage` is `nil` only for `.completed`, which
+        // `ToggleMacAwakeIntent` never wraps in an error — the fallback
+        // exists so this type has no way to present a blank alert.
+        outcome.failureMessage
+            ?? String(localized: "Didn't hear back from your Mac — make sure Sentry is open and your iPhone is on the same Wi-Fi network.")
     }
 }
 
@@ -101,10 +70,11 @@ enum WidgetControlError: LocalizedError {
 /// duration — Control Center has no room for a duration picker the way
 /// `KeepAwakeIntent`'s Siri parameter or `SleepStatusCard`'s duration
 /// stepper do); `false` sends the same `releaseAwake` command
-/// `ReleaseAwakeIntent` sends. Both go through `WidgetControlTransport`
-/// rather than `AppDataSource.shared` — see that type's doc comment for
-/// why an app-extension intent can't reach the app's singleton at all,
-/// module boundary aside.
+/// `ReleaseAwakeIntent` sends. Both go through `KeepAwakeCommandSender`
+/// (`SentryKit/Sync/KeepAwakeCommandSender.swift`) rather than
+/// `AppDataSource.shared` — see that type's doc comment for why an
+/// app-extension intent can't reach the app's singleton at all, module
+/// boundary aside.
 struct ToggleMacAwakeIntent: SetValueIntent {
     static var title: LocalizedStringResource = "Keep Mac Awake"
     static var description = IntentDescription(
@@ -124,13 +94,15 @@ struct ToggleMacAwakeIntent: SetValueIntent {
 
     func perform() async throws -> some IntentResult {
         let command = Self.command(turningOn: value)
-        let client = await WidgetControlTransport.shared.connectedClient()
-        try await client.send(command: command)
-        guard let status = await client.awaitStatus(forNonce: command.nonce, timeout: WidgetControlTransport.discoveryTimeout) else {
-            throw WidgetControlError.noReply
-        }
-        guard status.state == "completed" else {
-            throw WidgetControlError.rejected(status.message)
+        let outcome = await KeepAwakeCommandSender.shared.send(command)
+        // Every non-`completed` outcome throws, so Control Center reverts
+        // the toggle. This is the same set of distinctions the old
+        // hand-rolled version made (no reply, declined) plus the two it
+        // silently lost: a send that threw used to propagate a raw
+        // `LocalSyncClientError` with no framing, and "no Mac found at all"
+        // was indistinguishable from "connected but silent."
+        guard outcome.isConfirmed else {
+            throw WidgetControlError(outcome: outcome)
         }
         WidgetCenter.shared.reloadAllTimelines()
         return .result()

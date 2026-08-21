@@ -115,6 +115,17 @@ struct SentryMobileApp: App {
                     // comment for why it's a root-level singleton rather
                     // than something a single tab's view model owns.
                     WatchRelayManager.shared.start()
+                    // Starts (and, just as importantly, *cleans up after*)
+                    // the keep-awake Live Activity — see
+                    // `KeepAwakeActivityController` for why it belongs at
+                    // the root beside the Watch relay rather than on the
+                    // Dashboard's view model the way `WidgetSnapshotWriter`
+                    // does. Called before `resolveIfNeeded()` deliberately:
+                    // its first act is to reconcile whatever activity
+                    // survived a previous process, and a hold whose deadline
+                    // passed while the app was dead must be cleared whether
+                    // or not a Mac is ever found on this launch.
+                    KeepAwakeActivityController.shared.start()
                     await AppDataSource.shared.resolveIfNeeded()
                 }
                 .onChange(of: scenePhase) { oldPhase, newPhase in

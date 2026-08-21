@@ -115,6 +115,23 @@ struct SentryWidgetBundle: WidgetBundle {
         if #available(iOS 18.0, *) {
             MacAwakeControlWidget()
         }
+        // The keep-awake Live Activity. `ActivityConfiguration` conforms to
+        // `WidgetConfiguration`, so a Live Activity presentation is a
+        // `Widget` like the two above and belongs in this same bundle —
+        // extending the extension this project already ships rather than
+        // adding a second appex to sign, provision, privacy-manifest and
+        // version-match against the host app for one more conformance. See
+        // `KeepAwakeLiveActivity` (`SentryWidget/LiveActivity/`) for why a
+        // *session* can have a Live Activity in a server-less app when the
+        // Mac's live stats cannot.
+        //
+        // Only `#if os(iOS)`, with no `if #available` alongside it, unlike
+        // the Control Center entry above: ActivityKit's floor is iOS 16.1
+        // and interactive Live Activity buttons need 17.0, both at or below
+        // this extension's own 17.0 deployment target (`project.yml`). The
+        // macOS fence is still required — that SDK has no ActivityKit at
+        // all, so the whole file it lives in is compiled out there.
+        KeepAwakeLiveActivity()
         #endif
     }
 }
