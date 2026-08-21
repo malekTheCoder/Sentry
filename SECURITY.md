@@ -1,8 +1,16 @@
 # Security policy
 
 Sentry is a system monitor that, with the user's explicit opt-in, installs
-privileged helpers and opens network listeners. That makes security reports
+a background helper and opens network listeners. That makes security reports
 about it worth taking seriously, and worth reporting privately.
+
+Sentry does **not** run any code as root. It used to be able to: a root
+LaunchDaemon (`SentryFanDaemon`) could write SMC fan keys on behalf of a
+fan-control feature that has since been removed. Fan speeds are now read
+and displayed, never set. The app carries a one-time uninstaller
+(`Sentry/App/FanDaemonUninstaller.swift`) that unregisters that daemon on
+launch for anyone who installed it, and reports of it failing to do so —
+leaving an orphaned root job behind — are in scope for this policy.
 
 ## Supported versions
 
@@ -42,17 +50,9 @@ little patch-adoption time after release is appreciated.
 
 ## Scope
 
-The app installs two helper processes, both opt-in, both shipped inside
-the app bundle and registered via `SMAppService`:
+The app installs one helper process, opt-in, shipped inside the app
+bundle and registered via `SMAppService`:
 
-- **`SentryFanDaemon` — a root LaunchDaemon** (label
-  `dev.malekswilam.sentry.fandaemon`), installed only when the user
-  enables fan control. It is the only code in the project allowed to
-  write SMC fan keys. Because it runs as root, **local privilege
-  escalation is squarely in scope and treated as serious**: anything that
-  lets a non-privileged process talk to the daemon, bypass its peer
-  validation (`SentryFanDaemon/SecurityFrameworkPeerEvaluator.swift`), or
-  make it write fan values without the user's consent.
 - **`SentryMCPBridge` — a user-level LaunchAgent** (label
   `dev.malekswilam.sentry.xpc`), installed only when the user enables
   command-line / AI access. It brokers Mach-service connections between

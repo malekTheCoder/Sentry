@@ -4,7 +4,7 @@
 and a built-in manager for the AI agents running on your Mac.**
 
 Live charts over a local history store, battery health trends, alert rules,
-keep-awake, fan monitoring and control, and an MCP integration layer that
+keep-awake, fan and thermal monitoring, and an MCP integration layer that
 lets coding agents check your Mac's capacity before they start heavy work.
 No cloud, no accounts, no telemetry: your Mac's data goes to your phone and
 your watch, never to a server.
@@ -94,10 +94,6 @@ licensed for 3 Macs, no subscription. It activates with a license key
 inside the app; checkout opens shortly after launch — watch the
 [releases page](https://github.com/malekTheCoder/Sentry/releases). Pro adds:
 
-- **Fan control** on Apple Silicon — real SMC writes behind an
-  explicitly-installed root helper (`SentryFanDaemon` — SMC writes live in
-  that binary and nowhere else). Fan RPM *readout* is free, on every Mac
-  with fans.
 - **Conditional keep-awake release rules** — release when battery falls
   below a level, when sustained CPU drops, while a named app or process
   runs, while a download is active, or on a schedule.
@@ -144,7 +140,7 @@ app) and `SentryWatchWidgetExtension` (complication),
 `SentryWidgetExtension` (iOS home/lock-screen widget),
 `SentryWidgetExtension_macOS` (desktop widget, fed live by the menu bar
 app), `SentryMCP` (MCP stdio server), `SentryCLI` (builds `sentryctl`),
-`SentryFanDaemon` (root fan helper), `SentryTests`.
+`SentryTests`.
 
 Debug builds need no certificates at all; the strict Developer ID settings
 are scoped to the Release configuration via the `DeveloperIDSigned` target

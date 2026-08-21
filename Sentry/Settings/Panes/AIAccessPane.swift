@@ -52,8 +52,10 @@ struct AIAccessPane: View {
 
     /// The outcome of the most recent explicit setup action, shown verbatim.
     /// Nil until the user does something — this pane never displays a result
-    /// for an action nobody took. Same rule `FanControlPane` follows for the
-    /// fan helper.
+    /// for an action nobody took. Same rule `GeneralPane`'s
+    /// `launchAtLoginError` follows: the row exists only once there is a
+    /// real outcome to report, and then it reports it rather than
+    /// swallowing it.
     @State private var lastSetupMessage: String?
     @State private var lastSetupWasFailure = false
 
@@ -277,8 +279,8 @@ struct AIAccessPane: View {
             // in System Settings, and nothing notifies us. Re-reading on
             // appearance is the cheap, prompt-free way to avoid showing a
             // stale "go approve it" message to somebody who just did.
-            // `FanControlPane` refreshes its helper status for exactly the
-            // same reason.
+            // `GeneralPane.reconcileLaunchAtLogin` re-reads its login-item
+            // state on appearance for exactly the same reason.
             endpointHolder.publisher?.refresh()
         }
     }
@@ -488,7 +490,8 @@ struct AIAccessPane: View {
     /// Extensions. Doing that silently, on first run, for a feature most people
     /// will never use, would mean the first they hear of a background item
     /// installed on their behalf is finding it in System Settings.
-    /// `FanControlPane`'s helper section sets the standard this follows:
+    /// The standard this follows is the one every background-item action in
+    /// Sentry is held to (see `MCPEndpointPublisher`'s doc comment):
     /// consequences before the button, one screen, and the result reported
     /// verbatim — including the failure, especially the failure.
     ///

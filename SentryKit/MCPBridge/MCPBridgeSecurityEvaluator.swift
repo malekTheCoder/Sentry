@@ -11,14 +11,13 @@ import Security
 /// that `MCPBridgePeerGate`'s tested decision logic wraps.
 ///
 /// **Everything interesting is in `MCPBridgePeerGate`, not here**, and that
-/// split is the whole design — the same one `SecurityFrameworkPeerEvaluator`
-/// makes for the fan daemon. On a machine with no signing identities every
+/// split is the whole design. On a machine with no signing identities every
 /// real evaluation fails identically, so a test that exercised this type could
 /// only ever assert "it refused", proving nothing about the branch that
 /// matters. So this type is kept as close to zero-logic as an API of this
 /// shape allows, and the gate above it holds every decision.
 ///
-/// **Unlike the daemon's copy, this one lives in `SentryKit`** and is
+/// **This evaluator lives in `SentryKit`** rather than in the tool and is
 /// compiled into three binaries: the framework (so Sentry can gate its own
 /// anonymous listener), and the `SentryMCPBridge` tool (which links no
 /// framework of ours and compiles `SentryKit/MCPBridge/` directly). See

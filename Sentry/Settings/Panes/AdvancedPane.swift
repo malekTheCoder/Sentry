@@ -19,8 +19,9 @@ struct AdvancedPane: View {
     /// license paste or removal) rides a settings emission the already-
     /// observed `store` republishes, so the capped ranges below flip live
     /// without this pane holding an entitlement store. Defaults locked,
-    /// matching `FanControlService.isProUnlocked`: a pane nobody seeded
-    /// must not offer extended retention.
+    /// matching every other mirrored entitlement flag in the app
+    /// (`DashboardViewModel.isProUnlocked`, `AlertEngine.processRulesUnlocked`):
+    /// a pane nobody seeded must not offer extended retention.
     var isProUnlocked: Bool = false
 
     /// Debug builds always show the Developer section (it carries the Pro
@@ -238,8 +239,9 @@ struct AdvancedPane: View {
             || store.settings.hourlyRetentionDays > HistoryProGate.freeHourlyRetentionCapDays
     }
 
-    /// Slider bounds, static (same pattern as `FanControlPane`'s static
-    /// helpers) so tests pin them without building a view. The lower bounds
+    /// Slider bounds, static (same pattern as `SyncPane`'s copy helpers and
+    /// `AlertsPane.enableAffordanceWithheld`) so tests pin them without
+    /// building a view. The lower bounds
     /// never move — shrinking retention is data minimization and is never
     /// gated — and the locked upper bounds equal the shipped defaults via
     /// `HistoryProGate`, so a free user keeps every value they could have

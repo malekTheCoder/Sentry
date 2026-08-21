@@ -64,7 +64,7 @@ full pipeline. The only question is what code goes in it.
 | --- | --- |
 | Cause understood; fix is small and testable quickly | Hotfix forward |
 | Cause unknown, or the fix is non-trivial | Roll back to last good |
-| The release corrupts user data, or misdrives fan control | Roll back now, investigate afterwards |
+| The release corrupts user data, or leaves an orphaned background helper registered | Roll back now, investigate afterwards |
 | The release introduced a security regression | Roll back now (and handle per [`SECURITY.md`](../SECURITY.md)) |
 | Last-good contains the vulnerability the bad release fixed | Hotfix forward — never re-ship a known vulnerability |
 | The bad release added a database migration | Prefer hotfix forward: last-good code may not open a `history.sqlite` the bad release already migrated. If you must roll back, verify last-good against a migrated database first. |

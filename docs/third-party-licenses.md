@@ -82,7 +82,7 @@ lines are reproduced in the table above and on the About screens.
 
 ## Not third-party
 
-`SystemMetricsKit`, `SentryKit`, `SentryMCP`, `SentryCLI`, `SentryFanDaemon`
+`SystemMetricsKit`, `SentryKit`, `SentryMCP`, `SentryCLI`, `SentryMCPBridge`
 and the widget/watch targets are first-party code under this repository's
 `LICENSE`. Apple's own SDK frameworks (Foundation, SwiftUI, IOKit, GRDB's
 system SQLite, …) are covered by the Apple SDK agreement and are not

@@ -2,7 +2,7 @@ import Foundation
 
 /// Every way a theme-editing action can be refused before it starts. One
 /// case today; its own type rather than a `Bool` return so the refusal
-/// carries its sentence with it — the precedent is `FanControlWriteError`:
+/// carries its sentence with it — the precedent is `LicenseDenialReason`:
 /// the UI shows `localizedDescription` verbatim and cannot drift from the
 /// reason the gate actually gave.
 public enum ThemeEditingError: Error, LocalizedError, Equatable, Sendable {

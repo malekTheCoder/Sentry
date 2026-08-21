@@ -54,8 +54,9 @@ final class SMCFanBridgeTests: XCTestCase {
     // MARK: - Hardware description (still read-only)
 
     func testFanHardwareMatchesTheFanCount() {
-        // Added for the fan-control shell, which clamps against the SMC's
-        // own `F{i}Mn`/`F{i}Mx` rather than hardcoded numbers. Same
+        // The hardware descriptions come from the SMC's own
+        // `F{i}Mn`/`F{i}Mx` keys rather than hardcoded numbers, so they
+        // answer to the same `FNum` the RPM reads do. Same
         // hardware-agnostic posture as everything above: an empty result is
         // legitimate, an oversized one is not.
         let hardware = SMCFanBridge.shared.readFanHardware()
@@ -69,8 +70,8 @@ final class SMCFanBridgeTests: XCTestCase {
 
     func testFanHardwareValuesAreEitherPlausibleOrAbsent() {
         // The bridge's contract, all the way down: a misdecoded field
-        // becomes `nil`, never a number the fan-control layer would then
-        // trust as a clamp.
+        // becomes `nil`, never a number a caller would then trust as a
+        // measured hardware limit.
         for fan in SMCFanBridge.shared.readFanHardware() {
             for value in [fan.minRPM, fan.maxRPM, fan.targetRPM].compactMap({ $0 }) {
                 XCTAssertTrue(value.isFinite)

@@ -268,9 +268,11 @@ address you control.
 
 ## Open questions
 
-- The marketing Pro feature list (fan-control writes, keep-awake release
+- The marketing Pro feature list (keep-awake release
   rules, process-match alert rules, custom theme editor, off-LAN remote
-  sync pairing, history export + extended retention, Protection Insights)
+  sync pairing, history export + extended retention, Protection Insights —
+  fan-control writes were on this list until fan control was removed
+  entirely; Sentry reads fan speeds and never sets them)
   is wider than the entitlement gate in code: `ProFeature` has exactly one
   case, `.protectionInsights`. Every other advertised Pro feature must be
   added as a `ProFeature` case and gated before checkout goes live, or it

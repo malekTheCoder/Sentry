@@ -79,9 +79,6 @@ already uses (`"%@ health · %@ cycles"`).
     titles/details, precondition names.
   - `ModulesPane.swift` — module subtitles.
   - `AIAccessPane.swift` — decision labels.
-  - `FanControlPane.swift` — action messages, capability headlines/details,
-    target/limits labels (English output unchanged —
-    `FanControlServiceTests` pins it).
   - `SyncPane.swift` — `intervalLabel` plural branches (English output
     unchanged — `SyncPaneFormattingTests` pins "Every 1 second").
   - `MenuBarPreviewStrip.swift` — empty-layout accessibility description.

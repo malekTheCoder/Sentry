@@ -318,7 +318,7 @@ public struct LicenseRevalidationPolicy: Equatable, Sendable {
 }
 
 /// Why the app is *not* honoring a license right now, in terms precise
-/// enough to put on screen. Modeled on `FanWriteAvailability`: every case
+/// enough to put on screen. Modeled on `MCPBridgeRegistration`: every case
 /// carries its own plain-language sentence, kept on the model so the UI
 /// can't drift out of sync with the reason the policy actually produced.
 public enum LicenseDenialReason: Equatable, Sendable {
@@ -337,7 +337,7 @@ public enum LicenseDenialReason: Equatable, Sendable {
     case revalidationLapsed(lastVerifiedAt: Date?, graceWindow: TimeInterval)
 
     /// The sentence shown next to the state. Same convention as
-    /// `FanWriteAvailability.explanation`.
+    /// `MCPBridgeRegistration.explanation`.
     public var explanation: String {
         switch self {
         case .noLicense:

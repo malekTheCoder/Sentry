@@ -71,8 +71,9 @@ struct DashboardGrid: View {
 
     /// Whether `ProFeature.historyExport` is unlocked, forwarded into every
     /// card's `ExportContext` so the export menu and the export action read
-    /// one flag. Defaults locked for the same reason `FanControlService
-    /// .isProUnlocked` does — a grid nobody seeded must not offer export.
+    /// one flag. Defaults locked for the same reason the
+    /// `DashboardViewModel.isProUnlocked` that feeds it does — a grid nobody
+    /// seeded must not offer export.
     var isProUnlocked: Bool = false
 
     /// Same module ordering as `ModuleCardStack`, minus `.power` — power

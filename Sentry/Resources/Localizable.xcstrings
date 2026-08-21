@@ -25,17 +25,6 @@
         }
       }
     },
-    "%@ fans detected": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ fans detected"
-          }
-        }
-      }
-    },
     "%@ findings are hidden, and are not counted in the score.": {
       "extractionState": "manual",
       "localizations": {
@@ -244,17 +233,6 @@
         }
       }
     },
-    "%@ rpm": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ rpm"
-          }
-        }
-      }
-    },
     "%@ rules": {
       "extractionState": "manual",
       "localizations": {
@@ -341,17 +319,6 @@
         }
       }
     },
-    "%@–%@ rpm": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@–%2$@ rpm"
-          }
-        }
-      }
-    },
     "(no fields)": {},
     "(unnamed rule)": {
       "extractionState": "manual",
@@ -383,17 +350,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "0–3"
-          }
-        }
-      }
-    },
-    "1 fan detected": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 fan detected"
           }
         }
       }
@@ -1425,17 +1381,6 @@
       }
     },
     "Estimates assume roughly 40 metrics recorded at your current %@ s refresh interval. Actual size varies with how many modules you enable and how well SQLite packs the rows.": {},
-    "Every fan is back under your Mac's own control.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Every fan is back under your Mac's own control."
-          }
-        }
-      }
-    },
     "Every finding is compared against this Mac's own recorded history — never against another machine or a fixed idea of \"normal\". Security settings are read with the same commands you could run yourself, without administrator rights; anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score.": {},
     "Every rule Sentry could evaluate on this Mac came back clean. That is the expected result on a well-kept machine, not a placeholder — the findings below are the checks that passed.": {},
     "Everything looks normal": {
@@ -1489,39 +1434,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fan %@"
-          }
-        }
-      }
-    },
-    "Fan %@: %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fan %1$@: %2$@"
-          }
-        }
-      }
-    },
-    "Fan %@: the helper accepted the request.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fan %@: the helper accepted the request."
-          }
-        }
-      }
-    },
-    "Fan hardware couldn't be read": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fan hardware couldn't be read"
           }
         }
       }
@@ -1943,17 +1855,6 @@
         }
       }
     },
-    "Live fan speeds, and what fan control would need to work.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Live fan speeds, and what fan control would need to work."
-          }
-        }
-      }
-    },
     "Load average": {
       "extractionState": "manual",
       "localizations": {
@@ -2255,17 +2156,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "No decline in sight at the current rate"
-          }
-        }
-      }
-    },
-    "No fixed speed set": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No fixed speed set"
           }
         }
       }
@@ -2725,17 +2615,6 @@
       }
     },
     "Quiet Hours": {},
-    "Range unknown": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Range unknown"
-          }
-        }
-      }
-    },
     "Re-reads this Mac's security settings and recomputes every finding": {},
     "Reachable from other devices on your local Wi-Fi/network — not the public internet, assuming your router isn't forwarding this port. Anyone with the API key above can call Sentry's tools; regenerate it if it's ever shared by mistake.": {},
     "Read": {
@@ -3042,28 +2921,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Semibold"
-          }
-        }
-      }
-    },
-    "Sentry asked the SMC how many fans this Mac has and it answered none — a fanless Mac cools passively, so there's nothing here to monitor or control.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sentry asked the SMC how many fans this Mac has and it answered none — a fanless Mac cools passively, so there's nothing here to monitor or control."
-          }
-        }
-      }
-    },
-    "Sentry can read these fans directly from this Mac's SMC, including their individual speed ranges.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sentry can read these fans directly from this Mac's SMC, including their individual speed ranges."
           }
         }
       }
@@ -3381,17 +3238,6 @@
       }
     },
     "The bar always draws in plain white or black so it stays readable on any wallpaper. Near the high threshold a value counts as critical: it gets a “!” beside it and VoiceOver says so. Set low above high to invert — useful for metrics where a small number is the bad one.": {},
-    "The fan helper is removed and every fan is back under your Mac's own control.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The fan helper is removed and every fan is back under your Mac's own control."
-          }
-        }
-      }
-    },
     "The protection score and the two highest-priority findings stay free, permanently — including their evidence and what to do about them.": {},
     "The refresh interval above controls the fast tier (CPU, GPU, memory, network, disk). These two sliders control the other two tiers — every module assigned to a tier shares that tier's interval, so this is per-tier control, not independently adjustable per module.": {},
     "The security and privacy findings below are unaffected — they are read directly from this Mac's current settings, not from history.": {},
@@ -3512,17 +3358,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "This Mac"
-          }
-        }
-      }
-    },
-    "This Mac has no fans": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This Mac has no fans"
           }
         }
       }
@@ -4319,28 +4154,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "load %@"
-          }
-        }
-      }
-    },
-    "macOS wouldn't install the fan helper: %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS wouldn't install the fan helper: %@"
-          }
-        }
-      }
-    },
-    "macOS wouldn't remove the fan helper: %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "macOS wouldn't remove the fan helper: %@"
           }
         }
       }

@@ -119,7 +119,7 @@ public final class LicenseProEntitlementStore: ProEntitlementProviding {
         // new feature is a compiler-forced decision here, exactly as in
         // `ProEntitlementStore.isUnlocked`.
         switch feature {
-        case .protectionInsights, .fanControl, .conditionalKeepAwake,
+        case .protectionInsights, .conditionalKeepAwake,
              .processMatchAlerts, .customThemes, .remoteSync, .historyExport:
             return unlockSource != .locked
         }

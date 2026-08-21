@@ -627,7 +627,8 @@ struct AlertsPane: View {
                 // never withheld), but a field that edits a rule the engine
                 // is refusing to evaluate would be a control whose change
                 // appears to take and can't matter — the same reasoning
-                // `FanControlPane` gives for its locked mode picker. The
+                // `GeneralPane` gives for disabling the automatic-update
+                // toggle while the signing key is a placeholder. The
                 // toggle above stays live so the rule can still be converted
                 // back to a free generic rule.
                 Group {
@@ -1334,9 +1335,10 @@ struct AlertsPane: View {
 
     /// The condition section's footer while the process-match entitlement
     /// is locked, or nil when the standard footers apply. Two different
-    /// sentences for the same reason `FanControlPane.modeFooterText` keeps
-    /// two locked sentences apart: "you can't create one" and "the one you
-    /// have isn't running" are different facts. Both follow the honest-copy
+    /// sentences for the same reason `ThemeEditingGate` keeps
+    /// `lockedAffordanceLabel` and `lockedExistingThemesNote` apart: "you
+    /// can't create one" and "the one you have isn't running" are different
+    /// facts. Both follow the honest-copy
     /// rules `ProUpsellCard` set: Sentry Pro is named plainly, no Buy
     /// button exists anywhere (checkout hasn't opened), and the
     /// existing-rule sentence spells out the lapse semantics

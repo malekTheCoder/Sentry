@@ -22,8 +22,8 @@ ever know. Your issue reports are literally the only signal there is.
   you have them; a screenshot if it's visual.
 - **For sync issues:** whether the Mac and iPhone are on the same network,
   and the iOS version.
-- **For fan control or command-line/AI issues:** whether you enabled the
-  feature in Settings (both install a helper only when you turn them on).
+- **For command-line/AI issues:** whether you enabled the feature in
+  Settings (it installs a helper only when you turn it on).
 - **Logs**, if you can. Sentry logs to the unified log under the subsystem
   `dev.malekswilam.sentry`. Either filter Console.app to that subsystem,
   or run:
@@ -37,13 +37,12 @@ ever know. Your issue reports are literally the only signal there is.
 ## Crash logs
 
 When a process crashes, macOS writes a crash report — a `.ips` file — to
-`~/Library/Logs/DiagnosticReports`. Sentry has three processes that can
+`~/Library/Logs/DiagnosticReports`. Sentry has two processes that can
 show up there:
 
 | Process | What it is |
 | --- | --- |
 | `Sentry` | The app itself |
-| `SentryFanDaemon` | The root helper for fan control (only exists if you enabled fan control) |
 | `SentryMCPBridge` | The helper for command-line / AI access (only exists if you enabled it) |
 
 ### Finding the file
@@ -51,18 +50,17 @@ show up there:
 1. In Finder, choose **Go ▸ Go to Folder…** and paste
    `~/Library/Logs/DiagnosticReports`. (Or open **Console.app** and click
    **Crash Reports** in the sidebar.)
-2. Look for files whose names start with one of the three process names —
+2. Look for files whose names start with one of the two process names —
    for example `Sentry-2026-08-13-091500.ips`. The timestamp in the name
    is when the crash happened; grab the one matching your incident.
 3. Terminal alternative — list the most recent matching reports:
 
    ```sh
-   ls -t ~/Library/Logs/DiagnosticReports | grep -E '^(Sentry|SentryFanDaemon|SentryMCPBridge)-' | head
+   ls -t ~/Library/Logs/DiagnosticReports | grep -E '^(Sentry|SentryMCPBridge)-' | head
    ```
 
-4. `SentryFanDaemon` runs as root, so its reports may land in the
-   system-wide folder `/Library/Logs/DiagnosticReports` instead — if you
-   don't find one under `~/Library`, check there too.
+   Both processes run as you, not as root, so both write to `~/Library`.
+   Nothing Sentry ships runs with elevated privileges.
 
 ### Before you post it — redact
 

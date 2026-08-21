@@ -270,13 +270,13 @@ struct GeneralPane: View {
     /// and the section renders the second shape below.
     ///
     /// **What that second shape deliberately does and doesn't include**,
-    /// following `FanControlPane`'s two precedents exactly:
+    /// on two separate principles:
     ///   - The automatic-check toggle is shown but `.disabled`, with a lock
-    ///     row naming the actual blocker — the same treatment the fan mode
-    ///     picker gets. It's visible so the feature is legible, and inert so
-    ///     it can't be believed.
-    ///   - "Check for Updates…" is **absent**, not present-and-greyed —
-    ///     the same call `FanControlPane` makes for "Return to Auto." A
+    ///     row naming the actual blocker. It's visible so the feature is
+    ///     legible, and inert so it can't be believed — a live control over
+    ///     a mechanism that cannot run is a change that appears to take and
+    ///     then cannot matter.
+    ///   - "Check for Updates…" is **absent**, not present-and-greyed. A
     ///     greyed button implies a working mechanism behind a temporary
     ///     block; there isn't one. And the specific failure a live button
     ///     would produce is worse than an error: Sparkle would fetch the
@@ -316,7 +316,7 @@ struct GeneralPane: View {
             .pickerStyle(.segmented)
             .accessibilityLabel("Temperature unit")
 
-            Text("Changes how every temperature is displayed — the menu bar, the dropdown, Dashboard cards, Insights, alerts, and Fan Control. Sensors always report Celsius and history is always stored in Celsius, so switching this re-reads your existing data rather than changing it.")
+            Text("Changes how every temperature is displayed — the menu bar, the dropdown, Dashboard cards, Insights, and alerts. Sensors always report Celsius and history is always stored in Celsius, so switching this re-reads your existing data rather than changing it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

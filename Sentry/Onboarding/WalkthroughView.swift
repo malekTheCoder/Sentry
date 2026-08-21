@@ -39,7 +39,7 @@ import SentryKit
 /// label rendered as text, and each dot is a real button carrying its
 /// step's title as its accessibility label plus `.isSelected` when current.
 /// Any one of those three would be enough on its own; the codebase's rule
-/// (§9.4, quoted in `GeneralPane` and `FanControlPane`) is that colour is
+/// (§9.4, quoted in `GeneralPane` and `AlertsPane`) is that colour is
 /// never the only channel, and this satisfies it three times over.
 struct WalkthroughView: View {
 
