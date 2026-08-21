@@ -423,10 +423,11 @@ public final class PowerControlService: ObservableObject {
     /// on its condition, which is the *same* policy, applied consistently
     /// instead of depending on whether the Mac happened to sleep.
     ///
-    /// Defaults open, unlike `FanControlService.isProUnlocked`'s
-    /// default-locked: fan writes move hardware through a root helper, so an
-    /// unseeded service must refuse; a conditional keep-awake is an ordinary
-    /// unprivileged assertion, and this service is constructed standalone by
+    /// Defaults open, unlike the default-locked gate the since-removed fan
+    /// control carried: writing fan speeds moved hardware through a root
+    /// helper, so an unseeded service there had to refuse; a conditional
+    /// keep-awake is an ordinary unprivileged assertion, and this service is
+    /// constructed standalone by
     /// tests and previews that exercise condition mechanics, not
     /// entitlements. The production gate is this closure's wiring plus the
     /// UI's own withheld menu — two layers, both in the composition root's
