@@ -113,6 +113,59 @@ public enum AppCredits {
         URL(string: thirdPartyLicensesURLString)
     }
 
+    // MARK: - Sentry Pro checkout
+
+    /// The exact string `proCheckoutURLString` ships as until the merchant
+    /// account exists. Same discipline as
+    /// `UpdateFeedConfiguration.placeholderPublicKey`: deliberately not a
+    /// URL and deliberately shouty, so that (a) `proCheckoutURL` can never
+    /// mistake it for a real address, and (b) a grep for it finds the one
+    /// place that has to change when checkout opens.
+    public static let placeholderProCheckoutURLString = "REPLACE-WITH-THE-SENTRY-PRO-CHECKOUT-URL"
+
+    /// Where a Sentry Pro license is bought. **Not live** — this is the
+    /// placeholder above, because no payment vendor has been chosen and no
+    /// merchant account exists (`docs/STATUS.md`, Human 3). Every locked
+    /// surface in the app reads `proCheckoutURL` rather than this string,
+    /// and that accessor is nil for the placeholder, so nothing renders a
+    /// Buy button until the owner pastes the real checkout address here.
+    /// That one-line edit is the entire go-live change on the app's side of
+    /// the purchase path; the license pane already accepts what the
+    /// checkout emails.
+    ///
+    /// Same single-definition contract as `privacyPolicyURLString`: the
+    /// address goes in the marketing site and the purchase email too, and
+    /// this is the copy the shipped binary carries.
+    public static let proCheckoutURLString = placeholderProCheckoutURLString
+
+    /// The checkout address the UI may actually offer, or nil.
+    ///
+    /// Unlike `privacyPolicyURL`, nil here is an expected *state*, not a
+    /// programming error: it is what the placeholder resolves to, and the
+    /// locked surfaces render an honest "not on sale yet" line for it. The
+    /// same honest-gating rule `UpdateController` applies to the Sparkle
+    /// key — never show a control that can't work — applied to a purchase
+    /// link, which is the one control it would be worst to ship broken.
+    public static var proCheckoutURL: URL? {
+        checkoutURL(from: proCheckoutURLString)
+    }
+
+    /// The gate itself, as a pure function of the string so tests can pin
+    /// it against both the placeholder and a real-looking address. Refuses
+    /// the placeholder, blank, hostless, and non-HTTPS values: a checkout
+    /// page collects payment details, and offering it over plaintext would
+    /// be a worse bug than offering nothing.
+    public static func checkoutURL(from string: String) -> URL? {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != placeholderProCheckoutURLString else { return nil }
+        guard
+            let url = URL(string: trimmed),
+            url.scheme?.lowercased() == "https",
+            let host = url.host, !host.isEmpty
+        else { return nil }
+        return url
+    }
+
     // MARK: - Version
 
     /// "Version 1.2.3 (45)" from a bundle's `CFBundleShortVersionString` and

@@ -1339,16 +1339,22 @@ struct AlertsPane: View {
     /// `lockedAffordanceLabel` and `lockedExistingThemesNote` apart: "you
     /// can't create one" and "the one you have isn't running" are different
     /// facts. Both follow the honest-copy
-    /// rules `ProUpsellCard` set: Sentry Pro is named plainly, no Buy
-    /// button exists anywhere (checkout hasn't opened), and the
-    /// existing-rule sentence spells out the lapse semantics
+    /// rules `ProUpsellCard` set: Sentry Pro is named plainly, the
+    /// purchase sentence is `ProPurchase`'s shared decision (the
+    /// not-on-sale admission until a real checkout address exists, a
+    /// pointer to Settings ▸ Sentry Pro after), and the existing-rule
+    /// sentence spells out the lapse semantics
     /// (`AlertEngine.processRulesUnlocked`'s contract) and the ungated way
     /// out.
-    static func lockedConditionFooter(kind: RuleKind, processMatchUnlocked: Bool) -> String? {
+    static func lockedConditionFooter(
+        kind: RuleKind,
+        processMatchUnlocked: Bool,
+        checkoutURL: URL? = AppCredits.proCheckoutURL
+    ) -> String? {
         guard !processMatchUnlocked else { return nil }
         switch kind {
         case .generic:
-            return String(localized: "Watching a specific process — alerting on what a named app is doing rather than on a system-wide metric — is part of Sentry Pro. It's shown rather than hidden so you can see what the feature offers. Everything else about this rule stays free; purchasing isn't available yet because Sentry's license checkout hasn't opened.")
+            return String(localized: "Watching a specific process — alerting on what a named app is doing rather than on a system-wide metric — is part of Sentry Pro. It's shown rather than hidden so you can see what the feature offers. Everything else about this rule stays free. \(ProPurchase.footerSentence(checkoutURL: checkoutURL))")
         case .processMatch:
             return String(localized: "This rule isn't being evaluated: watching a specific process is part of Sentry Pro. Nothing fires, nothing is recorded, and its cooldown isn't consumed — but the rule and every setting on it are kept exactly as they are, and it starts evaluating again, with a fresh “must hold for” window, the moment this copy is unlocked. Turning “Watch a specific process” off converts it back to an ordinary rule, which stays free.")
         case .chargingPaused, .slowCharging, .batteryHealthDrop:

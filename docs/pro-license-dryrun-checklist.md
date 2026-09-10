@@ -17,6 +17,17 @@ deliberately absent below was checked against that source; the two that
 had drifted (prerequisite 5's wording, and the first open question) are
 corrected in place. See [`STATUS.md`](STATUS.md) for the cross-document view.
 
+**Updated for the UI half (Part 5a, `feat/pro-purchase-ui`).** The app's
+side of the purchase and activation path now exists: Settings ▸ Sentry Pro
+(`Sentry/Settings/Panes/ProLicensePane.swift`, state machine in
+`Sentry/Settings/ProLicenseActivationModel.swift`), a Buy affordance gated
+on a real checkout address (`Sentry/App/ProPurchase.swift`,
+`AppCredits.proCheckoutURLString`), and a daily revalidation scheduler
+(`SentryKit/Pro/LicenseRevalidationScheduler.swift`) that is wired into
+`AppDelegate` and inert until a client exists. Prerequisites 4 and 5 below
+are rewritten accordingly; the new "What Part 5b wires up" section at the
+end is the exact remaining list.
+
 The code side of every claim below is real and in this repository:
 `SentryKit/Pro/License.swift` (blob format, Ed25519 verification,
 entitlement policy), `SentryKit/Pro/LicenseActivation.swift` (the
@@ -47,23 +58,46 @@ In dependency order:
    manager, and pastes the public half into that constant. Until then no
    blob can verify in any build, and the app says so on screen
    (`LicenseDenialReason.verificationUnavailableInThisBuild`).
-4. **A license pane in Settings.** `LicenseProEntitlementStore.installLicense`
-   and `removeLicense` exist and are tested, but no Settings pane calls
-   them yet — there is currently nowhere in the UI to paste a blob. That
-   pane (paste field, denial-reason display, remove button, seat/issue-date
-   display) has to ship in the same release as checkout.
-5. **Revalidation wiring.** `AppDelegate` constructs the entitlement store
-   (`Sentry/App/AppDelegate.swift:276–279`) passing only `settingsStore:`
-   and `publicKey: LicenseKeys.productionPublicKey`, so it takes the
+4. ~~**A license pane in Settings.**~~ **Done.** Settings ▸ Sentry Pro
+   (`Sentry/Settings/Panes/ProLicensePane.swift`): paste field, Activate,
+   `LicenseDenialReason.explanation` on every rejection, seats / issued /
+   expiry from the payload, Remove License (with confirmation), and the Buy
+   section while locked. The key-exchange path (`activate(licenseKey:)`)
+   and "Confirm with Licensing Server Now" are built but render only when
+   `LicenseProEntitlementStore.hasActivationBackend` is true — never today.
+   Driven end to end in `SentryTests/ProLicenseActivationModelTests.swift`
+   against the TEST-ONLY `StubLicenseActivationClient`
+   (`SentryTests/LicenseTestSupport.swift`).
+5. **Revalidation wiring — scheduler done, client not.** `AppDelegate`
+   constructs the entitlement store passing only `settingsStore:` and
+   `publicKey: LicenseKeys.productionPublicKey`, so it takes the
    initializer's defaults — `activationClient: nil` and
-   `revalidationPolicy: .never` (`LicenseProEntitlementStore.swift:82–83`).
-   When the D1 client exists, both change at that one composition-root call
-   site:
-   pass the concrete client and switch the policy to `.standard` (14-day
-   offline grace). The two must flip **together and only together** —
-   enabling `.standard` without a client permanently locks out every
-   licensed user 14 days after activation, which is exactly the failure
-   `LicenseRevalidationPolicy`'s doc comment exists to prevent.
+   `revalidationPolicy: .never`. A `LicenseRevalidationScheduler`
+   (`SentryKit/Pro/LicenseRevalidationScheduler.swift`, modeled on
+   `UpdateController`'s daily Sparkle check) is now constructed next to it
+   and started in `applicationDidFinishLaunching`; it consults
+   `store.isOnlineRevalidationArmed` and, with today's arguments, records
+   `.inert` and creates no task (pinned by
+   `SentryTests/LicenseRevalidationSchedulerTests.swift`). When the D1
+   client exists, both store arguments change at that one call site: pass
+   the concrete client and switch the policy to `.standard` (14-day offline
+   grace), and the scheduler starts checking daily with no further edit.
+   The two must flip **together and only together** — enabling `.standard`
+   without a client permanently locks out every licensed user 14 days after
+   activation, which is exactly the failure `LicenseRevalidationPolicy`'s
+   doc comment exists to prevent (and which the scheduler cannot rescue:
+   there is nobody to call).
+6. **The checkout address.** `AppCredits.proCheckoutURLString`
+   (`SentryKit/Models/AppCredits.swift`) is the placeholder
+   `REPLACE-WITH-THE-SENTRY-PRO-CHECKOUT-URL`. Every locked surface reads
+   `AppCredits.proCheckoutURL`, which is nil for the placeholder (and for
+   any non-HTTPS or hostless value), and renders the marketing site's own
+   "isn't on sale yet" sentence instead of a button. Pasting the vendor's
+   HTTPS checkout URL into that one constant turns on the Buy button in
+   the Insights upsell card, the Theme pane's upsell card, the Sync pane's
+   locked row, and Settings ▸ Sentry Pro, and flips the Alerts pane's
+   locked footer to point at the pane — all at once, from one line
+   (`SentryTests/ProPurchaseAffordanceTests.swift`).
 
 ## What can be verified today, with none of the above
 
@@ -77,6 +111,15 @@ In dependency order:
   whose `publicKey` is the test key) — the tests already do exactly this.
   What a rehearsal cannot prove is the production pipeline: real key, real
   webhook, real email.
+- The UI layer: `ProLicenseActivationModelTests` (paste activates offline;
+  wrong key, mangled paste, expired blob, key-with-no-backend, server
+  rejection, transport failure, server forgery each land in their own
+  typed failure with a sentence and persist nothing; removal clears
+  everything; confirm-with-server still-valid/revoked),
+  `LicenseRevalidationSchedulerTests` (inert in the shipped configuration,
+  repeats when armed, absorbs transport errors, removes on revoked, stops),
+  `ProPurchaseAffordanceTests` and the checkout cases in `AppCreditsTests`
+  (placeholder → no button, real HTTPS → button, plaintext refused).
 
 ## The dry run
 
@@ -90,17 +133,19 @@ address you control.
      (macOS 14 or later). Make sure Settings ▸ Advanced ▸ Developer's Pro
      override is **off** — an override left on would mask every failure in
      this checklist.
-   - Verify: the license area in Settings reports "No license is installed
-     on this Mac." — the `.noLicense` state, not "This build of Sentry has
-     no license verification key embedded…".
+   - Verify: Settings ▸ Sentry Pro's Status section reads "No license on
+     this Mac" over "No license is installed on this Mac." — the
+     `.noLicense` state, not "This build of Sentry has no license
+     verification key embedded…". (With the override on it would instead
+     read "No license — unlocked by the developer override", which is
+     your cue to turn it off.)
    - Expected: `.noLicense`. Pro features locked; Insights shows the top
      two findings free and honest locked previews for the rest.
    - Failure modes: the build-gap message means the production public key
      was not embedded (or was mis-pasted — a malformed key surfaces the
      same way, by design; see `LicenseKeys.productionPublicKey`). Fix the
      constant, rebuild, restart the checklist.
-   - **Blocked until:** production key embedded (prerequisite 3), license
-     pane exists (prerequisite 4).
+   - **Blocked until:** production key embedded (prerequisite 3).
 
 2. **Test-mode purchase at the merchant.**
    - Do: buy the Pro product through the merchant's checkout with a test
@@ -182,9 +227,11 @@ address you control.
      it.
 
 6. **Buyer pastes the blob into Settings; activation succeeds.**
-   - Do: on the test Mac, paste the blob from the email into the license
-     field — deliberately sloppily, with leading/trailing whitespace and a
-     newline (the verifier trims; the tests pin this).
+   - Do: on the test Mac, paste the blob from the email into Settings ▸
+     Sentry Pro's license field and press Activate — deliberately
+     sloppily, with leading/trailing whitespace and a newline (the model
+     trims before classifying; `testPastedBlobActivatesOfflineWithNoBackend`
+     pins this).
    - Verify: activation succeeds immediately and **offline** — this path
      is pure local verification, no network. The UI attributes the unlock
      to a license (`ProUnlockSource.license`), not the developer override.
@@ -200,8 +247,10 @@ address you control.
      (`~/Library/Application Support/Sentry/settings.json`) now contains
      `proLicenseBlob` and `proLicenseLastVerifiedAt` (install stamps the
      verification timestamp).
-   - Expected: entitled, seat count 3 and issue date displayed from the
-     payload.
+   - Expected: entitled; the Status section shows "Sentry Pro is active on
+     this Mac", Covers "3 Macs", the issue date, and Expires "Never — this
+     is a perpetual license"; the field clears; the Buy section disappears
+     and a Remove section appears.
    - Failure modes, each with its own on-screen sentence
      (`LicenseDenialReason.explanation` — verify the *right* one appears):
      - `.malformed` — truncated or mangled paste. Re-copy the whole blob.
@@ -214,9 +263,9 @@ address you control.
        license.
      - A rejected blob persists **nothing** — verify `settings.json` still
        has no `proLicenseBlob` after a failed paste.
-   - **Blocked until:** license pane (prerequisite 4) and production key
-     (prerequisite 3). The verification logic itself is already exercised
-     by the test suite with a test-only key.
+   - **Blocked until:** production key (prerequisite 3). The pane and the
+     verification logic are both exercised by the test suite with a
+     test-only key.
 
 7. **Entitlement survives a relaunch.**
    - Do: quit and relaunch the app.
@@ -230,8 +279,10 @@ address you control.
 
 8. **Revalidation succeeds.**
    - Do: with the D1 activation client wired and the policy at
-     `.standard`, trigger a revalidation (however the release exposes it —
-     scheduled or a manual "verify now").
+     `.standard`, trigger a revalidation — either wait for
+     `LicenseRevalidationScheduler`'s tick (immediately at launch, then
+     daily) or press "Confirm with Licensing Server Now" in Settings ▸
+     Sentry Pro (the button exists only when a client is wired).
    - Verify: the app calls `revalidate(licenseID:)` with the payload's
      `licenseID`; the server answers still-valid;
      `proLicenseLastVerifiedAt` in `settings.json` moves to now;
@@ -239,7 +290,9 @@ address you control.
      app verifies it locally before installing — a server response is
      input, not authority (`testActivateVerifiesTheServerBlobLocallyBeforeInstalling`
      pins the same principle for activation).
-   - Expected: timestamp refreshed, nothing else visibly changes.
+   - Expected: timestamp refreshed; "Last confirmed" in the Status section
+     moves to now; the manual button reports "Confirmed with the licensing
+     server just now."; nothing else visibly changes.
    - Failure modes: an *unreachable* server must surface as a transport
      error and leave the license alone — the 14-day grace window exists
      precisely so offline Macs aren't punished; a server that answers
@@ -261,12 +314,16 @@ address you control.
    - **Blocked until:** merchant account and issuance backend (task D1).
 
 10. **The app observes the revocation on next revalidation.**
-    - Do: trigger revalidation on the test Mac again.
+    - Do: trigger revalidation on the test Mac again (scheduled tick or
+      the manual button, as in step 8).
     - Verify: the server answers revoked; the app **removes the license**
       — Pro locks, `proLicenseBlob` and `proLicenseLastVerifiedAt` are
-      cleared from `settings.json`, and Settings reads "No license is
-      installed on this Mac." (`testRevalidateRevokedRemovesTheLicense`
-      pins this). Relaunch and confirm it does not resurrect.
+      cleared from `settings.json`, and Settings ▸ Sentry Pro reads "No
+      license on this Mac" (`testRevalidateRevokedRemovesTheLicense`,
+      `testRevokedAnswerOnAScheduledTickRemovesTheLicense`, and
+      `testConfirmRevokedRemovesTheLicenseAndSaysWhy` pin this; the manual
+      button also shows the server's reason). Relaunch and confirm it does
+      not resurrect.
     - Expected: locked, cleanly, with no error state left behind.
     - Failure modes: the structural one — revocation only propagates
       through revalidation. Under the shipped `.never` policy nothing ever
@@ -286,6 +343,46 @@ address you control.
     - Verify: no test license remains in good standing server-side; the
       test Mac is back to `.noLicense`; the merchant account is switched
       to live mode with the live webhook endpoint configured.
+
+## What Part 5b wires up, the moment a vendor account exists
+
+Everything below is on the app's side of the seam and is the *complete*
+remaining list; nothing else in the app needs to change for checkout to
+work. In order:
+
+1. **Paste the checkout URL** into `AppCredits.proCheckoutURLString`
+   (`SentryKit/Models/AppCredits.swift`), replacing the placeholder. Must
+   be HTTPS with a host or `proCheckoutURL` stays nil and no button
+   appears. `testShippedProCheckoutConstantIsThePlaceholderOrALiveHTTPSAddress`
+   catches a half-edited value.
+2. **Embed the production public key** in
+   `LicenseKeys.productionPublicKeyBase64` (prerequisite 3) — otherwise
+   every pasted blob is denied with `.verificationUnavailableInThisBuild`,
+   which the pane shows verbatim.
+3. **Write the concrete `LicenseActivationClient` conformer** against the
+   vendor's API — `activate(licenseKey:)` and `revalidate(licenseID:)`,
+   nothing more (`SentryKit/Pro/LicenseActivation.swift`). Decide there
+   what a key-rejected-by-server error looks like: the pane shows whatever
+   the thrown error's `localizedDescription` says
+   (`ProLicenseActivationModel.Failure.activationFailed`), so make it a
+   `LocalizedError` with a user-readable sentence, and keep transport
+   errors distinguishable from rejections if the vendor's API allows it.
+   A revoked answer's `reason` is also shown on screen verbatim.
+4. **Flip the composition root** — `Sentry/App/AppDelegate.swift`,
+   the `LicenseProEntitlementStore(...)` call — to pass the client *and*
+   `revalidationPolicy: .standard` together. That single edit also arms
+   `LicenseRevalidationScheduler` (already started there) and makes
+   Settings ▸ Sentry Pro show the key field caption, the "Last confirmed"
+   row, and the "Confirm with Licensing Server Now" button.
+5. **Decide whether 1.x ships revalidation at all** (the last open
+   question below). If not, do step 3 and skip step 4: the pane's
+   paste-a-license path, the Buy button, and Remove all work with
+   `activationClient: nil` and `.never`, and a refunded license keeps
+   working forever on any Mac it reached — record that as a decision.
+6. **Revise the privacy policy** if step 4 is taken: revalidation adds a
+   network path the current draft (`privacy-policy-checkout-draft.md`)
+   says does not exist.
+7. **Walk this dry run** end to end in the vendor's test mode.
 
 ## Open questions
 

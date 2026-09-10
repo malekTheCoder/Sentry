@@ -9,23 +9,32 @@ import SentryKit
 /// how many of those are warnings or worse — both of which are true numbers
 /// taken from the real, evaluated set — and offers to unlock them.
 ///
-/// **There is no purchase flow yet, and this card says so rather than
-/// showing a Buy button that can't work.** StoreKit is absent by design
-/// (Apple Developer Program enrollment is blocked — see `PROGRESS.md`), and
-/// a "Upgrade" button wired to nothing would be precisely the inert control
-/// this project has removed before. When the purchase path exists it
-/// replaces `unavailableNotice` below and nothing else on this card changes.
+/// **The purchase path is gated on a real checkout address, not on a
+/// build flag.** The bottom of the card is `ProPurchaseAffordanceView`,
+/// which renders a Buy button only when `AppCredits.proCheckoutURL` is a
+/// real URL and otherwise says, in the marketing site's own words, that
+/// Sentry Pro is not on sale yet. Today it is the latter: no payment vendor
+/// exists (`docs/STATUS.md`), and an "Upgrade" button wired to nothing
+/// would be precisely the inert control this project has removed before.
+/// The day the owner pastes the checkout URL into `AppCredits`, this card
+/// grows a working button and nothing else on it changes — which is what
+/// the older version of this comment promised, now built.
 struct ProUpsellCard: View {
     @Environment(\.themePalette) private var palette
 
     let gated: ProGate.GatedInsights
     let unlockSource: ProUnlockSource
 
+    /// Injected so tests can pin the card's gating against the placeholder
+    /// and against a real-looking address without rebuilding `AppCredits`.
+    /// Production callers take the default.
+    var checkoutURL: URL? = AppCredits.proCheckoutURL
+
     var body: some View {
         VStack(alignment: .leading, spacing: palette.spacing) {
             header
             withheldBlock
-            unavailableNotice
+            footer
         }
         .quietCard(palette)
         .accessibilityElement(children: .contain)
@@ -68,37 +77,47 @@ struct ProUpsellCard: View {
         return String(localized: "\(totalText) further findings on this Mac are withheld, \(actionableText) of them at warning level or higher.")
     }
 
-    private var unavailableNotice: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 10))
-                .foregroundStyle(palette.textTertiary)
-                .padding(.top, 1)
-                .accessibilityHidden(true)
-            Text(noticeText)
-                .font(palette.font(size: 10))
-                .foregroundStyle(palette.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
+    /// What the card ends with, decided per unlock source. Locked is the
+    /// only state that asks the purchase question; the other two are the
+    /// attribution sentences an unlocked build owes the user (see
+    /// `ProUnlockSource`), unchanged.
+    @ViewBuilder
+    private var footer: some View {
+        switch Self.footer(unlockSource: unlockSource, checkoutURL: checkoutURL) {
+        case .purchase(let affordance):
+            ProPurchaseAffordanceView(affordance: affordance)
+        case .attribution(let sentence):
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(palette.textTertiary)
+                    .padding(.top, 1)
+                    .accessibilityHidden(true)
+                Text(sentence)
+                    .font(palette.font(size: 10))
+                    .foregroundStyle(palette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
         }
-        .accessibilityElement(children: .combine)
     }
 
-    private var noticeText: String {
+    /// The footer decision as a value, so the honest-gating rule is pinned
+    /// by tests without a view hierarchy (same convention as
+    /// `SyncPane.remoteToggleLabel`).
+    enum Footer: Equatable {
+        case purchase(ProPurchase.Affordance)
+        case attribution(String)
+    }
+
+    static func footer(unlockSource: ProUnlockSource, checkoutURL: URL?) -> Footer {
         switch unlockSource {
         case .locked:
-            // Still true after the license system landed: verification
-            // exists (`LicenseProEntitlementStore`), but no checkout does —
-            // there is nowhere to buy a license yet, so a Buy button here
-            // would still be the inert control this copy refuses to be.
-            // Deliberately no pointer to the developer-override toggle:
-            // that UI exists only in DEBUG builds (AdvancedPane), and copy
-            // that names a control release users can't find is the exact
-            // bug this card exists to avoid.
-            return String(localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened, so there is deliberately no Buy button here that couldn't work. Checkout is coming in an update; everything above stays free.")
+            return .purchase(ProPurchase.affordance(checkoutURL: checkoutURL))
         case .developerOverride:
-            return String(localized: "Unlocked by the local developer override. This is not a purchase.")
+            return .attribution(String(localized: "Unlocked by the local developer override. This is not a purchase."))
         case .license:
-            return String(localized: "Unlocked by your Sentry Pro license.")
+            return .attribution(String(localized: "Unlocked by your Sentry Pro license."))
         }
     }
 }

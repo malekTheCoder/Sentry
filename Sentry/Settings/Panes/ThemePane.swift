@@ -151,8 +151,9 @@ struct ThemePane: View {
             } else {
                 // Withheld, not obscured: one honest row where the fork and
                 // import doors would be, never those buttons disabled. The
-                // full story (what's Pro, what stays free, no checkout yet)
-                // lives on the one upsell card in the section below.
+                // full story (what's Pro, what stays free, whether there is
+                // a checkout to buy it from) lives on the one upsell card in
+                // the section below.
                 lockedAffordanceRow
             }
         }
@@ -461,10 +462,12 @@ struct ThemePane: View {
 /// the real affordances instead, so this card never needs an "unlocked"
 /// state.
 ///
-/// No Buy button — checkout doesn't exist yet, and a button wired to
-/// nothing is the inert control this project keeps refusing to ship. No
-/// pointer to the developer override either, for `ProUpsellCard`'s reason:
-/// copy that names a control release users can't find is a bug.
+/// The Buy button is `ProPurchase`'s decision, not this card's: it appears
+/// only once `AppCredits.proCheckoutURL` is a real address, and until then
+/// the card says Pro isn't on sale — a button wired to nothing is the
+/// inert control this project keeps refusing to ship. No pointer to the
+/// developer override either, for `ProUpsellCard`'s reason: copy that
+/// names a control release users can't find is a bug.
 private struct ThemeProUpsellCard: View {
     @Environment(\.themePalette) private var palette
 
@@ -501,20 +504,10 @@ private struct ThemeProUpsellCard: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-                    .padding(.top, 1)
-                    .accessibilityHidden(true)
-                // Same admission as `ProUpsellCard` and `SyncPane`:
-                // there is deliberately no Buy button that couldn't work.
-                Text("Purchasing isn't available yet — Sentry's license checkout hasn't opened. Checkout is coming in an update.")
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .accessibilityElement(children: .combine)
+            // The same purchase decision `ProUpsellCard` and `SyncPane`
+            // render: a Buy button only once a real checkout address is in
+            // `AppCredits`, the not-on-sale admission until then.
+            ProPurchaseAffordanceView(affordance: ProPurchase.affordance())
         }
         .quietCard(palette)
         .accessibilityElement(children: .contain)

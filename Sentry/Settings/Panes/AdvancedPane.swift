@@ -258,8 +258,10 @@ struct AdvancedPane: View {
     /// treatment translated into this pane's plain-Form idiom: the
     /// feature's own name, the honest bounds, a trailing lock — nothing
     /// else. There is no withheld content to leak (the withheld thing is
-    /// database rows that were never recorded), and no Buy button: checkout
-    /// doesn't exist yet (see `ProUpsellCard.unavailableNotice`).
+    /// database rows that were never recorded), and no Buy button here:
+    /// the purchase affordance lives on the upsell cards and in Settings ▸
+    /// Sentry Pro (`ProPurchase` decides whether one can be offered), not
+    /// on every locked row.
     private var lockedExtendedRetentionRow: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {

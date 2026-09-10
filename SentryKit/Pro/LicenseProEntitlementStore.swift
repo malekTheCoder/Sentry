@@ -65,6 +65,44 @@ public final class LicenseProEntitlementStore: ProEntitlementProviding {
     /// bare lock icon.
     public private(set) var decision: LicenseEntitlementDecision
 
+    // MARK: - What the settings pane and the scheduler need to know
+    //
+    // Three read-only facts about this store's *configuration*, exposed so
+    // the UI can decide what to render before calling anything — the
+    // alternative is a pane that offers an Activate-by-key field and then
+    // discovers `.noActivationBackendConfigured` on submit, which is the
+    // "control that can't work" this codebase refuses to ship. None of
+    // these is a decision about entitlement; that stays `decision`.
+
+    /// Whether a `LicenseActivationClient` was injected. `false` in this
+    /// build (see `LicenseActivation.swift`); the pane hides the
+    /// key-exchange path and the "confirm with server" button when false
+    /// and explains the paste-a-license path instead.
+    public var hasActivationBackend: Bool { activationClient != nil }
+
+    /// Whether the two halves of online revalidation are *both* present —
+    /// a client to ask and a policy that acts on the answer. This is the
+    /// only condition under which `LicenseRevalidationScheduler` does
+    /// anything at all: a client with a `.never` policy has nothing to
+    /// refresh, and a `.standard` policy with no client is the lockout
+    /// `LicenseRevalidationPolicy` warns about (which a scheduler could not
+    /// rescue anyway — there is nobody to call).
+    public var isOnlineRevalidationArmed: Bool {
+        activationClient != nil && revalidationPolicy.graceWindow != nil
+    }
+
+    /// Whether a blob is persisted, regardless of whether it currently
+    /// entitles anything — the condition for offering "Remove License".
+    /// A blob this build can't verify (no embedded key) or one whose
+    /// grace has lapsed is still *installed*, and the user must be able to
+    /// take it off this Mac.
+    public var hasInstalledLicense: Bool { licenseBlob != nil }
+
+    /// The last successful online confirmation (or the install instant —
+    /// see `installLicense`), for the pane to show as a date. Read-only
+    /// view of the same value `decision` is computed from.
+    public var lastVerifiedDate: Date? { lastVerifiedAt }
+
     /// - Parameters:
     ///   - publicKey: normally `LicenseKeys.productionPublicKey` (nil in
     ///     this build — see `LicenseKeys` for why, and
@@ -212,17 +250,25 @@ public final class LicenseProEntitlementStore: ProEntitlementProviding {
     /// Transport errors from the client propagate — an *unreachable*
     /// server is not a *negative* answer, and the grace window exists
     /// precisely so that difference doesn't punish offline Macs.
-    public func revalidate() async throws {
+    ///
+    /// Returns the server's answer (nil when there was no license to ask
+    /// about) so a "confirm now" button can tell the user *what* happened
+    /// — in particular the `revoked` reason, which is display text the
+    /// server wrote for exactly that sentence. The scheduler ignores the
+    /// return value; the store has already acted on it.
+    @discardableResult
+    public func revalidate() async throws -> LicenseRevalidationOutcome? {
         guard let activationClient else {
             throw LicenseActivationError.noActivationBackendConfigured
         }
         guard let payload = decision.payload ?? currentPayloadIgnoringGrace() else {
             // Nothing installed (or nothing that verifies): there is no
             // license to ask the server about.
-            return
+            return nil
         }
 
-        switch try await activationClient.revalidate(licenseID: payload.licenseID) {
+        let outcome = try await activationClient.revalidate(licenseID: payload.licenseID)
+        switch outcome {
         case .stillValid(let refreshedBlob):
             if let refreshedBlob {
                 // A refreshed blob goes through the full install path —
@@ -236,6 +282,7 @@ public final class LicenseProEntitlementStore: ProEntitlementProviding {
         case .revoked:
             removeLicense()
         }
+        return outcome
     }
 
     // MARK: - Private

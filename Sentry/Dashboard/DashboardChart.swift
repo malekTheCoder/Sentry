@@ -888,8 +888,9 @@ struct DashboardChart: View {
 
     /// The locked menu item's exact label, as a testable constant — the
     /// locked copy must stay the honest kind: it names the feature and the
-    /// tier, and sells nothing it can't deliver (no Buy affordance exists
-    /// anywhere until checkout does; see `ProUpsellCard.unavailableNotice`).
+    /// tier, and sells nothing it can't deliver (the Buy affordance lives
+    /// on the upsell cards and in Settings ▸ Sentry Pro, gated by
+    /// `ProPurchase` on a real checkout address — never in a menu item).
     static let lockedExportMenuTitle = String(localized: "Export… — Sentry Pro")
 
     private enum ExportFormat {
