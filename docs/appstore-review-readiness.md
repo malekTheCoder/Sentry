@@ -15,6 +15,17 @@ than none. Every finding names the file and line where it was verified.
 **Audited at** commit `000cb66`, branch `feat/appstore-compliance`, with
 Xcode 26.6 (iOS SDK 26.5, watchOS SDK 26.5).
 
+> **Reconciled 2026-09-10 against `main` at `661d2e0`.** The audit body
+> below is the historical record as of `000cb66` and is left as written —
+> but every code change it recommends has since landed, and the
+> "Verdict" and "Second-most-likely rejection" sections no longer
+> describe the shipping app. What is *current* is the **Pre-submission
+> checklist** at the bottom: every item there was re-verified on that
+> date against the source (file and line quoted) or a live HTTP request,
+> and each checked item names the commit that did it. For the one-page
+> view of what is still open across every document, read
+> [`docs/STATUS.md`](STATUS.md).
+
 ---
 
 ## Verdict
@@ -41,6 +52,11 @@ call.**
 > ("fully functional URLs included; placeholder text, empty websites, and
 > other temporary content should be scrubbed before submission"). App Review
 > clicks the link. There is no version of this that gets through.
+>
+> **Resolved (re-verified 2026-09-10):** the URL now returns HTTP 200
+> (it redirects to `malekswilam.dev/Sentry/privacy-policy/`, which is the
+> custom domain in front of the same GitHub Pages site), and the "isn't
+> live" sentence was deleted in `9eb8807`. See the checklist.
 
 The good news, and it is genuinely unusual: **the parts that silently kill
 uploads are already correct.** All four privacy manifests exist, are in the
@@ -308,6 +324,10 @@ not with code. See the checklist.
 4. **Fix one string that is not honest.** With no Mac, tapping keep-awake shows *"Sent, but no reply from your Mac yet."* (`SentryMobile/Dashboard/SleepStatusCard.swift:261–283`) — but `MockDataSource.send(command:)` (`:172–176`) is a silent no-op. Nothing was sent. Everything else in this app is scrupulous about this distinction; this one line implies a transmission that did not occur, and under 2.3.1 it is the wrong kind of inaccuracy to ship.
 5. **Add a way to get the Mac app.** There is no download link, URL, or instruction anywhere in the iOS target. A reviewer who reads the onboarding learns they need a Mac app and is given no way to obtain it. A single link in About would help both the reviewer and every real user.
 
+> **All five have since landed** (`2dd538a`, `2ad7549`, `74cafb9`). File,
+> line, and proof for each are in the "Recommended before 1.0" checklist
+> at the bottom.
+
 #### Guideline 4.2.3(i) — worth knowing about, probably not fatal
 
 4.2.3(i) says "your app should work on its own without requiring installation
@@ -413,6 +433,12 @@ watch's Overview page uses at `SentryWatch/Pages/OverviewPage.swift:268`) to
 the small and medium families. Not implemented here — it is a layout decision
 in constrained space.
 
+> **Since implemented** (`2dd538a`): `SmallWidgetView.swift:24–25` and
+> `MediumWidgetView.swift:34–35` render `WidgetDemoDataTag` (a compact
+> "Demo" pill whose accessibility label is the full caption,
+> `BatteryArcView.swift:127–142`) whenever `snapshot.sourceIsDemoData`.
+> All three families now disclose.
+
 ### 10. Everything else
 
 #### Privacy policy URL — **BLOCKER** (the headline finding)
@@ -436,6 +462,17 @@ Two placeholders also remain inside the policy text itself
 (`docs/privacy-policy.md:3,171`): `[EFFECTIVE DATE — TO FILL IN]` and
 `[CONTACT EMAIL — TO FILL IN]`. Both must be real before publishing —
 reviewers do write to the contact address.
+
+> **Resolved on the published site (re-verified 2026-09-10).** The live
+> page carries an effective date (August 17, 2026) and the contact
+> address `getsentryapp@gmail.com` (`gh-pages` commit `4deba60`). The
+> constant was never changed — the URL it always pointed at became
+> live instead — and its `[PRIVACY POLICY URL — TO FILL IN]` marker is
+> gone (`9eb8807`; the doc comment now reads "Live and verified").
+> One residue remains and is *not* user-visible: `docs/privacy-policy.md:175`
+> and `docs/pages-site/privacy-policy.md:175` on `main` still say
+> `TO-FILL(support-email)` — the repo copies drifted behind the
+> published one. Listed in `docs/STATUS.md` as agent-ready work.
 
 #### Version strings — **was a BLOCKER, now FIXED**
 
@@ -532,6 +569,14 @@ submitting, or withhold this intent from the 1.0 build. Not changed here:
 both options are product decisions, and the Mac composition root is out of
 scope for this branch.
 
+> **The hook landed** (`74cafb9`): `Sentry/App/AppDelegate.swift:302`
+> injects `onScoreComputed: { coordinator.protectionScore = score }` into
+> `InsightsViewModel`, and `StatsCoordinator.swift:804` puts the value on
+> every outgoing `SystemSnapshot`. The intent also refuses to answer from
+> demo data (`SentryIntents.swift:425–427`). The intent's *own doc comment*
+> (`SentryIntents.swift:406–416`) still says the hook is unlanded — a stale
+> comment, not stale behaviour; flagged in `docs/STATUS.md`.
+
 #### Placeholder content — **OK**
 
 Swept `SentryMobile/`, `SentryWatch/`, `SentryWidget/`, `SentryWatchWidget/`
@@ -552,47 +597,57 @@ Connect.
 
 ---
 
-## Pre-submission checklist — the things only a human can do
+## Pre-submission checklist
 
-Code fixes are done. These are not.
+**Reconciled 2026-09-10 against `main` at `661d2e0`.** Every checked item
+below names what proves it and the commit that did it; every unchecked item
+was re-read against current source and its description corrected where the
+original no longer matched. Live URLs were fetched with `curl -L` on that
+date from this machine (all returned 200). Nothing here is checked on
+trust.
 
 ### Blocking — the upload or the review will fail without them
 
-- [ ] **Publish the privacy policy at a real, public HTTPS URL.** Fill the two placeholders in `docs/privacy-policy.md` (effective date, contact email), then follow `docs/privacy-policy-publishing.md`. Must be reachable with no login and no redirect-to-login. **Verify it in a private browser window before submitting.**
-- [ ] **Update `AppCredits.privacyPolicyURLString`** (`SentryKit/Models/AppCredits.swift:66`) to that URL, and clear the `[PRIVACY POLICY URL — TO FILL IN]` marker at `:57`. Note the current value's host now redirects to `malekswilam.dev` and 404s.
-- [ ] **Delete the "the link above isn't live" sentence** at `SentryMobile/Settings/AboutView.swift:126`. Shipping copy that tells the reviewer a required link is dead is a self-inflicted rejection.
-- [ ] **Enter the same URL in App Store Connect** → App Privacy → Privacy Policy URL.
-- [ ] **Write review notes explaining the Mac dependency.** This is the difference between a pass and a 2.1 rejection. Say plainly: the app is a companion to a macOS app distributed outside the App Store; a reviewer without a Mac will see clearly-labelled demo data; here is what it does with a real Mac. Be specific — Guideline 2.3.1 says generic descriptions will be rejected.
-- [ ] **Attach a demo video** (screen recording of the app driving a real Mac) to the review notes, or host it and link it. For a hardware/desktop-companion app this is the single most effective thing you can provide.
+- [x] **Publish the privacy policy at a real, public HTTPS URL.** Done — `https://malekthecoder.github.io/Sentry/privacy-policy` returns **200** (redirects to `malekswilam.dev/Sentry/privacy-policy/`), no login. Published from the repo's `gh-pages` branch; effective date is August 17, 2026 and the contact address is `getsentryapp@gmail.com` (`gh-pages` `4deba60`). Still worth a private-window check the day you submit.
+- [x] **Update `AppCredits.privacyPolicyURLString`.** Done — the constant (`SentryKit/Models/AppCredits.swift:70`) never needed to change; the address it always named went live. The `[PRIVACY POLICY URL — TO FILL IN]` marker is gone and the doc comment reads "Live and verified" (`9eb8807`).
+- [x] **Delete the "the link above isn't live" sentence.** Done — `SentryMobile/Settings/AboutView.swift:147` now reads "Sentry keeps its data on your own devices. The full written policy is linked above." (`9eb8807`; the code comment above it records why).
+- [ ] **Enter the same URL in App Store Connect** → App Privacy → Privacy Policy URL. *Human — data entry.*
+- [ ] **Paste the review notes explaining the Mac dependency.** The notes are **written** — `docs/asc-metadata-draft.md` § "App Review notes" is paste-ready and was re-checked against current behaviour on 2026-09-10 (every disclosure it describes exists in source). What remains is entering them. *Human.*
+- [ ] **Record and attach the demo video.** Shot list and narration are in `docs/asc-metadata-draft.md`. *Human — needs a real Mac, iPhone, and Watch on camera.*
 - [x] ~~**Pre-empt the location question** in review notes, using the wording in §8.~~ **Superseded (Aug 13, 2026):** location was removed from the app entirely — there is no location question to pre-empt. See the editor's notes at §7/§8.
-- [ ] **Verify the build's Info.plist after archiving** — confirm `CFBundleShortVersionString` reads `1.0.0` and `CFBundleVersion` reads `2` in the app, the widget, the watch app and the complication. All four must match.
+- [ ] **Verify the build's Info.plist after archiving** — confirm `CFBundleShortVersionString` reads `1.0.0` and `CFBundleVersion` reads `2` in the app, the widget, the watch app and the complication. All four must match. Current source: all four iOS/watchOS `info:` blocks substitute `$(MARKETING_VERSION)`/`$(CURRENT_PROJECT_VERSION)` (`project.yml:814–815`, `:913–914`, `:1047–1048`, `:1085–1086`) from the project-wide `1.0.0`/`2` (`:84–85`). Note the *macOS* `Sentry` target has since moved to build `3` (`:523`) on its own track — that is expected and does not affect the iOS upload. *Human — only checkable on the archived build.*
 
 ### Required App Store Connect fields
 
-- [ ] **App Privacy questionnaire** — enter the answers in `docs/asc-metadata-draft.md` (**Data Not Collected** across the board since the Aug 13 location removal; §8's table is superseded — see its editor's note). Do not let App Store Connect's defaults stand.
-- [ ] **Age rating** — Apple has required responses to the *updated* age-rating questions since **31 January 2026**; un-answered apps are blocked from submitting updates. Expect 4+.
-- [ ] **Export compliance** — the plist now answers this (`ITSAppUsesNonExemptEncryption: false`), so App Store Connect should stop asking. If it does ask, the answer is: uses encryption → **yes**; exempt → **yes**, only encryption provided by the operating system. Read §5 first; this is your legal declaration.
-- [ ] **EU Digital Services Act trader status.** Since **17 February 2025** apps without verified trader status are **removed from the EU App Store**. Verification takes time — start it now, not at submission.
-- [ ] **Support URL** — required, must resolve. There is currently no support URL anywhere in the project. Decide what it is.
-- [ ] **Marketing URL** — optional; use `https://malekswilam.dev/SentryWebsite/`, which is live. Never leave a 404 here.
-- [ ] **Screenshots** — required for iPhone 6.9" *and* Apple Watch (a bundled watch app needs its own set). `docs/screenshots/` and the marketing repo have material to start from. They must show the real app; a screenshot of demo data is fine if it is not presented as a real Mac.
-- [ ] **App description** — state the Mac requirement in the first paragraph, above the fold. This sets reviewer expectation before they open the app and protects against 2.1 and 4.2 simultaneously.
-- [ ] **Category** — Utilities.
-- [ ] **Confirm the bundle ID `dev.malekswilam.sentry.mobile`, the App Group `group.dev.malekswilam.sentry`, and provisioning profiles for all four bundles** exist under team `H7T2D2GL7U`.
+Every value below is drafted and paste-ready in `docs/asc-metadata-draft.md`; what remains is entering it, which only the account holder can do.
 
-### Recommended before 1.0 (each is a product decision — see §6 and §9)
+- [ ] **App Privacy questionnaire** — answer **No** to the gate question (**Data Not Collected**; see `docs/asc-metadata-draft.md`). Do not let App Store Connect's defaults stand.
+- [ ] **Age rating** — Apple has required responses to the *updated* age-rating questions since **31 January 2026**; un-answered apps are blocked from submitting updates. Every answer is None/No (table in the draft). Expect 4+.
+- [ ] **Export compliance** — the plist answers this (`ITSAppUsesNonExemptEncryption: false`, `c50f8b2`), so App Store Connect should stop asking. If it does ask, the answer is: uses encryption → **yes**; exempt → **yes**, only encryption provided by the operating system. Read §5 first; this is your legal declaration.
+- [ ] **EU Digital Services Act trader status.** Since **17 February 2025** apps without verified trader status are **removed from the EU App Store**. Verification takes time — start it now, not at submission. *Not started.*
+- [x] **Support URL — decided.** ~~There is currently no support URL anywhere in the project.~~ Two live candidates now exist: `https://github.com/malekTheCoder/Sentry/issues` (the draft's pick — 200) and `https://malekthecoder.github.io/Sentry/support` (a dedicated support page on `gh-pages`, 200, listing both Issues and `getsentryapp@gmail.com`). Entering one is part of the data-entry item above.
+- [ ] **Marketing URL** — optional; use `https://malekswilam.dev/SentryWebsite/`, re-verified live (200) on 2026-09-10. Never leave a 404 here.
+- [ ] **Screenshots** — required for iPhone 6.9" *and* Apple Watch (a bundled watch app needs its own set). `docs/screenshots/` and the marketing repo have material to start from. They must show the real app; a screenshot of demo data is fine if it is not presented as a real Mac. *Human — capture and upload.*
+- [ ] **App description** — drafted (Mac requirement in the first paragraph, as required). *Human — paste.*
+- [ ] **Category** — Utilities (secondary: Productivity). *Human — select.*
+- [ ] **Confirm the bundle ID `dev.malekswilam.sentry.mobile`, the App Group `group.dev.malekswilam.sentry`, and provisioning profiles for all four bundles** exist under team `H7T2D2GL7U`. *Human — developer portal.*
 
-- [ ] Rename the demo device from `"Malek's MacBook Pro"` to something obviously synthetic.
-- [ ] Add a demo indicator to the Alerts tab.
-- [ ] Add the demo label to the small and medium widget families.
-- [ ] Fix `"Sent, but no reply from your Mac yet."` on the mock path — nothing was sent.
-- [ ] Land the Mac-side `protectionScore` hook, or withhold `GetProtectionScoreIntent` from 1.0.
-- [ ] Add a link to obtain the Mac app.
-- [ ] Reduce the nine "not yet / this build" strings, or at least the three that say "build".
+### Recommended before 1.0 — all landed
+
+Each was a product decision in §6/§9; every one has since been made and
+implemented. Proof, re-verified 2026-09-10:
+
+- [x] Rename the demo device — `"Demo MacBook Pro"` at `SentryMobile/Data/MockDataSource.swift:66` and `SentryWidget/Provider.swift:86` (`2dd538a`).
+- [x] Add a demo indicator to the Alerts tab — `DemoDataBanner` is mounted in a `VStack` *above* the `TabView` in `SentryMobile/RootTabView.swift:165–184`, so it spans all four tabs, Alerts included, and cannot be scrolled away (`2ad7549`). The eleven disabled toggles and their apology were replaced by state capsules in the same pass as the "build" strings (`7d9eb18`).
+- [x] Add the demo label to the small and medium widget families — `WidgetDemoDataTag` at `SentryWidget/Views/SmallWidgetView.swift:24–25` and `MediumWidgetView.swift:34–35`, gated on `snapshot.sourceIsDemoData`; the large family keeps `WidgetDemoDataCaption` (`LargeWidgetView.swift:37–38`) (`2dd538a`).
+- [x] Fix `"Sent, but no reply from your Mac yet."` on the mock path — `SentryMobile/Dashboard/SleepStatusCard.swift:448–449` guards `transport is MockDataSource` and shows "Demo mode — there's no Mac connected, so nothing was sent."; the "Sent, but no reply" string survives only on the real-transport path (`:466`) (`2dd538a`).
+- [x] Land the Mac-side `protectionScore` hook — `Sentry/App/AppDelegate.swift:302` (`onScoreComputed`) → `StatsCoordinator.protectionScore` → `StatsCoordinator.swift:804` on the outgoing snapshot (`74cafb9`). `GetProtectionScoreIntent` additionally refuses to answer from demo data (`SentryIntents.swift:425`) and reports "hasn't reported a protection score yet" only when a real Mac genuinely has none (`:432`).
+- [x] Add a link to obtain the Mac app — `AppCredits.macAppDownloadURLString` (`SentryKit/Models/AppCredits.swift:90`, `https://github.com/malekTheCoder/Sentry/releases/latest`, live → v1.0), rendered as "Get Sentry for Mac — free download" in `AboutView.swift:93–97` and in onboarding at `OnboardingView.swift:348` (`2dd538a`).
+- [x] Reduce the "not yet / this build" strings — no user-facing string in `SentryMobile/` contains "this build" any more (`7d9eb18`, `6bd1af8`, `c5067e1`); the "yet" strings that remain ("No Mac connected yet", "No snapshot yet", "No battery health history yet") describe a state, not a missing feature.
 
 ### Also worth doing (unrelated to iOS review, found in passing)
 
-- [ ] `https://malekthecoder.github.io/Sentry/appcast.xml` returns **404**. That is the Sparkle feed URL compiled permanently into every shipped Mac binary. If the Mac app ships before that feed is live, those copies have no update path — and `project.yml`'s own warning says the address cannot be changed retroactively.
+- [x] ~~`https://malekthecoder.github.io/Sentry/appcast.xml` returns **404**.~~ Live (200) as of 2026-09-10, served from `gh-pages` (`ffe7e7c`): a well-formed feed with a deliberately **empty** channel, which Sparkle reads as "up to date". Entries are appended only by `scripts/release.sh` with a real EdDSA signature. Two things this does *not* fix — see `docs/release-checklist.md` "Known open questions": the public v1.0 build predates the real Sparkle key, and no notarized release has yet been cut.
 
 ---
 
@@ -605,12 +660,12 @@ Code fixes are done. These are not.
 | 3 | Local network / Bonjour | **OK** |
 | 4 | Purpose strings | **OK** |
 | 5 | Encryption / export compliance | **FIXED** (was a per-build hold) |
-| 6 | Guideline 4.2 / 2.1 — reviewer with no Mac | **RISK** — needs review notes + demo video |
+| 6 | Guideline 4.2 / 2.1 — reviewer with no Mac | **RISK** — code side done; review notes drafted, demo video still to record |
 | 7 | Background modes | **OK** |
 | 8 | App Privacy label | **Answers supplied** — human must enter them |
-| 9 | Watch app & widgets | **OK**; widget demo labelling is a **RISK** |
-| 10 | Privacy policy URL | **BLOCKER** — 404, human-only fix |
+| 9 | Watch app & widgets | **OK**; widget demo labelling **fixed** (`2dd538a`) |
+| 10 | Privacy policy URL | **RESOLVED** — live (200) since Aug 2026; re-verified 2026-09-10 |
 | 10 | Version strings | **FIXED** (was upload-rejecting) |
 | 10 | Minimum SDK | **OK** — Xcode 26.6 / SDK 26.5 |
 | 10 | Licensing, IAP, sign-in, placeholders | **OK** |
-| 10 | `GetProtectionScoreIntent` | **RISK** — dormant feature, 2.3.1 |
+| 10 | `GetProtectionScoreIntent` | **RESOLVED** — Mac-side hook landed (`74cafb9`) |
