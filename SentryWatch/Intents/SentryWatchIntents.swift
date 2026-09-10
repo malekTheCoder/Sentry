@@ -342,7 +342,20 @@ struct WatchGetBatteryStatusIntent: AppIntent {
         // iPhone intent's shape — never English fragments glued together.
         let chargeText = String(Int(snapshot.batteryPercent.rounded()))
         var sentence: String
-        if snapshot.isCharging {
+        if !snapshot.showsBattery {
+            // A Mac mini/Studio/Pro. `batteryPercent` is a non-Optional v1
+            // wire field that the phone fills with `0` for a Mac that has no
+            // battery, and this intent used to read it straight — so Siri
+            // announced "Your Mac's battery is at 0%, plugged in" about a
+            // desktop, the fake zero `batteryIsReported` exists to forbid
+            // and the one every on-screen surface already routes around
+            // (`OverviewPage.HeroReadout`, every complication family). A
+            // spoken sentence has no dial to swap to CPU, so it says what it
+            // knows instead. `showsBattery` is `true` for a v1 phone that
+            // never sent the flag, matching the screens: an old phone's `0`
+            // cannot be told from "no battery" and is not guessed at here.
+            sentence = String(localized: "Your Mac doesn't report a battery")
+        } else if snapshot.isCharging {
             sentence = String(localized: "Your Mac's battery is at \(chargeText)%, charging")
         } else if snapshot.isPluggedIn {
             sentence = String(localized: "Your Mac's battery is at \(chargeText)%, plugged in")

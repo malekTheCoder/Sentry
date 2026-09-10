@@ -261,16 +261,20 @@ struct OverviewPage: View {
 /// this any other way). Kept as icon-plus-text rather than a tint alone —
 /// colour by itself is invisible to a colourblind user and to anyone reading
 /// in direct sunlight, which is most of the time a watch is read.
+///
+/// A `StatusPill` rather than the bare warning-coloured `Label` it used to
+/// be, for one reason: this is the one element on the page whose legibility
+/// is an honesty requirement rather than a design preference, and as bare
+/// text it was drawn in the raw `warning` token straight on the canvas —
+/// which under System's light half is Apple's orange on white, about 2.2:1.
+/// As a pill its word goes through `WatchPalette.control(_:)` and is held to
+/// the same 3:1 every other control on the wrist is, and the sweep in
+/// `WatchControlContrastTests` grades it.
 struct DemoDataChip: View {
     @Environment(\.palette) private var palette
 
     var body: some View {
-        Label("Demo", systemImage: "theatermasks.fill")
-            .font(.system(.caption2, design: .rounded).weight(.semibold))
-            .foregroundStyle(palette.warning)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            .accessibilityElement(children: .combine)
+        StatusPill(text: String(localized: "Demo"), symbol: "theatermasks.fill", tint: palette.control(.warning))
             .accessibilityLabel("Demo data. These numbers are fabricated, not from a real Mac.")
     }
 }
@@ -836,7 +840,7 @@ private struct StatusChips: View {
     private struct ChipSpec: Identifiable {
         let id: String
         let symbol: String
-        let tint: Color
+        let tint: WatchControlTint
     }
 
     private var chips: [ChipSpec] {
@@ -844,18 +848,18 @@ private struct StatusChips: View {
             ChipSpec(
                 id: Self.thermalLabel(snapshot.thermalPressure),
                 symbol: "thermometer.medium",
-                tint: Self.thermalTint(snapshot.thermalPressure, palette: palette)
+                tint: palette.control(Self.thermalRole(snapshot.thermalPressure))
             )
         ]
         if snapshot.isThrottling == true {
-            specs.append(ChipSpec(id: "Throttling", symbol: "tortoise.fill", tint: palette.danger))
+            specs.append(ChipSpec(id: "Throttling", symbol: "tortoise.fill", tint: palette.control(.danger)))
         }
         if let pressure = snapshot.memoryPressure, pressure != .normal {
             specs.append(
                 ChipSpec(
                     id: Self.memoryPressureLabel(pressure),
                     symbol: "memorychip.fill",
-                    tint: pressure == .critical ? palette.danger : palette.warning
+                    tint: palette.control(pressure == .critical ? .danger : .warning)
                 )
             )
         }
@@ -948,17 +952,18 @@ private struct StatusChips: View {
         }
     }
 
-    /// Takes the palette rather than returning a system colour: the whole
-    /// point of the redesign is that a thermal warning is the *theme's*
-    /// warning colour, so it agrees with the Mac's own charts and with every
-    /// other elevated state on the wrist.
-    static func thermalTint(_ pressure: ThermalPressureSummary, palette: WatchPalette) -> Color {
+    /// A theme role rather than a system colour: the whole point of the
+    /// redesign is that a thermal warning is the *theme's* warning colour, so
+    /// it agrees with the Mac's own charts and with every other elevated
+    /// state on the wrist. A role rather than a `Color` so the chip goes
+    /// through `WatchPalette.control(_:)` and gets a graded label.
+    static func thermalRole(_ pressure: ThermalPressureSummary) -> WatchThemeColors.Role {
         switch pressure {
-        case .nominal: return palette.textSecondary
-        case .fair: return palette.warning
-        case .serious: return palette.warning
-        case .critical: return palette.danger
-        case .unknown: return palette.textSecondary
+        case .nominal: return .textSecondary
+        case .fair: return .warning
+        case .serious: return .warning
+        case .critical: return .danger
+        case .unknown: return .textSecondary
         }
     }
 

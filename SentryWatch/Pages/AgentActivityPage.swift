@@ -63,9 +63,10 @@ import SwiftUI
 ///
 /// **Sizing and colour.** Scrolls (Digital Crown) with no fixed frames, so a
 /// 40mm face at an accessibility text size overflows downward rather than
-/// clipping; system semantic colours only, following `ContentView` and
-/// `FreshnessBadge` rather than the Mac/iPhone `palette.*` tokens, which the
-/// Watch app does not have.
+/// clipping. Every colour comes from the relayed theme via `WatchPalette` —
+/// an earlier version of this header said the opposite, that the watch had
+/// no palette and used system semantic colours; it has had one since the
+/// redesign, and the note survived the code it described.
 ///
 /// **What was wrong with the first version of this page, and what fixed it.**
 /// The unreported state — which, per the note above, is what *every* user sees
@@ -263,7 +264,7 @@ struct AgentActivityPage: View {
         // accessibility label, so nothing is lost for a VoiceOver reader; the
         // visual carries "Paused" plus a slashed-bolt glyph plus the theme's
         // danger colour, which is three independent cues for two words.
-        StatusPill(text: "Agents paused", symbol: "bolt.slash.fill", tint: palette.danger)
+        StatusPill(text: "Agents paused", symbol: "bolt.slash.fill", tint: palette.control(.danger))
             .accessibilityLabel("Agent access is paused on your Mac.")
     }
 
@@ -274,7 +275,7 @@ struct AgentActivityPage: View {
         // Same compaction as `pausedBanner`, and the two must stay visually
         // distinct because both can be true at once: this one is the theme's
         // warning colour with a clock glyph, that one is danger with a bolt.
-        StatusPill(text: "Out of date", symbol: "clock.badge.exclamationmark", tint: palette.warning)
+        StatusPill(text: "Out of date", symbol: "clock.badge.exclamationmark", tint: palette.control(.warning))
             .accessibilityLabel("Out of date — your Mac hasn't reported recently.")
     }
 
@@ -491,10 +492,10 @@ struct AgentActivityPage: View {
     /// since the effect is on a machine the user isn't looking at. No local
     /// confirmation sheet: the outcome sentence the relay chain returns is
     /// surfaced by the shell (`ContentView`'s alert), and un-pausing is one
-    /// switch away in Sentry on the Mac, so the action is cheap to undo.
-    /// This page deliberately does not render a "paused" state of its own:
-    /// the relay payload doesn't carry the kill-switch flag, and drawing a
-    /// state the Mac never reported would be fabricating a reading.
+    /// tap away on the resume button below once the Mac reports the pause,
+    /// so the action is cheap to undo. The paused state itself is rendered
+    /// only from `agentAccessPaused` — a reading the Mac actually sent —
+    /// never inferred from this button having been tapped.
     private var stopAgentsButton: some View {
         Button(role: .destructive) {
             onStopAgents?()
@@ -502,7 +503,7 @@ struct AgentActivityPage: View {
             Text("Stop Agents on Mac")
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(WatchActionButtonStyle(tint: palette.danger))
+        .buttonStyle(WatchActionButtonStyle(tint: palette.control(.danger)))
         .accessibilityHint("Pauses all AI agent access to your Mac")
     }
 
@@ -517,7 +518,7 @@ struct AgentActivityPage: View {
             Text("Resume Agents on Mac")
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .buttonStyle(WatchActionButtonStyle(tint: palette.success))
+        .buttonStyle(WatchActionButtonStyle(tint: palette.control(.success)))
         .accessibilityHint("Resumes AI agent access to your Mac")
     }
 

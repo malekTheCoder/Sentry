@@ -46,6 +46,9 @@ struct SentryWatchApp: App {
     /// cases; optional `-SentryWatchTheme <id>` and `-SentryWatchAppearance
     /// <light|dark>` override the palette, so every page can be inspected in
     /// every theme *and* in both halves of it, at real size on a real face.
+    /// `-SentryWatchPage <overview|keepAwake|agents>` (read by `ContentView`)
+    /// lands on a page other than the first, because `simctl` can capture a
+    /// screen but cannot swipe one.
     ///
     /// `#if DEBUG` for exactly the reason `WatchSessionController
     /// .init(preview:)` is: this is the one path that can put a number on

@@ -7,6 +7,16 @@ import SwiftUI
 /// relayed (`WatchRelaySnapshot.themeID`), resolved for whichever half of it
 /// the phone is currently rendering (`themeAppearance`).
 ///
+/// **The numbers live in `WatchThemeColors` (`SentryKit/Watch/`); this type
+/// only turns them into `Color`.** That split is the one `ThemeControlColors`
+/// / `ThemedToggleStyle` made on the Mac and for the same reason: an
+/// app-target type cannot be imported by the macOS-hosted test bundle, so
+/// while the resolution lived here the only proof a preset rendered legibly
+/// on the wrist was a screenshot. `WatchControlContrastTests` now sweeps
+/// `Theme.builtInPresets` against exactly the bytes this file draws. Nothing
+/// below computes a colour of its own — if it did, the sweep would be
+/// grading something other than the screen.
+///
 /// **The watch follows the app, including into light mode.** An earlier
 /// version of this type hardcoded the dark half and a black canvas, reasoning
 /// that watchOS has no light appearance to ask about and that black is the
@@ -24,18 +34,23 @@ import SwiftUI
 /// display and is what the always-on mode dims hardest. That is the user's
 /// trade to make by picking a light theme, not this type's to make for them.
 ///
-/// **Tokens are rendered exactly as the theme authored them.** No contrast
-/// repair, no luminance ceilings, no "safe" substitutions — the watch draws
-/// Ivory's `#F0EEE6` cards and `#5F7DA8` CPU dial at those exact values,
-/// because they are the values the Mac window and the phone dashboard draw.
-/// An earlier version of this type ran every token through a WCAG floor
-/// first, which was necessary while the canvas was forced black and became a
-/// distortion the moment it wasn't: it would have darkened Ivory's
-/// `textSecondary` and `textTertiary` and rendered a heavier palette on the
-/// wrist than anywhere else in the product. Whether a theme's own ratios are
-/// right is a question `ThemeContrastAudit` and the theme editor answer once,
-/// on the Mac; this file does not get to re-answer it per device. See
-/// `color(_:fallback:)`.
+/// **Tokens are rendered exactly as the theme authored them, with two
+/// exceptions that are the watch's own compositions rather than the
+/// theme's** — see `WatchThemeColors`' doc comment for both arguments in
+/// full. The canvas is made opaque against the appearance's assumed backdrop
+/// (a translucent `background` over the black watch window turned System's
+/// light page grey). And a *control's* label — the word in a `StatusPill`,
+/// the text of a `WatchActionButtonStyle` button — is held to 3:1 against
+/// the tinted wash the watch itself draws under it, because no theme ever
+/// authored "accent on 18% accent" and on light presets that pairing was
+/// measurably illegible. Everything else — Ivory's `#F0EEE6` cards, its
+/// `#5F7DA8` CPU dial, its deliberately soft `textSecondary` — is drawn at
+/// the authored value, because those are the values the Mac window and the
+/// phone dashboard draw. An earlier version ran every token through a WCAG
+/// floor, which was necessary while the canvas was forced black and became a
+/// distortion the moment it wasn't: whether a theme's own text ratios are
+/// right is a question `ThemeContrastAudit` and the theme editor answer
+/// once, on the Mac; this file does not get to re-answer it per device.
 ///
 /// The one judgement call left is `metricColor(_:)`, which overrides a metric
 /// hue *only* when a preset has aliased it onto its own warning or danger
@@ -45,36 +60,46 @@ struct WatchPalette {
     let theme: Theme
 
     /// The colours the sender resolved, when it sent any. Takes precedence
-    /// over `theme` — see `RelayedPalette`, and `color(_:relayed:fallback:)`
-    /// below for how the two combine.
+    /// over `theme` — see `RelayedPalette`.
     let relayed: RelayedPalette?
 
     /// Which half of `theme`'s light/dark pair to resolve. Supplied by the
     /// phone rather than inferred — see this type's doc comment.
     let appearance: ThemeAppearance
 
+    /// Every token, resolved once. See the type doc comment for why the
+    /// resolution is not done here.
+    let colors: WatchThemeColors
+
     init(theme: Theme, appearance: ThemeAppearance = .dark, relayed: RelayedPalette? = nil) {
         self.theme = theme
         self.appearance = appearance
         self.relayed = relayed
+        self.colors = WatchThemeColors(theme: theme, appearance: appearance, relayed: relayed)
     }
 
     init(snapshot: WatchRelaySnapshot?) {
-        self.theme = snapshot?.resolvedTheme ?? .defaultTheme
-        self.appearance = snapshot?.resolvedAppearance ?? .dark
-        self.relayed = snapshot?.themePalette
+        self.init(
+            theme: snapshot?.resolvedTheme ?? .defaultTheme,
+            appearance: snapshot?.resolvedAppearance ?? .dark,
+            relayed: snapshot?.themePalette
+        )
     }
 
     // MARK: Canvas
 
     /// The theme's own background — the page colour the Mac window and the
-    /// phone dashboard draw, verbatim.
-    var background: Color { color(theme.background, relayed: relayed?.bg, fallback: appearance == .dark ? 0.0 : 1.0) }
+    /// phone dashboard draw — made opaque against the assumed backdrop for
+    /// this appearance (`WatchThemeColors.canvas`). Opaque because the layer
+    /// under it on a watch is the black window, which is not what any theme
+    /// authored its page alpha against.
+    var background: Color { Color(colors.canvas) }
 
-    /// Cards and wells: the theme's own surface.
-    var surface: Color { color(theme.surface, relayed: relayed?.sf, fallback: appearance == .dark ? 0.08 : 0.96) }
+    /// Cards and wells: the theme's own surface, drawn over `background` by
+    /// SwiftUI exactly as the Mac draws it over its page.
+    var surface: Color { Color(colors.surface) }
 
-    var surfaceElevated: Color { color(theme.surfaceElevated, relayed: relayed?.se, fallback: appearance == .dark ? 0.14 : 0.92) }
+    var surfaceElevated: Color { Color(colors.surfaceElevated) }
 
     /// Hairlines and unfilled gauge tracks.
     ///
@@ -85,26 +110,39 @@ struct WatchPalette {
     /// what the Mac's charts and the phone's battery bar draw, and lifting it
     /// here would make the watch the one surface where the theme looks
     /// heavier than everywhere else.
-    var separator: Color { color(theme.separator, relayed: relayed?.sp, fallback: appearance == .dark ? 0.2 : 0.85) }
+    var separator: Color { Color(colors.separator) }
 
     // MARK: Text
 
-    var textPrimary: Color { color(theme.textPrimary, relayed: relayed?.t1, fallback: appearance == .dark ? 0.9 : 0.1) }
-    var textSecondary: Color { color(theme.textSecondary, relayed: relayed?.t2, fallback: appearance == .dark ? 0.6 : 0.4) }
+    var textPrimary: Color { Color(colors.textPrimary) }
+    var textSecondary: Color { Color(colors.textSecondary) }
 
     /// The dimmest tier, for units and inert labels.
-    var textTertiary: Color { color(theme.textTertiary, relayed: relayed?.t3, fallback: appearance == .dark ? 0.4 : 0.6) }
+    var textTertiary: Color { Color(colors.textTertiary) }
 
     // MARK: Semantic
 
-    var accent: Color { color(theme.accent, relayed: relayed?.ac, fallback: 0.5) }
-    var success: Color { color(theme.success, relayed: relayed?.ok, fallback: 0.5) }
-    var warning: Color { color(theme.warning, relayed: relayed?.wn, fallback: 0.5) }
-    var danger: Color { color(theme.danger, relayed: relayed?.dg, fallback: 0.5) }
+    var accent: Color { Color(colors.accent) }
+    var success: Color { Color(colors.success) }
+    var warning: Color { Color(colors.warning) }
+    var danger: Color { Color(colors.danger) }
 
-    /// The colour the Mac's own charts draw this metric in, contrast-repaired
-    /// for the card it sits on — **unless that colour is one this theme also
-    /// uses to mean "something is wrong."**
+    // MARK: Controls
+
+    /// The two colours a tinted control draws: `fill` is the token itself,
+    /// to be laid down at `WatchThemeColors.controlFillOpacity`, and `label`
+    /// is that token held to `controlLabelMinimumRatio` against the fill.
+    /// Every `StatusPill` and every `WatchActionButtonStyle` takes one of
+    /// these rather than a bare `Color`, so a call site cannot put an
+    /// ungraded tint on a control by passing `palette.success` directly —
+    /// the type is what closed the gap, not a review checklist.
+    func control(_ role: WatchThemeColors.Role) -> WatchControlTint {
+        let control = colors.control(role)
+        return WatchControlTint(fill: Color(control.tint), label: Color(control.label))
+    }
+
+    /// The colour the Mac's own charts draw this metric in — **unless that
+    /// colour is one this theme also uses to mean "something is wrong."**
     ///
     /// **Why the exception, and why it is not just "don't use metric
     /// colours."** Most presets give each metric a distinct, purely
@@ -117,14 +155,14 @@ struct WatchPalette {
     /// generic.
     ///
     /// But a few presets reuse their *semantic* tokens as metric identities:
-    /// `nocturneMetricColors`, which Notion and its siblings share, sends
-    /// `memory.used_bytes` straight to `warning` and `thermal.soc_temp_c` to
-    /// `danger`. On a Mac those land on separate labelled charts and read as
-    /// decoration. On a watch, three dials sit side by side and this app has
-    /// already taught the user that orange means elevated — so a memory dial
-    /// drawn in the warning colour says "your Mac has a problem" about a Mac
-    /// with perfectly normal memory pressure. Verified on the simulator under
-    /// Notion, which is the shipping default.
+    /// `nocturneMetricColors`, which System shares, sends `memory.used_bytes`
+    /// straight to `warning` and `thermal.soc_temp_c` to `danger`. On a Mac
+    /// those land on separate labelled charts and read as decoration. On a
+    /// watch, three dials sit side by side and this app has already taught
+    /// the user that orange means elevated — so a memory dial drawn in the
+    /// warning colour says "your Mac has a problem" about a Mac with
+    /// perfectly normal memory pressure. Verified on the simulator under
+    /// System, which is the shipping default.
     ///
     /// So the rule is narrow and mechanical: take the theme's colour unless
     /// it is (near enough) this theme's own warning or danger, in which case
@@ -144,7 +182,7 @@ struct WatchPalette {
         guard let value = relayedHex.flatMap(ThemeColor.components(fromHex:))
             ?? theme.metricColor(for: metric)?.rgba(for: appearance) else { return accent }
         if collidesWithSeverityVocabulary(value) { return accent }
-        return Color(.sRGB, red: value.red, green: value.green, blue: value.blue, opacity: value.alpha)
+        return Color(value)
     }
 
     /// Whether `candidate` is close enough to this theme's `warning` or
@@ -156,64 +194,39 @@ struct WatchPalette {
     /// channels is roughly "closer than two adjacent swatches in the same
     /// ramp" — tight enough that Ivory's wine `#A86F8E` and its danger
     /// `#BF4D43` stay comfortably distinct (verified in
-    /// `WatchPaletteFidelityTests`), loose enough to catch the exact aliasing
+    /// `WatchThemeFidelityTests`), loose enough to catch the exact aliasing
     /// `nocturneMetricColors` does.
+    ///
+    /// Compares against the resolved `warning`/`danger` — the relayed pair
+    /// when a custom theme was relayed, not the fallback preset's — because
+    /// those are the two colours actually on screen.
     private func collidesWithSeverityVocabulary(_ candidate: ThemeColor.RGBA) -> Bool {
-        let severities: [ThemeColor.RGBA] = {
-            // Compare against whichever pair is actually on screen: a relayed
-            // custom theme's warning/danger, not the fallback preset's.
-            if let relayed,
-               let warning = ThemeColor.components(fromHex: relayed.wn),
-               let danger = ThemeColor.components(fromHex: relayed.dg) {
-                return [warning, danger]
-            }
-            return [theme.warning, theme.danger].compactMap { $0.rgba(for: appearance) }
-        }()
-        return severities
-            .contains { severity in
-                abs(severity.red - candidate.red)
-                    + abs(severity.green - candidate.green)
-                    + abs(severity.blue - candidate.blue) < 0.08
-            }
-    }
-
-    // MARK: Derivation
-
-    /// Resolves a token for this palette's appearance and returns it
-    /// **exactly as the theme authored it**.
-    ///
-    /// **Why there is no contrast repair here any more.** An earlier version
-    /// of this type ran every token through
-    /// `ThemeContrast.legible(_:onto:toRatioAtLeast:)` before drawing it, and
-    /// that was load-bearing while the watch canvas was hardcoded black: a
-    /// preset authored for a warm paper page had to be dragged somewhere
-    /// legible to survive on a background it was never designed for. Once the
-    /// canvas became the theme's own `background`, every token is once again
-    /// sitting on precisely the surface it was authored against — the same
-    /// one the Mac window and the phone dashboard put it on — and the repair
-    /// stopped fixing anything and started distorting the design.
-    ///
-    /// It was measurably not a no-op. Against Ivory's `#F0EEE6` surface,
-    /// `textSecondary` (`#73726C`) lands at 4.15:1 and `textTertiary`
-    /// (`#A3A29A`) at 2.21:1, so a 4.5/3.0 WCAG floor would have darkened
-    /// both — the watch would have rendered a visibly heavier, higher-contrast
-    /// version of a palette the rest of the product draws softly, which is the
-    /// opposite of matching it. Whether those ratios are the right call is a
-    /// question about the theme, and it is answered once, on the Mac, by
-    /// `ThemeContrastAudit` and the theme editor. It is not this file's to
-    /// re-answer behind the user's back on one device.
-    ///
-    /// The only thing still handled here is a hex that does not parse at all,
-    /// which is a malformed theme rather than a design decision: that returns
-    /// a flat grey, obviously wrong to the eye and never invisible.
-    private func color(_ token: ThemeColor, relayed hex: String?, fallback: Double) -> Color {
-        // The relayed hex is already resolved for the right appearance by the
-        // sender, so it is used as-is when present; `token` is the fallback
-        // for a phone that predates `RelayedPalette` and sent only an id.
-        guard let rgba = hex.flatMap(ThemeColor.components(fromHex:)) ?? token.rgba(for: appearance) else {
-            return Color(.sRGB, red: fallback, green: fallback, blue: fallback, opacity: 1)
+        [colors.warning, colors.danger].contains { severity in
+            abs(severity.red - candidate.red)
+                + abs(severity.green - candidate.green)
+                + abs(severity.blue - candidate.blue) < 0.08
         }
-        return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
+    }
+}
+
+// MARK: - WatchControlTint
+
+/// See `WatchPalette.control(_:)`. A value type rather than two `Color`
+/// parameters on every control so the pair cannot be split up at a call site.
+struct WatchControlTint {
+    /// Drawn at `WatchThemeColors.controlFillOpacity` — the token verbatim.
+    let fill: Color
+    /// Opaque, graded against the fill on both hosts.
+    let label: Color
+}
+
+// MARK: - Color bridging
+
+private extension Color {
+    /// `RGBA` → `Color`, straight sRGB, alpha carried through. The only place
+    /// in the watch app a `Color` is minted from numbers.
+    init(_ rgba: ThemeColor.RGBA) {
+        self.init(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
     }
 }
 

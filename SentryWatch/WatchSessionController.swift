@@ -124,6 +124,13 @@ final class WatchSessionController: NSObject, ObservableObject {
         /// actually tests whether the layout holds, and the one every
         /// "does it still fit" check should be run against.
         case underPressure
+        /// The two states the Keep Awake page must not misreport, together:
+        /// a timed hold whose deadline passed three minutes ago, carried by
+        /// a relay that is itself nine minutes old (`.stale`). Exists so
+        /// "time is up" and "out of date" can be looked at on a real face —
+        /// neither is reachable from the other fixtures, and both are the
+        /// cases a screenshot of a healthy hold says nothing about.
+        case holdEnded
 
         var snapshot: WatchRelaySnapshot {
             let now = Date()
@@ -175,6 +182,31 @@ final class WatchSessionController: NSObject, ObservableObject {
                     agentLastActivityAt: now.addingTimeInterval(-30),
                     agentRecentToolNames: ["get_system_snapshot", "preflight_check", "keep_awake"],
                     agentAccessPaused: true
+                )
+            case .holdEnded:
+                return WatchRelaySnapshot(
+                    deviceName: "Demo MacBook Pro",
+                    lastSeen: now.addingTimeInterval(-9 * 60),
+                    relayedAt: now.addingTimeInterval(-9 * 60),
+                    sourceIsDemoData: true,
+                    batteryPercent: 54,
+                    isCharging: false,
+                    isPluggedIn: false,
+                    thermalPressure: .nominal,
+                    batteryIsReported: true,
+                    cpuPercent: 12,
+                    memoryUsedPercent: 63,
+                    memoryPressure: .normal,
+                    diskUsedPercent: 41,
+                    batteryTimeRemainingMinutes: 310,
+                    isThrottling: false,
+                    awakeIsActive: true,
+                    awakeExpiresAt: now.addingTimeInterval(-3 * 60),
+                    awakeModeLabel: "System only",
+                    agentToolCallCount: 3,
+                    agentLastActivityAt: now.addingTimeInterval(-20 * 60),
+                    agentRecentToolNames: ["get_system_snapshot"],
+                    agentAccessPaused: false
                 )
             case .batteryOnly:
                 return WatchRelaySnapshot(
