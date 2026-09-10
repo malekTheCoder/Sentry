@@ -16,8 +16,11 @@ privacy policy constant is
 `https://malekthecoder.github.io/Sentry/privacy-policy`
 (`SentryKit/Models/AppCredits.swift:66`). Both live under the GitHub Pages
 project path `/Sentry/`, which is the intended web home, fronted by a custom
-domain. **Neither URL is live yet** — the readiness audit found the host
-redirecting to `malekswilam.dev` and serving 404.
+domain. **Both URLs are live** — re-verified 2026-09-10 with `curl -L`:
+each returns 200 after redirecting to `malekswilam.dev/Sentry/…`. (The
+readiness audit's 404 finding is historical; that document carries a
+reconciliation note.) This draft was reconciled the same day against
+`main` at `661d2e0`; see [`STATUS.md`](STATUS.md) for what is still open.
 
 ⚠️ **The name "Sentry" is provisional** pending a trademark decision. It
 appears throughout the copy below because copy needs a name; if the name
@@ -146,7 +149,7 @@ See your Mac's vitals from your pocket: live CPU, memory, and battery, keep-awak
 |---|---|---|
 | **Support URL** | `https://github.com/malekTheCoder/Sentry/issues` | Live. Public, readable with no login (posting needs a GitHub account, which is acceptable — the page itself resolves). This is the project's only support channel; there is no support email yet. |
 | **Marketing URL** (optional) | `https://malekswilam.dev/SentryWebsite/` | Live. The web home now exists — a static landing page maintained in the [SentryWebsite](https://github.com/malekTheCoder/SentryWebsite) repo, deployed from that repo's `main`. It supersedes the repo README as the marketing page. Never point this at a 404. |
-| **Privacy Policy URL** | `https://malekthecoder.github.io/Sentry/privacy-policy` | **Live** (200, redirects to the custom domain at `malekswilam.dev/Sentry/privacy-policy/`). Re-verify before submitting. This is the URL the app compiles in (`SentryKit/Models/AppCredits.swift:66`); the ASC field and the in-app link must be the same working address. The host currently redirects to `malekswilam.dev` and 404s, so publishing the policy may also mean updating the constant to the final custom-domain address. Follow `docs/privacy-policy-publishing.md`, fill the policy's two placeholders (effective date, contact email — use TO-FILL(support-email) until one exists), verify in a private browser window, and delete the "the link above isn't live" sentence at `SentryMobile/Settings/AboutView.swift` (~line 126). |
+| **Privacy Policy URL** | `https://malekthecoder.github.io/Sentry/privacy-policy` | **Live** (200, redirects to the custom domain at `malekswilam.dev/Sentry/privacy-policy/`; re-verified 2026-09-10). Re-verify in a private browser window before submitting. This is the URL the app compiles in (`SentryKit/Models/AppCredits.swift:70`); the ASC field and the in-app link must be the same working address, and they are. The published page carries its effective date (August 17, 2026) and the contact address `getsentryapp@gmail.com`; the "the link above isn't live" sentence in `AboutView.swift` was deleted in `9eb8807`. Nothing on the app side remains for this field. |
 
 ## Copyright
 
@@ -168,7 +171,7 @@ Required fields on the version page. The reviewer may actually call or write.
 |---|---|
 | First name / Last name | whoever will answer during review — decide at submission |
 | Phone | that person's real number |
-| Email | TO-FILL(support-email) — any monitored inbox works; it is not published |
+| Email | `getsentryapp@gmail.com` — the project's published support address (on the live privacy policy and support page since `gh-pages` `4deba60`); any other monitored inbox also works, it is not published from this field |
 | Sign-in required | **No** (no account exists anywhere in the app) |
 | Demo account | Not applicable — built-in demo mode; see review notes |
 
@@ -279,15 +282,19 @@ REVIEWING WITHOUT A MAC — DEMO MODE WALKTHROUGH
    and the full banner returns on next launch.
 3. Dashboard tab: a demo Mac's battery card, vitals, and sleep card, with
    inline SAMPLE tags on the chart surfaces. Values re-roll periodically so
-   layout and motion can be evaluated.
+   layout and motion can be evaluated. Tapping a keep-awake action on the
+   sleep card in demo mode reports "Demo mode — there's no Mac connected,
+   so nothing was sent." — no command is faked.
 4. History tab: the range selector and battery-health trend, SAMPLE-tagged.
 5. Alerts tab: the real default alert-rule set that ships in the Mac app —
    true documentation of the product, not fabricated telemetry. Alert
    history requires a connected Mac, and the tab says so.
 6. Settings tab: theme and units genuinely work standalone; the connection
    section states plainly that the app is showing demo data.
-7. Home-screen widget: add the large widget — it carries the caption "Demo
-   data — no live Mac sync yet".
+7. Home-screen widget: every size discloses demo data. The large widget
+   carries the caption "Demo data — no live Mac sync yet"; the small and
+   medium widgets carry a compact "Demo" tag with the same accessibility
+   label.
 8. Apple Watch (relay path): the watch app is a dependent watch app that
    installs with the iPhone app. With a paired Watch (or paired watch
    simulator), open the iPhone app and leave it in the foreground; it
@@ -339,24 +346,32 @@ Capture notes:
 
 ## Open items this draft cannot settle
 
+Reconciled 2026-09-10 against `main` at `661d2e0`. Items 2–6 were open when
+this draft was written and are now closed; they are kept, struck through,
+so nobody re-does them. Only item 1 remains.
+
 1. **App name** — provisional; trademark decision pending. Everything above
-   is written so a rename is a find-and-replace in this file only.
-2. **Privacy policy URL** — must be published live and must match the
-   compiled-in `AppCredits.privacyPolicyURLString`, which itself may need
-   updating to the final custom-domain address. Blocker per the readiness
-   doc.
-3. **Support email** — does not exist; TO-FILL(support-email) markers above.
-   GitHub Issues is the stated support channel meanwhile.
-4. **Demo device name** — still "Malek's MacBook Pro"
-   (`SentryMobile/Data/MockDataSource.swift:73`). The readiness doc's
-   highest value-per-effort recommendation is renaming it to something
-   self-evidently synthetic before screenshots and review.
-5. **Mock keep-awake feedback** — tapping keep-awake with no Mac still shows
-   "Sent, but no reply from your Mac yet."
-   (`SentryMobile/Dashboard/SleepStatusCard.swift:350`) although nothing is
-   sent on the mock path. The readiness doc flags this under 2.3.1; the
-   review notes above deliberately do not describe the demo sleep card's tap
-   behaviour until it is fixed.
-6. **No Mac-app download link in the iOS app** — the readiness doc
-   recommends adding one to About; the review notes compensate by giving
-   the reviewer the DMG URL directly.
+   is written so a rename is a find-and-replace in this file only. *Still
+   open; human decision.*
+2. ~~**Privacy policy URL** — must be published live and must match the
+   compiled-in `AppCredits.privacyPolicyURLString`.~~ **Closed.** Live
+   (200) at the compiled-in address; the constant never needed to change.
+   See the URLs table.
+3. ~~**Support email** — does not exist.~~ **Closed.** `getsentryapp@gmail.com`
+   is published on the live privacy policy and the live support page
+   (`https://malekthecoder.github.io/Sentry/support`, `gh-pages` `4deba60`).
+   The copies of the policy on `main` still carry a `TO-FILL(support-email)`
+   marker — a repo/site drift, not a product gap; see `STATUS.md`.
+4. ~~**Demo device name** — still "Malek's MacBook Pro".~~ **Closed** in
+   `2dd538a`: `"Demo MacBook Pro"` at `SentryMobile/Data/MockDataSource.swift:66`
+   and `SentryWidget/Provider.swift:86`.
+5. ~~**Mock keep-awake feedback** — tapping keep-awake with no Mac still
+   shows "Sent, but no reply from your Mac yet."~~ **Closed** in `2dd538a`:
+   `SentryMobile/Dashboard/SleepStatusCard.swift:448–449` guards the mock
+   transport and reports "Demo mode — there's no Mac connected, so nothing
+   was sent." The review notes (step 3) now describe that behaviour.
+6. ~~**No Mac-app download link in the iOS app.**~~ **Closed** in `2dd538a`:
+   `AppCredits.macAppDownloadURLString` → "Get Sentry for Mac — free
+   download" in `AboutView.swift:93` and onboarding (`OnboardingView.swift:348`).
+   The review notes still give the reviewer the DMG URL directly, which
+   remains useful.

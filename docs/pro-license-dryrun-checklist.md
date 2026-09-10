@@ -8,6 +8,15 @@ fails. Nothing here is automated on purpose — the point is to watch the
 whole pipeline with your own eyes once, in test mode, before a stranger's
 money enters it.
 
+**Reconciled 2026-09-10 against `main` at `661d2e0`** by reading
+`SentryKit/Pro/License.swift`, `LicenseActivation.swift`,
+`LicenseProEntitlementStore.swift`, `ProEntitlement.swift`, and
+`ProGate.swift` in full, plus the composition root in
+`Sentry/App/AppDelegate.swift`. Every claim about what exists and what is
+deliberately absent below was checked against that source; the two that
+had drifted (prerequisite 5's wording, and the first open question) are
+corrected in place. See [`STATUS.md`](STATUS.md) for the cross-document view.
+
 The code side of every claim below is real and in this repository:
 `SentryKit/Pro/License.swift` (blob format, Ed25519 verification,
 entitlement policy), `SentryKit/Pro/LicenseActivation.swift` (the
@@ -44,8 +53,12 @@ In dependency order:
    pane (paste field, denial-reason display, remove button, seat/issue-date
    display) has to ship in the same release as checkout.
 5. **Revalidation wiring.** `AppDelegate` constructs the entitlement store
-   with `activationClient: nil` and `revalidationPolicy: .never`. When the
-   D1 client exists, both change at that one composition-root call site:
+   (`Sentry/App/AppDelegate.swift:276–279`) passing only `settingsStore:`
+   and `publicKey: LicenseKeys.productionPublicKey`, so it takes the
+   initializer's defaults — `activationClient: nil` and
+   `revalidationPolicy: .never` (`LicenseProEntitlementStore.swift:82–83`).
+   When the D1 client exists, both change at that one composition-root call
+   site:
    pass the concrete client and switch the policy to `.standard` (14-day
    offline grace). The two must flip **together and only together** —
    enabling `.standard` without a client permanently locks out every
@@ -155,8 +168,10 @@ address you control.
      can still wrap or style it into something un-copyable — a `<pre>`
      block or an attached `.txt` is safest), states what to do with it
      ("paste into Settings"), and names where to get help: GitHub Issues
-     (`https://github.com/malekTheCoder/Sentry/issues`). The sending and
-     reply-to address is TO-FILL(support-email).
+     (`https://github.com/malekTheCoder/Sentry/issues`) and the published
+     support address, `getsentryapp@gmail.com`, which should also be the
+     mail's reply-to. (The *sending* address is the mailer's — a D1
+     decision.)
    - Expected: blob copied from the email verifies identically to the blob
      inspected in step 4.
    - Failure modes: spam foldering (check the domain's SPF/DKIM); a "copy
@@ -173,9 +188,15 @@ address you control.
    - Verify: activation succeeds immediately and **offline** — this path
      is pure local verification, no network. The UI attributes the unlock
      to a license (`ProUnlockSource.license`), not the developer override.
-     Pro features unlock — in code today the entitlement gate is
-     `ProFeature.protectionInsights`, so at minimum confirm all Insights
-     findings are now shown in full. `settings.json`
+     Pro features unlock — all six `ProFeature` cases are gated in code and
+     one license unlocks every one of them
+     (`LicenseProEntitlementStore.isUnlocked`, `:114–126`), so confirm each:
+     all Insights findings shown in full (`.protectionInsights`), a
+     release rule can be added to a keep-awake (`.conditionalKeepAwake`),
+     a process-match alert rule can be created (`.processMatchAlerts`),
+     the theme editor opens (`.customThemes`), a remote pairing code can be
+     minted in Settings ▸ Sync (`.remoteSync`), and history export is
+     offered (`.historyExport`). `settings.json`
      (`~/Library/Application Support/Sentry/settings.json`) now contains
      `proLicenseBlob` and `proLicenseLastVerifiedAt` (install stamps the
      verification timestamp).
@@ -268,15 +289,20 @@ address you control.
 
 ## Open questions
 
-- The marketing Pro feature list (keep-awake release
-  rules, process-match alert rules, custom theme editor, off-LAN remote
-  sync pairing, history export + extended retention, Protection Insights —
-  fan-control writes were on this list until fan control was removed
-  entirely; Sentry reads fan speeds and never sets them)
-  is wider than the entitlement gate in code: `ProFeature` has exactly one
-  case, `.protectionInsights`. Every other advertised Pro feature must be
-  added as a `ProFeature` case and gated before checkout goes live, or it
-  ships free and the license unlocks less than the marketing claims.
+- ~~The marketing Pro feature list is wider than the entitlement gate in
+  code: `ProFeature` has exactly one case, `.protectionInsights`.~~
+  **Resolved.** `ProFeature` (`SentryKit/Pro/ProEntitlement.swift:30–37`)
+  now has six cases matching the marketing list — `.protectionInsights`,
+  `.conditionalKeepAwake`, `.processMatchAlerts`, `.customThemes`,
+  `.remoteSync`, `.historyExport` — and every one is consulted at a real
+  call site (`InsightsViewModel.swift:120`, `AppDelegate.swift:685–695` and
+  `:1024–1027`, `AlertsPane.swift:99`, `ThemePane.swift:54`,
+  `SettingsView.swift:329–335`, `OnboardingCoordinator.swift:226`).
+  Fan-control writes were on the list until fan control was removed
+  entirely; Sentry reads fan speeds and never sets them. What remains is
+  the *product* question of whether that list is final — a new paid
+  feature is a new case plus a compiler-forced decision in both
+  `isUnlocked` switches.
 - Seat enforcement: `seats` is displayed, deliberately not enforced
   client-side (see `LicensePayload`'s doc comment). If 3-Mac enforcement
   is wanted, it is an issuance-side activation count — decide whether D1
