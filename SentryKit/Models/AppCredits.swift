@@ -96,6 +96,38 @@ public enum AppCredits {
         URL(string: macAppDownloadURLString)
     }
 
+    // MARK: - Support
+
+    /// Where to get help or report a bug. **Live and verified** (HTTP 200,
+    /// no login; the `github.io` address 301s to the site's custom domain,
+    /// `malekswilam.dev/Sentry/support/`, exactly as the privacy policy's
+    /// does) as of 2026-09-10.
+    ///
+    /// The page names both support channels — GitHub Issues and
+    /// `getsentryapp@gmail.com` — and explains how to find a crash log, so
+    /// the app links to *it* rather than to either channel directly: one
+    /// address to keep correct, and the channels can change on the page
+    /// without touching a shipped binary. This constant is the *only* place
+    /// either platform names that address, and the same string goes in App
+    /// Store Connect's Support URL field (`docs/asc-metadata-draft.md`) —
+    /// App Review checks it on every submission, so the two must not drift
+    /// apart.
+    ///
+    /// **The extensionless path is deliberate and is pinned at both ends.**
+    /// Jekyll would publish `support.md` at `/support.html`; the site's
+    /// front matter sets `permalink: /support/` precisely so the URL below
+    /// resolves. Changing either half alone breaks the link in every
+    /// shipped copy — and unlike the site, this string cannot be corrected
+    /// on an app already installed.
+    public static let supportURLString = "https://malekthecoder.github.io/Sentry/support"
+
+    /// Same optionality contract as `privacyPolicyURL`: a malformed literal
+    /// is a programming error for a test to catch, not a link to silently
+    /// drop at runtime.
+    public static var supportURL: URL? {
+        URL(string: supportURLString)
+    }
+
     // MARK: - Third-party license list
 
     /// The published third-party license list — `docs/third-party-licenses.md`
