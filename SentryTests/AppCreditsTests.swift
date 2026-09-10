@@ -110,4 +110,25 @@ final class AppCreditsTests: XCTestCase {
     func testThirdPartyLicensesURLParses() {
         XCTAssertNotNil(AppCredits.thirdPartyLicensesURL)
     }
+
+    /// Same contract again — `AboutView` and the onboarding's companion-role
+    /// card both build a `Link` from it — and until now the one URL here
+    /// with no test.
+    func testMacAppDownloadURLParses() {
+        XCTAssertNotNil(AppCredits.macAppDownloadURL)
+    }
+
+    /// The support address is compiled into the app *and* typed by hand into
+    /// App Store Connect's Support URL field, so beyond parsing it has to
+    /// round-trip byte-for-byte: `URL` normalising the literal (a trailing
+    /// slash, an added `.html`) would leave the shipped link and the ASC
+    /// field disagreeing with nothing to say so. The literal is repeated
+    /// here on purpose — changing the published path is the kind of edit
+    /// that should have to be made twice.
+    func testSupportURLParsesAndMatchesPinnedString() {
+        let url = AppCredits.supportURL
+        XCTAssertNotNil(url)
+        XCTAssertEqual(url?.absoluteString, AppCredits.supportURLString)
+        XCTAssertEqual(AppCredits.supportURLString, "https://malekthecoder.github.io/Sentry/support")
+    }
 }

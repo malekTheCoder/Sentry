@@ -47,6 +47,7 @@ struct AboutView: View {
                 header
                 identityCard
                 contributorsCard
+                supportCard
                 privacyCard
                 thirdPartyCard
             }
@@ -117,6 +118,42 @@ struct AboutView: View {
                     .foregroundStyle(palette.textPrimary)
             }
             Text(AppCredits.copyright)
+                .scaledFont(palette, size: 10.5)
+                .foregroundStyle(palette.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Support
+
+    /// Its own card, not a second `Link` under "PRIVACY". Every small-caps
+    /// header on this screen names one topic — who made it, where the data
+    /// lives, what is bundled — and a bug-report link is not a privacy
+    /// fact: filed under that header it would read as "how to report a
+    /// privacy problem", and `privacyCard`'s "linked above" sentence would
+    /// stop pointing at one unambiguous link. It sits between MADE BY and
+    /// PRIVACY because that is the order the questions come in — what is
+    /// this, who made it, how do I reach them — before the policy and the
+    /// legal notices.
+    ///
+    /// One link, to the support page, rather than a `mailto:` and an Issues
+    /// link side by side: the page already lists both channels and — the
+    /// part someone whose app just crashed actually needs — how to find the
+    /// crash log, and `AppCredits.supportURLString` is one address to keep
+    /// correct instead of three. Same silent-`Link` pattern as every other
+    /// link on this screen — see this file's doc comment.
+    private var supportCard: some View {
+        VStack(alignment: .leading, spacing: palette.spacingTight) {
+            Text("SUPPORT")
+                .scaledFont(palette, size: 10, weight: .semibold)
+                .foregroundStyle(palette.textTertiary)
+                .accessibilityAddTraits(.isHeader)
+            if let url = AppCredits.supportURL {
+                Link("Get help or report a bug", destination: url)
+                    .scaledFont(palette, size: 12.5)
+                    .foregroundStyle(palette.accent)
+            }
+            Text("Bug reports and questions go through GitHub Issues or email — the page has both, and how to find a crash log.")
                 .scaledFont(palette, size: 10.5)
                 .foregroundStyle(palette.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)
