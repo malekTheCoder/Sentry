@@ -1248,6 +1248,51 @@ targets:
       # hand-written one — generate it, same as the embedded frameworks.
       GENERATE_INFOPLIST_FILE: YES
 
+  # ── App Store screenshot drivers ──────────────────────────────────────────
+  # Two UI-test bundles that exist only to be driven by
+  # `scripts/asc-screenshots.sh`. They are not part of any test plan and
+  # nothing else depends on them: each test method walks the app to one
+  # state worth an App Store screenshot, then holds it while the script
+  # captures with `simctl io screenshot` (see `ScreenshotHandshake.swift`
+  # for the file hand-off). They need a real signing identity for the same
+  # reason SentryMobile does — XCTest's runner app is installed and launched
+  # on the simulator like any other app — so they carry the same block.
+  SentryMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SentryMobileUITests
+    dependencies:
+      - target: SentryMobile
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.sentry.mobile.uitests
+      TEST_TARGET_NAME: SentryMobile
+      GENERATE_INFOPLIST_FILE: YES
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: H7T2D2GL7U
+
+  SentryWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    sources:
+      - path: SentryWatchUITests
+      # One definition of the host hand-off protocol, compiled into both
+      # drivers — the same one-file-two-targets arrangement
+      # `SentryWidget/Intents/EndKeepAwakeIntent.swift` uses.
+      - path: SentryMobileUITests/ScreenshotHandshake.swift
+    dependencies:
+      - target: SentryWatch
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: dev.malekswilam.sentry.mobile.watch.uitests
+      TEST_TARGET_NAME: SentryWatch
+      GENERATE_INFOPLIST_FILE: YES
+      CODE_SIGNING_ALLOWED: YES
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      DEVELOPMENT_TEAM: H7T2D2GL7U
+
 schemes:
   Sentry:
     build:
@@ -1262,3 +1307,28 @@ schemes:
       config: Debug
       targets:
         - SentryTests
+
+  # Built and run only by scripts/asc-screenshots.sh — see the two
+  # `*UITests` targets above.
+  SentryMobileUITests:
+    build:
+      targets:
+        SentryMobile: all
+        SentryMobileUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SentryMobileUITests
+  SentryWatchUITests:
+    build:
+      targets:
+        SentryWatch: all
+        SentryWatchUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SentryWatchUITests

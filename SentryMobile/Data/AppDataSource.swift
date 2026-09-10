@@ -204,7 +204,42 @@ public final class AppDataSource: ObservableObject {
         return (host, port, code)
     }
 
+    /// **Debug-only screenshot hook: `-SentryDemoData` skips discovery.**
+    ///
+    /// The iPhone counterpart of `SentryWatchApp`'s `-SentryWatchDemo`
+    /// launch argument, and it exists for the same reason that one does: a
+    /// simulator on a developer's Mac is on the same network as that Mac,
+    /// so the moment Sentry is running there — which is the normal state of
+    /// the machine that is about to cut a release — Bonjour finds it, the
+    /// app switches to live data, the demo banner disappears, and the
+    /// History tab's health chart goes empty (`dailyHealthHistory` is
+    /// honestly `[]` over `LocalSyncClient`). `scripts/asc-screenshots.sh`
+    /// needs the *demo* states, deterministically, every time it re-runs
+    /// before a submission, and nothing outside the process can keep
+    /// `LocalSyncClient` from dialing a Mac it can see.
+    ///
+    /// The transport is left as the `MockDataSource()` it already starts as,
+    /// so every disclosure surface (`isShowingDemoData`, the banner, the
+    /// chart tags, the Watch relay's `sourceIsDemoData`, the Live Activity
+    /// guard) behaves exactly as it does after a real discovery timeout —
+    /// the screenshots this produces say "Sample data" on every tab because
+    /// the app is genuinely in that state, not because a flag painted it.
+    /// `#if DEBUG` for the reason the Watch hook is: the argument must not
+    /// exist in a shipping build.
+    private static var isForcedDemoData: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-SentryDemoData")
+        #else
+        return false
+        #endif
+    }
+
     private func resolve() async {
+        if Self.isForcedDemoData {
+            transport = MockDataSource()
+            isUsingLocalSync = false
+            return
+        }
         let client = LocalSyncClient()
         localClient = client
         // Registered before `waitForFirstConnection` runs, not after, so a

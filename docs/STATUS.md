@@ -24,6 +24,7 @@ change that made it wrong.
 | iOS/watchOS version strings | all four bundles substitute `1.0.0`/`2` from `project.yml:84–85` |
 | Export-compliance answer | `ITSAppUsesNonExemptEncryption: false` in the iOS plist (`c50f8b2`) |
 | All ASC copy drafted | `asc-metadata-draft.md`: name, subtitle, description, keywords, promo text, URLs, age rating, privacy answers, review notes, video shot list |
+| ASC screenshot pipeline | `scripts/asc-screenshots.sh` — iPhone 6.9" (1320×2868, iPhone 17 Pro Max) and Watch (422×514, Ultra 3) at Apple's exact sizes, demo data disclosed on-screen, driven by `SentryMobileUITests`/`SentryWatchUITests`; run end to end 2026-09-10 |
 | Pro licence verification side | `SentryKit/Pro/` — Ed25519 blob verify, entitlement policy, install/remove/revalidate store, six gated `ProFeature`s, 659-line test file |
 
 ## 1. Human-only
@@ -34,12 +35,13 @@ Nothing an agent can do. Numbered as in the launch plan.
 2. **Store the notarization credential**: `xcrun notarytool store-credentials AC_NOTARY …` (exact invocation in the `scripts/release.sh` header). Verified absent 2026-09-10 — `notarytool history --keychain-profile AC_NOTARY` reports no keychain item. Needs the App Store Connect app-specific password.
 3. **Pick a payment vendor** (Paddle, Lemon Squeezy, …), open the merchant account, decide the price (`pro-license-dryrun-checklist.md` assumes $19.99 / $14.99 launch, 3 seats, perpetual). Not done.
 4. **Generate the production Pro-licence Ed25519 keypair** offline (one-liner in `SentryKit/Pro/License.swift`'s `LicenseKeys` doc comment); store the private half in the vendor's signer and a password manager; paste the public half into `LicenseKeys.productionPublicKeyBase64` (`License.swift:258`, currently `nil`). Not done.
-5. **App Store Connect data entry** from `asc-metadata-draft.md` — every field is paste-ready. Includes the privacy-policy URL, App Privacy ("No" to the gate question), age rating (all None/No), category, screenshots (iPhone 6.9" and Watch), review notes, and confirming bundle ID / App Group / provisioning profiles for all four bundles.
+5. **App Store Connect data entry** from `asc-metadata-draft.md` — every field is paste-ready. Includes the privacy-policy URL, App Privacy ("No" to the gate question), age rating (all None/No), category, screenshots (iPhone 6.9" and Watch — generated at the exact required pixel sizes by `scripts/asc-screenshots.sh`; upload from `build/asc-screenshots/`), review notes, and confirming bundle ID / App Group / provisioning profiles for all four bundles.
 6. **EU Digital Services Act trader-status verification** with Apple. Not started; takes time — start before submission, not at it.
 7. **Decide the app name.** "Sentry" is provisional pending a trademark decision; it collides with Sentry.io. The Sparkle feed URL is now frozen (published), but the *product* name can still change as long as the GitHub account/repo path stays.
 8. **Record the App Review demo video** per the shot list in `asc-metadata-draft.md` (~80 s; shot 4 — a real keep-awake round trip — is the load-bearing one).
 9. **Decide what to do about the public `v1.0` GitHub release.** Tag `cb0e992` (2026-08-09; release published 2026-08-08 with `Sentry.dmg`) predates the real Sparkle key (`b513558`, 2026-08-13), so those binaries hold the placeholder `SUPublicEDKey` and can never auto-update. Options: leave it, post a re-download notice, or cut a `v1.0.x` that `releases/latest` picks up.
 10. **Back up the Sparkle private key offline** (`generate_keys -x`; procedure in `project.yml` above line 637). Cannot be verified from the repo; losing it orphans every install with no recovery.
+11. **Capture the keep-awake Live Activity screenshot by hand**, if it is wanted in the listing. `scripts/asc-screenshots.sh` cannot: `KeepAwakeActivityController.observeSnapshots` (`SentryMobile/LiveActivity/KeepAwakeActivityController.swift:156`) refuses to start an activity from demo data by design, so the Dynamic Island / Lock Screen presentation only exists with a real Mac running Sentry, holding a keep-awake, and the simulator app connected to it (launched *without* `-SentryDemoData`). Recipe in the script's header. Optional — ASC does not require it.
 
 ## 2. Blocked — agent-doable, waiting on something above
 
