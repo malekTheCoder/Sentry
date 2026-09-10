@@ -175,7 +175,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                             // The panes' Pro gates (process-match rules,
                             // theme editing, Remote Access, retention caps)
                             // all read this one live provider.
-                            proEntitlements: self.proEntitlementStore
+                            proEntitlements: self.proEntitlementStore,
+                            // The same object again, concretely, for the
+                            // one pane that installs and removes licenses.
+                            licenseStore: self.proEntitlementStore
                         )
                     )
                 )
@@ -277,6 +280,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         settingsStore: settingsStore,
         publicKey: LicenseKeys.productionPublicKey
     )
+
+    /// The daily "still in good standing?" check, wired now and inert now
+    /// — see `LicenseRevalidationScheduler`. It consults
+    /// `proEntitlementStore.isOnlineRevalidationArmed` at `start()` and,
+    /// with no client and a `.never` policy above, records why and creates
+    /// no task. The day the two arguments above change together, this
+    /// starts checking with no further edit here. Same one-instance,
+    /// app-lifetime shape as `updateController` for the same reason: one
+    /// schedule, one owner.
+    private lazy var licenseRevalidationScheduler = LicenseRevalidationScheduler(store: proEntitlementStore)
 
     /// macOS-only, off-main-thread, TTL-cached — see
     /// `SecurityPostureCollector`'s doc comment. One instance for the app's
@@ -545,6 +558,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // one-way flow `alertEngine.updateRules` uses, and the reader
         // `AppSettings.updateCheckDaily` has been missing since it was added.
         updateController.applySettings(settings)
+
+        // Started unconditionally, next to the updater it is modeled on;
+        // whether it *does* anything is the scheduler's own decision (see
+        // its doc comment). In this build: nothing, and it says so.
+        licenseRevalidationScheduler.start()
 
         // Closes the loop between the two Phase 3 services without either
         // importing the other (see `AlertAction.releaseSleepAssertion`) —

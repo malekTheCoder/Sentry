@@ -53,11 +53,14 @@ final class SyncPaneRemoteAccessCopyTests: XCTestCase {
         XCTAssertTrue(text.localizedCaseInsensitiveContains("free"))
     }
 
-    /// The same admission every locked surface in this app makes: no
-    /// checkout exists, so no copy anywhere may imply a Buy button could.
-    func testPurchaseNoticeAdmitsCheckoutDoesNotExist() {
+    /// The same admission every locked surface in this app makes while
+    /// `AppCredits.proCheckoutURL` is the placeholder: nothing is on sale,
+    /// so no copy anywhere may imply a Buy button could work. (The
+    /// sentence itself is `ProPurchase.notOnSaleNotice`, shared —
+    /// `ProPurchaseAffordanceTests` pins the gate.)
+    func testPurchaseNoticeAdmitsNothingIsOnSale() {
         let text = SyncPane.lockedPurchaseNotice
-        XCTAssertTrue(text.localizedCaseInsensitiveContains("isn't available"))
+        XCTAssertTrue(text.localizedCaseInsensitiveContains("isn't on sale"))
         XCTAssertFalse(text.localizedCaseInsensitiveContains("buy now"))
     }
 

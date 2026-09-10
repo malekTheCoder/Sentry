@@ -3,7 +3,7 @@ import SentryKit
 
 /// The settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced, about
+    case general, modules, menuBar, theme, alerts, aiAccess, sync, pro, advanced, about
 
     var id: String { rawValue }
 
@@ -16,6 +16,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return String(localized: "Alerts")
         case .aiAccess: return String(localized: "AI Access")
         case .sync: return String(localized: "Sync")
+        case .pro: return String(localized: "Sentry Pro")
         case .advanced: return String(localized: "Advanced")
         case .about: return String(localized: "About")
         }
@@ -30,6 +31,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return "bell.badge"
         case .aiAccess: return "bolt.shield"
         case .sync: return "arrow.triangle.2.circlepath.icloud"
+        case .pro: return "checkmark.seal"
         case .advanced: return "wrench.and.screwdriver"
         case .about: return "info.circle"
         }
@@ -46,6 +48,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return String(localized: "Rules, notifications, and alert history.")
         case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
         case .sync: return String(localized: "iPhone companion and device sync.")
+        case .pro: return String(localized: "Your license: activate it, check it, or take it off this Mac.")
         case .advanced: return String(localized: "Diagnostics and debugging.")
         case .about: return String(localized: "Version, credits, and licenses.")
         }
@@ -113,6 +116,17 @@ struct SettingsView: View {
     /// treatment, never the unlocked one.
     let proEntitlements: (any ProEntitlementProviding)?
 
+    /// The concrete store behind `proEntitlements`, for the one pane that
+    /// needs more than the protocol: Settings ▸ Sentry Pro calls
+    /// `installLicense`, `removeLicense`, `activate`, and reads `decision`,
+    /// none of which belong on `ProEntitlementProviding` (every other
+    /// caller asks only "is this unlocked?"). Two parameters rather than
+    /// downcasting the first: the composition root knows which object it
+    /// built, and a `nil` here renders `ProLicenseUnavailablePane` — an
+    /// honest state, like `updateController: nil` — instead of a pane that
+    /// silently can't activate anything.
+    let licenseStore: LicenseProEntitlementStore?
+
     init(
         store: SettingsStore,
         historyStore: HistoryStore? = nil,
@@ -120,7 +134,8 @@ struct SettingsView: View {
         mcpActivityLog: MCPActivityLog? = nil,
         endpointPublisher: MCPEndpointPublisher? = nil,
         updateController: UpdateController? = nil,
-        proEntitlements: (any ProEntitlementProviding)? = nil
+        proEntitlements: (any ProEntitlementProviding)? = nil,
+        licenseStore: LicenseProEntitlementStore? = nil
     ) {
         self.store = store
         self.historyStore = historyStore
@@ -129,6 +144,7 @@ struct SettingsView: View {
         self.endpointPublisher = endpointPublisher
         self.updateController = updateController
         self.proEntitlements = proEntitlements
+        self.licenseStore = licenseStore
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -149,7 +165,7 @@ struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 500)
         .environment(\.themePalette, palette)
-        // One application covering all ten panes. Every pane is
+        // One application covering every pane. Every pane is
         // `.formStyle(.grouped)`, whose rows paint on `surface`, and
         // `.toggleStyle` rides the environment through the `switch`-based
         // pane dispatch below — so panes this branch must not edit
@@ -170,7 +186,7 @@ struct SettingsView: View {
             switch pane {
             case .general, .modules, .menuBar, .theme:
                 groups[0].append(pane)
-            case .alerts, .aiAccess, .sync:
+            case .alerts, .aiAccess, .sync, .pro:
                 groups[1].append(pane)
             case .advanced, .about:
                 groups[2].append(pane)
@@ -328,6 +344,12 @@ struct SettingsView: View {
                 store: store,
                 isProUnlocked: proEntitlements?.isUnlocked(.remoteSync) ?? false
             ).formStyle(.grouped)
+        case .pro:
+            if let licenseStore {
+                ProLicensePane(store: store, licenseStore: licenseStore)
+            } else {
+                ProLicenseUnavailablePane()
+            }
         case .advanced:
             AdvancedPane(
                 store: store,

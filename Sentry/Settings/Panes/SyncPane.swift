@@ -113,9 +113,10 @@ struct SyncPane: View {
     /// rather than a disabled toggle (`LockedInsightRowView` and
     /// `ThemePane`'s locked editor row are the precedents — a greyed-out
     /// "Allow connections from other networks" would be a confident-looking
-    /// control describing a reality that isn't true). No Buy button, ever:
-    /// checkout does not exist, and the copy admits it in the same words
-    /// `ProUpsellCard` does.
+    /// control describing a reality that isn't true). The purchase line at
+    /// the bottom is `ProPurchase`'s decision, shared with `ProUpsellCard`:
+    /// a Buy link only once `AppCredits.proCheckoutURL` is real, and the
+    /// not-on-sale admission until then.
     private var lockedOffLANRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label {
@@ -129,10 +130,17 @@ struct SyncPane: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(Self.lockedPurchaseNotice)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            switch ProPurchase.affordance() {
+            case .buy(let url):
+                Link(ProPurchase.buyButtonTitle, destination: url)
+                    .font(.callout)
+                    .accessibilityHint("Opens the checkout page in your web browser")
+            case .notOnSaleYet:
+                Text(Self.lockedPurchaseNotice)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -158,11 +166,10 @@ struct SyncPane: View {
         localized: "Connecting from outside this Mac's own network is part of Sentry Pro. While it's locked, this Mac turns away connections from other networks even when they hold the pairing code; pairing and control on this Wi-Fi stay free."
     )
 
-    /// Verbatim the admission `ProUpsellCard` and `ThemePane` make — one
-    /// sentence, no Buy button wired to a checkout that doesn't exist.
-    static let lockedPurchaseNotice = String(
-        localized: "Purchasing isn't available yet — Sentry's license checkout hasn't opened. Checkout is coming in an update."
-    )
+    /// The not-on-sale sentence, shared with every other locked surface via
+    /// `ProPurchase` so the three can't drift — rendered here only while
+    /// `ProPurchase.affordance()` says there is nothing to buy.
+    static let lockedPurchaseNotice = ProPurchase.notOnSaleNotice
 
     /// Four honest footers. The unlocked pair is unchanged from before the
     /// gate; the locked pair stops promising Tailscale/port-forward

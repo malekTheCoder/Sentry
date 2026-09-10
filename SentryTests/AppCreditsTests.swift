@@ -131,4 +131,46 @@ final class AppCreditsTests: XCTestCase {
         XCTAssertEqual(url?.absoluteString, AppCredits.supportURLString)
         XCTAssertEqual(AppCredits.supportURLString, "https://malekthecoder.github.io/Sentry/support")
     }
+
+    // MARK: - Sentry Pro checkout (honest gating)
+
+    /// The placeholder must never be offered as a link. It is deliberately
+    /// not a URL at all, so that forgetting to replace it renders the
+    /// not-on-sale state rather than a Buy button that opens nothing.
+    func testProCheckoutPlaceholderIsNeverOfferedAsAURL() {
+        let placeholder = AppCredits.placeholderProCheckoutURLString
+        XCTAssertNil(AppCredits.checkoutURL(from: placeholder))
+        XCTAssertNotEqual(URL(string: placeholder)?.scheme?.lowercased(), "https",
+                          "the placeholder parses as an HTTPS URL, so forgetting to replace it would look like a working checkout")
+    }
+
+    func testProCheckoutGateAcceptsOnlyHTTPSWithAHost() {
+        XCTAssertEqual(
+            AppCredits.checkoutURL(from: "https://sentry.example-vendor.com/checkout/pro")?.absoluteString,
+            "https://sentry.example-vendor.com/checkout/pro"
+        )
+        // A pasted address arrives with whitespace; that's formatting, not
+        // misconfiguration.
+        XCTAssertNotNil(AppCredits.checkoutURL(from: "  https://sentry.example-vendor.com/checkout/pro\n"))
+        XCTAssertNotNil(AppCredits.checkoutURL(from: "HTTPS://sentry.example-vendor.com/checkout"))
+
+        // A checkout collects payment details: plaintext is refused, not
+        // tolerated.
+        XCTAssertNil(AppCredits.checkoutURL(from: "http://sentry.example-vendor.com/checkout/pro"))
+        XCTAssertNil(AppCredits.checkoutURL(from: "https://"))
+        XCTAssertNil(AppCredits.checkoutURL(from: "checkout/pro"))
+        XCTAssertNil(AppCredits.checkoutURL(from: ""))
+        XCTAssertNil(AppCredits.checkoutURL(from: "   "))
+    }
+
+    /// The invariant that stays true across go-live: the shipped constant
+    /// is either exactly the placeholder or a usable HTTPS address — never
+    /// a half-edited string that gates to nothing while looking filled in.
+    func testShippedProCheckoutConstantIsThePlaceholderOrALiveHTTPSAddress() {
+        if AppCredits.proCheckoutURLString == AppCredits.placeholderProCheckoutURLString {
+            XCTAssertNil(AppCredits.proCheckoutURL)
+        } else {
+            XCTAssertNotNil(AppCredits.proCheckoutURL, "proCheckoutURLString was edited to something the gate refuses")
+        }
+    }
 }

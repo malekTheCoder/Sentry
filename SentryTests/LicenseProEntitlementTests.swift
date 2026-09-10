@@ -540,9 +540,12 @@ final class LicenseProEntitlementTests: XCTestCase {
 
     // MARK: - The activation seam
 
-    /// TEST-ONLY stub. Deliberately the only `LicenseActivationClient`
-    /// conformer in the entire repository — see `LicenseActivation.swift`
-    /// for why no concrete network client exists.
+    /// TEST-ONLY stub. With `StubLicenseActivationClient`
+    /// (`LicenseTestSupport.swift`, shared by the UI-layer and scheduler
+    /// tests), the only `LicenseActivationClient` conformers in the entire
+    /// repository — both under `SentryTests/`, neither touching the
+    /// network. See `LicenseActivation.swift` for why no concrete client
+    /// exists.
     private struct StubActivationClient: LicenseActivationClient {
         var blobToReturn: String = ""
         var revalidationOutcome: LicenseRevalidationOutcome = .stillValid(refreshedBlob: nil)
