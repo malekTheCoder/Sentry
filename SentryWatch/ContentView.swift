@@ -52,7 +52,7 @@ struct ContentView: View {
     /// later (a complication tap landing on a specific page, say) without
     /// restructuring — and so `.page` styling has stable identity to animate
     /// between.
-    @State private var selection: Page = .overview
+    @State private var selection: Page = Page.launchOverride ?? .overview
 
     /// The result of the last keep-awake command, surfaced as an alert.
     ///
@@ -68,8 +68,27 @@ struct ContentView: View {
     /// `awakeIsActive` transition promptly for precisely this reason.
     @State private var actionResult: String?
 
-    private enum Page: Hashable {
+    private enum Page: String, Hashable {
         case overview, keepAwake, agents
+
+        /// The third leg of the debug fixture hook `SentryWatchApp
+        /// .makeController()` documents: `-SentryWatchPage <case>` lands the
+        /// shell on that page at launch, so a fixture's Keep Awake or Agent
+        /// state can be screenshotted on a headless simulator (`simctl` can
+        /// launch with arguments and capture the screen, but cannot swipe).
+        /// `#if DEBUG` for the same reason the fixtures are; `nil` — the
+        /// production case and every launch without the flag — leaves the
+        /// default exactly as it was.
+        static var launchOverride: Page? {
+            #if DEBUG
+            let arguments = ProcessInfo.processInfo.arguments
+            guard let flag = arguments.firstIndex(of: "-SentryWatchPage"),
+                  arguments.index(after: flag) < arguments.endIndex else { return nil }
+            return Page(rawValue: arguments[arguments.index(after: flag)])
+            #else
+            return nil
+            #endif
+        }
     }
 
     /// The palette every page reads from the environment, resolved from the
@@ -206,6 +225,11 @@ struct ContentView: View {
                 // released assertion would render as a countdown to nothing.
                 expiresAt: isActive ? snapshot.awakeExpiresAt : nil,
                 modeLabel: isActive ? snapshot.awakeModeLabel : nil,
+                // The reading's age, so the page can qualify a present-tense
+                // "Keeping awake" that the Mac said a while ago — see
+                // `KeepAwakePage`'s header. The page decides when it is
+                // worth showing; the shell only supplies the fact.
+                lastSeen: snapshot.lastSeen,
                 onKeepAwake: { minutes in send(.keepAwake(minutes: minutes)) },
                 onRelease: { send(.release) },
                 onExtend: { minutes in send(.extend(minutes: minutes)) }
@@ -232,17 +256,27 @@ struct ContentView: View {
     @ViewBuilder
     private var agentActivityPage: some View {
         if let snapshot = sessionController.latestSnapshot {
-            AgentActivityPage(
-                toolCallCount: snapshot.agentToolCallCount,
-                lastActivityAt: snapshot.agentLastActivityAt,
-                recentToolNames: snapshot.agentRecentToolNames ?? [],
-                // Staleness of the *relay*, not of the agent log: if the
-                // whole snapshot is old, so is anything it says about agents.
-                isStale: Self.isStale(snapshot),
-                onStopAgents: { sendStopAgents() },
-                agentAccessPaused: snapshot.agentAccessPaused,
-                onResumeAgents: { sendResumeAgents() }
-            )
+            // `isStale` is re-derived on `FreshnessBadge.defaultRefreshInterval`
+            // rather than once per relay: `latestSnapshot` only changes when
+            // a relay lands, so without this a page left open as the phone
+            // went quiet kept its "Out of date" banner *hidden* for as long
+            // as nothing else happened to redraw the shell — the same
+            // "Live outliving its window" failure `FreshnessBadge
+            // .init(lastSeen:refreshingEvery:)` exists for, one page over.
+            TimelineView(.periodic(from: .now, by: FreshnessBadge.defaultRefreshInterval)) { context in
+                AgentActivityPage(
+                    toolCallCount: snapshot.agentToolCallCount,
+                    lastActivityAt: snapshot.agentLastActivityAt,
+                    recentToolNames: snapshot.agentRecentToolNames ?? [],
+                    // Staleness of the *relay*, not of the agent log: if the
+                    // whole snapshot is old, so is anything it says about
+                    // agents.
+                    isStale: Self.isStale(snapshot, now: context.date),
+                    onStopAgents: { sendStopAgents() },
+                    agentAccessPaused: snapshot.agentAccessPaused,
+                    onResumeAgents: { sendResumeAgents() }
+                )
+            }
         } else {
             UnavailablePage(
                 symbol: "sparkles",
@@ -256,11 +290,8 @@ struct ContentView: View {
     /// in this codebase buckets against, rather than a threshold invented
     /// here — see `Freshness`'s doc comment on why that discipline is
     /// centralised.
-    private static func isStale(_ snapshot: WatchRelaySnapshot) -> Bool {
-        switch Freshness(lastSeen: snapshot.lastSeen) {
-        case .stale, .asleep: return true
-        case .live, .recent: return false
-        }
+    private static func isStale(_ snapshot: WatchRelaySnapshot, now: Date) -> Bool {
+        Freshness(lastSeen: snapshot.lastSeen, now: now).warrantsCompactStalenessCue
     }
 
     // MARK: Keep-awake commands

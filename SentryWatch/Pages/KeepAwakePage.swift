@@ -1,3 +1,4 @@
+import SentryKit
 import SwiftUI
 
 // MARK: - KeepAwakePage: the Watch's sleep-prevention control
@@ -6,7 +7,7 @@ import SwiftUI
 /// app. Offers a duration when nothing is holding the Mac awake, and a live
 /// countdown plus extend/end controls when something is.
 ///
-/// **Why this takes six primitives instead of a `WatchRelaySnapshot`.** The
+/// **Why this takes seven primitives instead of a `WatchRelaySnapshot`.** The
 /// page deliberately knows nothing about `WatchRelaySnapshot`, `WCSession`,
 /// `ControlCommand`, or `WatchControlBridge`. Two reasons, in order of
 /// importance:
@@ -25,8 +26,9 @@ import SwiftUI
 /// 2. *It makes the layout independently testable and independently
 ///    buildable.* Every state below — including ones that are awkward to
 ///    provoke on a real wrist (a hold with no expiry, a mode the Mac didn't
-///    name) — is one initialiser call away, with no `WCSession` to stand up
-///    and no paired-phone fixture to fake.
+///    name, a deadline that has already passed) — is one initialiser call
+///    away, with no `WCSession` to stand up and no paired-phone fixture to
+///    fake.
 ///
 /// **Why the buttons hand back plain `Int` minutes rather than building a
 /// `ControlCommand` here.** Constructing the command means choosing a nonce,
@@ -46,13 +48,39 @@ import SwiftUI
 /// command construction does; this page has no way to know and does not
 /// pretend to.
 ///
-/// **Why no `FreshnessBadge`.** Every other Mac-derived readout in this app
-/// pairs its number with how old it is. This page is the exception on
-/// purpose: it has no timestamp to describe. `expiresAt` is a point in the
-/// *future*, not a reading age, and the assertion's own `lastSeen` belongs to
-/// the shell's chrome, which renders it once for the whole paged app rather
-/// than once per page. Adding a second, page-local freshness indicator here
-/// would be a chance for the two to disagree.
+/// **What this page may and may not conclude on its own clock.** Two things
+/// here are judged against the watch's `Date()` rather than taken from the
+/// relay, and the two are deliberately different in kind:
+///
+/// - *A timed hold past its deadline has ended.* That is not a guess. The
+///   Mac arms the OS-level assertion timeout alongside its own timer
+///   precisely so the hold releases at `expiresAt` whether or not the Mac
+///   app is alive to say so (`SleepAssertionState.hasCertainlyEnded(asOf:)`,
+///   `SentryKit/Models/SleepAssertionDisplay.swift`, which is the phone's
+///   spelling of the same rule; that file is not compiled into
+///   `SentryKit_watchOS`, so the predicate is restated here as the same
+///   `expiresAt <= now`). So once the deadline passes this page stops
+///   saying "Keeping awake", stops offering to extend a hold that no longer
+///   exists, and says instead that the time is up — the same sentence the
+///   phone's `SleepStatusCard` uses, on purpose. An earlier version of this
+///   page caught that case only on arrival and let the deadline elapse
+///   unnoticed while the page was on screen, on the argument that
+///   correcting it "would still only be guessing"; `SleepAssertionDisplay`
+///   settled that it is not, and `TimelineView(.explicit)` re-renders at
+///   exactly the instant with no clock of this page's own to keep.
+/// - *A stale relay is stale.* `lastSeen` is the age of everything on this
+///   page — "Keeping awake" is a claim the Mac made at that instant, and an
+///   *indefinite* hold reported an hour ago may or may not still be held
+///   (only the Mac can end one, out of this page's sight, which is exactly
+///   why it is never inferred to have ended). The page does not downgrade
+///   the claim; it qualifies it, with the same `FreshnessPill` the Overview
+///   page pairs every number with, shown once the reading is old enough
+///   that the relay's own five-minute heartbeat has gone missing
+///   (`Freshness.warrantsCompactStalenessCue`). An earlier version of this
+///   header argued the page needed no freshness indicator because "the
+///   shell renders it once for the whole paged app"; the shell never did,
+///   and a page that draws a present-tense control off a reading of
+///   unstated age is the one place plan §12.2's rule matters most.
 ///
 /// **Sizing.** No fixed frames anywhere: the controls are full-width rows
 /// with a `minHeight` floor, which grows with Dynamic Type instead of
@@ -61,17 +89,12 @@ import SwiftUI
 /// only hardcoded dimension is that `minHeight` floor, which is a *lower*
 /// bound on the tap target — see `controlMinHeight`.
 ///
-/// **Colours come from the relayed theme.** This page used to say the
-/// opposite — that the Watch app deliberately used SwiftUI's semantic
-/// colours because no palette existed on this platform. One now does:
-/// `WatchPalette` resolves whichever `Theme` the phone relayed
-/// (`WatchRelaySnapshot.themeID`) against the watch's black canvas, and the
-/// shell injects it into the environment. So `.red` on the end button is now
-/// `palette.danger`, and a user who runs Dracula on their Mac gets Dracula's
-/// red here rather than the system's. The three semantic meanings this page
-/// needs — accent for the active hold, danger for the release control,
-/// secondary text for qualifiers — are the same as before; only their source
-/// changed.
+/// **Colours come from the relayed theme.** `WatchPalette` resolves whichever
+/// `Theme` the phone relayed, for whichever appearance it is rendering, and
+/// the shell injects it into the environment. So the end button is
+/// `palette.control(.danger)`, and a user who runs Ivory on their Mac gets
+/// Ivory's red here rather than the system's — with its label graded against
+/// the button's own wash, see `WatchControlTint`.
 ///
 /// **Layout comes from `WatchLayout`.** The margins and the bottom clearance
 /// that keeps "End Now" clear of the paging dots are the shell's job
@@ -149,6 +172,12 @@ struct KeepAwakePage: View {
     /// shares a line with three other fragments.
     let modeLabel: String?
 
+    /// When the reading every other parameter came from was taken on the
+    /// Mac — `WatchRelaySnapshot.lastSeen`. See the type doc comment: this
+    /// is what qualifies "Keeping awake" once it is old enough to need
+    /// qualifying, and it is the *reading's* age, not the hold's.
+    let lastSeen: Date
+
     /// Requests a new hold for the given number of **minutes**, or for
     /// `Self.indefiniteMinutes`. Called only from the inactive state.
     let onKeepAwake: (Int) -> Void
@@ -161,21 +190,57 @@ struct KeepAwakePage: View {
     /// extending a hold that has no expiry is meaningless, and the Mac's
     /// `PowerControlService.adjustAssertion(bySeconds:)` scopes itself the
     /// same way, so this page never sends a request that side would reject.
+    /// Not offered either once that expiry has passed: "+15 min" on a hold
+    /// that already released is an offer the Mac would rightly decline.
     let onExtend: (Int) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
-                if isActive {
-                    activeBody
-                } else {
-                    inactiveBody
+        // The outer schedule is the freshness label's, at the same cadence
+        // `FreshnessPill`/`FreshnessBadge` refresh on. Twenty seconds is far
+        // too coarse for the hold's deadline, which is why that boundary has
+        // its own `TimelineView` inside `activeBody` — one clock per
+        // question, each at the precision the question needs.
+        TimelineView(.periodic(from: .now, by: FreshnessBadge.defaultRefreshInterval)) { context in
+            ScrollView {
+                VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
+                    if Freshness(lastSeen: lastSeen, now: context.date).warrantsCompactStalenessCue {
+                        stalenessRow
+                    }
+                    if isActive {
+                        activeBody
+                    } else {
+                        inactiveBody
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollIndicators(.hidden)
         }
-        .scrollIndicators(.hidden)
         .navigationTitle("Keep Awake")
+    }
+
+    // MARK: - Staleness
+
+    /// The reading's age, shown only once it matters — see the type doc
+    /// comment for why it is gated rather than always present. Gated on
+    /// `Freshness.warrantsCompactStalenessCue`, the threshold the
+    /// complication families with no room for a label already use, rather
+    /// than on a number invented here: below it, "up to five minutes old" is
+    /// the relay's normal heartbeat and not news; at it, the heartbeat itself
+    /// is missing, which is. Costs the page nothing at rest, which is what
+    /// keeps "End Now" above the fold at 42mm (see `activeBody`).
+    ///
+    /// `FreshnessPill` rather than `AgentActivityPage`'s "Out of date" pill
+    /// because on this page the *number* matters: "Keeping awake, as of 4
+    /// minutes ago" and "as of 3 hours ago" are different situations for a
+    /// user deciding whether their Mac is still awake, and the pill says
+    /// which. The glyph-only fallback is the same one `OverviewPage`'s status
+    /// row uses when the moon label will not fit a narrow face.
+    private var stalenessRow: some View {
+        ViewThatFits(in: .horizontal) {
+            FreshnessPill(lastSeen: lastSeen)
+            FreshnessPill(lastSeen: lastSeen, showsText: false)
+        }
     }
 
     // MARK: - Header
@@ -235,7 +300,7 @@ struct KeepAwakePage: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }
-                    .buttonStyle(WatchActionButtonStyle(tint: palette.accent))
+                    .buttonStyle(WatchActionButtonStyle(tint: palette.control(.accent)))
                     .accessibilityHint("Asks your Mac to stay awake")
                 }
             }
@@ -276,7 +341,48 @@ struct KeepAwakePage: View {
     /// active timed hold, where five controls' worth of content still exceeds
     /// the face; that case still scrolls, and that is the honest outcome
     /// rather than shrinking tap targets below 44pt to force a fit.
+    ///
+    /// **The deadline is a `TimelineView` boundary.** Everything in this
+    /// state that is present-tense — the filled glyph, "Keeping awake", the
+    /// extend row, the counting `Text` — has to stand down at the instant
+    /// `expiresAt` passes, not at the next relay up to five minutes later.
+    /// `DeadlineSchedule` re-renders precisely then and never otherwise;
+    /// `.id(expiresAt)` makes an extension that moves the deadline (which
+    /// arrives by relay) rebuild the schedule instead of leaving it armed
+    /// for the old instant. A hold with no expiry has no boundary and gets
+    /// no `TimelineView`.
+    @ViewBuilder
     private var activeBody: some View {
+        if let expiresAt {
+            TimelineView(DeadlineSchedule(deadline: expiresAt)) { context in
+                activeLayout(expiresAt: expiresAt, hasEnded: expiresAt <= context.date)
+            }
+            .id(expiresAt)
+        } else {
+            activeLayout(expiresAt: nil, hasEnded: false)
+        }
+    }
+
+    /// Two entries: now, then the deadline (or just now, if it has passed).
+    ///
+    /// **Why not `.explicit([deadline])`.** That was the first version and it
+    /// rendered every *live* hold as already ended: an explicit schedule's
+    /// first entry is the first date it lists, so `TimelineView` hands the
+    /// initial render `context.date == deadline` rather than the current
+    /// time, and `expiresAt <= context.date` was true forty-two minutes
+    /// early. Caught on the simulator before it shipped — a screenshot of
+    /// the healthy fixture, not the ended one, is what showed it. Yielding
+    /// `startDate` first is what every built-in schedule does and what makes
+    /// the comparison mean what it says.
+    private struct DeadlineSchedule: TimelineSchedule {
+        let deadline: Date
+
+        func entries(from startDate: Date, mode: Mode) -> [Date] {
+            deadline > startDate ? [startDate, deadline] : [startDate]
+        }
+    }
+
+    private func activeLayout(expiresAt: Date?, hasEnded: Bool) -> some View {
         VStack(alignment: .leading, spacing: WatchLayout.sectionSpacing) {
             // Status and countdown share one card: they are two halves of a
             // single statement ("something is holding this Mac awake, and it
@@ -284,12 +390,12 @@ struct KeepAwakePage: View {
             // surface reads as the live-hold indicator that it is.
             WatchCard {
                 VStack(alignment: .leading, spacing: 3) {
-                    activeStatus
-                    countdown
+                    activeStatus(hasEnded: hasEnded)
+                    countdown(expiresAt: expiresAt, hasEnded: hasEnded)
                 }
             }
 
-            if expiresAt != nil {
+            if expiresAt != nil, !hasEnded {
                 extendRow
             }
             endButton
@@ -304,6 +410,12 @@ struct KeepAwakePage: View {
     /// was the whole argument for the old `modeRow` and it survives the row
     /// being deleted — what changed is the shape, not the honesty.
     ///
+    /// **Past the deadline the line says "Time is up", in the unfilled glyph
+    /// and secondary colour** — the same stand-down `SleepStatusCard.header`
+    /// performs on the phone (`claimsActive`), so the two devices describe
+    /// one situation with one vocabulary. The mode stays: it is still true
+    /// of the hold that just ended, and the phone keeps its Mode row too.
+    ///
     /// **The three text runs are one concatenated `Text`, not three siblings
     /// in the `HStack`.** As siblings they were separate layout children, so a
     /// 40mm face resolved the squeeze by *truncating the first one* — the
@@ -313,11 +425,11 @@ struct KeepAwakePage: View {
     /// than scaled. Concatenated, they are a single `Text` with one intrinsic
     /// width, so the scale factor applies to the whole line at once and the
     /// sentence shrinks intact instead of losing its subject.
-    private var activeStatus: some View {
+    private func activeStatus(hasEnded: Bool) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "moon.zzz.fill")
-                .foregroundStyle(palette.accent)
-            Text("Keeping awake").foregroundStyle(palette.textPrimary)
+            Image(systemName: hasEnded ? "moon.zzz" : "moon.zzz.fill")
+                .foregroundStyle(hasEnded ? palette.textSecondary : palette.accent)
+            Text(hasEnded ? "Time is up" : "Keeping awake").foregroundStyle(palette.textPrimary)
                 + Text("  ·  ").foregroundStyle(palette.textTertiary)
                 + Text(modeLabel ?? "Mode not reported").foregroundStyle(palette.textSecondary)
         }
@@ -325,9 +437,12 @@ struct KeepAwakePage: View {
         .lineLimit(1)
         .minimumScaleFactor(0.6)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            modeLabel.map { "Keeping awake, mode \($0)" } ?? "Keeping awake, mode not reported"
-        )
+        .accessibilityLabel(accessibilityStatus(hasEnded: hasEnded))
+    }
+
+    private func accessibilityStatus(hasEnded: Bool) -> String {
+        let lead = hasEnded ? "This hold's time is up" : "Keeping awake"
+        return modeLabel.map { "\(lead), mode \($0)" } ?? "\(lead), mode not reported"
     }
 
     /// The hero readout.
@@ -339,19 +454,20 @@ struct KeepAwakePage: View {
     /// always-on dimmed state without this view owning a timer that would have
     /// to be torn down and restarted around every wrist-down.
     ///
-    /// **The already-expired case is handled, and its limit is stated.** A
-    /// `.timer` `Text` whose date has passed silently starts counting *up*,
-    /// which would read as a hold that has been running for three minutes
-    /// rather than one that ended three minutes ago. The `expiresAt > Date()`
-    /// check below catches the common version of that — arriving at this page
-    /// after the expiry has passed. What it does not catch is the expiry
-    /// elapsing while the page is already on screen: `Date()` is evaluated at
-    /// body-render time, and nothing here forces a re-render on that
-    /// boundary. Making that instant self-correcting would mean this page
-    /// keeping its own clock, and it would still only be guessing — the hold
-    /// is the Mac's, and only the Mac can say it actually released. So the
-    /// correction is left to the next relayed state, which is the only source
-    /// that knows.
+    /// **The already-expired case, and the on-screen-expiry case, are both
+    /// handled.** A `.timer` `Text` whose date has passed silently starts
+    /// counting *up*, which would read as a hold that has been running for
+    /// three minutes rather than one that ended three minutes ago. `hasEnded`
+    /// comes from the `TimelineView(.explicit)` in `activeBody`, so it is
+    /// true both for a page opened after the deadline and at the instant the
+    /// deadline passes while the page is up — the second case is the one an
+    /// earlier version documented as a known limit and left to the next
+    /// relay, which could be five minutes of a countdown running backwards
+    /// under the word "remaining". The sentence is worded "waiting for your
+    /// Mac to confirm" because that is the honest tense: the recorded
+    /// deadline guarantees the release happened, but only the Mac's next
+    /// report can *say* so, and this page never claims what it hasn't been
+    /// told.
     ///
     /// **This is the one place the new dial language was rejected, and the
     /// reason matters.** A depleting arc is the obvious rendering for a
@@ -368,9 +484,9 @@ struct KeepAwakePage: View {
     /// and dropped: a new wire field to justify a shape is the tail wagging
     /// the dog. The monospaced digits stay.
     @ViewBuilder
-    private var countdown: some View {
+    private func countdown(expiresAt: Date?, hasEnded: Bool) -> some View {
         if let expiresAt {
-            if expiresAt > Date() {
+            if !hasEnded {
                 // "remaining" sits on the timer's own baseline rather than on
                 // a line of its own. That was the last ~16pt needed to get
                 // "End Now" fully above the fold at 46mm (see `activeBody`),
@@ -487,7 +603,7 @@ struct KeepAwakePage: View {
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
         }
-        .buttonStyle(WatchActionButtonStyle(tint: palette.accent))
+        .buttonStyle(WatchActionButtonStyle(tint: palette.control(.accent)))
         .accessibilityLabel("Extend by \(minutes) minutes")
     }
 
@@ -497,6 +613,12 @@ struct KeepAwakePage: View {
     /// more than the mistake it prevents. The colour is there to keep it from
     /// being fat-fingered while reaching for "+1 hr", not to warn of anything
     /// permanent.
+    ///
+    /// Still offered after a timed hold's deadline has passed, as on the
+    /// phone: the release is idempotent on the Mac, and it is the one tap
+    /// that makes the Mac re-report immediately instead of on the next
+    /// heartbeat — which is what a user staring at "waiting for your Mac to
+    /// confirm" actually wants.
     private var endButton: some View {
         Button(role: .destructive) {
             onRelease()
@@ -504,7 +626,7 @@ struct KeepAwakePage: View {
             Text("End Now")
                 .frame(maxWidth: .infinity, minHeight: Self.controlMinHeight)
         }
-        .buttonStyle(WatchActionButtonStyle(tint: palette.danger))
+        .buttonStyle(WatchActionButtonStyle(tint: palette.control(.danger)))
         .accessibilityHint("Lets your Mac sleep normally again")
     }
 }
@@ -515,6 +637,7 @@ struct KeepAwakePage: View {
         isActive: false,
         expiresAt: nil,
         modeLabel: nil,
+        lastSeen: Date().addingTimeInterval(-30),
         onKeepAwake: { _ in },
         onRelease: {},
         onExtend: { _ in }
@@ -526,6 +649,7 @@ struct KeepAwakePage: View {
         isActive: true,
         expiresAt: Date().addingTimeInterval(42 * 60),
         modeLabel: "Keep display on",
+        lastSeen: Date().addingTimeInterval(-30),
         onKeepAwake: { _ in },
         onRelease: {},
         onExtend: { _ in }
@@ -539,6 +663,22 @@ struct KeepAwakePage: View {
         isActive: true,
         expiresAt: nil,
         modeLabel: nil,
+        lastSeen: Date().addingTimeInterval(-30),
+        onKeepAwake: { _ in },
+        onRelease: {},
+        onExtend: { _ in }
+    )
+}
+
+/// The two claims the page must withdraw on its own: a deadline that has
+/// passed (no "Keeping awake", no extend row) and a relay old enough that
+/// the heartbeat is missing (the freshness pill appears).
+#Preview("Active — time up, stale relay") {
+    KeepAwakePage(
+        isActive: true,
+        expiresAt: Date().addingTimeInterval(-3 * 60),
+        modeLabel: "System only",
+        lastSeen: Date().addingTimeInterval(-9 * 60),
         onKeepAwake: { _ in },
         onRelease: {},
         onExtend: { _ in }

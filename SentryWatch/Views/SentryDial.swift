@@ -245,10 +245,12 @@ enum MetricSeverity {
     /// Those two literals were the last hardcoded colours on these pages and
     /// the reason a "warning" on the wrist did not match a warning anywhere
     /// else in the product. Routing through the theme's `warning`/`danger`
-    /// means a user who picks Solarized gets Solarized's amber and red, and
-    /// — because `WatchPalette` contrast-checks every token it returns — the
-    /// escalation stays visible even in a preset whose warning colour was
-    /// authored for a white page.
+    /// means a user who picks Ivory gets Ivory's amber and red — drawn at
+    /// the authored value on the authored surface, since the watch renders
+    /// the theme's own canvas rather than a forced black one (see
+    /// `WatchPalette`; an earlier version of this note claimed the palette
+    /// contrast-checked every token, which stopped being true, and right,
+    /// when the canvas stopped being black).
     func tint(in palette: WatchPalette) -> Color? {
         switch self {
         case .normal: return nil

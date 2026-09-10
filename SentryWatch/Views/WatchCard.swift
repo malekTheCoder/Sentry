@@ -87,21 +87,27 @@ struct WatchCard<Content: View>: View {
 
 /// A small filled capsule: a glyph, a word, and a tint.
 ///
-/// Used for the freshness badge, the thermal state, and every conditional
-/// warning. Filled rather than the bare `Label` these used to be, because on
-/// black a coloured word alone reads as text that happens to be coloured; a
-/// tinted capsule reads as a *state*, which is what these are. The fill is
-/// the tint at low opacity so it stays legible on the theme's own canvas
-/// without becoming a second competing surface.
+/// Used for the freshness badge, the thermal state, the demo disclosure and
+/// every conditional warning. Filled rather than the bare `Label` these used
+/// to be, because on black a coloured word alone reads as text that happens
+/// to be coloured; a tinted capsule reads as a *state*, which is what these
+/// are. The fill is the tint at low opacity so it stays legible on the
+/// theme's own canvas without becoming a second competing surface.
+///
+/// **Takes a `WatchControlTint`, not a `Color`.** The word is drawn in
+/// `tint.label`, which `WatchPalette.control(_:)` has already held to 3:1
+/// against the wash this view lays down — on a light preset the raw token
+/// frequently is not (System's green over its own wash measured 1.8:1; see
+/// `WatchThemeColors`). Taking the graded pair rather than a bare colour is
+/// what makes it impossible to draw an ungraded one here.
+///
+/// The "prominent" variant this used to offer — a solid capsule with black
+/// text — is gone: nothing called it, and black text on an arbitrary theme
+/// token is exactly the ungraded pairing the rest of this change removes.
 struct StatusPill: View {
     let text: String
     let symbol: String
-    let tint: Color
-
-    /// Draws the tint as a solid capsule with dark text instead of the
-    /// default tinted-wash treatment. Reserved for the one pill per screen
-    /// that has to be seen first.
-    var isProminent: Bool = false
+    let tint: WatchControlTint
 
     /// Glyph-only when false. The caller that uses this
     /// (`OverviewPage.StatusChips`) does so to keep three simultaneous
@@ -117,14 +123,14 @@ struct StatusPill: View {
             Image(systemName: symbol)
         }
         .font(.system(.caption2, design: .rounded).weight(.semibold))
-        .foregroundStyle(isProminent ? AnyShapeStyle(.black) : AnyShapeStyle(tint))
+        .foregroundStyle(tint.label)
         .lineLimit(1)
         .minimumScaleFactor(0.75)
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(
             Capsule(style: .continuous)
-                .fill(isProminent ? AnyShapeStyle(tint) : AnyShapeStyle(tint.opacity(0.18)))
+                .fill(tint.fill.opacity(WatchThemeColors.controlFillOpacity))
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(text)
@@ -145,13 +151,20 @@ struct StatusPill: View {
 /// stops something.
 ///
 /// This style takes the tint explicitly and renders it as a tinted fill with
-/// matching label — so a `palette.danger` button is unmistakably the red one
-/// and a `palette.accent` button is unmistakably the theme's. `isPressed`
-/// deepens the fill rather than dimming the whole control: on an OLED panel
-/// read outdoors, a brightness change is far easier to perceive than the
-/// opacity fade the system style uses.
+/// matching label — so a `.danger` button is unmistakably the red one and a
+/// `.accent` button is unmistakably the theme's. `isPressed` deepens the
+/// fill rather than dimming the whole control: on an OLED panel read
+/// outdoors, a brightness change is far easier to perceive than the opacity
+/// fade the system style uses.
+///
+/// Takes a `WatchControlTint` for the reason `StatusPill` does: the label is
+/// the graded colour, the fill is the token. The pressed fill is denser than
+/// the resting one and therefore *closer* to the label's own hue, so the
+/// label's ratio dips while a finger is on the button; that is the one
+/// state the sweep does not grade, deliberately — it lasts as long as the
+/// press, and the affordance during a press is the brightness change itself.
 struct WatchActionButtonStyle: ButtonStyle {
-    let tint: Color
+    let tint: WatchControlTint
 
     /// Corner radius matched to `WatchCard` so a button sitting under a card
     /// reads as part of the same family rather than as a system control that
@@ -161,11 +174,11 @@ struct WatchActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(.body, design: .rounded).weight(.medium))
-            .foregroundStyle(tint)
+            .foregroundStyle(tint.label)
             .padding(.horizontal, 6)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(tint.opacity(configuration.isPressed ? 0.34 : 0.18))
+                    .fill(tint.fill.opacity(configuration.isPressed ? 0.34 : WatchThemeColors.controlFillOpacity))
             )
     }
 }
@@ -247,11 +260,11 @@ struct FreshnessPill: View {
     /// `.stale`'s tone deliberately: the plan gives it no colour of its own
     /// because the moon glyph is what marks it as categorically different,
     /// and inventing a fifth colour here would be this file overruling that.
-    private func tint(for freshness: Freshness) -> Color {
+    private func tint(for freshness: Freshness) -> WatchControlTint {
         switch freshness {
-        case .live: return palette.success
-        case .recent: return palette.warning
-        case .stale, .asleep: return palette.textSecondary
+        case .live: return palette.control(.success)
+        case .recent: return palette.control(.warning)
+        case .stale, .asleep: return palette.control(.textSecondary)
         }
     }
 }

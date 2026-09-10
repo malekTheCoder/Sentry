@@ -210,6 +210,17 @@
         }
       }
     },
+    "Demo": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo"
+          }
+        }
+      }
+    },
     "Demo data": {
       "extractionState": "manual",
       "localizations": {
@@ -705,6 +716,17 @@
         }
       }
     },
+    "Time is up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time is up"
+          }
+        }
+      }
+    },
     "Time remaining": {
       "extractionState": "manual",
       "localizations": {
@@ -745,6 +767,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your Mac declined that: %@"
+          }
+        }
+      }
+    },
+    "Your Mac doesn't report a battery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Mac doesn't report a battery"
           }
         }
       }
