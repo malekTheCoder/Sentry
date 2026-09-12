@@ -82,7 +82,7 @@ settings:
     # upload was never submitted.
     # ---------------------------------------------------------------------
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "3"
 
 # Applied to every macOS target whose product ends up inside (or alongside) the
 # notarized Sentry.app: the app, the two embedded frameworks, the widget appex,
@@ -519,8 +519,16 @@ targets:
         # Localizable.xcstrings catalogs documented above).
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_MODULE_NAME: Sentry
-        MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: "3"
+        # No MARKETING_VERSION / CURRENT_PROJECT_VERSION override here, on
+        # purpose. This target used to repeat both, and the comment on the
+        # project-wide values above described the repetition as harmless
+        # because the numbers were "identical" — which is exactly the
+        # assumption that failed. The build number here drifted to 3 while the
+        # base stayed 2, and every target that did *not* repeat the override —
+        # including this app's own embedded macOS widget appex — kept building
+        # as 2, so Sentry.app 1.0.0 (3) shipped a widget claiming 1.0.0 (2).
+        # An override that must be kept in sync by hand is a version bug
+        # waiting for the next release; the base is the one place now.
         # Signing is on in both configurations, but for different reasons and
         # with different identities (see `configs:` below and the
         # `DeveloperIDSigned` template). In Debug it exists so the embedded
@@ -961,6 +969,18 @@ targets:
       path: SentryWidget/Info-macOS.plist
       properties:
         CFBundleDisplayName: Sentry Widget
+        # Substituted from the project-wide MARKETING_VERSION /
+        # CURRENT_PROJECT_VERSION, exactly as the iOS widget extension's own
+        # `info:` block does. Without these two lines XcodeGen writes its
+        # default "1.0"/"1" into the generated plist, so the appex inside a
+        # 1.0.0 app reported 1.0 — the same bug class the iOS audit fixed for
+        # the phone's four bundles, and the reason those versions were
+        # promoted to the project base in the first place. Harmless to the
+        # App Store (this appex ships in the Developer ID app, not through
+        # App Review) but it is the version a crash report and the Finder's
+        # Get Info panel quote for the widget, and "1.0" is simply wrong.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
 

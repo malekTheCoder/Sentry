@@ -19,7 +19,7 @@ change that made it wrong.
 | Support page live | `…/Sentry/support` → 200; GitHub Issues + support email |
 | Marketing site live | `https://malekswilam.dev/SentryWebsite/` → 200 |
 | Sparkle EdDSA public key embedded | `project.yml:637`, real key, generated 2026-08-13 (`b513558`) |
-| Developer ID Application cert | present on this machine (`security find-identity -v -p codesigning`, team `H7T2D2GL7U`) |
+| Developer ID Application cert | present on **Aniketh's** machine (2026-09-10). **Not on Malek's** — `security find-identity -v -p codesigning` there reports 0 valid identities (checked 2026-09-12). See Human 2a. |
 | Every iOS review-readiness code fix | demo device renamed, demo banner on all four tabs, all three widget families tagged, honest mock keep-awake feedback, Mac-app download link, `protectionScore` hook, "this build" copy removed (`2dd538a`, `2ad7549`, `74cafb9`, `7d9eb18`) |
 | iOS/watchOS version strings | all four bundles substitute `1.0.0`/`2` from `project.yml:84–85` |
 | Export-compliance answer | `ITSAppUsesNonExemptEncryption: false` in the iOS plist (`c50f8b2`) |
@@ -35,7 +35,8 @@ change that made it wrong.
 
 Nothing an agent can do. Numbered as in the launch plan.
 
-1. ~~Developer ID Application certificate for team `H7T2D2GL7U`.~~ **Done on this machine** (2026-09-10). Not yet exercised by a full `scripts/release.sh` run — see Blocked.
+1. ~~Developer ID Application certificate for team `H7T2D2GL7U`.~~ **Exists on Aniketh's machine** (2026-09-10). Not yet exercised by a full `scripts/release.sh` run — see Blocked.
+2a. **Get the certificate and the Sparkle private key onto the same machine.** This is the real blocker behind every release item and it is easy to miss, because each half looks done on its own. The Developer ID certificate is on Aniketh's Mac; the Sparkle EdDSA private key — the one that signs the appcast, generated 2026-08-13 — is in Malek's login keychain and nowhere else. `scripts/release.sh` needs **both at once**: it archives and notarizes with the certificate, then signs the appcast entry with the Sparkle key, in one run. Whoever cuts releases needs both halves; decide who that is and move the other half to them (export the certificate as a `.p12`, or export the Sparkle key with `generate_keys -x`), over something private.
 2. **Store the notarization credential**: `xcrun notarytool store-credentials AC_NOTARY …` (exact invocation in the `scripts/release.sh` header). Verified absent 2026-09-10 — `notarytool history --keychain-profile AC_NOTARY` reports no keychain item. Needs the App Store Connect app-specific password.
 3. **Pick a payment vendor** (Paddle, Lemon Squeezy, …), open the merchant account, decide the price (`pro-license-dryrun-checklist.md` assumes $19.99 / $14.99 launch, 3 seats, perpetual). Not done.
 4. **Generate the production Pro-licence Ed25519 keypair** offline (one-liner in `SentryKit/Pro/License.swift`'s `LicenseKeys` doc comment); store the private half in the vendor's signer and a password manager; paste the public half into `LicenseKeys.productionPublicKeyBase64` (`License.swift:258`, currently `nil`). Not done.
@@ -64,13 +65,56 @@ Nothing an agent can do. Numbered as in the launch plan.
 
 ## 3. Ready for an agent right now
 
-Everything still open that needs no human input. None of these is large.
+**All five items in this section were closed on 2026-09-12.** Kept below with
+their resolution rather than deleted, so the next person can see what was done
+and check it rather than re-deriving it.
 
-- **Sync the privacy policy copies on `main` with the published one.** `docs/privacy-policy.md:175` and `docs/pages-site/privacy-policy.md:175` still read `TO-FILL(support-email)`; the `gh-pages` copy (`4deba60`) has `getsentryapp@gmail.com` and the load-bearing `permalink: /privacy-policy/` front matter (41 differing lines). `main` should mirror `gh-pages` so the next site edit doesn't regress the live page.
-- **Stale doc comment** at `SentryMobile/Intents/SentryIntents.swift:406–416`: says the Mac-side `protectionScore` hook is "not yet assigned by the Mac composition root". It is (`Sentry/App/AppDelegate.swift:302`). Comment only; behaviour is correct.
-- **macOS widget appex version strings.** `SentryWidgetExtension_macOS`'s `info:` block (`project.yml:918–967`) has no `CFBundleShortVersionString`/`CFBundleVersion` substitution, so the built `Sentry.app/Contents/PlugIns/SentryWidget.appex` reports `1.0`/`1` inside a `1.0.0`/`3` app (verified in a Debug build 2026-09-10). Not an App Store issue (Developer ID path) but the same bug class the audit fixed for iOS; align before the first notarized build.
-- **Six test failures on `main` are environment-dependent.** `xcodebuild test` on 2026-09-10: 1687 tests, 6 failures, all expecting `°C` and getting `°F` (`SentryMacIntentsTests` ×2, `StatuslineRendererTests` ×3, `SystemAdvisorTests` ×1). `SettingsStore.mirrorTemperatureUnit` (`SentryKit/Settings/SettingsStore.swift:139–141`) writes the process-global `TemperatureUnit.display`, and this machine's real `~/Library/Application Support/Sentry/settings.json` says `fahrenheit`; the three failing files never pin the unit. Make those tests pin `TemperatureUnit.display` (as `TemperatureUnitTests` does) or find the store that loads the real file. (The main checkout has uncommitted edits to exactly these three test files — check before duplicating.)
-- **Remaining `TO-FILL(support-email)` markers** now that the address exists: `docs/privacy-policy.md:175`, `docs/pages-site/privacy-policy.md:175` (both covered by the sync above) and `docs/privacy-policy-checkout-draft.md:212`. Replace with `getsentryapp@gmail.com`.
+- ~~Sync the privacy policy copies on `main` with the published one.~~ **Done —
+  and the drift ran the other way too, which mattered more.** The `gh-pages`
+  copy had the load-bearing `permalink:` front matter that `main` lacked, but
+  `main` had the *newer text*: the published policy still described "Location
+  Log" as a live feature that "records where the Mac was last seen" and streams
+  "its coordinates" over the LAN. Location was removed from the app before
+  release — `grep -rl "CLLocationManager\|import CoreLocation"` across every
+  target returns nothing, and `project.yml` carries no `NSLocation*` usage
+  string by design. So the live legal document was claiming the app collects a
+  category of data it cannot collect, while `asc-metadata-draft.md` answers
+  App Privacy with **Data Not Collected** — a reviewer comparing the two would
+  have found them contradicting each other. `main`'s copy now carries both the
+  front matter and the corrected text, and `gh-pages` has been republished from
+  it.
+- ~~Stale doc comment at `SentryMobile/Intents/SentryIntents.swift`.~~ **Done.**
+  It described the Mac-side `protectionScore` hook as unassigned; it is assigned
+  at `Sentry/App/AppDelegate.swift:315` (`onScoreComputed`). Rewritten to
+  describe what is true now, keeping the honest-`nil` explanation for a Mac
+  whose Insights tab has never computed a report.
+- ~~macOS widget appex version strings.~~ **Done, and the underlying cause was
+  worse than the symptom.** Adding the two substitutions fixed `1.0` → `1.0.0`,
+  but then exposed a second mismatch: the app built as `1.0.0 (3)` and the appex
+  as `1.0.0 (2)`. The project-wide `CURRENT_PROJECT_VERSION` was `2` while the
+  `Sentry` target overrode it to `3` — an override the surrounding comment
+  justified as harmless "identical values", which had silently stopped being
+  identical. The override is deleted and the base raised to `3`, so there is one
+  definition again. Verified on built artifacts, not on the config: `Sentry.app`
+  and its embedded `SentryWidget.appex` both report `1.0.0 (3)`, and all four
+  App Store bundles (iPhone app, its widget, the Watch app, its widget) report
+  `1.0.0 (3)`.
+- ~~Six environment-dependent test failures.~~ **Done, and proven.** The three
+  files asserted whole sentences containing `°C` while the value came from the
+  process-global `TemperatureUnit.display`, which `SettingsStore.mirrorTemperatureUnit()`
+  writes from whichever `~/Library/Application Support/Sentry/settings.json` the
+  developer happens to have — so the suite's result depended on a file outside
+  the repository. They now save, pin to `.celsius`, and restore, the discipline
+  `TemperatureUnitTests` already documents. Proven load-bearing rather than
+  assumed: with the real settings temporarily flipped to Fahrenheit, the suite
+  fails 4 tests without the fix and passes 1743/1743 with it. (The count is 4,
+  not 6 — two of the six named here were fixed by other work in between.)
+- ~~Remaining `TO-FILL(support-email)` markers.~~ **Done.** All three
+  (`docs/privacy-policy.md`, `docs/pages-site/privacy-policy.md`,
+  `docs/privacy-policy-checkout-draft.md`) now carry
+  `getsentryapp@gmail.com` as a `mailto:` link. The only remaining occurrences
+  of the string in the tree are inside this file and the two checklists, where
+  they are describing the markers rather than being one.
 
 ---
 

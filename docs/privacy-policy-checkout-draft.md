@@ -209,4 +209,4 @@ If Sentry changes what it collects or where data goes, this policy will be updat
 
 ## Contact
 
-Questions about privacy in Sentry: TO-FILL(support-email)
+Questions about privacy in Sentry: [getsentryapp@gmail.com](mailto:getsentryapp@gmail.com)

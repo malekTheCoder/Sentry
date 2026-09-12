@@ -404,16 +404,15 @@ struct GetThermalStatusIntent: AppIntent {
 /// build (`SentryKit/Insights/` is explicitly off-limits here).
 ///
 /// **What this intent actually does.** It reads
-/// `SystemSnapshot.protectionScore` — the same field
-/// `StatsCoordinator.protectionScore`'s doc comment describes as wired
-/// end-to-end but not yet assigned by the Mac composition root (the same
-/// one-line-hook gap `agentAccessPaused` has, for the identical "AppDelegate
-/// is off-limits" reason). Until that hook lands, every real Mac reports
-/// `nil` here, and this intent says so honestly — "hasn't reported a score"
-/// is a true sentence today, not a fabricated one, and it is the same
-/// honesty rule `GetBatteryStatusIntent` already applies to a Mac with no
-/// battery. Once the hook lands, this intent needs no further changes: the
-/// wire format and the read path are both already real.
+/// `SystemSnapshot.protectionScore`, which the Mac composition root now
+/// assigns (`Sentry/App/AppDelegate.swift`, the `onScoreComputed` hook into
+/// `StatsCoordinator.protectionScore`) — this comment previously described
+/// that hook as missing, which stopped being true when it landed.
+///
+/// The field is still `nil` on a Mac whose Insights tab has never computed
+/// a report, and the intent says so honestly — "hasn't reported a score" is
+/// a true sentence for that Mac, not a fabricated one, the same honesty rule
+/// `GetBatteryStatusIntent` applies to a Mac with no battery.
 struct GetProtectionScoreIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Mac Protection Score"
     static var description = IntentDescription(

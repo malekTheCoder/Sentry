@@ -3,6 +3,36 @@ import XCTest
 
 final class SystemAdvisorTests: XCTestCase {
 
+    private var savedTemperatureUnit: TemperatureUnit!
+
+    /// Pins the ambient temperature unit for every assertion in this class.
+    ///
+    /// **Why this exists.** These tests compare whole rendered sentences
+    /// containing `°C`, but the strings they assert against are produced
+    /// through `TemperatureUnit.display` — a process-global whose value
+    /// `SettingsStore.mirrorTemperatureUnit()` writes from the *real*
+    /// `settings.json` of whoever is running the suite. A developer whose
+    /// Sentry is set to Fahrenheit therefore failed these tests on a tree
+    /// that is perfectly correct, and the suite's result depended on a file
+    /// outside the repository — which is the same class of bug as a test
+    /// that depends on the wall clock.
+    ///
+    /// `TemperatureUnitTests` already establishes the discipline this
+    /// follows: save, set, restore, so the suite stays order-independent
+    /// and nothing leaks into the next class.
+
+    override func setUp() {
+        super.setUp()
+        savedTemperatureUnit = TemperatureUnit.display
+        TemperatureUnit.display = .celsius
+    }
+
+    override func tearDown() {
+        TemperatureUnit.display = savedTemperatureUnit
+        super.tearDown()
+    }
+
+
     private func snapshot(
         cpu: Double? = nil,
         socTemp: Double? = nil,
