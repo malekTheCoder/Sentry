@@ -12,7 +12,7 @@ import SentryKit
 ///
 /// **Layout, top to bottom:** header → the protection-score hero (ring +
 /// subscores + qualifiers, full-bleed) → the per-category breakdown → the
-/// prioritised recommendations, with locked rows and the upsell inline where
+/// prioritised recommendations, every one of them readable in full, where
 /// the free allowance runs out → the positive findings → anything the user
 /// has hidden, behind a disclosure → the methodology footer.
 ///
@@ -122,7 +122,7 @@ struct InsightsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if let report = viewModel.report, let gated = viewModel.gated {
+        if let report = viewModel.report, let insights = viewModel.visibleInsights {
             ProtectionScoreCard(
                 score: report.score,
                 isRefreshing: viewModel.isRefreshing,
@@ -150,8 +150,8 @@ struct InsightsView: View {
 
             SectionRule()
 
-            recommendations(report: report, gated: gated)
-            positives(gated: gated)
+            recommendations(report: report, insights: insights)
+            positives(insights)
             suppressedSection(report)
         } else {
             loadingCard
@@ -202,19 +202,13 @@ struct InsightsView: View {
     }
 
     @ViewBuilder
-    private func recommendations(report: ProtectionInsightsReport, gated: ProGate.GatedInsights) -> some View {
-        let actionable = gated.unlocked.filter { $0.severity != .good }
-        if !actionable.isEmpty || gated.isGated {
+    private func recommendations(report: ProtectionInsightsReport, insights: [ProtectionInsight]) -> some View {
+        let actionable = insights.filter { $0.severity != .good }
+        if !actionable.isEmpty {
             SectionHeaderLabel(title: "Recommendations")
             VStack(alignment: .leading, spacing: palette.spacingRow) {
                 ForEach(actionable) { insight in
                     row(for: insight, suppression: nil)
-                }
-                if gated.isGated {
-                    ProUpsellCard(gated: gated, unlockSource: viewModel.unlockSource)
-                    ForEach(gated.locked) { preview in
-                        LockedInsightRowView(preview: preview)
-                    }
                 }
             }
             .padding(.bottom, palette.spacingSection)
@@ -246,8 +240,8 @@ struct InsightsView: View {
     }
 
     @ViewBuilder
-    private func positives(gated: ProGate.GatedInsights) -> some View {
-        let good = gated.unlocked.filter { $0.severity == .good }
+    private func positives(_ insights: [ProtectionInsight]) -> some View {
+        let good = insights.filter { $0.severity == .good }
         if !good.isEmpty {
             SectionHeaderLabel(title: "Working Well")
             VStack(alignment: .leading, spacing: palette.spacingRow) {

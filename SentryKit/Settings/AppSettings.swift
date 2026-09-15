@@ -290,32 +290,30 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// missing-key-versus-explicitly-empty distinction to preserve.
     public var protectionInsightSuppressions: [InsightSuppression]
 
-    /// The local developer/testing unlock for Pro features (see
-    /// `ProEntitlementStore`). **Not a licence check**: it is a plain
-    /// boolean in a user-editable JSON file, deliberately, because it is a
-    /// testing affordance and not a purchase. Off by default, and the only
-    /// thing that ever sets it is the explicit toggle in Settings ▸
-    /// Advanced.
-    public var proUnlockOverrideEnabled: Bool
-
-    /// The installed Sentry Pro license blob (`SignedLicense` format —
-    /// `sentry-pro-v1.<payload>.<signature>`), or nil when none is
-    /// installed. Unlike `proUnlockOverrideEnabled` above, keeping this in
-    /// a user-editable JSON file *is* appropriate for a purchase, by
-    /// construction: the blob is Ed25519-signed, so hand-editing it doesn't
-    /// grant anything — verification (`LicenseProEntitlementStore`) fails
-    /// closed. Carried in `settings.json` for the same copy-one-file
-    /// portability reason as `alertRules`: a user who moves their settings
-    /// to a new Mac brings their license with them.
-    public var proLicenseBlob: String?
-
-    /// When the installed license last passed an *online* check (install
-    /// counts as one — see `LicenseProEntitlementStore.installLicense`).
-    /// Feeds `LicenseRevalidationPolicy`'s offline grace window; nil means
-    /// never. Plain local state, not secured, deliberately: the doc
-    /// comment on `LicenseProEntitlementStore` explains why pretending a
-    /// local timestamp could be tamper-proof would be theater.
-    public var proLicenseLastVerifiedAt: Date?
+    // MARK: - Removed: the Sentry Pro licensing fields
+    //
+    // `proUnlockOverrideEnabled` (the developer unlock override),
+    // `proLicenseBlob` (an Ed25519-signed license), and
+    // `proLicenseLastVerifiedAt` (the online-revalidation timestamp) were
+    // stored here. Sentry is free, so there is nothing to unlock, license,
+    // or revalidate, and three properties describing a purchase that cannot
+    // happen are exactly the inert vocabulary this file keeps out.
+    //
+    // **Removing them is safe for existing installs, and there is no
+    // migration.** Every settings.json ever written by a build that had
+    // Pro carries at least `"proUnlockOverrideEnabled": false`, and a paid
+    // install carries a license blob and a date too. `init(from:)` below
+    // opens a container keyed by `CodingKeys`, and a JSON key with no
+    // matching case is never looked up — so these keys are ignored rather
+    // than rejected, and `SettingsStore.load`'s treat-a-decode-failure-as-
+    // corrupt fallback (which would reset the user's theme, alert rules and
+    // MCP grants wholesale) never fires. This is the same property that
+    // makes *adding* a field safe, applied in the direction nobody usually
+    // tests; `AppSettingsProRemovalTests` pins it in that direction, exactly
+    // as `AppSettingsFanControlRemovalTests` does for the fan-control block.
+    // Deliberately NOT a `schemaVersion` bump: nothing changed meaning, a
+    // field went away, and bumping would strand files at a version no
+    // migration handles.
 
     // MARK: - Device identity
 
@@ -446,9 +444,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         mcpRemoteAccessEnabled: Bool = false,
         mcpRemotePort: Int = 8642,
         protectionInsightSuppressions: [InsightSuppression] = [],
-        proUnlockOverrideEnabled: Bool = false,
-        proLicenseBlob: String? = nil,
-        proLicenseLastVerifiedAt: Date? = nil,
         deviceID: String = "",
         agentGuardrails: AgentGuardrailSettings = AgentGuardrailSettings(),
         hasSeenWelcome: Bool = false,
@@ -487,9 +482,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.mcpRemoteAccessEnabled = mcpRemoteAccessEnabled
         self.mcpRemotePort = mcpRemotePort
         self.protectionInsightSuppressions = protectionInsightSuppressions
-        self.proUnlockOverrideEnabled = proUnlockOverrideEnabled
-        self.proLicenseBlob = proLicenseBlob
-        self.proLicenseLastVerifiedAt = proLicenseLastVerifiedAt
         self.deviceID = deviceID
         self.agentGuardrails = agentGuardrails
         self.hasSeenWelcome = hasSeenWelcome
@@ -562,13 +554,10 @@ extension AppSettings {
         // before this feature existed, so both decode via the same
         // decodeIfPresent ?? fallback pattern as every other field.
         case protectionInsightSuppressions
-        case proUnlockOverrideEnabled
-        // Pro license, additive: absent in any settings.json written before
-        // the license system existed. Fallbacks are nil (no license, never
-        // verified) — an upgrading install has not been granted anything,
-        // same principle as proUnlockOverrideEnabled below.
-        case proLicenseBlob
-        case proLicenseLastVerifiedAt
+        // No `proUnlockOverrideEnabled` / `proLicenseBlob` /
+        // `proLicenseLastVerifiedAt` cases — see the removal note on the
+        // properties. Their absence here is what makes a stale file's
+        // copies of those keys unreadable and therefore harmless.
         // Device identity, additive: absent in any settings.json written
         // before the ID was persisted. The fallback is the empty "not
         // minted" sentinel — `SettingsStore.load` mints the real ID after
@@ -714,17 +703,6 @@ extension AppSettings {
             // upgrade distinction to preserve.
             protectionInsightSuppressions: try container.decodeIfPresent([InsightSuppression].self, forKey: .protectionInsightSuppressions)
                 ?? fallback.protectionInsightSuppressions,
-            // Must upgrade to `false`: a settings file written before Pro
-            // gating existed has not been granted anything.
-            proUnlockOverrideEnabled: try container.decodeIfPresent(Bool.self, forKey: .proUnlockOverrideEnabled)
-                ?? fallback.proUnlockOverrideEnabled,
-            // Missing and explicitly-nil collapse to "no license", which is
-            // correct here: unlike `alertRules`, the shipped default and
-            // the deliberate empty state genuinely mean the same thing.
-            proLicenseBlob: try container.decodeIfPresent(String.self, forKey: .proLicenseBlob)
-                ?? fallback.proLicenseBlob,
-            proLicenseLastVerifiedAt: try container.decodeIfPresent(Date.self, forKey: .proLicenseLastVerifiedAt)
-                ?? fallback.proLicenseLastVerifiedAt,
             deviceID: try container.decodeIfPresent(String.self, forKey: .deviceID)
                 ?? fallback.deviceID,
             // `AgentGuardrailSettings` has its own additive-tolerant decoder

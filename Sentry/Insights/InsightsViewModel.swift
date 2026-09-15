@@ -34,8 +34,17 @@ final class InsightsViewModel: ObservableObject {
     /// nothing fired. The view renders those differently.
     @Published private(set) var report: ProtectionInsightsReport?
 
-    /// `report.insights` after the Pro cut. `nil` alongside `report`.
-    @Published private(set) var gated: ProGate.GatedInsights?
+    /// `report.insights` in priority order. `nil` alongside `report`.
+    ///
+    /// This used to be a `ProGate.GatedInsights` — two lists, one readable
+    /// and one withheld down to a category and a severity, because
+    /// Protection Insights showed a free copy only its two highest-priority
+    /// findings in full. There is one list now, and it holds everything.
+    /// The ordering is still `ProtectionInsightsEngine.prioritised` and is
+    /// still applied here rather than trusted to arrive sorted: it decides
+    /// what a user reads first, which is too important to depend on a
+    /// caller remembering.
+    @Published private(set) var visibleInsights: [ProtectionInsight]?
 
     @Published private(set) var isRefreshing = false
 
@@ -58,9 +67,6 @@ final class InsightsViewModel: ObservableObject {
         return Date().timeIntervalSince(generatedAt) >= Self.stalenessThreshold
     }
 
-    @Published private(set) var isProUnlocked: Bool
-    @Published private(set) var unlockSource: ProUnlockSource
-
     /// Live theme, pushed by `AppDelegate` — same reasoning as
     /// `DashboardViewModel.theme`: this view's hosting controller is built
     /// once for the app's lifetime, so a theme captured at construction
@@ -74,7 +80,6 @@ final class InsightsViewModel: ObservableObject {
     // MARK: - Collaborators
 
     private let settingsStore: SettingsStore
-    private let entitlements: any ProEntitlementProviding
     private let postureProvider: any SecurityPostureProviding
     private let builder: InsightContextBuilder
     private let engine: ProtectionInsightsEngine
@@ -100,7 +105,6 @@ final class InsightsViewModel: ObservableObject {
     init(
         historyStore: HistoryStore,
         settingsStore: SettingsStore,
-        entitlements: any ProEntitlementProviding,
         postureProvider: any SecurityPostureProviding,
         theme: Theme = .defaultTheme,
         engine: ProtectionInsightsEngine = ProtectionInsightsEngine(),
@@ -108,7 +112,6 @@ final class InsightsViewModel: ObservableObject {
         onScoreComputed: @escaping (Int) -> Void = { _ in }
     ) {
         self.settingsStore = settingsStore
-        self.entitlements = entitlements
         self.postureProvider = postureProvider
         self.builder = InsightContextBuilder(historyStore: historyStore)
         self.engine = engine
@@ -117,8 +120,6 @@ final class InsightsViewModel: ObservableObject {
         self.onScoreComputed = onScoreComputed
         self.settingsSnapshot = InsightSettingsSnapshot(settingsStore.settings)
         self.suppressions = settingsStore.settings.protectionInsightSuppressions
-        self.isProUnlocked = entitlements.isUnlocked(.protectionInsights)
-        self.unlockSource = entitlements.unlockSource
         // Deliberately no `refresh()` here — constructing this as an
         // `AppDelegate` property must stay cheap, exactly as
         // `DashboardViewModel`'s initializer documents. The view calls
@@ -134,9 +135,17 @@ final class InsightsViewModel: ObservableObject {
         self.snapshot = snapshot
     }
 
-    /// Called from `AppDelegate`'s settings subscription with the delivered
-    /// value — see `ProEntitlementProviding.applySettings` for why the
-    /// delivered value matters rather than re-reading the store.
+    /// Called from `AppDelegate`'s settings subscription with the
+    /// **delivered** value rather than re-reading the store.
+    ///
+    /// Not an implementation detail: `SettingsStore.settings` is a
+    /// `@Published`, and `@Published` emits in `willSet`, so anything that
+    /// reached back into the store from inside a settings subscription
+    /// would read the *previous* value — meaning a freshly-changed setting
+    /// wouldn't take effect until some unrelated setting changed next.
+    /// (`ProEntitlementProviding.applySettings` carried this argument until
+    /// the entitlement system was deleted; the hazard is the store's, not
+    /// the entitlement's, so the reasoning moves here.)
     func applySettings(_ settings: AppSettings) {
         settingsSnapshot = InsightSettingsSnapshot(settings)
 
@@ -144,15 +153,10 @@ final class InsightsViewModel: ObservableObject {
         let suppressionsChanged = newSuppressions != suppressions
         suppressions = newSuppressions
 
-        let wasUnlocked = isProUnlocked
-        isProUnlocked = entitlements.isUnlocked(.protectionInsights)
-        unlockSource = entitlements.unlockSource
-
-        if wasUnlocked != isProUnlocked, let report {
-            // Re-gate without re-evaluating: the findings haven't changed,
-            // only how many of them the user is allowed to read.
-            gated = ProGate.apply(isUnlocked: isProUnlocked, to: report.insights)
-        }
+        // An entitlement re-read used to sit here, re-cutting the finding
+        // list when an unlock flipped without re-evaluating the rules. No
+        // settings change can alter how many findings are readable any
+        // more, so only a suppression change matters.
         if suppressionsChanged, report != nil {
             // A dismissal changes both the visible list and the score, so
             // this one does need a real re-evaluation.
@@ -213,7 +217,7 @@ final class InsightsViewModel: ObservableObject {
 
     private func apply(_ report: ProtectionInsightsReport) {
         self.report = report
-        self.gated = ProGate.apply(isUnlocked: isProUnlocked, to: report.insights)
+        self.visibleInsights = ProtectionInsightsEngine.prioritised(report.insights)
         self.isRefreshing = false
         onScoreComputed(report.score.overall)
     }

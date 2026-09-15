@@ -9,18 +9,6 @@ struct ThemePane: View {
 
     @ObservedObject var store: SettingsStore
 
-    /// The app's entitlement authority, injected at construction like every
-    /// other consumer (`InsightsViewModel`, `AlertsPane`) — this view
-    /// never decides entitlement itself. Reading it in `body` stays fresh
-    /// without another `ObservableObject`: both unlock inputs (the developer
-    /// override and the license blob) live in the same `@Published` settings
-    /// this pane already observes through `store`, and `AppDelegate`'s
-    /// settings sink re-seeds the entitlement store from the delivered value
-    /// before any view re-renders (`applySettings` ordering). Optional so
-    /// previews stay constructible; `nil` fails closed to the locked
-    /// treatment, never the unlocked one.
-    let entitlements: (any ProEntitlementProviding)?
-
     @Environment(\.themePalette) private var palette
     @Environment(\.colorScheme) private var systemColorScheme
 
@@ -43,16 +31,6 @@ struct ThemePane: View {
 
     private var customThemes: [Theme] { store.settings.customThemes }
 
-    /// `ProFeature.customThemes`, resolved fresh on every body pass. When
-    /// false, fork/edit/import/export are withheld, not obscured (`ProGate`
-    /// doctrine): the affordances below are never constructed — no disabled
-    /// buttons, no menus of dead items — and the action funcs guard again
-    /// for defense in depth. What is deliberately never gated: selecting any
-    /// theme (built-in or already-saved custom), deleting a custom theme,
-    /// and the resolution that keeps a lapsed user's saved themes rendering
-    /// — the full lapse contract lives on `ThemeEditingGate`.
-    private var isProUnlocked: Bool { entitlements?.isUnlocked(.customThemes) ?? false }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -66,7 +44,6 @@ struct ThemePane: View {
                 theme: theme,
                 layout: store.settings.menuBarLayout,
                 initialAppearance: systemColorScheme.themeAppearance,
-                isProUnlocked: isProUnlocked,
                 onSave: { save($0) },
                 onCancel: { editing = nil }
             )
@@ -111,13 +88,7 @@ struct ThemePane: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(
                 String(localized: "Presets"),
-                // The locked variant drops the "duplicate one" instruction:
-                // copy that tells a free user to press a button this pane
-                // deliberately doesn't build for them would be a treasure
-                // hunt, not a subtitle.
-                isProUnlocked
-                    ? String(localized: "Three built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours.")
-                    : String(localized: "Three built-in themes, each with a light and a dark variant — free and fully selectable.")
+                String(localized: "Three built-in themes, each with a light and a dark variant. Presets can't be edited in place — duplicate one to make it yours.")
             )
 
             appearancePicker
@@ -130,70 +101,38 @@ struct ThemePane: View {
                 }
             }
 
-            if isProUnlocked {
-                HStack(spacing: 8) {
-                    Button {
-                        duplicate(store.resolvedTheme())
-                    } label: {
-                        Label("Duplicate & Edit", systemImage: "plus.square.on.square")
-                    }
-                    .help(String(localized: "Fork “\(store.resolvedTheme().name)” into an editable copy."))
-
-                    Button {
-                        importTheme()
-                    } label: {
-                        Label("Import…", systemImage: "square.and.arrow.down")
-                    }
-                    .help(String(localized: "Open a .sentrytheme file. It's checked before anything is applied — a malformed file is rejected with the reason, not partly loaded."))
-
-                    Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Button {
+                    duplicate(store.resolvedTheme())
+                } label: {
+                    Label("Duplicate & Edit", systemImage: "plus.square.on.square")
                 }
-            } else {
-                // Withheld, not obscured: one honest row where the fork and
-                // import doors would be, never those buttons disabled. The
-                // full story (what's Pro, what stays free, whether there is
-                // a checkout to buy it from) lives on the one upsell card in
-                // the section below.
-                lockedAffordanceRow
+                .help(String(localized: "Fork “\(store.resolvedTheme().name)” into an editable copy."))
+
+                Button {
+                    importTheme()
+                } label: {
+                    Label("Import…", systemImage: "square.and.arrow.down")
+                }
+                .help(String(localized: "Open a .sentrytheme file. It's checked before anything is applied — a malformed file is rejected with the reason, not partly loaded."))
+
+                Spacer(minLength: 0)
             }
         }
     }
 
-    /// One preset card. Locked, the card carries no context menu at all —
-    /// both of its items (fork, export) are Pro doors, and a menu of
-    /// disabled items is the inert-control anti-pattern this repo strips.
-    /// Selection is the card's own tap target and stays free either way.
-    @ViewBuilder
+    /// One preset card, with the fork/export menu everyone now gets.
     private func presetCard(for theme: Theme) -> some View {
-        let card = ThemeCard(
+        ThemeCard(
             theme: theme,
             isSelected: theme.id == store.settings.themeID
         ) {
             store.settings.themeID = theme.id
         }
-        if isProUnlocked {
-            card.contextMenu {
-                Button("Duplicate & Edit") { duplicate(theme) }
-                Button("Export…") { export(theme) }
-            }
-        } else {
-            card
+        .contextMenu {
+            Button("Duplicate & Edit") { duplicate(theme) }
+            Button("Export…") { export(theme) }
         }
-    }
-
-    private var lockedAffordanceRow: some View {
-        Label {
-            Text(ThemeEditingGate.lockedAffordanceLabel)
-                .font(palette.font(size: 11))
-                .foregroundStyle(palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(palette.textSecondary)
-                .accessibilityHidden(true)
-        }
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Custom themes
@@ -205,30 +144,17 @@ struct ThemePane: View {
                 String(localized: "Themes you've duplicated or imported. Stored in settings.json, so they travel with the rest of your configuration.")
             )
 
-            // The one paywall for this pane. Constructed only when locked —
-            // unlocked copies get the real affordances instead — and shown
-            // above the grid so "why can't I edit these" is answered before
-            // the cards that can no longer be edited.
-            if !isProUnlocked {
-                ThemeProUpsellCard(hasExistingCustomThemes: !customThemes.isEmpty)
-            }
-
             if customThemes.isEmpty {
-                // Locked + empty, the upsell card above *is* the empty
-                // state — this text names two buttons a free copy doesn't
-                // build.
-                if isProUnlocked {
-                    Text("None yet. “Duplicate & Edit” above forks whichever theme is currently selected; “Import…” opens a .sentrytheme file.")
-                        .font(palette.font(size: 12))
-                        .foregroundStyle(palette.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(palette.spacingBlock)
-                        .background(
-                            RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
-                                .fill(palette.surface)
-                        )
-                }
+                Text("None yet. “Duplicate & Edit” above forks whichever theme is currently selected; “Import…” opens a .sentrytheme file.")
+                    .font(palette.font(size: 12))
+                    .foregroundStyle(palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(palette.spacingBlock)
+                    .background(
+                        RoundedRectangle(cornerRadius: palette.cornerRadius, style: .continuous)
+                            .fill(palette.surface)
+                    )
             } else {
                 LazyVGrid(columns: columns, spacing: 14) {
                     ForEach(customThemes) { theme in
@@ -240,26 +166,16 @@ struct ThemePane: View {
                                 store.settings.themeID = theme.id
                             }
                             .contextMenu {
-                                // Locked, the menu shrinks to Delete alone:
-                                // an existing custom theme stays selectable
-                                // and deletable forever (see
-                                // `ThemeEditingGate`'s lapse contract), but
-                                // edit/fork/export are withheld rather than
-                                // disabled.
-                                if isProUnlocked {
-                                    Button("Edit…") { edit(theme) }
-                                    Button("Duplicate") { duplicate(theme) }
-                                    Button("Export…") { export(theme) }
-                                    Divider()
-                                }
+                                Button("Edit…") { edit(theme) }
+                                Button("Duplicate") { duplicate(theme) }
+                                Button("Export…") { export(theme) }
+                                Divider()
                                 Button("Delete", role: .destructive) { confirmingDeletion = theme }
                             }
 
                             HStack(spacing: 10) {
-                                if isProUnlocked {
-                                    Button("Edit") { edit(theme) }
-                                    Button("Export") { export(theme) }
-                                }
+                                Button("Edit") { edit(theme) }
+                                Button("Export") { export(theme) }
                                 Button("Delete", role: .destructive) { confirmingDeletion = theme }
                                 Spacer(minLength: 0)
                             }
@@ -320,13 +236,7 @@ struct ThemePane: View {
     /// authored and can change.
     private var presetContrastNote: some View {
         Label(
-            // Same subtitle rule as the section header: the "duplicate one"
-            // instruction is dropped when the duplicate affordance is
-            // withheld. The finding itself is stated either way — contrast
-            // honesty isn't tiered.
-            isProUnlocked
-                ? String(localized: "Some presets use faint tertiary text and semantic colors that fall below WCAG AA's 4.5:1. Duplicate one to see the full per-token contrast report and fix it.")
-                : String(localized: "Some presets use faint tertiary text and semantic colors that fall below WCAG AA's 4.5:1."),
+            String(localized: "Some presets use faint tertiary text and semantic colors that fall below WCAG AA's 4.5:1. Duplicate one to see the full per-token contrast report and fix it."),
             systemImage: "info.circle"
         )
         .font(palette.font(size: 11))
@@ -360,11 +270,6 @@ struct ThemePane: View {
     // MARK: - Actions
 
     private func duplicate(_ theme: Theme) {
-        // Never reachable locked — no fork affordance is constructed — but
-        // guarded anyway, the same defense in depth `ThemeEditingGate.commit`
-        // applies on the write path: a silent no-op is the right failure for
-        // a path that cannot be reached by a rendered control.
-        guard isProUnlocked else { return }
         // A duplicate isn't in settings until the user saves it, which is
         // what makes Cancel on a duplicate leave nothing behind — `save`
         // below appends or replaces by id, so no "is this new?" flag is
@@ -373,27 +278,24 @@ struct ThemePane: View {
     }
 
     private func edit(_ theme: Theme) {
-        // Same defense-in-depth guard as `duplicate` above.
-        guard isProUnlocked else { return }
         editing = theme
     }
 
-    /// Commits the editor's draft through `ThemeEditingGate.commit` — the
-    /// single commit path for every save (new fork, edit, or import), which
-    /// is why the logic-layer Pro gate lives there rather than here.
-    /// Select-on-save (a saved theme becomes the active one) is part of the
-    /// commit; the reasoning lives on that function.
-    ///
-    /// A refused commit leaves the sheet up with the gate's own sentence in
-    /// the pane's error alert — reachable only if a gated affordance leaked,
-    /// so surfacing it beats swallowing it.
+    /// The single commit path for every save — new fork, edit, or import.
+    /// It used to live on `ThemeEditingGate`, which existed to refuse the
+    /// write on an unlicensed copy; with nothing to refuse, the replace-or-
+    /// append plus select-on-save is small enough to live where it is
+    /// called. Select-on-save is deliberate: someone who just spent time in
+    /// a color editor wants to see the result, and a theme must never be
+    /// saved into a state the user can't immediately see.
     private func save(_ theme: Theme) {
-        do {
-            try ThemeEditingGate.commit(theme, into: &store.settings, isProUnlocked: isProUnlocked)
-            editing = nil
-        } catch {
-            errorMessage = error.localizedDescription
+        if let index = store.settings.customThemes.firstIndex(where: { $0.id == theme.id }) {
+            store.settings.customThemes[index] = theme
+        } else {
+            store.settings.customThemes.append(theme)
         }
+        store.settings.themeID = theme.id
+        editing = nil
     }
 
     /// Deliberately NOT Pro-gated: deleting is removal, and removal must
@@ -413,24 +315,15 @@ struct ThemePane: View {
 
     private var deletionWarning: String {
         guard let theme = confirmingDeletion else { return "" }
-        // The "export it first" suggestion is unlocked-only: export is
-        // Pro-gated, and a warning that advises a locked user to do the one
-        // thing this pane won't let them do would be worse than no advice.
-        let base = isProUnlocked
-            ? String(localized: "“\(theme.name)” will be removed from settings.json. This can't be undone — export it first if you want to keep a copy.")
-            : String(localized: "“\(theme.name)” will be removed from settings.json. This can't be undone.")
+        let base = String(localized: "“\(theme.name)” will be removed from settings.json. This can't be undone — export it first if you want to keep a copy.")
         return store.settings.themeID == theme.id
             ? base + " " + String(localized: "It's the theme currently in use, so Sentry will fall back to \(Theme.defaultTheme.name).")
             : base
     }
 
     private func export(_ theme: Theme) {
-        // No local guard: `ThemeFileIO` refuses a locked export itself, with
-        // the gate's own sentence through `onError` — visible, not silent,
-        // for the same leaked-affordance reason as `save`.
         ThemeFileIO.exportTheme(
             theme,
-            isProUnlocked: isProUnlocked,
             in: NSApp.keyWindow,
             onError: { errorMessage = $0 },
             onSuccess: { _ in }
@@ -445,72 +338,12 @@ struct ThemePane: View {
     /// answer for a file that turns out to be unusable.
     private func importTheme() {
         ThemeFileIO.importTheme(
-            isProUnlocked: isProUnlocked,
             in: NSApp.keyWindow,
             onError: { errorMessage = $0 },
             completion: { theme in
                 editing = theme
             }
         )
-    }
-}
-
-/// The theme editor's paywall — a sibling of `ProUpsellCard` (Insights),
-/// written to the same honesty rules but its own type: that card's init
-/// takes `ProGate.GatedInsights` and Insights-specific counts, none of
-/// which exist here. Constructed ONLY when locked; an unlocked pane shows
-/// the real affordances instead, so this card never needs an "unlocked"
-/// state.
-///
-/// The Buy button is `ProPurchase`'s decision, not this card's: it appears
-/// only once `AppCredits.proCheckoutURL` is a real address, and until then
-/// the card says Pro isn't on sale — a button wired to nothing is the
-/// inert control this project keeps refusing to ship. No pointer to the
-/// developer override either, for `ProUpsellCard`'s reason: copy that
-/// names a control release users can't find is a bug.
-private struct ThemeProUpsellCard: View {
-    @Environment(\.themePalette) private var palette
-
-    /// Drives the lapse sentence: a user with saved custom themes needs to
-    /// hear, explicitly, that they keep them. A user with none doesn't need
-    /// reassurance about themes they don't have.
-    let hasExistingCustomThemes: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: palette.spacing) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.accent)
-                    .accessibilityHidden(true)
-                Text(ProFeature.customThemes.displayName)
-                    .font(palette.font(size: 14, weight: .semibold))
-                    .foregroundStyle(palette.textPrimary)
-            }
-
-            // The feature's own marketing sentence — the one Pro string the
-            // free tier is meant to render — plus the lapse promise when
-            // there are saved themes for it to apply to.
-            VStack(alignment: .leading, spacing: 6) {
-                Text(ProFeature.customThemes.summary)
-                    .font(palette.font(size: 12))
-                    .foregroundStyle(palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if hasExistingCustomThemes {
-                    Text(ThemeEditingGate.lockedExistingThemesNote)
-                        .font(palette.font(size: 11))
-                        .foregroundStyle(palette.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            // The same purchase decision `ProUpsellCard` and `SyncPane`
-            // render: a Buy button only once a real checkout address is in
-            // `AppCredits`, the not-on-sale admission until then.
-            ProPurchaseAffordanceView(affordance: ProPurchase.affordance())
-        }
-        .quietCard(palette)
-        .accessibilityElement(children: .contain)
     }
 }
 

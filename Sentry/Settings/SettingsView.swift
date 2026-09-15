@@ -3,7 +3,10 @@ import SentryKit
 
 /// The settings panes, in the Nocturne redesign's sidebar order.
 private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, modules, menuBar, theme, alerts, aiAccess, sync, pro, advanced, about
+    // `pro` — Settings ▸ Sentry Pro, the license activation pane — was a
+    // case here. Sentry has no licenses to activate, so the pane and its
+    // sidebar row are gone rather than kept as an empty shell.
+    case general, modules, menuBar, theme, alerts, aiAccess, sync, advanced, about
 
     var id: String { rawValue }
 
@@ -16,7 +19,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return String(localized: "Alerts")
         case .aiAccess: return String(localized: "AI Access")
         case .sync: return String(localized: "Sync")
-        case .pro: return String(localized: "Sentry Pro")
         case .advanced: return String(localized: "Advanced")
         case .about: return String(localized: "About")
         }
@@ -31,7 +33,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return "bell.badge"
         case .aiAccess: return "bolt.shield"
         case .sync: return "arrow.triangle.2.circlepath.icloud"
-        case .pro: return "checkmark.seal"
         case .advanced: return "wrench.and.screwdriver"
         case .about: return "info.circle"
         }
@@ -48,7 +49,6 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .alerts: return String(localized: "Rules, notifications, and alert history.")
         case .aiAccess: return String(localized: "MCP tools for AI agents, local and remote.")
         case .sync: return String(localized: "iPhone companion and device sync.")
-        case .pro: return String(localized: "Your license: activate it, check it, or take it off this Mac.")
         case .advanced: return String(localized: "Diagnostics and debugging.")
         case .about: return String(localized: "Version, credits, and licenses.")
         }
@@ -106,36 +106,13 @@ struct SettingsView: View {
     /// `nil` is therefore a real configuration, not a placeholder.
     let updateController: UpdateController?
 
-    /// Entitlement source for every Pro-gated pane affordance (the Alerts
-    /// pane's process-match rules, the Theme pane's editor, Sync's off-LAN
-    /// Remote Access, Advanced's retention caps). A plain reference,
-    /// deliberately not observed: every entitlement input (override flip,
-    /// license paste/removal) rides a settings emission the observed
-    /// `store` republishes, so per-render reads stay live. Optional so
-    /// previews stay constructible; `nil` fails closed to the locked
-    /// treatment, never the unlocked one.
-    let proEntitlements: (any ProEntitlementProviding)?
-
-    /// The concrete store behind `proEntitlements`, for the one pane that
-    /// needs more than the protocol: Settings ▸ Sentry Pro calls
-    /// `installLicense`, `removeLicense`, `activate`, and reads `decision`,
-    /// none of which belong on `ProEntitlementProviding` (every other
-    /// caller asks only "is this unlocked?"). Two parameters rather than
-    /// downcasting the first: the composition root knows which object it
-    /// built, and a `nil` here renders `ProLicenseUnavailablePane` — an
-    /// honest state, like `updateController: nil` — instead of a pane that
-    /// silently can't activate anything.
-    let licenseStore: LicenseProEntitlementStore?
-
     init(
         store: SettingsStore,
         historyStore: HistoryStore? = nil,
         onShowDebugWindow: (() -> Void)? = nil,
         mcpActivityLog: MCPActivityLog? = nil,
         endpointPublisher: MCPEndpointPublisher? = nil,
-        updateController: UpdateController? = nil,
-        proEntitlements: (any ProEntitlementProviding)? = nil,
-        licenseStore: LicenseProEntitlementStore? = nil
+        updateController: UpdateController? = nil
     ) {
         self.store = store
         self.historyStore = historyStore
@@ -143,8 +120,6 @@ struct SettingsView: View {
         self.mcpActivityLog = mcpActivityLog
         self.endpointPublisher = endpointPublisher
         self.updateController = updateController
-        self.proEntitlements = proEntitlements
-        self.licenseStore = licenseStore
     }
 
     @State private var selectedPane: SettingsPane = .general
@@ -186,7 +161,7 @@ struct SettingsView: View {
             switch pane {
             case .general, .modules, .menuBar, .theme:
                 groups[0].append(pane)
-            case .alerts, .aiAccess, .sync, .pro:
+            case .alerts, .aiAccess, .sync:
                 groups[1].append(pane)
             case .advanced, .about:
                 groups[2].append(pane)
@@ -330,9 +305,9 @@ struct SettingsView: View {
         case .menuBar:
             MenuBarPane(store: store).formStyle(.grouped)
         case .theme:
-            ThemePane(store: store, entitlements: proEntitlements)
+            ThemePane(store: store)
         case .alerts:
-            AlertsPane(store: store, historyStore: historyStore, entitlements: proEntitlements).formStyle(.grouped)
+            AlertsPane(store: store, historyStore: historyStore).formStyle(.grouped)
         case .aiAccess:
             AIAccessPane(
                 store: store,
@@ -340,21 +315,11 @@ struct SettingsView: View {
                 endpointPublisher: endpointPublisher
             ).formStyle(.grouped)
         case .sync:
-            SyncPane(
-                store: store,
-                isProUnlocked: proEntitlements?.isUnlocked(.remoteSync) ?? false
-            ).formStyle(.grouped)
-        case .pro:
-            if let licenseStore {
-                ProLicensePane(store: store, licenseStore: licenseStore)
-            } else {
-                ProLicenseUnavailablePane()
-            }
+            SyncPane(store: store).formStyle(.grouped)
         case .advanced:
             AdvancedPane(
                 store: store,
-                onShowDebugWindow: onShowDebugWindow,
-                isProUnlocked: proEntitlements?.isUnlocked(.historyExport) ?? false
+                onShowDebugWindow: onShowDebugWindow
             ).formStyle(.grouped)
         case .about:
             AboutPane().formStyle(.grouped)

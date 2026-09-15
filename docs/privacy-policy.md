@@ -50,7 +50,7 @@ Everything lives on your own device. Nothing is uploaded to any server we operat
 
 On the Mac:
 - `~/Library/Application Support/Sentry/history.sqlite` — the measurement history database
-- `~/Library/Application Support/Sentry/settings.json` — your settings, alert rules, custom themes, and (if you use them) the local-sync pairing code and Pro licence
+- `~/Library/Application Support/Sentry/settings.json` — your settings, alert rules, custom themes, and (if you use it) the local-sync pairing code
 - `~/Library/Caches/dev.malekswilam.sentry/statusline.json` — a short-lived cache of the most recent reading, used by the command-line status line
 - One item in your macOS Keychain, only if you turn on AI Remote Access: the access token for that feature
 

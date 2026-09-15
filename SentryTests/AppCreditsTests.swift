@@ -66,7 +66,7 @@ final class AppCreditsTests: XCTestCase {
             )
         }
         XCTAssertTrue(AppCredits.copyright.contains(AppCredits.copyrightYear))
-        XCTAssertTrue(AppCredits.copyright.contains("All rights reserved"))
+        XCTAssertTrue(AppCredits.copyright.contains("MIT License"))
     }
 
     // MARK: - Acknowledgements
@@ -132,45 +132,59 @@ final class AppCreditsTests: XCTestCase {
         XCTAssertEqual(AppCredits.supportURLString, "https://malekthecoder.github.io/Sentry/support")
     }
 
-    // MARK: - Sentry Pro checkout (honest gating)
+    // MARK: - The copyright line agrees with the LICENSE file
 
-    /// The placeholder must never be offered as a link. It is deliberately
-    /// not a URL at all, so that forgetting to replace it renders the
-    /// not-on-sale state rather than a Buy button that opens nothing.
-    func testProCheckoutPlaceholderIsNeverOfferedAsAURL() {
-        let placeholder = AppCredits.placeholderProCheckoutURLString
-        XCTAssertNil(AppCredits.checkoutURL(from: placeholder))
-        XCTAssertNotEqual(URL(string: placeholder)?.scheme?.lowercased(), "https",
-                          "the placeholder parses as an HTTPS URL, so forgetting to replace it would look like a working checkout")
-    }
+    /// **The shipped copyright used to end "All rights reserved" while this
+    /// repository published an MIT `LICENSE` granting the opposite.** A
+    /// reader who saw the About panel and the repo had no way to know which
+    /// grant they actually had. This test is the thing that keeps the two
+    /// from drifting again: it reads `LICENSE` off disk rather than
+    /// hardcoding "MIT", so relicensing the project fails here until the
+    /// shipped string is updated too.
+    ///
+    /// `project.yml`'s `NSHumanReadableCopyright` is the third copy of this
+    /// claim (XcodeGen writes it into Info.plist, and Finder's Get Info
+    /// panel shows it); it is checked here for the same reason, and the
+    /// doc comment on `AppCredits.copyright` states the byte-identical
+    /// requirement.
+    func testCopyrightNamesTheLicenseThisRepositoryActuallyPublishesUnder() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // SentryTests
+            .deletingLastPathComponent()   // repo root
+        let license = try String(contentsOf: repoRoot.appendingPathComponent("LICENSE"), encoding: .utf8)
 
-    func testProCheckoutGateAcceptsOnlyHTTPSWithAHost() {
-        XCTAssertEqual(
-            AppCredits.checkoutURL(from: "https://sentry.example-vendor.com/checkout/pro")?.absoluteString,
-            "https://sentry.example-vendor.com/checkout/pro"
+        XCTAssertTrue(
+            license.hasPrefix("MIT License"),
+            "this test assumes the repo is MIT-licensed; if that changed, AppCredits.copyright must change with it"
         )
-        // A pasted address arrives with whitespace; that's formatting, not
-        // misconfiguration.
-        XCTAssertNotNil(AppCredits.checkoutURL(from: "  https://sentry.example-vendor.com/checkout/pro\n"))
-        XCTAssertNotNil(AppCredits.checkoutURL(from: "HTTPS://sentry.example-vendor.com/checkout"))
+        XCTAssertTrue(
+            AppCredits.copyright.contains("MIT License"),
+            "the shipped copyright must name the license the repo publishes under"
+        )
+        XCTAssertFalse(
+            AppCredits.copyright.localizedCaseInsensitiveContains("all rights reserved"),
+            "“All rights reserved” contradicts the MIT grant in LICENSE"
+        )
 
-        // A checkout collects payment details: plaintext is refused, not
-        // tolerated.
-        XCTAssertNil(AppCredits.checkoutURL(from: "http://sentry.example-vendor.com/checkout/pro"))
-        XCTAssertNil(AppCredits.checkoutURL(from: "https://"))
-        XCTAssertNil(AppCredits.checkoutURL(from: "checkout/pro"))
-        XCTAssertNil(AppCredits.checkoutURL(from: ""))
-        XCTAssertNil(AppCredits.checkoutURL(from: "   "))
+        let projectYML = try String(
+            contentsOf: repoRoot.appendingPathComponent("project.yml"), encoding: .utf8
+        )
+        XCTAssertTrue(
+            projectYML.contains("NSHumanReadableCopyright: \"\(AppCredits.copyright)\""),
+            "NSHumanReadableCopyright must stay byte-identical to AppCredits.copyright"
+        )
     }
 
-    /// The invariant that stays true across go-live: the shipped constant
-    /// is either exactly the placeholder or a usable HTTPS address — never
-    /// a half-edited string that gates to nothing while looking filled in.
-    func testShippedProCheckoutConstantIsThePlaceholderOrALiveHTTPSAddress() {
-        if AppCredits.proCheckoutURLString == AppCredits.placeholderProCheckoutURLString {
-            XCTAssertNil(AppCredits.proCheckoutURL)
-        } else {
-            XCTAssertNotNil(AppCredits.proCheckoutURL, "proCheckoutURLString was edited to something the gate refuses")
+    /// There is no checkout, and no constant naming one. Four tests used to
+    /// pin `checkoutURL(from:)`'s HTTPS/placeholder gate — the one that
+    /// decided whether a Buy button could be offered at all. Sentry is
+    /// free; the gate, the placeholder, and the button are gone together.
+    func testNoSurfaceInAppCreditsOffersAPurchase() {
+        for text in [AppCredits.copyright, AppCredits.privacyPolicyURLString,
+                     AppCredits.supportURLString, AppCredits.macAppDownloadURLString,
+                     AppCredits.thirdPartyLicensesURLString] {
+            XCTAssertFalse(text.localizedCaseInsensitiveContains("checkout"))
+            XCTAssertFalse(text.contains("Sentry Pro"))
         }
     }
 }

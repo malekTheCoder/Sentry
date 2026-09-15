@@ -113,12 +113,17 @@ Live data needs the free Sentry app for macOS, running on a Mac with
 macOS 14 or later. Demo mode needs nothing at all.
 ```
 
-**Deliberately omitted: away-from-home remote pairing.** The iOS app has the
-remote-Mac fields, but minting a pairing code is gated behind the Mac app's
-Pro upgrade, which is sold outside any App Store. Advertising it in the iOS
-listing would either mislead free users or require mentioning an off-store
-purchase — Guideline 3.1.1 hygiene says do neither. The listing describes the
-free-tier experience only, and nothing in the iOS app links to a purchase.
+**Away-from-home remote pairing may now be advertised.** This paragraph
+used to argue for omitting it: minting a pairing code was gated behind the
+Mac app's Pro upgrade, sold outside any App Store, so advertising the
+feature would either mislead free users or require mentioning an off-store
+purchase — and Guideline 3.1.1 hygiene says do neither. Sentry Pro is
+cancelled and the gate is deleted, so both horns are gone: every Mac mints
+a pairing code, the iOS app's remote-Mac fields work for everyone, and
+there is no purchase anywhere to mention. **Action before submitting:** the
+description above still describes the former free-tier experience only —
+add remote pairing to it, or leave it out on its own merits, but not for
+the reason recorded here.
 
 ## Keywords
 
@@ -208,14 +213,14 @@ Yes/No questions — answer **No** to all:
 | Messaging, chat, or user-to-user communication | No |
 | User-generated or user-shared content | No |
 | Advertising | No |
-| In-app purchases | No |
+| In-app purchases | No — and unambiguously so: Sentry has no paid tier on any platform, the licensing code is deleted, and no build contains a StoreKit or checkout path. |
 | Parental controls / in-app content controls | No |
 | Made for Kids / Kids Category | No |
 
 If App Store Connect words a question differently from this table, the
 answer for this app is still None/No: it renders system metrics from the
 user's own Mac and contains no media content, no communication features, no
-web view, no ads, and no purchases.
+web view, no ads, and no purchases — in-app, off-store, or otherwise.
 
 ## App Privacy questionnaire
 

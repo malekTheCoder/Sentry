@@ -151,15 +151,7 @@ struct DashboardView: View {
                     )
                     .frame(minWidth: Self.batteryHealthMinWidth, maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: palette.spacingRow) {
-                        SleepControlCard(
-                            powerControl: powerControl,
-                            // Read live off the view model (`AppDelegate`
-                            // pushes it in `applySettings`, like `theme`) —
-                            // this window's hosting controller is never
-                            // rebuilt, so a value captured at construction
-                            // would freeze at first-show.
-                            isConditionalKeepAwakeUnlocked: viewModel.isConditionalKeepAwakeUnlocked
-                        )
+                        SleepControlCard(powerControl: powerControl)
                         Rectangle()
                             .fill(palette.separator)
                             .frame(height: 1)
@@ -215,12 +207,7 @@ struct DashboardView: View {
                     // `(since, tier)` pair, so an export always covers
                     // exactly the window the visible charts are showing.
                     historyStore: historyStore,
-                    exportRange: viewModel.timeRange.queryWindow(),
-                    // The Pro gate on that menu — see `DashboardViewModel
-                    // .isProUnlocked` for where the value comes from and why
-                    // it lives on the view model rather than being read from
-                    // an entitlement store here.
-                    isProUnlocked: viewModel.isProUnlocked
+                    exportRange: viewModel.timeRange.queryWindow()
                 )
             }
             .padding(.horizontal, palette.spacingPage)

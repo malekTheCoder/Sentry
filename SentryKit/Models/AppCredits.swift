@@ -47,8 +47,19 @@ public enum AppCredits {
     /// into `Sentry/Resources/Info.plist`) — the About screen and the
     /// Finder "Get Info" panel are two views of the same claim, and a user
     /// who sees them disagree has no way to tell which one is the truth.
+    ///
+    /// **It used to end "All rights reserved", which was false.** This
+    /// repository is public and ships under the MIT license in its own
+    /// `LICENSE` file — the one at the root, which grants use, copying,
+    /// modification and redistribution to anybody. "All rights reserved" is
+    /// the opposite claim, and an app whose About panel contradicts its own
+    /// LICENSE leaves a reader with no way to know which grant they
+    /// actually have. Naming the license is the fix, not dropping the
+    /// sentence: a bare copyright line with no terms is merely uninformative
+    /// where this one was wrong. `AppCreditsTests` pins the two halves — the
+    /// holder line and the license name — against `LICENSE` itself.
     public static var copyright: String {
-        "Copyright © \(copyrightYear) \(copyrightHolders). All rights reserved."
+        "Copyright © \(copyrightYear) \(copyrightHolders). Licensed under the MIT License."
     }
 
     // MARK: - Policy links
@@ -145,58 +156,15 @@ public enum AppCredits {
         URL(string: thirdPartyLicensesURLString)
     }
 
-    // MARK: - Sentry Pro checkout
-
-    /// The exact string `proCheckoutURLString` ships as until the merchant
-    /// account exists. Same discipline as
-    /// `UpdateFeedConfiguration.placeholderPublicKey`: deliberately not a
-    /// URL and deliberately shouty, so that (a) `proCheckoutURL` can never
-    /// mistake it for a real address, and (b) a grep for it finds the one
-    /// place that has to change when checkout opens.
-    public static let placeholderProCheckoutURLString = "REPLACE-WITH-THE-SENTRY-PRO-CHECKOUT-URL"
-
-    /// Where a Sentry Pro license is bought. **Not live** — this is the
-    /// placeholder above, because no payment vendor has been chosen and no
-    /// merchant account exists (`docs/STATUS.md`, Human 3). Every locked
-    /// surface in the app reads `proCheckoutURL` rather than this string,
-    /// and that accessor is nil for the placeholder, so nothing renders a
-    /// Buy button until the owner pastes the real checkout address here.
-    /// That one-line edit is the entire go-live change on the app's side of
-    /// the purchase path; the license pane already accepts what the
-    /// checkout emails.
-    ///
-    /// Same single-definition contract as `privacyPolicyURLString`: the
-    /// address goes in the marketing site and the purchase email too, and
-    /// this is the copy the shipped binary carries.
-    public static let proCheckoutURLString = placeholderProCheckoutURLString
-
-    /// The checkout address the UI may actually offer, or nil.
-    ///
-    /// Unlike `privacyPolicyURL`, nil here is an expected *state*, not a
-    /// programming error: it is what the placeholder resolves to, and the
-    /// locked surfaces render an honest "not on sale yet" line for it. The
-    /// same honest-gating rule `UpdateController` applies to the Sparkle
-    /// key — never show a control that can't work — applied to a purchase
-    /// link, which is the one control it would be worst to ship broken.
-    public static var proCheckoutURL: URL? {
-        checkoutURL(from: proCheckoutURLString)
-    }
-
-    /// The gate itself, as a pure function of the string so tests can pin
-    /// it against both the placeholder and a real-looking address. Refuses
-    /// the placeholder, blank, hostless, and non-HTTPS values: a checkout
-    /// page collects payment details, and offering it over plaintext would
-    /// be a worse bug than offering nothing.
-    public static func checkoutURL(from string: String) -> URL? {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != placeholderProCheckoutURLString else { return nil }
-        guard
-            let url = URL(string: trimmed),
-            url.scheme?.lowercased() == "https",
-            let host = url.host, !host.isEmpty
-        else { return nil }
-        return url
-    }
+    // MARK: - Removed: the Sentry Pro checkout link
+    //
+    // `proCheckoutURLString`, `placeholderProCheckoutURLString` and the
+    // `checkoutURL(from:)` HTTPS/placeholder gate lived here, waiting for a
+    // merchant account that was never provisioned. Sentry is free, so there
+    // is no checkout to link to and nothing for the gate to refuse. The
+    // placeholder constant in particular was vocabulary for a go-live step
+    // that will not happen, which is exactly what this file's own header
+    // argues against carrying.
 
     // MARK: - Version
 

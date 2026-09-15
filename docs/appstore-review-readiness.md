@@ -65,7 +65,8 @@ re-derived from the code in this audit and found accurate — including the
 non-obvious calls about what the watch targets do *not* compile. Local
 network permission and Bonjour service types match the transport. No
 background modes are declared and none are used. Nothing is gated behind a
-purchase on iOS. There is no sign-in. That is the boring, high-effort half of
+purchase on any platform — Sentry is free and open source, with no paid
+tier. There is no sign-in. That is the boring, high-effort half of
 compliance, and it was done properly.
 
 What remains is: one dead URL, a handful of small metadata gaps (now fixed —
@@ -530,20 +531,26 @@ is about the *build* SDK, not the deployment target; `iOS: "17.0"` /
 are correctly excluded because they are not in the iOS binary. That is the
 right level of care; nothing to fix.
 
-#### In-app purchase / paid features — **OK, no obligations**
+#### In-app purchase / paid features — **OK, and now trivially so**
 
-`SentryKit/Pro/ProGate.swift` gates **Protection Insights** — the free tier
-sees the whole score plus the two highest-priority findings in full; the rest
-show category and severity only. Two facts make it irrelevant here:
+**There are no paid features on any platform.** This section used to argue
+that Guideline 3.1.1 didn't attach *despite* a paywall: `ProGate` withheld
+all but the two highest-priority Protection Insights findings on the Mac,
+unlocking went through a licence key rather than StoreKit, and the gating
+code never reached the iOS binary. The argument was sound but delicate —
+it rested on a Mac-only paywall staying Mac-only.
 
-1. **It never reaches iOS.** Grepping `SentryMobile/`, `SentryWatch/`, `SentryWidget/`, `SentryWatchWidget/` for `ProGate`/`ProtectionInsight` finds no gating code — the only hit is a doc comment in `SentryMobile/Intents/SentryIntents.swift:344`. Protection Insights is a Mac-app feature.
-2. **There is no StoreKit anywhere in the project.** `SentryKit/Pro/ProEntitlement.swift:56–60` records that the StoreKit implementation was deliberately deleted because the Mac app ships outside the Mac App Store; unlocking is via licence key (`LicenseProEntitlementStore`).
+Sentry Pro was cancelled and the entire apparatus deleted: `SentryKit/Pro/`
+(licence format, verification, entitlement store, revalidation scheduler),
+`ProGate`, `HistoryProGate`, `ThemeEditingGate`, the Settings ▸ Sentry Pro
+pane, and every locked row and upsell card. All six formerly-gated features
+are unconditionally available. There is no StoreKit, no checkout URL, no
+licence key field, and nothing anywhere in the project that could be read
+as an external purchase mechanism.
 
-So Guideline 3.1.1 does not attach: nothing in the submitted iOS app is
-gated, no purchase is offered, and no external purchase mechanism is
-advertised. **Keep it that way** — if a future iOS build ever surfaces a
-locked feature or links to a licence purchase, 3.1.1 requires it go through
-in-app purchase, and that is a substantial piece of work, not a toggle.
+**Keep it that way** — if a future iOS build ever surfaces a locked feature
+or links to a purchase, 3.1.1 requires it go through in-app purchase, and
+that is a substantial piece of work, not a toggle.
 
 #### Sign-in — **OK**
 
