@@ -145,22 +145,12 @@ public enum PowerControlError: Error, LocalizedError, Sendable, Equatable {
     /// Thrown by `adjustAssertion(bySeconds:)` when there's nothing to
     /// adjust — see that method's doc comment for the three cases this covers.
     case noAdjustableAssertion
-    /// Thrown when arming a `ReleaseCondition` while
-    /// `conditionalKeepAwakeAuthorized` answers false — the service half of
-    /// the `ProFeature.conditionalKeepAwake` gate. The description names the
-    /// tier and enumerates nothing: every surface that renders errors
-    /// verbatim (`SleepControlCard.startError`, and any future caller) would
-    /// otherwise leak the locked triggers' vocabulary to the free tier.
-    case conditionalKeepAwakeLocked
-
     public var errorDescription: String? {
         switch self {
         case .assertionFailed(let code):
             return "Couldn't prevent sleep (IOKit error \(code))."
         case .noAdjustableAssertion:
             return "No timed keep-awake session is running to adjust."
-        case .conditionalKeepAwakeLocked:
-            return "Conditional release rules are part of Sentry Pro. Timed and indefinite keep-awake stay free."
         }
     }
 }
@@ -392,47 +382,6 @@ public final class PowerControlService: ObservableObject {
             idleTimeout: idleTimeout
         )
     }
-
-    /// Whether arming a `ReleaseCondition` is authorized right now — the
-    /// service half of the `ProFeature.conditionalKeepAwake` gate. A settable
-    /// closure like `processProbe`/`downloadProbe` above, for the same
-    /// injectability and for the sibling-services rule (`AlertRule.swift`):
-    /// this type must not read entitlements itself, so the composition root
-    /// wires it to `proEntitlementStore.isUnlocked(.conditionalKeepAwake)`.
-    /// Consulted live at each arm rather than mirrored as a pushed `Bool`,
-    /// so a license paste or override flip gates/ungates the very next arm
-    /// with no re-push step. `@MainActor` so that wiring closure can call
-    /// the main-actor entitlement store; every caller here already is.
-    ///
-    /// Checked in exactly one place — `startAssertionInternal`, and only
-    /// when a condition is being armed — which covers both the public
-    /// `startConditionalAssertion` entry and the cold-start restore re-arm
-    /// in `reconcilePersistedState`. Deliberately never consulted by
-    /// `evaluate(_:)`, `releaseAssertion()`, or the expiry/termination
-    /// paths: everything that releases must survive a lapsed license, and
-    /// an already-armed conditional hold whose entitlement lapses
-    /// mid-session keeps running *and keeps releasing on its condition* —
-    /// dropping the hold at the lapse instant would sleep the Mac out from
-    /// under the workload the user armed it for, which is a worse lie than
-    /// letting a paid-for arm finish its job. Note the wake path no longer
-    /// consults this at all: waking used to re-*arm* (release + recreate),
-    /// which incidentally dropped a lapsed conditional hold; now that wake
-    /// keeps the live assertion instead of flapping it (see
-    /// `reconcileAfterWake()`), a lapse during sleep behaves exactly like a
-    /// lapse mid-session — the armed hold keeps running and keeps releasing
-    /// on its condition, which is the *same* policy, applied consistently
-    /// instead of depending on whether the Mac happened to sleep.
-    ///
-    /// Defaults open, unlike the default-locked gate the since-removed fan
-    /// control carried: writing fan speeds moved hardware through a root
-    /// helper, so an unseeded service there had to refuse; a conditional
-    /// keep-awake is an ordinary unprivileged assertion, and this service is
-    /// constructed standalone by
-    /// tests and previews that exercise condition mechanics, not
-    /// entitlements. The production gate is this closure's wiring plus the
-    /// UI's own withheld menu — two layers, both in the composition root's
-    /// hands.
-    public var conditionalKeepAwakeAuthorized: @MainActor () -> Bool = { true }
 
     /// Called whenever this service ends (or refuses to restore) a hold *by
     /// policy* rather than by the user's own request or a schedule the user
@@ -1026,19 +975,12 @@ public final class PowerControlService: ObservableObject {
         condition: ReleaseCondition?,
         owner: String? = nil
     ) throws {
-        // The `ProFeature.conditionalKeepAwake` gate, before the release
-        // below on purpose: a denied conditional arm must not cost the user
-        // whatever hold is already running (locked user flips "For" to a
-        // conditional trigger over a live timed hold — the arm fails, the
-        // timed hold survives). Gating here rather than in
-        // `startConditionalAssertion` also covers the cold-start restore
-        // re-arm in `reconcileAtColdStart`, whose catch logs, drops, and
-        // notifies — so a conditional hold whose license lapsed before a
-        // relaunch is dropped loudly, not resurrected. Timed/indefinite
-        // arms (`condition == nil`) are never gated.
-        if condition != nil, !conditionalKeepAwakeAuthorized() {
-            throw PowerControlError.conditionalKeepAwakeLocked
-        }
+        // There is no entitlement check here any more. A
+        // `conditionalKeepAwakeAuthorized` closure used to refuse every
+        // conditional arm on an unlicensed copy; every copy of Sentry is
+        // now unlicensed in exactly the same way, so arming a
+        // `ReleaseCondition` is the same unprivileged IOKit assertion as a
+        // timed one and needs no permission from anybody.
         releaseUserSlot(trigger: .replacedByNewHold) // only ever one per slot
 
         // "Keep awake for zero (or negative) seconds" must not silently
@@ -1273,25 +1215,12 @@ public final class PowerControlService: ObservableObject {
             releaseAgentSlot(trigger: .timedExpiry)
         }
 
-        // The entitlement re-check the old release-and-recreate wake path
-        // performed implicitly: recreating went through the gated start, so
-        // a license that lapsed while the Mac slept dropped the conditional
-        // hold. Keeping live holds without recreating (the incident fix) is
-        // right for the free tiers, but it must not quietly grandfather a
-        // conditional hold past a gate that would now refuse it — checked
-        // explicitly here instead, and loudly, per the no-silent-flips rule.
-        // The record is cleared outright rather than persisted-as-inactive
-        // so the next cold start doesn't re-adjudicate a hold this branch
-        // already refused.
-        if userHold != .inactive, activeCondition != nil, !conditionalKeepAwakeAuthorized() {
-            Self.logger.notice("Conditional keep-awake is no longer authorized at wake; dropping the hold rather than resurrecting it past the gate.")
-            notifyPolicyRelease(
-                title: "Keep Awake turned off",
-                body: "Your conditional keep-awake rule needs Sentry Pro, so it wasn't resumed after sleep. Timed and indefinite keep-awake stay free."
-            )
-            releaseUserSlot(trigger: .restoreFailed)
-            clearPersistedRecord()
-        }
+        // A wake-time entitlement re-check used to live here: it dropped a
+        // conditional hold whose license had lapsed while the Mac slept.
+        // With no licenses, there is nothing for wake to re-adjudicate —
+        // and removing the branch restores the plain rule this method
+        // otherwise follows, that wake never ends a hold the user is still
+        // asking for.
 
         let anythingLive = userHold != .inactive || agentHold != nil
         guard anythingLive else { return }
@@ -1340,8 +1269,9 @@ public final class PowerControlService: ObservableObject {
     ///   switch that silently un-sets itself whenever the app restarts (the
     ///   exact "defeats the whole point" complaint that reopened this file)
     ///   — the second is the lie. Conditional holds ride the same
-    ///   reasoning and additionally re-arm through the entitlement gate;
-    ///   a lapsed license drops them loudly via `policyReleaseNotifier`.
+    ///   reasoning with nothing extra to satisfy: re-arming one is an
+    ///   ordinary IOKit assertion, so a restored conditional hold either
+    ///   arms or reports an IOKit failure, never a refusal.
     /// - **An agent's hold restores only when timed and unexpired.** An
     ///   agent's *indefinite* hold does not survive a cold start: the
     ///   requesting session is keyed to a live MCP connection that did not

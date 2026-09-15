@@ -578,7 +578,7 @@ targets:
         # generated Info.plist value cannot be computed from Swift, and Swift
         # cannot read this file. Change both together; `AppCreditsTests`
         # asserts the shape but cannot see this literal.
-        NSHumanReadableCopyright: "Copyright © 2026 Malek Swilam & Aniketh Bandlamudi. All rights reserved."
+        NSHumanReadableCopyright: "Copyright © 2026 Malek Swilam & Aniketh Bandlamudi. Licensed under the MIT License."
         # ---------------------------------------------------------------
         # Version strings — REAL BUG FIXED HERE, not a tidy-up.
         #
@@ -755,7 +755,7 @@ targets:
         # and App Store Connect reads this key for the iOS listing's
         # copyright line. Kept in sync by hand with the macOS target above
         # and with `AppCredits.copyright`.
-        NSHumanReadableCopyright: "Copyright © 2026 Malek Swilam & Aniketh Bandlamudi. All rights reserved."
+        NSHumanReadableCopyright: "Copyright © 2026 Malek Swilam & Aniketh Bandlamudi. Licensed under the MIT License."
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

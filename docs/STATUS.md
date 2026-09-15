@@ -3,12 +3,28 @@
 **Read this first.** Reconciled **2026-09-10** against `main` at `661d2e0`.
 This page is the single list of open work; the four checklists it
 summarises (`appstore-review-readiness.md`, `release-checklist.md`,
-`asc-metadata-draft.md`, `pro-license-dryrun-checklist.md`) keep the detail
+`asc-metadata-draft.md`) keep the detail
 and the per-item evidence. Every "done" below was verified on that date by
 reading the source at the quoted file and line, or by a live `curl -L`
 from this machine — not inferred from a commit message. If you find a
 claim here that no longer matches the tree, fix this file in the same
 change that made it wrong.
+
+> **2026-09-15 — Sentry Pro is cancelled.** The product owner's decision:
+> Sentry becomes free and open source, with no payment of any kind. Every
+> formerly-gated feature is now unconditionally available and the whole
+> licensing apparatus has been **deleted**, not disabled —
+> `SentryKit/Pro/` (licence format, verification, entitlement store,
+> revalidation scheduler), `ProGate`, `HistoryProGate`,
+> `ThemeEditingGate`, `ProPurchase`, the upsell cards, the locked rows,
+> Settings ▸ Sentry Pro, and the three `AppSettings` licence fields. The
+> two checklists that described the checkout
+> (`pro-license-dryrun-checklist.md`, `privacy-policy-checkout-draft.md`)
+> are deleted with it. **Nothing below is "waiting on a payment vendor"
+> any more; those items are cancelled, not pending**, and are recorded as
+> such so nobody re-opens them. What remains blocked is the release
+> machinery — certificates, notarization, App Store Connect — which never
+> depended on Pro.
 
 ## Already done — do not redo
 
@@ -25,11 +41,8 @@ change that made it wrong.
 | Export-compliance answer | `ITSAppUsesNonExemptEncryption: false` in the iOS plist (`c50f8b2`) |
 | All ASC copy drafted | `asc-metadata-draft.md`: name, subtitle, description, keywords, promo text, URLs, age rating, privacy answers, review notes, video shot list |
 | ASC screenshot pipeline | `scripts/asc-screenshots.sh` — iPhone 6.9" (1320×2868, iPhone 17 Pro Max) and Watch (422×514, Ultra 3) at Apple's exact sizes, demo data disclosed on-screen, driven by `SentryMobileUITests`/`SentryWatchUITests`; run end to end 2026-09-10 |
-| Pro licence verification side | `SentryKit/Pro/` — Ed25519 blob verify, entitlement policy, install/remove/revalidate store, six gated `ProFeature`s, 659-line test file |
 | Watch audit 2026-09-10 (branch `audit/watch-final`) | Four checks, each read against the source. (1) Live/stale/never-paired: Overview and Agent pages and all four complication families already used `Freshness`; `KeepAwakePage` had no staleness cue at all (its header claimed the shell drew one — it never did) and the Agent page's "Out of date" was computed once per relay — both now re-derive on `FreshnessBadge.defaultRefreshInterval`, Keep Awake shows `FreshnessPill` past `warrantsCompactStalenessCue`. `WatchGetBatteryStatusIntent` spoke "battery is at 0%" for a desktop Mac — now guarded by `showsBattery`. (2) Keep-awake: indefinite holds from any surface render correctly (`awakeIsActive`/`awakeExpiresAt` flattened from the two-slot union `PowerControlService.state`); a *timed* hold past its deadline still said "Keeping awake" with live extend buttons, and a deadline elapsing on screen counted up — now a `TimelineView` boundary standing down the present-tense chrome, same wording as the phone's `SleepStatusCard`. (3) Themes: `Theme.builtInPresets` is System/Ivory/One Dark; new `WatchThemeColors` (`SentryKit/Watch/`) + `WatchControlContrastTests` sweep every preset × appearance × control on the bytes drawn. Found and fixed: System's translucent light `background` composited over the black watch window (grey canvas, not the phone's white), and control labels under 3:1 on their own wash (System light success 1.8:1). (4) Complication: `sourceIsDemoData` disclosed in `.accessoryRectangular`, the only family with room — parity with the phone's accessory families; the three phone home-screen families remain the standard for families with room. macOS suite after: 1687 + 10 new = 1697 tests, 6 failures (the pre-existing °F six); watchOS simulator build green; every Keep Awake state screenshotted on the Series 11 46mm sim via the `-SentryWatchPage` launch argument. |
-| Pro licence pane in Settings | `Sentry/Settings/Panes/ProLicensePane.swift` + `Sentry/Settings/ProLicenseActivationModel.swift`, wired via `SettingsView(licenseStore:)` from `AppDelegate`; paste/activate, denial sentences, seats/dates, Remove License; key path and "Confirm with server" render only when a client is wired. `SentryTests/ProLicenseActivationModelTests.swift` (`feat/pro-purchase-ui`) |
-| Buy Sentry Pro affordance, honestly gated | `Sentry/App/ProPurchase.swift` reads `AppCredits.proCheckoutURL`, nil while `proCheckoutURLString` is the placeholder; every locked surface (Insights/Theme upsell cards, Sync locked row, Alerts locked footer, Settings ▸ Sentry Pro) renders the website's "isn't on sale yet" sentence until a real HTTPS URL is pasted. `ProPurchaseAffordanceTests`, `AppCreditsTests` |
-| Revalidation scheduling wired, inert | `SentryKit/Pro/LicenseRevalidationScheduler.swift`, daily like Sparkle, started in `AppDelegate.applicationDidFinishLaunching`; `.inert` until `activationClient` and `.standard` are passed together. `LicenseRevalidationSchedulerTests` |
+| Sentry Pro removed in full | `feat/free-and-open`: `SentryKit/Pro/`, `ProGate`, `HistoryProGate`, `ThemeEditingGate`, `ProPurchase`, `ProUpsellCard`, `ProLicensePane`, `ProLicenseActivationModel` and their seven test files deleted; all six formerly-gated features unconditionally available; `AppSettings` lost `proUnlockOverrideEnabled`/`proLicenseBlob`/`proLicenseLastVerifiedAt` with `AppSettingsProRemovalTests` proving a licensed install's `settings.json` still decodes; `AppCredits.copyright` corrected from "All rights reserved" to the MIT grant this repo actually publishes under. macOS suite 1629 tests, 0 failures; iOS simulator build green |
 
 ## 1. Human-only
 
@@ -38,8 +51,8 @@ Nothing an agent can do. Numbered as in the launch plan.
 1. ~~Developer ID Application certificate for team `H7T2D2GL7U`.~~ **Exists on Aniketh's machine** (2026-09-10). Not yet exercised by a full `scripts/release.sh` run — see Blocked.
 2a. **Get the certificate and the Sparkle private key onto the same machine.** This is the real blocker behind every release item and it is easy to miss, because each half looks done on its own. The Developer ID certificate is on Aniketh's Mac; the Sparkle EdDSA private key — the one that signs the appcast, generated 2026-08-13 — is in Malek's login keychain and nowhere else. `scripts/release.sh` needs **both at once**: it archives and notarizes with the certificate, then signs the appcast entry with the Sparkle key, in one run. Whoever cuts releases needs both halves; decide who that is and move the other half to them (export the certificate as a `.p12`, or export the Sparkle key with `generate_keys -x`), over something private.
 2. **Store the notarization credential**: `xcrun notarytool store-credentials AC_NOTARY …` (exact invocation in the `scripts/release.sh` header). Verified absent 2026-09-10 — `notarytool history --keychain-profile AC_NOTARY` reports no keychain item. Needs the App Store Connect app-specific password.
-3. **Pick a payment vendor** (Paddle, Lemon Squeezy, …), open the merchant account, decide the price (`pro-license-dryrun-checklist.md` assumes $19.99 / $14.99 launch, 3 seats, perpetual). Not done.
-4. **Generate the production Pro-licence Ed25519 keypair** offline (one-liner in `SentryKit/Pro/License.swift`'s `LicenseKeys` doc comment); store the private half in the vendor's signer and a password manager; paste the public half into `LicenseKeys.productionPublicKeyBase64` (`License.swift:258`, currently `nil`). Not done.
+3. ~~**Pick a payment vendor**, open the merchant account, decide the price.~~ **Cancelled 2026-09-15** — Sentry is free. There is no vendor to pick, no merchant account to open, and no price. Do not reopen.
+4. ~~**Generate the production Pro-licence Ed25519 keypair.**~~ **Cancelled 2026-09-15** — `LicenseKeys` and the whole `SentryKit/Pro/` directory are deleted; there is nothing for a keypair to sign. (Unrelated to the *Sparkle* EdDSA key in item 10, which is live and still matters.)
 5. **App Store Connect data entry** from `asc-metadata-draft.md` — every field is paste-ready. Includes the privacy-policy URL, App Privacy ("No" to the gate question), age rating (all None/No), category, screenshots (iPhone 6.9" and Watch — generated at the exact required pixel sizes by `scripts/asc-screenshots.sh`; upload from `build/asc-screenshots/`), review notes, and confirming bundle ID / App Group / provisioning profiles for all four bundles.
 6. **EU Digital Services Act trader-status verification** with Apple. Not started; takes time — start before submission, not at it.
 7. **Decide the app name.** "Sentry" is provisional pending a trademark decision; it collides with Sentry.io. The Sparkle feed URL is now frozen (published), but the *product* name can still change as long as the GitHub account/repo path stays.
@@ -55,13 +68,18 @@ Nothing an agent can do. Numbered as in the launch plan.
 | Run `scripts/release.sh` end to end (archive → export → verify → DMG → notarize → staple → appcast) and confirm the `spctl -a -vvv -t install` Gatekeeper assessment | Human 2 (notary credential) |
 | Verify the SMAppService / command-line-bridge flow under a Developer ID signature (only run under ad-hoc / Apple Development so far) | the first Developer ID build above |
 | Cut the first notarized release: tag `vX.Y.Z`, GitHub release with `Sentry.dmg` (must keep exactly that asset name — the README links `releases/latest/download/Sentry.dmg`) and SHA-256, publish the signed appcast entry | Human 2, Human 9 |
-| Write the concrete `LicenseActivationClient` conformer (`SentryKit/Pro/LicenseActivation.swift` is the seam; two calls, `activate` and `revalidate`). The UI that calls it is built; the exact hand-off list is "What Part 5b wires up" in `pro-license-dryrun-checklist.md` | Human 3 (vendor's API shapes) |
-| Paste the vendor's HTTPS checkout URL into `AppCredits.proCheckoutURLString` (`SentryKit/Models/AppCredits.swift`) — one line; every Buy button in the app appears from it | Human 3 |
-| Build the issuance backend ("task D1"): vendor webhook → verify webhook signature → mint `LicensePayload` → sign with the production key → compose `sentry-pro-v1` blob → email; idempotent on order ID; refund/chargeback → revoke | Human 3, Human 4 |
-| Flip the composition root: pass the real client and `revalidationPolicy: .standard` **together** at the `LicenseProEntitlementStore(...)` call in `Sentry/App/AppDelegate.swift` (flipping the policy alone locks every licensed user out after 14 days — see `LicenseRevalidationPolicy`). The scheduler and the pane's server-facing controls arm themselves from that one edit | the client above |
-| Walk the Pro dry run, steps 1–11 (`pro-license-dryrun-checklist.md`) | Human 3, Human 4, D1 |
-| Revise the privacy policy for checkout (`privacy-policy-checkout-draft.md` describes a paste-only release; revalidation adds a network path and needs another revision) | the decision on whether 1.x ships revalidation |
 | Any App Store Connect work beyond drafting | Human 5, Human 7 (the record should not be created before the name is settled) |
+
+**Six payment items used to sit in this table** — writing the
+`LicenseActivationClient` conformer, pasting a checkout URL into
+`AppCredits`, building the licence-issuance backend, flipping the
+composition root to a `.standard` revalidation policy, walking the Pro dry
+run, and revising the privacy policy for checkout. **All six are cancelled,
+not pending.** The code each described is deleted, the two checklists they
+pointed at are deleted, and the privacy policy needs no checkout revision
+because there is no checkout: the published policy already describes an app
+that collects nothing, and that is now the whole truth rather than the
+pre-launch half of it.
 
 ## 3. Ready for an agent right now
 
@@ -109,12 +127,14 @@ and check it rather than re-deriving it.
   assumed: with the real settings temporarily flipped to Fahrenheit, the suite
   fails 4 tests without the fix and passes 1743/1743 with it. (The count is 4,
   not 6 — two of the six named here were fixed by other work in between.)
-- ~~Remaining `TO-FILL(support-email)` markers.~~ **Done.** All three
-  (`docs/privacy-policy.md`, `docs/pages-site/privacy-policy.md`,
-  `docs/privacy-policy-checkout-draft.md`) now carry
-  `getsentryapp@gmail.com` as a `mailto:` link. The only remaining occurrences
-  of the string in the tree are inside this file and the two checklists, where
-  they are describing the markers rather than being one.
+- ~~Remaining `TO-FILL(support-email)` markers.~~ **Done.** Both surviving
+  files (`docs/privacy-policy.md`, `docs/pages-site/privacy-policy.md`) carry
+  `getsentryapp@gmail.com` as a `mailto:` link. A third,
+  `docs/privacy-policy-checkout-draft.md`, was fixed at the same time and has
+  since been deleted with the rest of the checkout work. The only remaining
+  occurrences of the string in the tree are inside this file and
+  `release-checklist.md`, where they describe the markers rather than being
+  one.
 
 ---
 

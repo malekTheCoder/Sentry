@@ -3,7 +3,7 @@
 Infrastructure only. This pass routes user-facing strings through the
 localization machinery and gives every UI target a string catalog to resolve
 against. It adds **zero translations** — that is deliberate and must stay
-that way: machine translations in a paid product are a quality risk nobody
+that way: machine translations in a shipped product are a quality risk nobody
 here can review, so every catalog carries English keys only.
 
 Scope audited: `Sentry/`, `SentryMobile/`, `SentryWatch/`,
@@ -36,7 +36,8 @@ the existing catalogs, but the first real build is the actual verification.
 ## What was fixed (~460 call sites)
 
 House style throughout: `String(localized:)` at the literal site, matching
-the pattern already established in `ProUpsellCard`/`SettingsView`.
+the pattern established in `SettingsView` (the other exemplar cited here,
+`ProUpsellCard`, was deleted with Sentry Pro).
 Interpolated values are pre-formatted to `String` first so every catalog
 key carries plain `%@` placeholders — the shape the existing catalog
 already uses (`"%@ health · %@ cycles"`).

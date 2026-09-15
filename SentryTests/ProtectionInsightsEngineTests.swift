@@ -746,48 +746,62 @@ final class ProtectionInsightsEngineTests: XCTestCase {
         XCTAssertEqual(SecurityPostureParser.listenerState(port: 22, in: nil), .unknown)
     }
 
-    // MARK: - Pro gating cut
+    // MARK: - Every finding is readable (the ex-paywall)
 
-    func testFreeTierSeesOnlyTheTopTwoFindingsInFull() {
+    /// **Protection Insights is genuinely ungated now, and this is the
+    /// proof.** Three tests used to sit here pinning `ProGate.apply`: an
+    /// unlicensed copy saw its two highest-priority findings in full and
+    /// the rest as `LockedInsightPreview`s carrying a category and a
+    /// severity and no text at all. `ProGate` is deleted, so the assertion
+    /// that matters is the one that would catch a re-gating: every finding
+    /// the engine produces survives to the list the view renders, with all
+    /// of its text, in priority order.
+    ///
+    /// `prioritised` is what `InsightsViewModel.apply` now calls where it
+    /// used to call `ProGate.apply`, so this exercises the real path.
+    func testEveryFindingSurvivesPrioritisationWithItsTextIntact() {
         let insights = (0..<5).map { i in
             ProtectionInsight(
-                id: "finding-\(i)", title: "t\(i)", summary: "", detail: "", recommendation: "",
-                category: .security, severity: .warning, evidence: ["e"], scoreImpact: InsightWeight.majorSecurity
+                id: "finding-\(i)", title: "title-\(i)", summary: "summary-\(i)",
+                detail: "detail-\(i)", recommendation: "do-\(i)",
+                category: .security, severity: .warning, evidence: ["evidence-\(i)"],
+                scoreImpact: InsightWeight.majorSecurity
             )
         }
-        let gated = ProGate.apply(isUnlocked: false, to: insights)
-        XCTAssertEqual(gated.unlocked.count, ProGate.freeInsightAllowance)
-        XCTAssertEqual(gated.locked.count, insights.count - ProGate.freeInsightAllowance)
-        XCTAssertTrue(gated.isGated)
 
-        // Locked previews carry category/severity but nothing else that
-        // could leak the finding's content.
-        XCTAssertEqual(gated.locked.first?.severity, .warning)
+        let visible = ProtectionInsightsEngine.prioritised(insights)
+
+        XCTAssertEqual(
+            visible.count, insights.count,
+            "no finding may be withheld — the free/paid cut that dropped all but two is gone"
+        )
+        XCTAssertEqual(Set(visible.map(\.id)), Set(insights.map(\.id)))
+        // The withheld half used to be *the strings*: a locked row carried
+        // an id, a category and a severity and deliberately nothing else.
+        // Every one of those strings must now reach the caller.
+        for insight in visible {
+            XCTAssertFalse(insight.title.isEmpty)
+            XCTAssertFalse(insight.summary.isEmpty)
+            XCTAssertFalse(insight.detail.isEmpty)
+            XCTAssertFalse(insight.recommendation.isEmpty)
+            XCTAssertFalse(insight.evidence.isEmpty)
+        }
     }
 
-    func testUnlockedSeesEverythingAndNothingIsLocked() {
-        let insights = (0..<5).map { i in
+    /// The tenth finding is as readable as the first. Pinned separately
+    /// because the old gate's failure shape was specifically positional —
+    /// it kept a prefix and dropped the tail — so a regression would show
+    /// up as a list that is correct at the top and truncated below.
+    func testTheTailOfALongFindingListIsNotTruncated() {
+        let insights = (0..<12).map { i in
             ProtectionInsight(
-                id: "finding-\(i)", title: "t\(i)", summary: "", detail: "", recommendation: "",
-                category: .security, severity: .warning, evidence: ["e"]
+                id: "finding-\(i)", title: "title-\(i)", summary: "s", detail: "d",
+                recommendation: "r", category: .storage, severity: .advice, evidence: ["e"]
             )
         }
-        let gated = ProGate.apply(isUnlocked: true, to: insights)
-        XCTAssertEqual(gated.unlocked.count, insights.count)
-        XCTAssertTrue(gated.locked.isEmpty)
-        XCTAssertFalse(gated.isGated)
-    }
-
-    func testFreeTierWithFewerThanTheAllowanceLocksNothing() {
-        let insights = [
-            ProtectionInsight(
-                id: "only-one", title: "t", summary: "", detail: "", recommendation: "",
-                category: .security, severity: .critical, evidence: ["e"]
-            )
-        ]
-        let gated = ProGate.apply(isUnlocked: false, to: insights)
-        XCTAssertEqual(gated.unlocked.count, 1)
-        XCTAssertTrue(gated.locked.isEmpty)
+        let visible = ProtectionInsightsEngine.prioritised(insights)
+        XCTAssertEqual(visible.count, 12)
+        XCTAssertEqual(Set(visible.suffix(10).map(\.id)).count, 10)
     }
 
     // MARK: - Time Machine backup rules

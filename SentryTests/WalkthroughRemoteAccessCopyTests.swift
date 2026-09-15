@@ -1,69 +1,58 @@
 import XCTest
 @testable import SentryKit
 
-/// Copy-honesty guards for the walkthrough's pairing steps under the
-/// `ProFeature.remoteSync` gate — the same discipline
+/// Copy-honesty guards for the walkthrough's pairing steps — the same
+/// discipline
 /// `WalkthroughFlowTests.testNoStepTellsTheUserToTurnOnANonexistentLocalAccessToggle`
 /// applies to a different previously-shipped falsehood, in its own file so
 /// this feature area's tests don't collide with concurrent edits there.
 ///
-/// The claim being defended: walkthrough copy is static — every user,
-/// free or Pro, reads the same strings — so any sentence about reaching
-/// the Mac from another network must carry the Sentry Pro qualifier, or a
-/// free user is being promised a connection their Mac will refuse at
-/// accept time (`LocalSyncServer` / `RemoteAccessGate`).
+/// **The claim being defended flipped.** These tests used to require the
+/// opposite of what they now require: walkthrough copy is static, every
+/// user reads the same strings, and while off-LAN reach was sold, any
+/// sentence about reaching the Mac from another network had to carry a
+/// "part of Sentry Pro" qualifier or a free user was being promised a
+/// connection their Mac would refuse at accept time. Nothing refuses now,
+/// so the qualifier is itself the falsehood — it would tell every user that
+/// a feature they have is one they must buy.
 final class WalkthroughRemoteAccessCopyTests: XCTestCase {
 
-    /// The two steps that describe pairing must name Sentry Pro when they
-    /// speak of other networks. Pinned to the specific steps rather than
-    /// scanned globally so an unrelated step mentioning "network" doesn't
-    /// have to carry a paywall disclaimer.
-    func testPairingStepsQualifyOffLANReachabilityWithSentryPro() {
-        for text in [MacWalkthroughStep.companion.summary, MacWalkthroughStep.companion.detail] {
-            XCTAssertTrue(
+    /// **Remote sync is genuinely offered to everyone, and the onboarding
+    /// says so.** No pairing step may name a tier, on either platform.
+    func testNoPairingStepQualifiesReachabilityWithATier() {
+        for text in [MacWalkthroughStep.companion.summary, MacWalkthroughStep.companion.detail,
+                     PhoneWalkthroughStep.pairing.summary, PhoneWalkthroughStep.pairing.detail] {
+            XCTAssertFalse(
                 text.contains("Sentry Pro"),
-                "the Mac companion step describes off-LAN reach and must say it's part of Sentry Pro: \(text)"
-            )
-        }
-        for text in [PhoneWalkthroughStep.pairing.summary, PhoneWalkthroughStep.pairing.detail] {
-            XCTAssertTrue(
-                text.contains("Sentry Pro"),
-                "the phone pairing step describes off-LAN reach and must say it's part of Sentry Pro: \(text)"
+                "pairing copy must not gate reachability behind a product that doesn't exist: \(text)"
             )
         }
     }
 
-    /// The free half must be stated alongside the paid one: pairing on the
-    /// Mac's own network is the free command-auth path, and copy that only
-    /// says "Pro" would understate what a free user keeps.
-    func testPairingStepsStillStateTheFreeLANHalf() {
-        XCTAssertTrue(MacWalkthroughStep.companion.detail.localizedCaseInsensitiveContains("free"))
-        XCTAssertTrue(PhoneWalkthroughStep.pairing.detail.localizedCaseInsensitiveContains("free"))
+    /// The positive half: the steps still *describe* off-LAN reach. Dropping
+    /// the qualifier by deleting the whole promise would be a different bug
+    /// — a user who can reach their Mac from anywhere should be told so.
+    func testPairingStepsStillDescribeReachingTheMacFromOtherNetworks() {
+        for text in [MacWalkthroughStep.companion.detail, PhoneWalkthroughStep.pairing.detail] {
+            XCTAssertTrue(
+                text.localizedCaseInsensitiveContains("other networks"),
+                "the pairing step should still promise off-LAN reach: \(text)"
+            )
+        }
     }
 
-    /// The old, now-false promise: unqualified "from anywhere else, pair"
-    /// phrasing. Anyone re-deriving this copy from a pre-gate screenshot
-    /// or the marketing site will reintroduce it; this fails when they do.
-    /// (The phrase is allowed anywhere a Sentry Pro qualifier appears in
-    /// the same string — the check is unqualified use in the pairing
-    /// steps.)
-    func testNoPairingStepPromisesUnqualifiedFromAnywherePairing() {
-        let pairingCopy = [
-            MacWalkthroughStep.companion.summary,
-            MacWalkthroughStep.companion.detail,
-            PhoneWalkthroughStep.pairing.summary,
-            PhoneWalkthroughStep.pairing.detail,
-        ]
-        for text in pairingCopy {
-            let mentionsAnywhere = text.localizedCaseInsensitiveContains("anywhere")
-                || text.localizedCaseInsensitiveContains("other networks")
-                || text.localizedCaseInsensitiveContains("outside")
-            if mentionsAnywhere {
-                XCTAssertTrue(
-                    text.contains("Sentry Pro"),
-                    "off-LAN phrasing without the Sentry Pro qualifier: \(text)"
-                )
-            }
+    /// No walkthrough copy anywhere sells anything. Scanned globally, not
+    /// just over the pairing steps: the insights and companion steps both
+    /// carried tier language at various points.
+    func testNoWalkthroughStepMentionsATierOrAPurchase() {
+        let allCopy = MacWalkthroughStep.allCases.flatMap { [$0.title, $0.summary, $0.detail] }
+            + PhoneWalkthroughStep.allCases.flatMap { [$0.title, $0.summary, $0.detail] }
+        for text in allCopy {
+            XCTAssertFalse(text.contains("Sentry Pro"), "copy must not name Sentry Pro: \(text)")
+            XCTAssertFalse(
+                text.localizedCaseInsensitiveContains("upgrade to"),
+                "copy must not sell an upgrade: \(text)"
+            )
         }
     }
 

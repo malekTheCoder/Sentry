@@ -13,11 +13,11 @@ import XCTest
 /// `sleep()` calls) rather than duplicating its whole fixture set — this
 /// file only adds what's specific to the process path.
 ///
-/// Every engine here passes `processRulesUnlocked: true` explicitly — the
-/// parameter defaults to false (an unwired composition root must fail
-/// toward *not* granting `ProFeature.processMatchAlerts`), and these tests
-/// exercise the feature's behavior, not its gate. The gate itself is
-/// pinned by the "Sentry Pro gate" section at the bottom.
+/// Every engine here used to pass `processRulesUnlocked: true` explicitly,
+/// because the parameter defaulted to false so an unwired composition root
+/// would fail toward *not* granting `ProFeature.processMatchAlerts`. There
+/// is no such parameter any more, and the plain constructors below are
+/// themselves part of the point — see the "Ungated" section at the bottom.
 @MainActor
 final class ProcessAlertRuleTests: XCTestCase {
 
@@ -55,7 +55,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testFiresWhenNamedProcessCPUCrossesThreshold() {
         let rule = processRule(name: "node", threshold: 80)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -66,7 +66,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testDoesNotFireWhenNamedProcessCPUIsBelowThreshold() {
         let rule = processRule(name: "node", threshold: 80)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -77,7 +77,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testMatchIsCaseInsensitive() {
         let rule = processRule(name: "Node", threshold: 80)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -88,7 +88,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testMemoryMetricComparesResidentMemoryNotCPU() {
         let rule = processRule(name: "node", metric: .memoryUsedBytes, threshold: 1_000_000_000)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -103,7 +103,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testDoesNotFireForADifferentlyNamedProcess() {
         let rule = processRule(name: "node", threshold: 10)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -121,7 +121,7 @@ final class ProcessAlertRuleTests: XCTestCase {
         // this as "condition not met," the same honest-nil contract every
         // other rule already has for a missing module.
         let rule = processRule(name: "node", threshold: 0) // threshold 0 would trivially "fire" on any real data
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -132,7 +132,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testDoesNotFireWhenTopProcessesIsEmpty() {
         let rule = processRule(name: "node", threshold: 0)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -146,7 +146,7 @@ final class ProcessAlertRuleTests: XCTestCase {
         // cut — a documented limitation (`SystemSnapshot.topProcesses`'s
         // doc comment), not a crash or a guess.
         let rule = processRule(name: "quiet-agent", threshold: 0)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -160,7 +160,7 @@ final class ProcessAlertRuleTests: XCTestCase {
     func testProcessRuleRespectsSustainedForBeforeFiring() {
         var now = Date()
         let rule = processRule(name: "node", threshold: 80, sustainedFor: 10)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true, clock: { now })
+        let engine = AlertEngine(rules: [rule], clock: { now })
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -181,7 +181,7 @@ final class ProcessAlertRuleTests: XCTestCase {
         // not just its value dipping below threshold.
         var now = Date()
         let rule = processRule(name: "node", threshold: 80, sustainedFor: 10)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true, clock: { now })
+        let engine = AlertEngine(rules: [rule], clock: { now })
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -203,7 +203,7 @@ final class ProcessAlertRuleTests: XCTestCase {
     func testProcessRuleRespectsCooldownBetweenFirings() {
         var now = Date()
         let rule = processRule(name: "node", threshold: 80, sustainedFor: 0, cooldown: 300)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true, clock: { now })
+        let engine = AlertEngine(rules: [rule], clock: { now })
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -223,7 +223,7 @@ final class ProcessAlertRuleTests: XCTestCase {
 
     func testDoNotDisturbSuppressesAProcessRuleTheSameAsAnyOther() {
         let rule = processRule(name: "node", threshold: 80, sustainedFor: 0)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         engine.doNotDisturb = true
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
@@ -236,7 +236,7 @@ final class ProcessAlertRuleTests: XCTestCase {
     func testDisabledProcessRuleNeverFires() {
         var rule = processRule(name: "node", threshold: 80, sustainedFor: 0)
         rule.isEnabled = false
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true)
+        let engine = AlertEngine(rules: [rule])
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
@@ -245,7 +245,7 @@ final class ProcessAlertRuleTests: XCTestCase {
         XCTAssertEqual(highlightCount, 0)
     }
 
-    // MARK: - Sentry Pro gate (ProFeature.processMatchAlerts → AlertEngine.processRulesUnlocked)
+    // MARK: - Ungated (the ex-paywall)
 
     private func tempHistoryStore() -> HistoryStore {
         let url = FileManager.default.temporaryDirectory
@@ -253,66 +253,60 @@ final class ProcessAlertRuleTests: XCTestCase {
         return HistoryStore(databaseURL: url)
     }
 
-    func testLockedProcessRuleNeverFiresLogsOrConsumesCooldown() {
+    /// **Process-match alerts genuinely work on a plain engine, and this is
+    /// the proof.** Six tests used to sit here pinning
+    /// `AlertEngine.processRulesUnlocked`: locked rules returned an
+    /// honest-nil "condition not met", wrote nothing to `alert_log`,
+    /// consumed no cooldown, and re-opened a fresh sustained window on
+    /// unlock. There is no flag to set now — so the regression to guard
+    /// against is the opposite one, an engine constructed the ordinary way
+    /// that silently refuses process rules. This drives the full pipeline:
+    /// fire, log, and cooldown, all from a default-constructed engine.
+    func testADefaultEngineFiresLogsAndCoolsDownAProcessRule() {
         var now = Date()
         let historyStore = tempHistoryStore()
-        let rule = processRule(name: "node", threshold: 80, sustainedFor: 0, cooldown: 300)
-        // Deliberately no `processRulesUnlocked:` argument — this also pins
-        // the default as false, the fail-toward-locked direction the
-        // parameter's doc comment promises for an unwired composition root.
+        let rule = processRule(name: "node", threshold: 80, cooldown: 300)
         let engine = AlertEngine(rules: [rule], historyStore: historyStore, clock: { now })
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
         engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
-
-        XCTAssertEqual(highlightCount, 0, "a locked process rule must never fire")
-        XCTAssertTrue(
+        XCTAssertEqual(highlightCount, 1, "a process rule must fire on an engine nobody had to unlock")
+        XCTAssertFalse(
             historyStore.recentAlertFirings().isEmpty,
-            "gated means not evaluated — nothing may reach alert_log, not even marked suppressed"
+            "the firing must reach alert_log — the gate used to keep it out entirely"
         )
 
-        // The flip is live (same `var` convention as `doNotDisturb`), takes
-        // effect on the next tick, and no cooldown was consumed while
-        // locked: one second later is deep inside the 300 s cooldown, so
-        // this firing proves the locked tick never touched `lastFired`.
-        engine.processRulesUnlocked = true
+        // Cooldown proves the firing was a real one that took the whole
+        // pipeline, not a highlight that skipped the bookkeeping.
         now = now.addingTimeInterval(1)
         engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
-        XCTAssertEqual(highlightCount, 1, "unlock must take effect on the next tick, with no cooldown debt from locked ticks")
+        XCTAssertEqual(highlightCount, 1, "the 300 s cooldown must hold the second tick")
     }
 
-    func testUnlockEvaluatesWithAFreshSustainedWindow() {
-        // No sustained credit may accrue while locked — same "a window must
-        // be built entirely from observed ticks" rule `handleSystemWake()`
-        // enforces for sleep. The condition would have been true for the
-        // whole locked stretch; none of it counts.
+    /// The sustained window is built from ordinary observed ticks, with no
+    /// entitlement transition anywhere in it — the plain version of the
+    /// fresh-window test the gate needed.
+    func testSustainedWindowAccumulatesNormally() {
         var now = Date()
         let rule = processRule(name: "node", threshold: 80, sustainedFor: 10)
         let engine = AlertEngine(rules: [rule], clock: { now })
         var highlightCount = 0
         engine.menuBarHighlighter = { _ in highlightCount += 1 }
 
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)])) // locked at t0
+        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
         now = now.addingTimeInterval(5)
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)])) // locked at t5
-
-        engine.processRulesUnlocked = true
-        now = now.addingTimeInterval(1)
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)])) // fresh window opens at t6
-        now = now.addingTimeInterval(5)
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)])) // t11 — 5 s into the window
-        XCTAssertEqual(highlightCount, 0, "locked ticks must not count toward sustainedFor — t0..t5 is not credit")
+        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
+        XCTAssertEqual(highlightCount, 0, "5 s is not yet the 10 s the rule asks for")
 
         now = now.addingTimeInterval(6)
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)])) // t17 — 11 s into the window
-        XCTAssertEqual(highlightCount, 1, "should fire once the post-unlock window alone satisfies sustainedFor")
+        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
+        XCTAssertEqual(highlightCount, 1)
     }
 
-    func testLockedEngineStillEvaluatesThresholdRulesUnchanged() {
-        // The gate is scoped to `processNameMatch != nil` — an ordinary
-        // metric/threshold rule on the same locked engine, evaluated from
-        // the same snapshot, is entirely unaffected.
+    func testProcessAndThresholdRulesBothFireFromTheSameSnapshot() {
+        // The gate was scoped to `processNameMatch != nil`, so a mixed
+        // engine used to fire exactly one of these two. Both now.
         let genericRule = AlertRule(
             name: "High CPU",
             metric: .cpuTotalPercent,
@@ -332,40 +326,20 @@ final class ProcessAlertRuleTests: XCTestCase {
             topProcesses: [process(name: "node", cpuPercent: 95)]
         ))
 
-        XCTAssertEqual(firedTokens, ["generic"], "the threshold rule fires; the locked process rule stays silent")
+        XCTAssertEqual(
+            Set(firedTokens), ["generic", "warning"],
+            "both rules must fire — the process one used to be the silent half"
+        )
     }
 
-    func testLockingMidSessionStopsAnEnabledProcessRule() {
-        // The lapse direction of the live flip: a rule that was firing
-        // under a valid entitlement goes quiet the very next tick — never
-        // "fired and suppressed", and never deleted.
-        var now = Date()
-        let rule = processRule(name: "node", threshold: 80, sustainedFor: 0, cooldown: 60)
-        let engine = AlertEngine(rules: [rule], processRulesUnlocked: true, clock: { now })
-        var highlightCount = 0
-        engine.menuBarHighlighter = { _ in highlightCount += 1 }
-
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
-        XCTAssertEqual(highlightCount, 1)
-
-        engine.processRulesUnlocked = false
-        now = now.addingTimeInterval(120) // well past cooldown — only the gate holds it back
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
-        XCTAssertEqual(highlightCount, 1, "a lapsed entitlement must stop firings on the next tick")
-    }
-
-    func testGatingNeverMutatesOrDeletesTheRule() {
-        // The entitlement-lapse contract: rule data is the user's own and an
-        // entitlement change may never edit or delete it. `AlertRule` is
-        // `Equatable`, so this is a whole-value comparison, not a spot check.
+    func testEvaluationNeverMutatesOrDeletesTheRule() {
+        // Kept from the gate era, where it pinned that a lapse may not edit
+        // user data. It still earns its place: `AlertRule` is `Equatable`,
+        // so this is a whole-value assertion that evaluation is read-only.
         let rule = processRule(name: "node", threshold: 80)
         let engine = AlertEngine(rules: [rule])
 
         engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
-        XCTAssertEqual(engine.rules, [rule], "a locked evaluation must leave the rule untouched")
-
-        engine.processRulesUnlocked = true
-        engine.evaluate(processSnapshot([process(name: "node", cpuPercent: 95)]))
-        XCTAssertEqual(engine.rules, [rule], "unlocking and firing must leave the rule untouched too")
+        XCTAssertEqual(engine.rules, [rule])
     }
 }

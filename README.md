@@ -49,18 +49,25 @@ copies update themselves through Sparkle from a signed appcast.
 with the iPhone app. Both are built from this same repo (`SentryMobile`,
 `SentryWatch`). Open the app on the iPhone while the Mac app is running on
 the same Wi-Fi and they find each other over Bonjour; away-from-home
-access is a Pro feature (see below).
+access works too, over a TLS listener the phone pairs with by QR code.
 
 ## Features
 
-Everything here is free unless marked **Pro**.
+Everything is free. There is no paid tier, no license key, and nothing to
+buy — see [License](#license).
 
 **On the Mac** — a menu bar readout (monochrome, layout-configurable) with
 a themed dropdown; a Dashboard of live charts backed by a local GRDB
 history store with tiered rollups; alert rules with history; keep-awake
 timers; fan RPM readout everywhere; built-in themes, each with light,
 dark, and follow-the-system variants; a security-posture check of your
-Mac's protections, read-only and local.
+Mac's protections, read-only and local; conditional keep-awake release
+rules (battery level, sustained CPU, a named app or process, an active
+download, or a schedule); process-match alert rules; a custom theme editor
+with WCAG contrast checking; history export and whatever retention you set;
+and Protection Insights — every finding in full, with a battery-health
+degradation ETA, thermal cool-down estimates, and energy use in kWh by
+day, week or month.
 
 **On iPhone and Apple Watch** — a companion iPhone app and a three-page
 Watch app (overview, keep-awake, agent activity — with a kill-switch
@@ -87,112 +94,6 @@ Code plugin bundle under
 Copy-pasteable configs live in
 [`docs/integrations/`](docs/integrations/README.md).
 
-### Pro
-
-Pro is a one-time purchase: **$14.99 launch price** ($19.99 after),
-licensed for 3 Macs, no subscription. It activates with a license key
-inside the app; checkout opens shortly after launch — watch the
-[releases page](https://github.com/malekTheCoder/Sentry/releases). Pro adds:
-
-- **Conditional keep-awake release rules** — release when battery falls
-  below a level, when sustained CPU drops, while a named app or process
-  runs, while a download is active, or on a schedule.
-- **Process-match alert rules** — trigger alerts on what's running, not
-  just on thresholds.
-- **Custom theme editor** with WCAG contrast checking, on top of the
-  built-in themes.
-- **Off-LAN remote sync** — a TLS listener the iPhone pairs with via QR
-  code, so the companions work away from home. Same-Wi-Fi sync is free.
-- **History export and extended retention** beyond the default rollup
-  windows.
-- **Protection Insights** — battery health trend with a degradation ETA,
-  thermal cool-down estimates, and energy use in kWh by day / week /
-  month.
-
-## Building from source
-
-The Xcode project is generated from [`project.yml`](project.yml) via
-[XcodeGen](https://github.com/yonaskolb/XcodeGen) — `Sentry.xcodeproj` itself
-is not committed, so text diffs stay reviewable.
-
-```sh
-brew install xcodegen   # once
-xcodegen generate       # after cloning, or after editing project.yml
-open Sentry.xcodeproj
-```
-
-Or build, install to /Applications, and (re)launch in one step:
-
-```sh
-./run.sh
-```
-
-Keep clones **outside iCloud-synced folders** (e.g. `~/Developer`, not
-`~/Documents`): iCloud's FileProvider xattrs break codesign, its eviction
-breaks git under disk pressure, and both have burned real hours here.
-Derived data should also live outside the repo; `run.sh` handles this and
-resolves `DEVELOPER_DIR` itself (preferring Xcode-beta if installed).
-
-Targets: `Sentry` (menu bar app, builds `Sentry.app`), `SentryKit` (shared
-models/services; separate macOS, iOS, and watchOS variants), `SystemMetricsKit`
-(macOS collectors), `SentryMobile` (iOS companion), `SentryWatch` (watchOS
-app) and `SentryWatchWidgetExtension` (complication),
-`SentryWidgetExtension` (iOS home/lock-screen widget),
-`SentryWidgetExtension_macOS` (desktop widget, fed live by the menu bar
-app), `SentryMCP` (MCP stdio server), `SentryCLI` (builds `sentryctl`),
-`SentryTests`.
-
-Debug builds need no certificates at all; the strict Developer ID settings
-are scoped to the Release configuration via the `DeveloperIDSigned` target
-template in `project.yml`.
-
-> Desktop widgets note: the macOS widget builds and is embedded, but macOS
-> only lists widgets from apps signed with a real team identity. Add an
-> Apple ID in Xcode → Settings → Accounts and set it as the project's team
-> to make the widget appear in the gallery.
-
-## Using the CLI and MCP
-
-`SentryMCP` and `sentryctl` are copied into `Sentry.app/Contents/MacOS/` —
-they link `SentryKit.framework` and can only resolve it from inside the
-bundle, so that is where to invoke them from:
-`/Applications/Sentry.app/Contents/MacOS/sentryctl check`.
-
-Both reach the app over an XPC Mach service, brokered by a bundled
-LaunchAgent registered from Settings ▸ AI Access ▸ Command-Line Access
-(code-signature peer verification, `SentryMCPBridge`). Registration needs a
-real code signature — on an ad-hoc-signed debug build, `SMAppService`
-refuses and the tools fail with an error naming exactly that.
-[`docs/integrations/README.md`](docs/integrations/README.md) documents the
-one-time enable step and has copy-pasteable configs for Claude Desktop,
-Claude Code, and Cursor.
-
-## Privacy
-
-No telemetry, no analytics, no crash reporting, no accounts, no server.
-Everything stays on your devices; sync goes directly from your Mac to your
-phone and watch. The full policy — what is collected, where it lives, and
-how to delete it — is [`docs/privacy-policy.md`](docs/privacy-policy.md).
-
-## Website
-
-The marketing site is **not** part of this repo. It lives in
-[SentryWebsite](https://github.com/malekTheCoder/SentryWebsite) and deploys
-from that repo's own `main` to <https://malekswilam.dev/SentryWebsite/>;
-nothing here is served as the site, and nothing here needs to be copied
-there to publish it.
-
-The screenshot masters the site uses are
-[`docs/screenshots/`](docs/screenshots/) in this repo. Update them here, then
-pull them into the site repo from there.
-
-## Support
-
-Questions and bug reports go to
-[GitHub Issues](https://github.com/malekTheCoder/Sentry/issues).
-
-## Contributing
-
 Issues and pull requests are welcome — see
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for how the project is laid out, how
 to run the test suite, and what a good PR looks like. Maintainers cutting a
@@ -201,8 +102,12 @@ and run `scripts/release.sh`.
 
 ## License
 
-The source code is open under the [MIT License](LICENSE), © Malek Swilam &
-Aniketh Bandlamudi. The Pro purchase unlocks the Pro features in the
-official builds and funds development. Bundled open-source dependencies
-are acknowledged in
+Sentry is free and open source under the [MIT License](LICENSE), © Malek
+Swilam & Aniketh Bandlamudi. Every feature is available to everyone, in
+the official builds and in any build you make yourself — there is no paid
+tier, no license key, and no telemetry funding one. A "Sentry Pro" tier
+was planned and partly built (a one-time purchase, an Ed25519 license
+format, six gated features); it was cancelled before any checkout existed,
+and the whole apparatus has been removed rather than disabled. Bundled
+open-source dependencies are acknowledged in
 [`docs/third-party-licenses.md`](docs/third-party-licenses.md).

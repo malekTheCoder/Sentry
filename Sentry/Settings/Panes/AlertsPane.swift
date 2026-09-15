@@ -38,15 +38,12 @@ import SentryKit
 /// `actionsSection` entirely — an action the user can neither edit nor
 /// receive isn't worth a row that needs a disclaimer.
 ///
-/// **Process-match rules are part of Sentry Pro**
-/// (`ProFeature.processMatchAlerts`), gated twice on purpose:
-/// `AlertEngine.processRulesUnlocked` refuses the *evaluation* (covering
-/// rules that never came through this editor — a hand-edited settings
-/// file, an MCP re-enable), while this pane withholds the create/enable
-/// affordances and discloses, on the rule itself, that an existing process
-/// rule isn't being evaluated. A lapse deletes nothing, and everything
-/// that reverts — disabling a rule, converting it back to generic — stays
-/// available regardless of entitlement.
+/// **Process-match rules used to be part of Sentry Pro** and were gated
+/// twice: the engine refused to evaluate them, and this pane withheld the
+/// create/enable affordances and disclosed, on the rule itself, that an
+/// existing process rule wasn't running. Both halves are gone. A rule that
+/// watches a named process is an ordinary rule now, editable and evaluated
+/// like every other one.
 struct AlertsPane: View {
 
     @ObservedObject var store: SettingsStore
@@ -62,41 +59,12 @@ struct AlertsPane: View {
     /// here writes to it.
     let historyStore: HistoryStore?
 
-    /// Answers `ProFeature.processMatchAlerts` for the process-match gate —
-    /// the UI half of the entitlement `AlertEngine.processRulesUnlocked`
-    /// enforces at evaluation time (defense in depth: this pane withholds
-    /// the affordance, the engine refuses the evaluation either way).
-    ///
-    /// The live provider, deliberately not a captured `Bool`:
-    /// `MainWindowController` reuses this pane's view tree forever, so a
-    /// value snapshotted at construction would freeze until relaunch. Body
-    /// re-evaluation is safe because every entitlement flip originates as a
-    /// `settingsStore.settings` mutation (the developer override, or
-    /// `LicenseProEntitlementStore.installLicense` writing the license),
-    /// which re-renders this `@ObservedObject`-store pane after the
-    /// composition root's synchronous sink has already updated the provider.
-    ///
-    /// Optional, defaulting to nil, for the same fail-toward-locked reason
-    /// `AlertEngine.processRulesUnlocked` defaults to false: a construction
-    /// site that forgets to wire it (a preview, a future settings host)
-    /// withholds the paid feature rather than silently granting it.
-    let entitlements: (any ProEntitlementProviding)?
-
     init(
         store: SettingsStore,
-        historyStore: HistoryStore? = nil,
-        entitlements: (any ProEntitlementProviding)? = nil
+        historyStore: HistoryStore? = nil
     ) {
         self.store = store
         self.historyStore = historyStore
-        self.entitlements = entitlements
-    }
-
-    /// The resolved gate every locked-state branch below reads. Computed,
-    /// not stored, so each body evaluation asks the live provider — see
-    /// `entitlements`'s doc comment.
-    private var processMatchUnlocked: Bool {
-        entitlements?.isUnlocked(.processMatchAlerts) ?? false
     }
 
     private enum Mode: String, CaseIterable, Hashable {
@@ -302,32 +270,19 @@ struct AlertsPane: View {
 
     private func ruleRow(_ rule: AlertRule) -> some View {
         HStack(spacing: 8) {
-            if Self.enableAffordanceWithheld(for: rule, processMatchUnlocked: processMatchUnlocked) {
-                // A checkbox here could only *enable* the rule, and enabling
-                // a process rule is part of Sentry Pro — so the affordance is
-                // withheld, not constructed-and-dead (the inert-control shape
-                // this pane refuses; see `actionsSection`'s `.pushToPhone`
-                // reasoning). The moment the rule is enabled — or the copy is
-                // unlocked — the checkbox returns, because *disabling* is an
-                // escape hatch and is never gated.
-                Image(systemName: "lock.fill")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Enabling \(rule.name) requires Sentry Pro")
-            } else {
-                Toggle(isOn: enabledBinding(for: rule.id)) {
-                    EmptyView()
-                }
-                .labelsHidden()
-                // Deliberately no `.toggleStyle(.checkbox)`: that explicit
-                // override was the one place in the Mac app that would have
-                // stayed stock. A system checkbox's bezel grey measures
-                // roughly 2.2:1 on Ivory's grouped rows — under the 3:1 the
-                // themed-controls pass enforces everywhere else — so the
-                // rule list inherits `ThemedToggleStyle` with the rest of
-                // the pane, which also makes the genuinely-disabled rules
-                // here the thing the disabled floor is graded on.
-                .accessibilityLabel("Enable \(rule.name)")
+            Toggle(isOn: enabledBinding(for: rule.id)) {
+                EmptyView()
             }
+            .labelsHidden()
+            // Deliberately no `.toggleStyle(.checkbox)`: that explicit
+            // override was the one place in the Mac app that would have
+            // stayed stock. A system checkbox's bezel grey measures
+            // roughly 2.2:1 on Ivory's grouped rows — under the 3:1 the
+            // themed-controls pass enforces everywhere else — so the
+            // rule list inherits `ThemedToggleStyle` with the rest of
+            // the pane, which also makes the genuinely-disabled rules
+            // here the thing the disabled floor is graded on.
+            .accessibilityLabel("Enable \(rule.name)")
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(rule.name)
@@ -335,15 +290,6 @@ struct AlertsPane: View {
                 Text(Self.conditionSummary(for: rule))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                // The honest disclosure lives on the rule itself, not only
-                // in the inspector — same "why isn't this firing" duty as
-                // the DND banner above, for a rule the engine is skipping
-                // because of the entitlement rather than a mute.
-                if RuleKind(rule: rule) == .processMatch && !processMatchUnlocked {
-                    Label("Part of Sentry Pro — not being evaluated", systemImage: "lock.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
             }
 
             Spacer()
@@ -505,22 +451,8 @@ struct AlertsPane: View {
         Section("Rule") {
             TextField("Name", text: rule.name)
                 .accessibilityLabel("Rule name")
-            if Self.enableAffordanceWithheld(for: rule.wrappedValue, processMatchUnlocked: processMatchUnlocked) {
-                // Same withheld-enable treatment as the rule list's checkbox
-                // — see `ruleRow`. The row stays (the rule is the user's own
-                // data) but the one thing a toggle here could do is part of
-                // Sentry Pro.
-                LabeledContent {
-                    Text("Part of Sentry Pro")
-                        .foregroundStyle(.secondary)
-                } label: {
-                    Label("Enabled", systemImage: "lock.fill")
-                }
-                .accessibilityLabel("Enabling this rule requires Sentry Pro")
-            } else {
-                Toggle("Enabled", isOn: inspectorEnabledBinding(rule))
-                    .accessibilityLabel("Rule enabled")
-            }
+            Toggle("Enabled", isOn: inspectorEnabledBinding(rule))
+                .accessibilityLabel("Rule enabled")
         }
 
         conditionSection(rule, kind: kind)
@@ -559,43 +491,13 @@ struct AlertsPane: View {
     @ViewBuilder
     private func conditionSection(_ rule: Binding<AlertRule>, kind: RuleKind) -> some View {
         Section {
-            // Honest lock disclosure for a pre-existing process rule while
-            // the entitlement is locked (typically a lapse, or a hand-edited
-            // settings file) — same why-isn't-this-firing duty as the DND
-            // and denied-notifications banners at the top of the pane.
-            if kind == .processMatch && !processMatchUnlocked {
-                Label {
-                    Text("Part of Sentry Pro — not being evaluated")
-                        .font(.callout)
-                } icon: {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(.orange)
-                }
-            }
-
             // Only offered for the two rule kinds that reduce to an
             // editable metric/comparison/threshold in the first place — the
             // three ID-special-cased kinds have nothing this toggle could
             // meaningfully apply to (see their `notApplicableNote`s below).
-            //
-            // Entitlement split: converting a generic rule *into* a process
-            // rule is part of Sentry Pro, so on a locked copy the generic
-            // kind gets a locked row rather than the toggle — withheld, not
-            // constructed-and-dead. An existing process rule keeps the
-            // toggle even while locked, because its one reachable direction
-            // is *off* — converting back to an ordinary free rule is an
-            // escape hatch, and those are never gated.
-            if kind == .processMatch || (kind == .generic && processMatchUnlocked) {
+            if kind == .processMatch || kind == .generic {
                 Toggle("Watch a specific process", isOn: processMatchEnabledBinding(rule))
                     .accessibilityLabel("Limit this rule to a specific process by name, rather than a system-wide metric")
-            } else if kind == .generic {
-                LabeledContent {
-                    Text("Part of Sentry Pro")
-                        .foregroundStyle(.secondary)
-                } label: {
-                    Label("Watch a specific process", systemImage: "lock.fill")
-                }
-                .accessibilityLabel("Watching a specific process requires Sentry Pro")
             }
 
             switch kind {
@@ -660,7 +562,6 @@ struct AlertsPane: View {
 
                     thresholdField(rule, label: "Threshold")
                 }
-                .disabled(!processMatchUnlocked)
 
             case .batteryHealthDrop:
                 // The one special-cased rule whose `threshold` *is* read
@@ -679,36 +580,13 @@ struct AlertsPane: View {
             Text("Condition")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
-                if kind == .processMatch,
-                   let lockedNote = Self.lockedConditionFooter(kind: kind, processMatchUnlocked: processMatchUnlocked) {
-                    // For a locked process rule the paywall sentence
-                    // *replaces* `notApplicableNote`'s matching-semantics
-                    // explanation: describing how a rule matches, without
-                    // first saying it isn't being evaluated at all, buries
-                    // the one fact the user came here for.
-                    Text(lockedNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if let note = kind.notApplicableNote {
+                if let note = kind.notApplicableNote {
                     Text(note)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Fires when \(rule.wrappedValue.metric.shortLabel) is \(ComparisonKind(comparison: rule.wrappedValue.comparison).phrase) \(Self.detailedThreshold(rule.wrappedValue.threshold, unit: rule.wrappedValue.metric.unit)). “Above” and “below” are inclusive (≥ and ≤).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // A locked *generic* rule is different: the rule itself
-                // stays free and evaluated, so its real firing sentence
-                // above must survive — the paywall sentence for the
-                // withheld toggle is appended, not substituted.
-                if kind == .generic,
-                   let lockedNote = Self.lockedConditionFooter(kind: kind, processMatchUnlocked: processMatchUnlocked) {
-                    Text(lockedNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1047,7 +925,7 @@ struct AlertsPane: View {
         let suppressed = historyEntries.filter(\.suppressed).count
         // Counts are pre-formatted to `String` so the catalog keys carry
         // plain `%@` placeholders — the shape every other interpolated key
-        // in this catalog already uses (see `ProUpsellCard`'s `totalText`).
+        // in this catalog already uses.
         let countText = String(historyEntries.count)
         if suppressed == 0 {
             return String(localized: "\(countText) recent firings")
@@ -1147,18 +1025,6 @@ struct AlertsPane: View {
             get: { store.settings.alertRules.first(where: { $0.id == id })?.isEnabled ?? false },
             set: { isOn in
                 guard let index = store.settings.alertRules.firstIndex(where: { $0.id == id }) else { return }
-                // Stale-frame guard behind the withheld checkbox (`ruleRow`):
-                // enabling a process rule is part of Sentry Pro. Disabling
-                // is never gated — it's the escape hatch. Routed through
-                // `RuleKind` (not a raw `processNameMatch` check) so the
-                // gate covers exactly the rules the engine's own gate
-                // covers — a reserved-ID rule is evaluated by ID, ungated,
-                // and must stay enableable.
-                if isOn,
-                   RuleKind(rule: store.settings.alertRules[index]) == .processMatch,
-                   !processMatchUnlocked {
-                    return
-                }
                 store.settings.alertRules[index].isEnabled = isOn
             }
         )
@@ -1171,11 +1037,6 @@ struct AlertsPane: View {
         Binding(
             get: { rule.wrappedValue.isEnabled },
             set: { isOn in
-                if isOn,
-                   RuleKind(rule: rule.wrappedValue) == .processMatch,
-                   !processMatchUnlocked {
-                    return
-                }
                 rule.wrappedValue.isEnabled = isOn
             }
         )
@@ -1205,13 +1066,6 @@ struct AlertsPane: View {
             get: { rule.wrappedValue.processNameMatch != nil },
             set: { isOn in
                 if isOn {
-                    // The single generic→process conversion site in the app,
-                    // so the entitlement is re-checked here even though the
-                    // toggle isn't constructed for a locked generic rule —
-                    // a stale frame must not be able to convert. The `else`
-                    // branch (converting back to generic) is deliberately
-                    // unguarded: it's the escape hatch.
-                    guard processMatchUnlocked else { return }
                     rule.wrappedValue.processNameMatch = rule.wrappedValue.processNameMatch ?? ""
                     if ProcessMetricKind.allCases.map(\.metricID).contains(rule.wrappedValue.metric) == false {
                         rule.wrappedValue.metric = .cpuTotalPercent
@@ -1315,52 +1169,6 @@ struct AlertsPane: View {
             // (`shortLabel`, `phrase`), matching `AlertRuleDisplay
             // .conditionSummary`'s documented reasoning on the iOS side.
             return "\(rule.metric.shortLabel) \(comparison) \(Self.detailedThreshold(rule.threshold, unit: rule.metric.unit))"
-        }
-    }
-
-    // MARK: - Process-match lock state (ProFeature.processMatchAlerts)
-
-    /// True when a row's enable control would be an inert affordance: the
-    /// rule is process-scoped, this copy isn't entitled, and the rule is
-    /// currently disabled — so the only thing the control could do (enable)
-    /// is part of Sentry Pro. While the rule is still *enabled* the control
-    /// stays, because disabling must always work: escape hatches survive a
-    /// lapsed license. Static and view-state-free so
-    /// `AlertsPaneFormattingTests` can pin the truth table.
-    static func enableAffordanceWithheld(for rule: AlertRule, processMatchUnlocked: Bool) -> Bool {
-        guard !processMatchUnlocked else { return false }
-        guard RuleKind(rule: rule) == .processMatch else { return false }
-        return !rule.isEnabled
-    }
-
-    /// The condition section's footer while the process-match entitlement
-    /// is locked, or nil when the standard footers apply. Two different
-    /// sentences for the same reason `ThemeEditingGate` keeps
-    /// `lockedAffordanceLabel` and `lockedExistingThemesNote` apart: "you
-    /// can't create one" and "the one you have isn't running" are different
-    /// facts. Both follow the honest-copy
-    /// rules `ProUpsellCard` set: Sentry Pro is named plainly, the
-    /// purchase sentence is `ProPurchase`'s shared decision (the
-    /// not-on-sale admission until a real checkout address exists, a
-    /// pointer to Settings ▸ Sentry Pro after), and the existing-rule
-    /// sentence spells out the lapse semantics
-    /// (`AlertEngine.processRulesUnlocked`'s contract) and the ungated way
-    /// out.
-    static func lockedConditionFooter(
-        kind: RuleKind,
-        processMatchUnlocked: Bool,
-        checkoutURL: URL? = AppCredits.proCheckoutURL
-    ) -> String? {
-        guard !processMatchUnlocked else { return nil }
-        switch kind {
-        case .generic:
-            return String(localized: "Watching a specific process — alerting on what a named app is doing rather than on a system-wide metric — is part of Sentry Pro. It's shown rather than hidden so you can see what the feature offers. Everything else about this rule stays free. \(ProPurchase.footerSentence(checkoutURL: checkoutURL))")
-        case .processMatch:
-            return String(localized: "This rule isn't being evaluated: watching a specific process is part of Sentry Pro. Nothing fires, nothing is recorded, and its cooldown isn't consumed — but the rule and every setting on it are kept exactly as they are, and it starts evaluating again, with a fresh “must hold for” window, the moment this copy is unlocked. Turning “Watch a specific process” off converts it back to an ordinary rule, which stays free.")
-        case .chargingPaused, .slowCharging, .batteryHealthDrop:
-            // The three ID-special-cased kinds have no process dimension —
-            // their `notApplicableNote`s keep the footer.
-            return nil
         }
     }
 

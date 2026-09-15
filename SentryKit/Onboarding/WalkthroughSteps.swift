@@ -42,8 +42,7 @@ import Foundation
 /// **Numbers are quoted only where they are constants of this build**, and
 /// then only ones a reader could verify: the 20% default battery floor
 /// (`AgentGuardrailSettings.batteryFloorPercent`), the score being out of
-/// 100 (`ProtectionScore.maximum`), the two free findings
-/// (`ProGate.freeInsightAllowance`). No step claims a reading from the
+/// 100 (`ProtectionScore.maximum`). No step claims a reading from the
 /// user's own Mac — the Mac walkthrough's one live element is the menu bar
 /// preview, which carries the "sample values, not live readings" label
 /// `MenuBarPreviewStrip` already draws for itself.
@@ -129,7 +128,7 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
         case .agents:
             return String(localized: "Sentry speaks MCP, so a coding agent can check this machine is fit before starting a long build — and hold it awake while it runs.")
         case .companion:
-            return String(localized: "On your own Wi-Fi the iPhone app finds this Mac by itself. Pairing is one QR code, and connecting from other networks is part of Sentry Pro.")
+            return String(localized: "On your own Wi-Fi the iPhone app finds this Mac by itself. Pairing is one QR code, and it also lets the phone reach this Mac from other networks.")
         case .done:
             return String(localized: "Nothing you have just seen is required — Sentry works with all of it switched off.")
         }
@@ -150,7 +149,7 @@ public enum MacWalkthroughStep: String, WalkthroughStep {
         case .agents:
             return String(localized: "Read tools are on by default; the ones that change something are off until you enable them individually. Guardrails ship on: an agent's request to keep this Mac awake is refused below 20% battery, and an agent-held assertion is released automatically when the machine gets hot. And there is a kill switch — one toggle that declines every agent call, read and write, from every client, and it survives a relaunch.")
         case .companion:
-            return String(localized: "Same network needs nothing turned on to watch this Mac. Pairing mints a code and draws a QR holding this Mac's address, port and code — point the iPhone's Camera app at it and the app fills the connection in, then asks you to confirm. Pairing is free, and is what lets the phone control this Mac on this Wi-Fi; reaching this Mac from other networks is part of Sentry Pro. The Apple Watch app rides along with the phone and pairs the ordinary way; there is nothing Sentry-specific to set up on the watch.")
+            return String(localized: "Same network needs nothing turned on to watch this Mac. Pairing mints a code and draws a QR holding this Mac's address, port and code — point the iPhone's Camera app at it and the app fills the connection in, then asks you to confirm. Pairing is what lets the phone control this Mac, on this Wi-Fi and from other networks alike. The Apple Watch app rides along with the phone and pairs the ordinary way; there is nothing Sentry-specific to set up on the watch.")
         case .done:
             return String(localized: "Everything here lives in Settings, and so does this walkthrough — General ▸ Walkthrough runs it again whenever you want.")
         }
@@ -231,7 +230,7 @@ public enum PhoneWalkthroughStep: String, WalkthroughStep {
         case .companionRole:
             return String(localized: "It is a companion to Sentry running on your Mac, not a second copy of it. Everything it shows comes from there.")
         case .pairing:
-            return String(localized: "On your own Wi-Fi this app looks for your Mac by itself. Pairing once with a QR code adds control — and, with Sentry Pro on the Mac, reach from other networks.")
+            return String(localized: "On your own Wi-Fi this app looks for your Mac by itself. Pairing once with a QR code adds control, and reach from other networks.")
         case .tabs:
             return String(localized: "Dashboard for right now, History for over time, Alerts for what has fired, Settings for the connection and the theme.")
         case .controls:
@@ -250,7 +249,7 @@ public enum PhoneWalkthroughStep: String, WalkthroughStep {
         case .companionRole:
             return String(localized: "Until a Mac is connected the Dashboard shows demo readings and labels them as such — that is not your Mac idling, it is placeholder data. Nothing in this app measures this iPhone.")
         case .pairing:
-            return String(localized: "Same network: there is nothing to switch on to see the Mac. Sentry on the Mac already answers, and this app finds it. To pair, open Sentry ▸ Settings ▸ Sync on the Mac: Remote Access mints a pairing code and shows a QR code. Point this iPhone's Camera app at it and tap the banner — the app reads the address, port and code out of it and asks you to confirm before saving. Typing those three fields into Settings by hand does the same job. Pairing on the Mac's own Wi-Fi is free; connecting from other networks is part of Sentry Pro on the Mac.")
+            return String(localized: "Same network: there is nothing to switch on to see the Mac. Sentry on the Mac already answers, and this app finds it. To pair, open Sentry ▸ Settings ▸ Sync on the Mac: Remote Access mints a pairing code and shows a QR code. Point this iPhone's Camera app at it and tap the banner — the app reads the address, port and code out of it and asks you to confirm before saving. Typing those three fields into Settings by hand does the same job. The same pairing works on the Mac's own Wi-Fi and from other networks.")
         case .tabs:
             return String(localized: "History and Alerts are as deep as the Mac's own records: this app displays what the Mac has collected rather than keeping its own log, so a Mac you have only just paired with will have more to show tomorrow.")
         case .controls:

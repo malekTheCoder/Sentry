@@ -12,7 +12,7 @@ import XCTest
 /// file someone hand-edited into nonsense, and a catastrophe if it fires
 /// for a file that is merely one release out of date. A `keyNotFound` or
 /// `typeMismatch` here would silently reset the user's theme, alert rules,
-/// menu bar layout, MCP tool grants and Pro license blob, and it would do
+/// menu bar layout and MCP tool grants, and it would do
 /// it on the upgrade launch, with no error on screen.
 ///
 /// The decoder tolerates it for a structural reason rather than a lucky
@@ -118,7 +118,6 @@ final class AppSettingsFanControlRemovalTests: XCTestCase {
           "themeID": "terminal",
           "mcpServerEnabled": true,
           "mcpRemotePort": 9001,
-          "proUnlockOverrideEnabled": true,
           "hourlyRetentionDays": 45,
           "agentGuardrails": { "killSwitchEngaged": true }
         }
@@ -127,7 +126,6 @@ final class AppSettingsFanControlRemovalTests: XCTestCase {
         XCTAssertEqual(settings.themeID, "terminal")
         XCTAssertTrue(settings.mcpServerEnabled)
         XCTAssertEqual(settings.mcpRemotePort, 9001)
-        XCTAssertTrue(settings.proUnlockOverrideEnabled)
         XCTAssertEqual(settings.hourlyRetentionDays, 45)
         XCTAssertTrue(settings.agentGuardrails.killSwitchEngaged)
         // The shipped alert rules must still be there — the loudest possible
@@ -136,22 +134,10 @@ final class AppSettingsFanControlRemovalTests: XCTestCase {
         XCTAssertFalse(settings.alertRules.isEmpty)
     }
 
-    /// The other half of the removal: `ProFeature` lost its `.fanControl`
-    /// case. Nothing persisted a `ProFeature`, so there is no stored value
-    /// to fail on — but `ProFeature` *is* `Codable` and `CaseIterable`, and
-    /// this pins that the enum no longer offers fan control to any caller
-    /// that enumerates features (the Pro upsell copy does exactly that).
-    func testProFeatureNoLongerOffersFanControl() {
-        XCTAssertFalse(
-            ProFeature.allCases.contains { $0.rawValue == "fanControl" },
-            "Sentry does not sell fan control any more; it reads fan speeds for free."
-        )
-        XCTAssertNil(ProFeature(rawValue: "fanControl"))
-        for feature in ProFeature.allCases {
-            XCTAssertFalse(
-                feature.summary.localizedCaseInsensitiveContains("fixed speed"),
-                "\(feature) still advertises setting a fan speed"
-            )
-        }
-    }
+    // The other half of this removal — that `ProFeature` no longer offered
+    // a `.fanControl` case to anything enumerating paid features — was
+    // pinned here. `ProFeature` itself is gone now, along with the rest of
+    // the licensing apparatus, so there is no enum left to check, and the
+    // question the assertion answered ("does Sentry still claim to sell
+    // fan control?") cannot be asked of a product that sells nothing.
 }
