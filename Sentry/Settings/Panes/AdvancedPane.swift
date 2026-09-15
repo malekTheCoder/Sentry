@@ -7,6 +7,11 @@ struct AdvancedPane: View {
 
     @ObservedObject var store: SettingsStore
 
+    /// Provided to every pane at `SettingsView`'s root (`.environment(\.themePalette, palette)`).
+    /// This pane never read it, which is why its sliders drew in the system
+    /// accent while the rest of the app drew in the user's theme.
+    @Environment(\.themePalette) private var palette
+
     /// Opens the Phase 1 exit-criterion debug window (raw `SystemSnapshot`
     /// dump). `nil` by default so this pane keeps working — button just
     /// absent — wherever it's constructed without a debug window controller
@@ -197,22 +202,39 @@ struct AdvancedPane: View {
         accessibilityLabel: String,
         estimate: Double
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Slider(value: value, in: range, step: step) {
+        VStack(alignment: .leading, spacing: 6) {
+            // Title and live value on one line, the value trailing and
+            // monospaced so it holds still while the slider is dragged.
+            HStack(alignment: .firstTextBaseline) {
                 Text(title)
-            }
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityValue("\(valueLabel), about \(DiskEstimate.formatted(estimate))")
-
-            HStack {
-                Text("\(title): \(valueLabel)")
-                Spacer()
-                Text("≈ \(DiskEstimate.formatted(estimate))")
+                Spacer(minLength: 12)
+                Text(valueLabel)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .fontWeight(.semibold)
             }
-            .font(.callout)
+
+            // The label-less `Slider` initializer, deliberately. Inside a
+            // `Form`, a `Slider` *with* a label renders that label in the
+            // row's leading column and the track in the trailing one — which
+            // is both why the track used to start half-way across the pane,
+            // and why the title appeared twice: once from that label and
+            // once from the summary line beneath it. With no label the whole
+            // `VStack` becomes the row's content and spans its full width,
+            // so the track gets the room it needs and the title is stated
+            // exactly once, above. `Text("")` would not do: an empty label
+            // still claims the column. VoiceOver reads `accessibilityLabel`,
+            // so nothing is lost by having no visual label here.
+            Slider(value: value, in: range, step: step)
+                .tint(palette.accent)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue("\(valueLabel), about \(DiskEstimate.formatted(estimate))")
+
+            Text("≈ \(DiskEstimate.formatted(estimate)) on disk")
+                .monospacedDigit()
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 2)
     }
 }
 

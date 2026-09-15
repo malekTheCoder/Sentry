@@ -307,21 +307,51 @@ struct InsightsView: View {
 
     // MARK: - Footer
 
-    /// The disclosure that makes the whole feature checkable. A paid
+    /// The disclosure that makes the whole feature checkable. A
     /// recommendation the user can't audit is a horoscope.
+    ///
+    /// **Why this is styled as prose and not as fine print.** It used to be
+    /// one 60-word paragraph at `size: 10` in `textTertiary`, set to the
+    /// full width of the window: the smallest type in the tab, in its
+    /// lowest-contrast tier, at a measure of well over a hundred characters.
+    /// Every one of those choices pushes a reader away from a passage whose
+    /// entire purpose is to be read — it is the paragraph that tells someone
+    /// the score is checkable rather than mystical, and burying it in legalese
+    /// styling argues the opposite of what it says.
+    ///
+    /// So it now matches the prose the findings themselves use (`size: 12`,
+    /// `textSecondary` — see `InsightRowView.expandedBody`), splits its two
+    /// distinct claims into two paragraphs, and caps its measure at 720pt,
+    /// the same bound `SettingsView` already applies to running text. The
+    /// timestamp stays a tier down in `textTertiary`: it is metadata about
+    /// the report, not part of the explanation, and the size difference is
+    /// what says so.
     private var methodologyFooter: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            MicroHeaderLabel(title: "How this is worked out")
-            Text("Every finding is compared against this Mac's own recorded history — never against another machine or a fixed idea of \"normal\". Security settings are read with the same commands you could run yourself, without administrator rights; anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score.")
-                .font(palette.font(size: 10))
-                .foregroundStyle(palette.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let report = viewModel.report {
-                Text("Report generated \(report.generatedAt.formatted(date: .abbreviated, time: .shortened)).")
-                    .font(palette.font(size: 10))
-                    .foregroundStyle(palette.textTertiary)
+        VStack(alignment: .leading, spacing: palette.spacing) {
+            Divider().overlay(palette.separator)
+
+            VStack(alignment: .leading, spacing: palette.spacingTight) {
+                MicroHeaderLabel(title: "How this is worked out")
+
+                Text("Every finding is compared against this Mac's own recorded history — never against another machine, or a fixed idea of \"normal\".")
+                    .font(palette.font(size: 12))
+                    .foregroundStyle(palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Security settings are read with the same commands you could run yourself, without administrator rights. Anything that needs privileges Sentry doesn't ask for is reported as unknown rather than guessed, and unknowns never count for or against the score.")
+                    .font(palette.font(size: 12))
+                    .foregroundStyle(palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let report = viewModel.report {
+                    Text("Report generated \(report.generatedAt.formatted(date: .abbreviated, time: .shortened)).")
+                        .font(palette.font(size: 10.5))
+                        .foregroundStyle(palette.textTertiary)
+                        .padding(.top, 2)
+                }
             }
+            .frame(maxWidth: 720, alignment: .leading)
         }
-        .padding(.top, palette.spacingRow)
+        .padding(.top, palette.spacingSection)
     }
 }
